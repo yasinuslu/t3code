@@ -1,0 +1,117 @@
+# Builds the Nix package defined by this fork's flake.nix for both machines Yasin runs
+# (nika = x86_64-linux, joyboy/ichigo = aarch64-darwin) and publishes the result to a
+# binary cache, so that `nixos-rebuild` / `darwin-rebuild` SUBSTITUTE the desktop app
+# instead of compiling electron locally for ten-plus minutes on every bump.
+#
+# THIS IS THE ONLY WORKFLOW IN THIS REPO THAT SHOULD BE ENABLED. Everything else under
+# .github/workflows/ belongs to pingdotgg/t3code and expects their paid `blacksmith-*`
+# runners and their secrets; they are disabled per-workflow through the GitHub API rather
+# than deleted, so upstream merges never conflict. `nep t3code ci-guard` re-disables any
+# workflow upstream adds later.
+#
+# WHY THIS LIVES IN THE FORK AND NOT IN THE MACHINE CONFIG: yasinuslu/nepjua is a PRIVATE
+# repo, where Actions minutes are billed and a macOS runner costs $0.08/min -- which is
+# exactly why CI was deleted from it in 6f594ae. This repo is public, so the same minutes,
+# macOS included, are free.
+name: Nix desktop build
+
+on:
+  push:
+    branches: [nepjua]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer commit makes an in-flight build pointless: only the tip is ever installed.
+concurrency:
+  group: nix-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Override without editing this file by setting a repository variable named
+  # CACHIX_CACHE (Settings -> Secrets and variables -> Actions -> Variables).
+  CACHIX_CACHE: ${{ vars.CACHIX_CACHE || 'nepjua' }}
+
+jobs:
+  build:
+    name: ${{ matrix.system }}
+    runs-on: ${{ matrix.runner }}
+    # A cold electron + pnpm build is roughly 10-20 minutes; the ceiling is there to catch
+    # a hang, not to bound a normal run.
+    timeout-minutes: 120
+    strategy:
+      # Darwin and Linux fail for entirely unrelated reasons. Never let one hide the other.
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            system: x86_64-linux
+          - runner: macos-latest
+            system: aarch64-darwin
+    env:
+      # Lifted to the job so the `if:` guards below can see whether it is configured.
+      # Until the token exists the workflow still runs and still proves the build works;
+      # it just publishes nothing.
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # A stock ubuntu runner has ~21 GB free, and the pnpm store plus an electron build
+      # plus the nix closure does not comfortably fit. This buys back ~25 GB.
+      - name: Reclaim disk space
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # Also makes the cache a SUBSTITUTER for this run, so a re-run of an unchanged commit
+      # (or the darwin leg after the linux leg) pulls instead of rebuilding.
+      - name: Configure Cachix
+        if: env.CACHIX_AUTH_TOKEN != ''
+        uses: cachix/cachix-action@v17
+        with:
+          name: ${{ env.CACHIX_CACHE }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          # Pushing is done by hand below, filtered. See that step for why.
+          skipPush: true
+
+      - name: Build
+        run: |
+          nix build --print-build-logs --no-link --print-out-paths \
+            '.#packages.${{ matrix.system }}.default' | tee out-paths.txt
+
+      - name: Publish to Cachix
+        if: env.CACHIX_AUTH_TOKEN != ''
+        run: |
+          # Push ONLY the t3code paths, not the whole closure. Everything else in there
+          # (electron, nodejs, codex, gh, git and their dependencies) is already in
+          # cache.nixos.org, which the machines query anyway -- re-uploading it would just
+          # burn the 5 GB open-source quota. The three paths this keeps are
+          # t3code-unwrapped, t3code-resource-monitor and the wrapper symlinkJoin, about
+          # 150 MB compressed.
+          nix path-info --recursive "$(cat out-paths.txt)" \
+            | grep -E -- '-t3code' \
+            | cachix push "$CACHIX_CACHE"
+
+      - name: Summary
+        run: |
+          {
+            echo "### ${{ matrix.system }}"
+            echo
+            echo '```'
+            cat out-paths.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
