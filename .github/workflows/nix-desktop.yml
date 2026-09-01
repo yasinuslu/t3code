@@ -55,7 +55,20 @@ jobs:
       # it just publishes nothing.
       CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      # NO actions/checkout ON PURPOSE. The build below refers to this commit by flake URL
+      # instead, because a checkout is NOT guaranteed to hash to the same source tree the
+      # consumer resolves -- and if it does not, CI fills the cache with a store path
+      # nobody will ever ask for and every machine builds from source anyway, silently.
+      #
+      # That is not theoretical. The first green run of this workflow built
+      # /nix/store/46xpji75...-t3code from its checkout while `github:yasinuslu/t3code`
+      # evaluated to /nix/store/1ah089ip...-t3code on nika, from the same commit. The two
+      # runners differed only in Nix version (2.35.2 here, 2.34.8 there), which is enough
+      # to change how a git worktree is exported.
+      #
+      # Building the flake URL removes the question: CI evaluates the exact tarball the
+      # machines will, so identical store paths are true by construction rather than by
+      # coincidence.
 
       # A stock ubuntu runner has ~21 GB free, and the pnpm store plus an electron build
       # plus the nix closure does not comfortably fit. This buys back ~25 GB.
@@ -97,7 +110,8 @@ jobs:
           # it happened on the first run of this workflow.
           # --print-build-logs writes logs to stderr, so they still stream to the console.
           nix build --print-build-logs --no-link --print-out-paths \
-            '.#packages.${{ matrix.system }}.default' > out-paths.txt
+            "github:${GITHUB_REPOSITORY}/${GITHUB_SHA}#packages.${{ matrix.system }}.default" \
+            > out-paths.txt
           cat out-paths.txt
 
       - name: Publish to Cachix
