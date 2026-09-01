@@ -22,6 +22,7 @@
   pkgs,
 
   # The tree to build. The flake passes `self`, so it is always exactly this commit.
+  # A local path also works, for testing an uncommitted change.
   src,
 
   # Stamped onto the version so a running instance can be told apart from an upstream
@@ -34,10 +35,35 @@
 let
   inherit (pkgs) lib;
 
+  # nixpkgs builds the Rust resource-monitor sidecar out of the SAME tree, and finds it
+  # with `sourceRoot = "${t3code-unwrapped.src.name}/native/resource-monitor"`. That works
+  # when src is a fetchFromGitHub *derivation*, which carries a `name`; a flake's `self` is
+  # a bare store path, which does not, and the whole build dies at eval with
+  # `error: attribute 'name' missing`.
+  #
+  # Fix: hand the derivation an attrset that string-coerces to the same store path but also
+  # carries a name -- the shape lib.cleanSourceWith produces. Doing it this way rather than
+  # with builtins.path or cleanSourceWith avoids a second full copy of the repo in the
+  # store, which would buy nothing.
+  #
+  # `name` must equal the directory stdenv's unpack phase produces, which it gets by
+  # stripping the hash off the store path's basename -- always "source" for a flake input.
+  # Computed rather than hardcoded so that passing a local checkout still works.
+  srcPath = if lib.isAttrs src && src ? outPath then src.outPath else src;
+  srcBase = baseNameOf (toString srcPath);
+  namedSrc = {
+    outPath = srcPath;
+    name =
+      if builtins.match "[0-9a-df-np-sv-z]{32}-.+" srcBase != null then
+        builtins.substring 33 (-1) srcBase
+      else
+        srcBase;
+  };
+
   # The monorepo root package.json carries no version; apps/desktop's does, and it is the
   # one upstream's own release tooling treats as canonical (see
   # scripts/update-release-package-versions.ts, which the build runs in preBuild).
-  baseVersion = (lib.importJSON "${src}/apps/desktop/package.json").version;
+  baseVersion = (lib.importJSON "${srcPath}/apps/desktop/package.json").version;
 
   # Semver PRERELEASE syntax (`-nepjua.abc1234`) rather than build metadata (`+abc1234`):
   # this string is written verbatim into four package.json files by upstream's version
@@ -47,12 +73,14 @@ let
   # pnpmDeps has to be REBUILT rather than overridden: its hash is an argument to the
   # fetcher, not an attribute of the derivation, so `overrideAttrs` cannot reach it.
   unwrapped = pkgs.t3code.unwrapped.overrideAttrs (old: {
-    inherit version src;
+    inherit version;
+    src = namedSrc;
 
     pnpmDeps = pkgs.fetchPnpmDeps {
       pnpm = pkgs.pnpm_11;
       pname = "t3code-unwrapped";
-      inherit version src;
+      inherit version;
+      src = namedSrc;
       inherit (old) pnpmWorkspaces;
       fetcherVersion = 4;
       hash = pnpmHash;
@@ -113,7 +141,8 @@ in
   '';
 
   passthru = (old.passthru or { }) // {
-    inherit unwrapped src;
+    inherit unwrapped;
+    src = namedSrc;
     pnpmDeps = unwrapped.pnpmDeps;
   };
 })
