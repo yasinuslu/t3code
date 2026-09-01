@@ -90,19 +90,30 @@ jobs:
 
       - name: Build
         run: |
+          set -euo pipefail
+          # REDIRECT, never `| tee`. GitHub runs `run:` blocks under `bash -e` WITHOUT
+          # pipefail, so piping nix into tee reports tee's exit status and a build that
+          # failed to even evaluate is reported as a green run. That is not hypothetical:
+          # it happened on the first run of this workflow.
+          # --print-build-logs writes logs to stderr, so they still stream to the console.
           nix build --print-build-logs --no-link --print-out-paths \
-            '.#packages.${{ matrix.system }}.default' | tee out-paths.txt
+            '.#packages.${{ matrix.system }}.default' > out-paths.txt
+          cat out-paths.txt
 
       - name: Publish to Cachix
         if: env.CACHIX_AUTH_TOKEN != ''
         run: |
+          set -euo pipefail
           # Push ONLY the t3code paths, not the whole closure. Everything else in there
           # (electron, nodejs, codex, gh, git and their dependencies) is already in
           # cache.nixos.org, which the machines query anyway -- re-uploading it would just
           # burn the 5 GB open-source quota. The three paths this keeps are
           # t3code-unwrapped, t3code-resource-monitor and the wrapper symlinkJoin, about
           # 150 MB compressed.
-          nix path-info --recursive "$(cat out-paths.txt)" \
+          #
+          # pipefail matters here too: an empty grep means the filter has stopped matching
+          # and nothing is being published, which should fail loudly rather than pass.
+          xargs nix path-info --recursive < out-paths.txt \
             | grep -E -- '-t3code' \
             | cachix push "$CACHIX_CACHE"
 
