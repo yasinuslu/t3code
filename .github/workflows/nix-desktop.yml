@@ -121,7 +121,9 @@ jobs:
           # gh and git are recognised as upstream and never uploaded.
           nix run nixpkgs#attic-client -- \
             login "$ATTIC_CACHE" "$ATTIC_ENDPOINT" "$ATTIC_TOKEN"
-          xargs -a out-paths.txt nix run nixpkgs#attic-client -- push "$ATTIC_CACHE"
+          # `< file`, not `xargs -a file`: -a is a GNU extension and the macOS runner's BSD
+          # xargs rejects it outright, so the darwin leg failed while linux passed.
+          xargs nix run nixpkgs#attic-client -- push "$ATTIC_CACHE" < out-paths.txt
 
       - name: Summary
         run: |
