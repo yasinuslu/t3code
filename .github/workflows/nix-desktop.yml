@@ -29,9 +29,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Override without editing this file by setting a repository variable named
-  # CACHIX_CACHE (Settings -> Secrets and variables -> Actions -> Variables).
-  CACHIX_CACHE: ${{ vars.CACHIX_CACHE || 'nepjua' }}
+  # The cache is Yasin's OWN attic server (platform/attic in the platform-gitops repo), not
+  # Cachix: no external account, no 5 GB free-tier ceiling. It is public, so pulling needs no
+  # credentials; only pushing does.
+  ATTIC_ENDPOINT: https://nix-cache.nepjua.org/
+  ATTIC_CACHE: nepjua
+  ATTIC_PUBLIC_KEY: nepjua:aBGBs7fux/3X2P9l5C/9wf7QOfgZ5uWEY4U5cJlllZI=
 
 jobs:
   build:
@@ -50,10 +53,9 @@ jobs:
           - runner: macos-latest
             system: aarch64-darwin
     env:
-      # Lifted to the job so the `if:` guards below can see whether it is configured.
-      # Until the token exists the workflow still runs and still proves the build works;
-      # it just publishes nothing.
-      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # Lifted to the job so the `if:` guard below can see whether it is configured. Without
+      # it the workflow still runs and still proves the build works; it just publishes nothing.
+      ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
     steps:
       # NO actions/checkout ON PURPOSE. The build below refers to this commit by flake URL
       # instead, because a checkout is NOT guaranteed to hash to the same source tree the
@@ -87,19 +89,13 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
+          # The cache is also wired in as a SUBSTITUTER, not just a push target, so re-running
+          # an unchanged commit fetches instead of rebuilding. It is public, so this needs no
+          # credentials and works even on a fork PR with no secrets.
           extra_nix_config: |
             experimental-features = nix-command flakes
-
-      # Also makes the cache a SUBSTITUTER for this run, so a re-run of an unchanged commit
-      # (or the darwin leg after the linux leg) pulls instead of rebuilding.
-      - name: Configure Cachix
-        if: env.CACHIX_AUTH_TOKEN != ''
-        uses: cachix/cachix-action@v17
-        with:
-          name: ${{ env.CACHIX_CACHE }}
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          # Pushing is done by hand below, filtered. See that step for why.
-          skipPush: true
+            extra-substituters = ${{ env.ATTIC_ENDPOINT }}${{ env.ATTIC_CACHE }}
+            extra-trusted-public-keys = ${{ env.ATTIC_PUBLIC_KEY }}
 
       - name: Build
         run: |
@@ -114,22 +110,18 @@ jobs:
             > out-paths.txt
           cat out-paths.txt
 
-      - name: Publish to Cachix
-        if: env.CACHIX_AUTH_TOKEN != ''
+      - name: Publish to the attic cache
+        if: env.ATTIC_TOKEN != ''
         run: |
           set -euo pipefail
-          # Push ONLY the t3code paths, not the whole closure. Everything else in there
-          # (electron, nodejs, codex, gh, git and their dependencies) is already in
-          # cache.nixos.org, which the machines query anyway -- re-uploading it would just
-          # burn the 5 GB open-source quota. The three paths this keeps are
-          # t3code-unwrapped, t3code-resource-monitor and the wrapper symlinkJoin, about
-          # 150 MB compressed.
-          #
-          # pipefail matters here too: an empty grep means the filter has stopped matching
-          # and nothing is being published, which should fail loudly rather than pass.
-          xargs nix path-info --recursive < out-paths.txt \
-            | grep -E -- '-t3code' \
-            | cachix push "$CACHIX_CACHE"
+          # No hand-rolled path filter here, unlike the Cachix version this replaced. attic is
+          # configured with cache.nixos.org as an UPSTREAM, so it skips any path that is
+          # already signed by it and stores only the paths that are genuinely ours --
+          # t3code-unwrapped, t3code-resource-monitor and the wrapper. Electron, nodejs, codex,
+          # gh and git are recognised as upstream and never uploaded.
+          nix run nixpkgs#attic-client -- \
+            login "$ATTIC_CACHE" "$ATTIC_ENDPOINT" "$ATTIC_TOKEN"
+          xargs -a out-paths.txt nix run nixpkgs#attic-client -- push "$ATTIC_CACHE"
 
       - name: Summary
         run: |
