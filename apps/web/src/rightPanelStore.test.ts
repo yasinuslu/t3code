@@ -453,6 +453,51 @@ describe("rightPanelStore", () => {
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("agents");
   });
 
+  it("revealOrHideSurfaceOfKind reports nothing to reveal for a kind with no surface", () => {
+    expect(useRightPanelStore.getState().revealOrHideSurfaceOfKind(refA, "terminal")).toBe(false);
+    expect(useRightPanelStore.getState().byThreadKey).toEqual({});
+  });
+
+  it("revealOrHideSurfaceOfKind hides the panel and keeps live terminal surfaces", () => {
+    useRightPanelStore.getState().openTerminal(refA, "term-1");
+
+    expect(useRightPanelStore.getState().revealOrHideSurfaceOfKind(refA, "terminal")).toBe(true);
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: "terminal:term-1",
+      surfaces: [
+        {
+          id: "terminal:term-1",
+          kind: "terminal",
+          resourceId: "term-1",
+          terminalIds: ["term-1"],
+          activeTerminalId: "term-1",
+        },
+      ],
+    });
+  });
+
+  it("revealOrHideSurfaceOfKind reveals the most recent surface of that kind", () => {
+    useRightPanelStore.getState().openTerminal(refA, "term-1");
+    useRightPanelStore.getState().openTerminal(refA, "term-2");
+    useRightPanelStore.getState().toggle(refA, "diff");
+
+    expect(useRightPanelStore.getState().revealOrHideSurfaceOfKind(refA, "terminal")).toBe(true);
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+      "terminal:term-2",
+    );
+  });
+
+  it("revealOrHideSurfaceOfKind reopens a hidden panel on the same kind", () => {
+    useRightPanelStore.getState().openTerminal(refA, "term-1");
+    useRightPanelStore.getState().close(refA);
+
+    expect(useRightPanelStore.getState().revealOrHideSurfaceOfKind(refA, "terminal")).toBe(true);
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe(
+      "terminal",
+    );
+  });
+
   it("removeThread clears persisted state", () => {
     useRightPanelStore.getState().open(refA, "agents");
     useRightPanelStore.getState().removeThread(refA);

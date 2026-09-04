@@ -58,6 +58,11 @@ function modShortcut(
   };
 }
 
+/** The right-panel surface chords: literal Ctrl+Alt on every platform, not `mod`. */
+function surfaceShortcut(key: string): KeybindingShortcut {
+  return modShortcut(key, { modKey: false, ctrlKey: true, altKey: true });
+}
+
 function whenIdentifier(name: string): KeybindingWhenNode {
   return { type: "identifier", name };
 }
@@ -87,7 +92,13 @@ function compile(bindings: TestBinding[]): ResolvedKeybindingsConfig {
 const DEFAULT_BINDINGS = compile([
   { shortcut: modShortcut("b"), command: "sidebar.toggle" },
   { shortcut: modShortcut("j"), command: "terminal.toggle" },
-  { shortcut: modShortcut("b", { altKey: true }), command: "rightPanel.toggle" },
+  { shortcut: modShortcut("\\", { altKey: true }), command: "rightPanel.toggle" },
+  { shortcut: surfaceShortcut("b"), command: "preview.toggle" },
+  { shortcut: surfaceShortcut("t"), command: "rightPanel.toggleTerminal" },
+  { shortcut: surfaceShortcut("f"), command: "rightPanel.toggleFiles" },
+  { shortcut: surfaceShortcut("d"), command: "diff.toggle" },
+  { shortcut: surfaceShortcut("p"), command: "rightPanel.togglePullRequest" },
+  { shortcut: surfaceShortcut("a"), command: "rightPanel.toggleAgents" },
   {
     shortcut: modShortcut("d"),
     command: "terminal.split",
@@ -397,7 +408,7 @@ describe("shortcutLabelForCommand", () => {
     assert.strictEqual(shortcutLabelForCommand(DEFAULT_BINDINGS, "diff.toggle", "Linux"), "Ctrl+D");
     assert.strictEqual(
       shortcutLabelForCommand(DEFAULT_BINDINGS, "rightPanel.toggle", "MacIntel"),
-      "⌥⌘B",
+      "⌥⌘\\",
     );
     assert.strictEqual(
       shortcutLabelForCommand(DEFAULT_BINDINGS, "commandPalette.toggle", "MacIntel"),
@@ -816,11 +827,11 @@ describe("resolveShortcutCommand", () => {
   it("matches Option-modified letters using the physical key code on macOS", () => {
     assert.strictEqual(
       resolveShortcutCommand(
-        event({ key: "∫", code: "KeyB", metaKey: true, altKey: true }),
+        event({ key: "∫", code: "KeyB", ctrlKey: true, altKey: true }),
         DEFAULT_BINDINGS,
         { platform: "MacIntel" },
       ),
-      "rightPanel.toggle",
+      "preview.toggle",
     );
   });
 

@@ -205,7 +205,11 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       assert.equal(defaultsByCommand.get("filePicker.toggle"), "mod+p");
       assert.equal(defaultsByCommand.get("projectSearch.toggle"), "mod+shift+f");
       assert.equal(defaultsByCommand.get("sidebar.toggle"), "mod+b");
-      assert.equal(defaultsByCommand.get("rightPanel.toggle"), "mod+alt+b");
+      assert.equal(defaultsByCommand.get("rightPanel.toggle"), "mod+alt+\\");
+      assert.equal(defaultsByCommand.get("rightPanel.toggleTerminal"), "ctrl+alt+t");
+      assert.equal(defaultsByCommand.get("rightPanel.toggleFiles"), "ctrl+alt+f");
+      assert.equal(defaultsByCommand.get("rightPanel.togglePullRequest"), "ctrl+alt+p");
+      assert.equal(defaultsByCommand.get("rightPanel.toggleAgents"), "ctrl+alt+a");
       assert.isFalse(defaultsByCommand.has("rightPanel.toggleMaximized"));
       assert.equal(defaultsByCommand.get("rightPanel.close"), "mod+w");
       assert.equal(defaultsByCommand.get("terminal.splitVertical"), "mod+shift+d");
@@ -307,6 +311,60 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
         }
         assert.isTrue(byCommand.has("script.run-tests.run"));
       }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("moves the retired rightPanel.toggle default off mod+alt+b on startup", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "mod+alt+b", command: "rightPanel.toggle" },
+        { key: "mod+shift+r", command: "script.run-tests.run" },
+      ]);
+
+      yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+      });
+
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.isFalse(persisted.some((entry) => entry.key === "mod+alt+b"));
+      assert.isTrue(
+        persisted.some(
+          (entry) => entry.command === "rightPanel.toggle" && entry.key === "mod+alt+\\",
+        ),
+      );
+      // The surface chord is only safe to hand out once the old default is gone:
+      // on Windows and Linux `mod+alt+b` is the same physical chord.
+      assert.isTrue(
+        persisted.some((entry) => entry.command === "preview.toggle" && entry.key === "ctrl+alt+b"),
+      );
+      assert.isTrue(persisted.some((entry) => entry.command === "script.run-tests.run"));
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("leaves a user's own mod+alt+b rule alone", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "mod+alt+b", command: "sidebar.toggle" },
+        { key: "mod+alt+\\", command: "rightPanel.toggle" },
+      ]);
+
+      yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+      });
+
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.isTrue(
+        persisted.some((entry) => entry.command === "sidebar.toggle" && entry.key === "mod+alt+b"),
+      );
+      assert.isFalse(
+        persisted.some(
+          (entry) => entry.command === "rightPanel.toggle" && entry.key === "mod+alt+b",
+        ),
+      );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
   it.effect("skips conflicting default keybindings on startup and logs a detailed warning", () => {

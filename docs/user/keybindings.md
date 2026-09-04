@@ -89,6 +89,37 @@ Background submission from a new thread is the exception. `mod+enter` starts tha
 another new thread with the same workspace mode and base branch. **New worktree** remains selected,
 but the new thread does not reuse the worktree created for the thread that just started.
 
+### Right panel surfaces
+
+Each surface in the right panel has a `Ctrl+Alt` chord that works anywhere in the app, including
+while you are typing in the composer. Press it once to open that surface, again to hide the panel.
+
+| Surface      | Shortcut     | Command                        |
+| ------------ | ------------ | ------------------------------ |
+| Browser      | `Ctrl+Alt+B` | `preview.toggle`               |
+| Terminal     | `Ctrl+Alt+T` | `rightPanel.toggleTerminal`    |
+| Files        | `Ctrl+Alt+F` | `rightPanel.toggleFiles`       |
+| Diff         | `Ctrl+Alt+D` | `diff.toggle`                  |
+| Pull request | `Ctrl+Alt+P` | `rightPanel.togglePullRequest` |
+| Agents       | `Ctrl+Alt+A` | `rightPanel.toggleAgents`      |
+
+These are literal `Ctrl+Alt` on every platform, not `mod`, so the same physical chord works on
+macOS, Windows, and Linux. Hiding a surface only closes the panel: open browser tabs and running
+shells are still there when you bring it back.
+
+The surface picker's bare letters (`B`, `T`, `F`, `D`, `P`, `A`) still work while the picker is
+showing, and repeating a chord on the surface that is already open hides the panel rather than
+creating a second one.
+
+`rightPanel.toggle` shows or hides the panel with whichever surface you last had selected. It
+defaults to `mod+alt+\`. It used to default to `mod+alt+b`, which is the same physical chord as
+`Ctrl+Alt+B` on Windows and Linux; if you were still on that default, T3 Code moves it to
+`mod+alt+\` for you on the next start. A `mod+alt+b` shortcut you chose yourself is left alone.
+
+On some Linux desktops `Ctrl+Alt+T` is a system shortcut for opening a terminal window, and the
+desktop takes it before T3 Code sees it. Rebind `rightPanel.toggleTerminal` in
+**Settings** → **Keybindings** if you would rather keep the chord in the app.
+
 ## `when` Conditions
 
 A `when` expression is evaluated against context keys describing the current UI state. The keys

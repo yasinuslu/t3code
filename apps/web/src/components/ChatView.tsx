@@ -5106,6 +5106,37 @@ function ChatViewContent(props: ChatViewProps) {
     if (activeThreadPr === null) return;
     openThreadPullRequest(activeThreadPr.number);
   }, [activeThreadPr, openThreadPullRequest]);
+  // The launcher's surfaces as app-global toggles. Hiding only closes the
+  // panel: surfaces, browser tabs, and live shells all survive, so the chord is
+  // a switch rather than a way to lose work.
+  const toggleFilesSurface = useCallback(() => {
+    if (!activeThreadRef || !activeProject) return;
+    useRightPanelStore.getState().toggle(activeThreadRef, "files");
+  }, [activeProject, activeThreadRef]);
+  const toggleAgentsSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().toggle(activeThreadRef, "agents");
+  }, [activeThreadRef]);
+  const toggleTerminalSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    if (!useRightPanelStore.getState().revealOrHideSurfaceOfKind(activeThreadRef, "terminal")) {
+      addTerminalSurface();
+      return;
+    }
+    // Focus the shell only when the press revealed it; hiding must not pull
+    // focus into a panel that is on its way out.
+    const kind = selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, activeThreadRef);
+    if (kind === "terminal") {
+      setTerminalFocusRequestId((value) => value + 1);
+    }
+  }, [activeThreadRef, addTerminalSurface]);
+  const togglePullRequestSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    if (useRightPanelStore.getState().revealOrHideSurfaceOfKind(activeThreadRef, "pull-request")) {
+      return;
+    }
+    addPullRequestSurface();
+  }, [activeThreadRef, addPullRequestSurface]);
   const pullRequestSurfaceAvailable =
     supportsPullRequests && activeThreadPr !== null && threadRepository !== null;
   const supportsSettlement = serverConfig?.environment.capabilities.threadSettlement === true;
@@ -5847,6 +5878,34 @@ function ChatViewContent(props: ChatViewProps) {
         return;
       }
 
+      if (command === "rightPanel.toggleTerminal") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleTerminalSurface();
+        return;
+      }
+
+      if (command === "rightPanel.toggleFiles") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFilesSurface();
+        return;
+      }
+
+      if (command === "rightPanel.togglePullRequest") {
+        event.preventDefault();
+        event.stopPropagation();
+        togglePullRequestSurface();
+        return;
+      }
+
+      if (command === "rightPanel.toggleAgents") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleAgentsSurface();
+        return;
+      }
+
       if (command === "terminal.split") {
         event.preventDefault();
         event.stopPropagation();
@@ -5956,6 +6015,10 @@ function ChatViewContent(props: ChatViewProps) {
     toggleRightPanel,
     toggleRightPanelMaximized,
     toggleTerminalVisibility,
+    toggleTerminalSurface,
+    toggleFilesSurface,
+    togglePullRequestSurface,
+    toggleAgentsSurface,
     composerRef,
   ]);
 

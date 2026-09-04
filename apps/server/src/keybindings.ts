@@ -119,6 +119,42 @@ function hasSameShortcutContext(left: KeybindingRule, right: KeybindingRule): bo
   return leftContext === rightContext;
 }
 
+/**
+ * Defaults whose shortcut moved after they had already been written to disk.
+ * The startup backfill cannot heal these on its own: it skips any command the
+ * config already claims, so the retired shortcut would survive forever.
+ */
+const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{ from: KeybindingRule; to: KeybindingRule }> = [
+  // `rightPanel.toggle` gave up `mod+alt+b` so the right-panel surface chords
+  // could claim `ctrl+alt+b` everywhere: on Windows and Linux `mod` is Ctrl, so
+  // the two were the same physical chord and the surface chord would have won.
+  {
+    from: { key: "mod+alt+b", command: "rightPanel.toggle" },
+    to: { key: "mod+alt+\\", command: "rightPanel.toggle" },
+  },
+];
+
+/**
+ * Rewrite retired default shortcuts that the user never touched. A rule is only
+ * rewritten when it still matches the old default exactly and nothing else in
+ * the config already claims the replacement shortcut, so a deliberate choice is
+ * never overwritten.
+ */
+function rewriteRetiredDefaults(config: ReadonlyArray<KeybindingRule>): {
+  config: ReadonlyArray<KeybindingRule>;
+  rewrites: ReadonlyArray<{ command: KeybindingRule["command"]; from: string; to: string }>;
+} {
+  let next = config;
+  const rewrites: Array<{ command: KeybindingRule["command"]; from: string; to: string }> = [];
+  for (const retired of RETIRED_DEFAULT_SHORTCUTS) {
+    if (!next.some((entry) => isSameKeybindingRule(entry, retired.from))) continue;
+    if (next.some((entry) => hasSameShortcutContext(entry, retired.to))) continue;
+    next = next.map((entry) => (isSameKeybindingRule(entry, retired.from) ? retired.to : entry));
+    rewrites.push({ command: retired.to.command, from: retired.from.key, to: retired.to.key });
+  }
+  return { config: next, rewrites };
+}
+
 function keybindingRuleFromUpsertInput(input: ServerUpsertKeybindingInput): KeybindingRule {
   return input.when === undefined
     ? { key: input.key, command: input.command }
@@ -488,7 +524,25 @@ const make = Effect.gen(function* () {
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }
-      const customConfig = runtimeConfig.keybindings;
+      const retired = rewriteRetiredDefaults(runtimeConfig.keybindings);
+      const customConfig = retired.config;
+      for (const rewrite of retired.rewrites) {
+        yield* Effect.logInfo("moved retired default keybinding to its new shortcut", {
+          path: keybindingsConfigPath,
+          command: rewrite.command,
+          from: rewrite.from,
+          to: rewrite.to,
+        });
+      }
+      // A rewrite is a change on its own, so it has to reach disk even when the
+      // backfill below finds nothing to append.
+      const finish = (rules: ReadonlyArray<KeybindingRule>) =>
+        Effect.gen(function* () {
+          if (rules !== runtimeConfig.keybindings) {
+            yield* writeConfigAtomically(rules);
+          }
+          yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
+        });
       const existingCommands = new Set(customConfig.map((entry) => entry.command));
       const missingDefaults: KeybindingRule[] = [];
       const shortcutConflictWarnings: Array<{
@@ -526,7 +580,7 @@ const make = Effect.gen(function* () {
         });
       }
       if (missingDefaults.length === 0) {
-        yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
+        yield* finish(customConfig);
         return;
       }
 
@@ -555,12 +609,11 @@ const make = Effect.gen(function* () {
         });
       }
       if (defaultsToAppend.length === 0) {
-        yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
+        yield* finish(customConfig);
         return;
       }
 
-      yield* writeConfigAtomically([...customConfig, ...defaultsToAppend]);
-      yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
+      yield* finish([...customConfig, ...defaultsToAppend]);
     }),
   );
 

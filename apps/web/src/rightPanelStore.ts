@@ -122,6 +122,14 @@ interface RightPanelStoreState {
     ref: ScopedThreadRef,
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
   ) => void;
+  /**
+   * Toggle half of a surface kind the store cannot create on its own: hides the
+   * panel when that kind is already showing, otherwise reveals the most recent
+   * surface of that kind. Returns false when the thread has none, leaving
+   * creation to the caller — terminals and pull requests need a server round
+   * trip before a surface descriptor exists.
+   */
+  revealOrHideSurfaceOfKind: (ref: ScopedThreadRef, kind: RightPanelKind) => boolean;
   removeThread: (ref: ScopedThreadRef) => void;
 }
 
@@ -359,7 +367,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       byThreadKey: {},
       open: (ref, kind) =>
         set((state) => ({
@@ -655,6 +663,30 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return upsertSurface(current, singletonSurface(kind));
           }),
         })),
+      revealOrHideSurfaceOfKind: (ref, kind) => {
+        const threadKey = scopedThreadKey(ref);
+        const current = get().byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
+        const active = current.surfaces.find((surface) => surface.id === current.activeSurfaceId);
+        if (current.isOpen && active?.kind === kind) {
+          set((state) => ({
+            byThreadKey: updateThread(state.byThreadKey, threadKey, (thread) => ({
+              ...thread,
+              isOpen: false,
+            })),
+          }));
+          return true;
+        }
+        const existing = current.surfaces.findLast((surface) => surface.kind === kind);
+        if (!existing) return false;
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, threadKey, (thread) => ({
+            ...thread,
+            isOpen: true,
+            activeSurfaceId: existing.id,
+          })),
+        }));
+        return true;
+      },
       removeThread: (ref) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
