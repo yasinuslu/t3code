@@ -21,11 +21,24 @@ type WhenToken =
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+b", command: "sidebar.toggle" },
   { key: "mod+j", command: "terminal.toggle" },
-  { key: "mod+alt+b", command: "rightPanel.toggle" },
+  { key: "mod+alt+\\", command: "rightPanel.toggle" },
+  // Right-panel surface chords, app-global so they reach a surface from
+  // anywhere rather than only from the launcher's bare letters. `ctrl` rather
+  // than `mod` on purpose: these are the same physical chord on every platform.
+  // They sit ahead of the `mod`-based defaults below so `preview.toggle` and
+  // `diff.toggle` keep advertising their original shortcut in the UI, since the
+  // last matching rule is the one a command reports.
+  { key: "ctrl+alt+b", command: "preview.toggle" },
+  { key: "ctrl+alt+t", command: "rightPanel.toggleTerminal" },
+  { key: "ctrl+alt+f", command: "rightPanel.toggleFiles" },
+  { key: "ctrl+alt+d", command: "diff.toggle" },
+  { key: "ctrl+alt+p", command: "rightPanel.togglePullRequest" },
+  { key: "ctrl+alt+a", command: "rightPanel.toggleAgents" },
   { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
   { key: "mod+shift+d", command: "terminal.splitVertical", when: "terminalFocus" },
   { key: "mod+n", command: "terminal.new", when: "terminalFocus" },
   { key: "mod+w", command: "terminal.close", when: "terminalFocus" },
+  { key: "mod+w", command: "rightPanel.close", when: "!terminalFocus" },
   { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
   { key: "mod+shift+j", command: "preview.toggle" },
   { key: "mod+r", command: "preview.refresh", when: "previewFocus" },
@@ -46,6 +59,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+o", command: "editor.openFavorite" },
   { key: "mod+shift+[", command: "thread.previous" },
   { key: "mod+shift+]", command: "thread.next" },
+  { key: "mod+shift+c", command: "thread.copyReference", when: "!terminalFocus" },
   { key: "mod+shift+s", command: "thread.settle", when: "!terminalFocus" },
   { key: "mod+shift+p", command: "thread.pin", when: "!terminalFocus" },
   ...THREAD_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
