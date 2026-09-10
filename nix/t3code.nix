@@ -76,6 +76,24 @@ let
     inherit version;
     src = namedSrc;
 
+    # build:desktop compiles native/browser-secret (the Linux browser-import helper) with
+    # `cc $(pkg-config --cflags --libs libsecret-1)` and fails outright without them. The
+    # script is a no-op off Linux.
+    nativeBuildInputs =
+      old.nativeBuildInputs ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.pkg-config ];
+    buildInputs =
+      (old.buildInputs or [ ]) ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.libsecret ];
+
+    # nixpkgs' installPhase copies only dist-electron, so ship the helper where the unpackaged
+    # app looks for it: `dist-electron/../prod-resources/browser-secret/t3-browser-secret`
+    # (apps/desktop/src/app/DesktopEnvironment.ts resolveResourcePathCandidates).
+    postInstall =
+      (old.postInstall or "")
+      + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+        install -D --mode=555 native/browser-secret/build/*/t3-browser-secret \
+          "$out"/libexec/t3code/apps/desktop/prod-resources/browser-secret/t3-browser-secret
+      '';
+
     pnpmDeps = pkgs.fetchPnpmDeps {
       pnpm = pkgs.pnpm_11;
       pname = "t3code-unwrapped";
