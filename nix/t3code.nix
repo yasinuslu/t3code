@@ -70,6 +70,18 @@ let
   # script, and pnpm is far happier with a prerelease than with build metadata.
   version = if versionSuffix == "" then baseVersion else "${baseVersion}-${versionSuffix}";
 
+  # SPDX license data for the third-party-licenses plugin; see preBuild below. Must match
+  # SPDX_LICENSE_LIST_VERSION / SPDX_LICENSE_LIST_REVISION in scripts/lib/third-party-licenses.ts.
+  spdxVersion = "v3.28.0";
+  spdxRev = "c4a7237ec8f4654e867546f9f409749300f1bf4c";
+  spdxDetails = pkgs.fetchFromGitHub {
+    owner = "spdx";
+    repo = "license-list-data";
+    rev = spdxRev;
+    sparseCheckout = [ "json/details" ];
+    hash = "sha256-DnrdJ13M8Vf8Dq8qKlO7Ad5jXa8L9YU9PBlpp7B9BoI=";
+  };
+
   # pnpmDeps has to be REBUILT rather than overridden: its hash is an argument to the
   # fetcher, not an attribute of the derivation, so `overrideAttrs` cannot reach it.
   unwrapped = pkgs.t3code.unwrapped.overrideAttrs (old: {
@@ -83,6 +95,20 @@ let
       old.nativeBuildInputs ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.pkg-config ];
     buildInputs =
       (old.buildInputs or [ ]) ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.libsecret ];
+
+    # apps/web's `t3code:third-party-licenses` vite plugin (scripts/lib/third-party-licenses.ts)
+    # downloads SPDX license texts from raw.githubusercontent.com at build time, which the
+    # sandbox forbids. It reads `.generated/third-party-licenses/spdx/<version>/<id>.json`
+    # before going to the network, so seed that cache from a fixed-output fetch of the same
+    # pinned SPDX revision.
+    preBuild =
+      assert lib.assertMsg (lib.hasInfix spdxRev (builtins.readFile "${srcPath}/scripts/lib/third-party-licenses.ts"))
+        "nix/t3code.nix: scripts/lib/third-party-licenses.ts no longer pins SPDX ${spdxRev}; update spdxRev/spdxVersion/hash.";
+      ''
+        mkdir -p .generated/third-party-licenses/spdx/${spdxVersion}
+        cp ${spdxDetails}/json/details/*.json .generated/third-party-licenses/spdx/${spdxVersion}/
+      ''
+      + (old.preBuild or "");
 
     # nixpkgs' installPhase copies only dist-electron, so ship the helper where the unpackaged
     # app looks for it: `dist-electron/../prod-resources/browser-secret/t3-browser-secret`
