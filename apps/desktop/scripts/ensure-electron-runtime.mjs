@@ -69,7 +69,7 @@ function isMachO(filePath) {
     return true;
   }
 
-  const result = NodeChildProcess.spawnSync("file", ["-b", filePath], {
+  const result = NodeChildProcess.spawnSync("file", ["-bL", filePath], {
     encoding: "utf8",
   });
 
