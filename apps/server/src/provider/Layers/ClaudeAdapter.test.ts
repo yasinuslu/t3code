@@ -174,6 +174,7 @@ function makeHarness(config?: {
   readonly getSessionMessages?: ClaudeAdapterLiveOptions["getSessionMessages"];
   readonly forkSession?: ClaudeAdapterLiveOptions["forkSession"];
   readonly configDirResolver?: ClaudeAdapterLiveOptions["configDirResolver"];
+  readonly onCommandsChanged?: ClaudeAdapterLiveOptions["onCommandsChanged"];
 }) {
   const query = new FakeClaudeQuery();
   const queries = [query];
@@ -192,6 +193,7 @@ function makeHarness(config?: {
     ...(config?.getSessionMessages ? { getSessionMessages: config.getSessionMessages } : {}),
     ...(config?.forkSession ? { forkSession: config.forkSession } : {}),
     ...(config?.configDirResolver ? { configDirResolver: config.configDirResolver } : {}),
+    ...(config?.onCommandsChanged ? { onCommandsChanged: config.onCommandsChanged } : {}),
     createQuery: (input) => {
       if (createInput && config?.getSessionMessages) queries.push(new FakeClaudeQuery());
       createInput = input;
@@ -4704,6 +4706,43 @@ describe("ClaudeAdapterLive", () => {
       });
       return { runtimeEvents, runtimeEventsFiber, drainSdkMessages };
     });
+
+  it.effect("hands a reloaded command list to the instance with the session's workspace", () =>
+    Effect.gen(function* () {
+      const received =
+        yield* Deferred.make<
+          Parameters<NonNullable<ClaudeAdapterLiveOptions["onCommandsChanged"]>>[0]
+        >();
+      const harness = makeHarness({
+        environment: { CLAUDE_CONFIG_DIR: "/tmp/claude-config" },
+        onCommandsChanged: (input) => Deferred.succeed(received, input).pipe(Effect.asVoid),
+      });
+      yield* Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          cwd: "/tmp/worktree",
+          runtimeMode: "full-access",
+        });
+        // What the CLI pushes after `/reload-skills` or `/reload-plugins`.
+        harness.query.emit({
+          type: "system",
+          subtype: "commands_changed",
+          commands: [{ name: "probe-skill", description: "probe", argumentHint: "" }],
+          session_id: "session",
+          uuid: "cc",
+        } as unknown as SDKMessage);
+        const input = yield* Deferred.await(received);
+        assert.equal(input.cwd, "/tmp/worktree");
+        assert.deepEqual(
+          input.commands.map((command) => command.name),
+          ["probe-skill"],
+        );
+        assert.equal(input.environment.CLAUDE_CONFIG_DIR, "/tmp/claude-config");
+      }).pipe(Effect.provide(harness.layer));
+    }),
+  );
 
   it.effect("surfaces a rejected Claude usage limit once per turn", () => {
     const harness = makeHarness();

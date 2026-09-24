@@ -1,6 +1,7 @@
 import {
   type ClaudeSettings,
   type ModelCapabilities,
+  type ServerProvider,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -10,6 +11,8 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -36,6 +39,7 @@ import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { makeUnavailableUsageLimits } from "../providerUsageLimits.ts";
+import type { ServerProviderShape } from "../Services/ServerProvider.ts";
 import {
   type ClaudeScopedLimitNames,
   claudeUsageResponseToLimits,
@@ -306,6 +310,55 @@ function dedupeSlashCommands(
   return [...commandsByName.values()];
 }
 
+/** The `/` menu entries for a command list the CLI reported, `/compact` included. */
+export function claudeSlashCommands(
+  commands: ReadonlyArray<ClaudeSlashCommand>,
+): ReadonlyArray<ServerProviderSlashCommand> {
+  return dedupeSlashCommands([
+    COMPACT_SLASH_COMMAND,
+    ...parseClaudeInitializationCommands(commands),
+  ]);
+}
+
+type ClaudeWorkspaceSnapshot = NonNullable<ServerProvider["workspaceSnapshots"]>[number];
+
+/**
+ * Workspace-scoped commands and skills, published as part of the instance
+ * snapshot. Live sessions write here when the CLI reports a changed command
+ * list (`/reload-skills`, `/reload-plugins`), so the `/` menu follows without
+ * a provider refresh.
+ */
+export const makeClaudeWorkspaceCatalog = Effect.gen(function* () {
+  const workspaces = yield* SubscriptionRef.make<ReadonlyArray<ClaudeWorkspaceSnapshot>>([]);
+  const get = (cwd: string) =>
+    SubscriptionRef.get(workspaces).pipe(
+      Effect.map((entries) => entries.find((entry) => entry.cwd === cwd)),
+    );
+  const upsert = (entry: ClaudeWorkspaceSnapshot) =>
+    SubscriptionRef.update(workspaces, (entries) =>
+      [...entries.filter((candidate) => candidate.cwd !== entry.cwd), entry].slice(-16),
+    );
+  const wrap = (provider: ServerProviderShape): ServerProviderShape => {
+    const getSnapshot = Effect.all([provider.getSnapshot, SubscriptionRef.get(workspaces)]).pipe(
+      Effect.map(([snapshot, workspaceSnapshots]) =>
+        workspaceSnapshots.length > 0
+          ? { ...snapshot, workspaceSnapshots: [...workspaceSnapshots] }
+          : snapshot,
+      ),
+    );
+    return {
+      ...provider,
+      getSnapshot,
+      refresh: provider.refresh.pipe(Effect.andThen(getSnapshot)),
+      streamChanges: Stream.merge(
+        provider.streamChanges.pipe(Stream.map(() => undefined)),
+        SubscriptionRef.changes(workspaces).pipe(Stream.map(() => undefined)),
+      ).pipe(Stream.mapEffect(() => getSnapshot)),
+    };
+  };
+  return { get, upsert, wrap };
+});
+
 function waitForAbortSignal(signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return Promise.resolve();
@@ -534,8 +587,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
     : undefined;
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
-  const slashCommands = [COMPACT_SLASH_COMMAND, ...(capabilities?.slashCommands ?? [])];
-  const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+  const dedupedSlashCommands = dedupeSlashCommands([
+    COMPACT_SLASH_COMMAND,
+    ...(capabilities?.slashCommands ?? []),
+  ]);
 
   if (!capabilities) {
     return buildServerProvider({

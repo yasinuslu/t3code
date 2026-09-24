@@ -24,6 +24,7 @@ import {
   type SDKResultMessage,
   type SettingSource,
   type SDKUserMessage,
+  type SlashCommand,
   type ModelUsage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
@@ -493,6 +494,13 @@ export interface ClaudeAdapterLiveOptions {
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   /** Resolves the config dir per project when the instance sets `homePathCommand`. */
   readonly configDirResolver?: ClaudeConfigDirResolver;
+  /** Receives the full command list whenever a session reloads it, e.g. `/reload-skills`. */
+  readonly onCommandsChanged?: (input: {
+    readonly cwd: string;
+    readonly commands: ReadonlyArray<SlashCommand>;
+    readonly environment: NodeJS.ProcessEnv;
+    readonly projectConfigDir: string | undefined;
+  }) => Effect.Effect<void>;
 }
 
 function isUuid(value: string): boolean {
@@ -3646,6 +3654,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     switch (message.subtype) {
+      case "commands_changed":
+        // The CLI pushes the full list after `/reload-skills`,
+        // `/reload-plugins`, or skills it discovers mid-session.
+        if (context.session.cwd && options?.onCommandsChanged) {
+          yield* options.onCommandsChanged({
+            cwd: context.session.cwd,
+            commands: message.commands,
+            environment: context.environment,
+            projectConfigDir: context.projectConfigDir,
+          });
+        }
+        return;
       case "init":
         yield* offerRuntimeEvent({
           ...base,
@@ -3979,7 +3999,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // Control worker notice; the session close path reports the outcome.
       case "local_command_output":
       case "plugin_install":
-      case "commands_changed":
       case "memory_recall":
       case "elicitation_complete":
       case "background_tasks_changed":

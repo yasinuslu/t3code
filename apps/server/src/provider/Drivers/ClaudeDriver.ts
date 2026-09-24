@@ -13,9 +13,11 @@
  * @module provider/Drivers/ClaudeDriver
  */
 import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import type { SlashCommand as ClaudeSlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -33,6 +35,8 @@ import { makeClaudeAdapter } from "../Layers/ClaudeAdapter.ts";
 import { makeClaudeScopedLimitNames } from "../Layers/claudeUsageLimits.ts";
 import {
   checkClaudeProviderStatus,
+  claudeSlashCommands,
+  makeClaudeWorkspaceCatalog,
   makePendingClaudeProvider,
   probeClaudeCapabilities,
 } from "../Layers/ClaudeProvider.ts";
@@ -169,11 +173,38 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       // One per instance: the status probe writes the model-scoped bucket
       // names it saw, the adapter reads them to place turn-driven events.
       const scopedLimitNames = yield* makeClaudeScopedLimitNames;
+      const workspaceCatalog = yield* makeClaudeWorkspaceCatalog;
       const adapterOptions = {
         instanceId,
         environment: processEnv,
         modelCatalog,
         scopedLimitNames,
+        onCommandsChanged: (input: {
+          readonly cwd: string;
+          readonly commands: ReadonlyArray<ClaudeSlashCommand>;
+          readonly environment: NodeJS.ProcessEnv;
+          readonly projectConfigDir: string | undefined;
+        }) =>
+          Effect.gen(function* () {
+            const [existing, skills, checkedAt] = yield* Effect.all([
+              workspaceCatalog.get(input.cwd),
+              discoverClaudeSkills(effectiveConfig, input.cwd, input.environment),
+              Effect.map(DateTime.now, DateTime.formatIso),
+            ]);
+            const configDir = input.projectConfigDir
+              ? describeClaudeConfigDir(input.projectConfigDir)
+              : existing?.configDir;
+            yield* workspaceCatalog.upsert({
+              cwd: input.cwd,
+              checkedAt,
+              slashCommands: claudeSlashCommands(input.commands),
+              skills,
+              ...(configDir ? { configDir } : {}),
+            });
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+          ),
         ...(configDirResolver ? { configDirResolver } : {}),
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       };
@@ -224,7 +255,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       );
 
       const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
-      const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<ClaudeSettings>>({
+      const managedSnapshot = yield* makeManagedServerProvider<
+        ProviderSnapshotSettings<ClaudeSettings>
+      >({
         resolveMaintenance,
         getSettings: snapshotSettings.getSettings,
         streamSettings: snapshotSettings.streamSettings,
@@ -258,6 +291,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             }),
         ),
       );
+      const snapshot = workspaceCatalog.wrap(managedSnapshot);
       const snapshotForCwd = (
         cwd: string,
         context?: { readonly projectRoot?: string | undefined },
@@ -268,8 +302,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               const projectConfigDir = configDirResolver
                 ? yield* configDirResolver.resolve(context?.projectRoot ?? cwd)
                 : undefined;
-              const [machineSnapshot, skills] = yield* Effect.all([
+              const [machineSnapshot, live, skills] = yield* Effect.all([
                 snapshot.getSnapshot,
+                workspaceCatalog.get(cwd),
                 discoverClaudeSkills(
                   effectiveConfig,
                   cwd,
@@ -278,13 +313,21 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
                     : processEnv,
                 ),
               ]);
-              if (!projectConfigDir) return { ...machineSnapshot, skills };
-              const { configDirInherited: _inherited, ...explicitSnapshot } = machineSnapshot;
-              return {
-                ...explicitSnapshot,
+              // Keep a list a live session reported over the instance probe's.
+              const slashCommands = live?.slashCommands ?? machineSnapshot.slashCommands;
+              const configDir = projectConfigDir
+                ? describeClaudeConfigDir(projectConfigDir)
+                : undefined;
+              yield* workspaceCatalog.upsert({
+                cwd,
+                checkedAt: machineSnapshot.checkedAt,
+                slashCommands,
                 skills,
-                configDir: describeClaudeConfigDir(projectConfigDir),
-              };
+                ...(configDir ? { configDir } : {}),
+              });
+              if (!configDir) return { ...machineSnapshot, slashCommands, skills };
+              const { configDirInherited: _inherited, ...explicitSnapshot } = machineSnapshot;
+              return { ...explicitSnapshot, slashCommands, skills, configDir };
             }).pipe(
               Effect.provideService(FileSystem.FileSystem, fileSystem),
               Effect.provideService(Path.Path, path),
