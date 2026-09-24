@@ -50,6 +50,7 @@ import {
 } from "../layout/AdaptiveWorkspaceLayout";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useReviewCacheForThread } from "./reviewState";
+import { GitTargetRepositoryPicker } from "../threads/git/GitTargetRepositoryPicker";
 import {
   isNativeReviewDiffDrawEvent,
   type NativeReviewDiffViewHandle,
@@ -477,6 +478,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     selectSection,
     isSelectedSectionPending,
     diffPreviewRevision,
+    gitTargetRepository,
   } = useReviewSections({
     enabled: isEnvironmentReady,
     environmentId,
@@ -498,7 +500,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   } = useReviewDiffData({
     threadKey: reviewCache.threadKey,
     environmentId,
-    cwd: selectedThreadCwd,
+    cwd: gitTargetRepository.targetCwd,
     selectedSection,
     revision: diffPreviewRevision,
     draftMessage,
@@ -676,8 +678,23 @@ export function ReviewSheet(props: ReviewSheetProps) {
   // A toggle needs registered content; loading, errors and raw patches have no navigator pane.
   const showChangedFilesToggle = panes.supportsAuxiliaryPane && showChangedFilesPane;
 
+  const showGitTargetPicker =
+    gitTargetRepository.hasSubmodules &&
+    (selectedSection?.kind === "working-tree" || selectedSection?.kind === "branch-range");
   const listHeader = useMemo(() => {
     const children: ReactElement[] = [];
+
+    if (showGitTargetPicker) {
+      children.push(
+        <View key="git-target-repository" className="px-2 pb-2 pt-2 android:px-3">
+          <GitTargetRepositoryPicker
+            options={gitTargetRepository.options}
+            selectedPath={gitTargetRepository.selectedPath}
+            onSelect={gitTargetRepository.selectTarget}
+          />
+        </View>,
+      );
+    }
 
     if (error) {
       children.push(
@@ -703,7 +720,14 @@ export function ReviewSheet(props: ReviewSheetProps) {
     }
 
     return <>{children}</>;
-  }, [error, parsedDiffNotice]);
+  }, [
+    error,
+    parsedDiffNotice,
+    showGitTargetPicker,
+    gitTargetRepository.options,
+    gitTargetRepository.selectedPath,
+    gitTargetRepository.selectTarget,
+  ]);
   const headerSubtitle = [
     headerDiffSummary.additions,
     headerDiffSummary.deletions,

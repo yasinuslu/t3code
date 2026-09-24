@@ -35,6 +35,7 @@ import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { resolveProjectFileBackedSetting } from "@t3tools/shared/projectSettings";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
+import { listInitializedSubmodules } from "./gitSubmodules.ts";
 import {
   parseRemoteNames,
   parseRemoteNamesInGitOrder,
@@ -235,6 +236,32 @@ function parsePorcelainPath(line: string): string | null {
   const parts = line.trim().split(/\s+/g);
   const filePath = parts.at(-1) ?? "";
   return filePath.length > 0 ? filePath : null;
+}
+
+/**
+ * Reads the `S<c><m><u>` submodule token of `git status --porcelain=2` rows and
+ * returns the repository-relative paths of submodules with a moved commit,
+ * tracked changes or untracked files.
+ */
+export function parseChangedSubmodulePaths(statusStdout: string): Set<string> {
+  const changed = new Set<string>();
+  for (const line of statusStdout.split(/\r?\n/g)) {
+    // Field counts before the path: `1` rows have 8, `2` rows 9, `u` rows 10.
+    const pathFieldIndex = line.startsWith("1 ")
+      ? 8
+      : line.startsWith("2 ")
+        ? 9
+        : line.startsWith("u ")
+          ? 10
+          : -1;
+    if (pathFieldIndex < 0) continue;
+    const fields = line.split(" ");
+    const token = fields[2] ?? "";
+    if (!token.startsWith("S") || token === "S...") continue;
+    const [filePath] = fields.slice(pathFieldIndex).join(" ").split("\t");
+    if (filePath) changed.add(filePath);
+  }
+  return changed;
 }
 
 function filterBranchesForListQuery(
@@ -1692,6 +1719,58 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     };
   });
 
+  /**
+   * Git status already recurses into submodules, so a nested submodule's
+   * changes mark every ancestor dirty. Top-level flags come from the root's
+   * status output; a submodule with nested ones runs its own status only when
+   * it is dirty itself, since a clean parent implies clean children.
+   */
+  const readSubmoduleStatuses = Effect.fn("readSubmoduleStatuses")(function* (
+    rootStatusStdout: string,
+    submodules: ReadonlyArray<{ readonly path: string; readonly cwd: string }>,
+  ) {
+    if (submodules.length === 0) return [];
+    // Listed parents before children, so the closest parent is the last prefix match.
+    const parentOf = (submodulePath: string) =>
+      submodules.findLast((candidate) => submodulePath.startsWith(`${candidate.path}/`)) ?? null;
+    const changedByParentPath = new Map<string, Set<string>>([
+      ["", parseChangedSubmodulePaths(rootStatusStdout)],
+    ]);
+    const statuses: Array<{ path: string; cwd: string; hasChanges: boolean }> = [];
+    for (const submodule of submodules) {
+      const parent = parentOf(submodule.path);
+      const parentPath = parent?.path ?? "";
+      const relativePath =
+        parent === null ? submodule.path : submodule.path.slice(parent.path.length + 1);
+      let changed = changedByParentPath.get(parentPath);
+      if (changed === undefined && parent !== null) {
+        const parentStatus = statuses.find((status) => status.path === parent.path);
+        changed = parentStatus?.hasChanges
+          ? yield* executeGit(
+              "GitVcsDriver.statusDetails.submoduleStatus",
+              parent.cwd,
+              ["status", "--porcelain=2"],
+              { allowNonZeroExit: true },
+            ).pipe(
+              Effect.map((result) =>
+                result.exitCode === 0
+                  ? parseChangedSubmodulePaths(result.stdout)
+                  : new Set<string>(),
+              ),
+              Effect.orElseSucceed(() => new Set<string>()),
+            )
+          : new Set<string>();
+        changedByParentPath.set(parentPath, changed);
+      }
+      statuses.push({
+        path: submodule.path,
+        cwd: submodule.cwd,
+        hasChanges: changed?.has(relativePath) ?? false,
+      });
+    }
+    return statuses;
+  });
+
   const readStatusDetailsLocal = Effect.fn("readStatusDetailsLocal")(function* (cwd: string) {
     const indexResult = yield* executeGitWithStableDiagnostics(
       "GitVcsDriver.statusDetails.indexPath",
@@ -1768,73 +1847,87 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       Effect.catchTags({ GitCommandError: () => Effect.succeed(null) }),
     );
     const statusCacheKey = repositoryPaths?.gitCommonDir;
-    const [numstatStdout, defaultBranch, hasPrimaryRemote] = yield* Effect.all(
-      [
-        executeGitWithStableDiagnostics(
-          "GitVcsDriver.statusDetails.numstat",
-          cwd,
-          ["diff", "HEAD", "--numstat", "--"],
-          { allowNonZeroExit: true },
-        ).pipe(
-          Effect.flatMap((result) => {
-            if (result.exitCode === 0) return Effect.succeed(result.stdout);
-            if (isUnbornHeadStderr(result.stderr)) {
-              return Effect.map(
-                Effect.all([
-                  runGitStdout("GitVcsDriver.statusDetails.numstat.unborn", cwd, [
-                    "diff",
-                    "--numstat",
+    const worktreeRoot = repositoryPaths?.worktreeRoot ?? null;
+    const [numstatStdout, defaultBranch, hasPrimaryRemote, initializedSubmodules] =
+      yield* Effect.all(
+        [
+          executeGitWithStableDiagnostics(
+            "GitVcsDriver.statusDetails.numstat",
+            cwd,
+            ["diff", "HEAD", "--numstat", "--"],
+            { allowNonZeroExit: true },
+          ).pipe(
+            Effect.flatMap((result) => {
+              if (result.exitCode === 0) return Effect.succeed(result.stdout);
+              if (isUnbornHeadStderr(result.stderr)) {
+                return Effect.map(
+                  Effect.all([
+                    runGitStdout("GitVcsDriver.statusDetails.numstat.unborn", cwd, [
+                      "diff",
+                      "--numstat",
+                    ]),
+                    runGitStdout("GitVcsDriver.statusDetails.numstat.unborn.staged", cwd, [
+                      "diff",
+                      "--cached",
+                      "--numstat",
+                    ]),
                   ]),
-                  runGitStdout("GitVcsDriver.statusDetails.numstat.unborn.staged", cwd, [
-                    "diff",
-                    "--cached",
-                    "--numstat",
-                  ]),
-                ]),
-                ([unstagedStdout, stagedStdout]) => {
-                  const staged = parseNumstatEntries(stagedStdout);
-                  const unstaged = parseNumstatEntries(unstagedStdout);
-                  const map = new Map<string, { insertions: number; deletions: number }>();
-                  for (const entry of [...staged, ...unstaged]) {
-                    const existing = map.get(entry.path) ?? {
-                      insertions: 0,
-                      deletions: 0,
-                    };
-                    existing.insertions += entry.insertions;
-                    existing.deletions += entry.deletions;
-                    map.set(entry.path, existing);
-                  }
-                  return Array.from(map.entries())
-                    .map(([p, s]) => `${s.insertions}\t${s.deletions}\t${p}`)
-                    .join("\n");
-                },
-              );
-            }
-            return Effect.fail(
-              new GitCommandError({
-                ...gitCommandContext({
-                  operation: "GitVcsDriver.statusDetails.numstat",
-                  cwd,
-                  args: ["diff", "HEAD", "--numstat", "--"],
+                  ([unstagedStdout, stagedStdout]) => {
+                    const staged = parseNumstatEntries(stagedStdout);
+                    const unstaged = parseNumstatEntries(unstagedStdout);
+                    const map = new Map<string, { insertions: number; deletions: number }>();
+                    for (const entry of [...staged, ...unstaged]) {
+                      const existing = map.get(entry.path) ?? {
+                        insertions: 0,
+                        deletions: 0,
+                      };
+                      existing.insertions += entry.insertions;
+                      existing.deletions += entry.deletions;
+                      map.set(entry.path, existing);
+                    }
+                    return Array.from(map.entries())
+                      .map(([p, s]) => `${s.insertions}\t${s.deletions}\t${p}`)
+                      .join("\n");
+                  },
+                );
+              }
+              return Effect.fail(
+                new GitCommandError({
+                  ...gitCommandContext({
+                    operation: "GitVcsDriver.statusDetails.numstat",
+                    cwd,
+                    args: ["diff", "HEAD", "--numstat", "--"],
+                  }),
+                  detail: "git diff HEAD --numstat failed.",
+                  exitCode: result.exitCode,
+                  stdoutLength: result.stdout.length,
+                  stderrLength: result.stderr.length,
                 }),
-                detail: "git diff HEAD --numstat failed.",
-                exitCode: result.exitCode,
-                stdoutLength: result.stdout.length,
-                stderrLength: result.stderr.length,
-              }),
-            );
-          }),
-        ),
-        statusCacheKey
-          ? Cache.get(defaultBranchCache, statusCacheKey).pipe(Effect.orElseSucceed(() => null))
-          : resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null)),
-        statusCacheKey
-          ? Cache.get(originExistsCache, statusCacheKey).pipe(Effect.orElseSucceed(() => false))
-          : originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
-      ],
-      { concurrency: "unbounded" },
-    );
+              );
+            }),
+          ),
+          statusCacheKey
+            ? Cache.get(defaultBranchCache, statusCacheKey).pipe(Effect.orElseSucceed(() => null))
+            : resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null)),
+          statusCacheKey
+            ? Cache.get(originExistsCache, statusCacheKey).pipe(Effect.orElseSucceed(() => false))
+            : originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
+          worktreeRoot === null
+            ? Effect.succeed([])
+            : listInitializedSubmodules(worktreeRoot, (gitCwd, args) =>
+                executeGit("GitVcsDriver.statusDetails.submodules", gitCwd, args, {
+                  timeoutMs: 5_000,
+                  allowNonZeroExit: true,
+                }),
+              ).pipe(
+                Effect.provideService(FileSystem.FileSystem, fileSystem),
+                Effect.provideService(Path.Path, path),
+              ),
+        ],
+        { concurrency: "unbounded" },
+      );
     const statusStdout = statusResult.stdout;
+    const submodules = yield* readSubmoduleStatuses(statusStdout, initializedSubmodules);
 
     let refName: string | null = null;
     let upstreamRef: string | null = null;
@@ -1928,6 +2021,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       aheadCount,
       behindCount,
       aheadOfDefaultCount,
+      ...(submodules.length > 0 ? { submodules } : {}),
     };
   });
 

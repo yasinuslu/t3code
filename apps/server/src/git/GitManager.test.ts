@@ -21,12 +21,14 @@ import { expect } from "vite-plus/test";
 import type {
   GitActionProgressEvent,
   GitPreparePullRequestThreadInput,
+  OrchestrationProject,
   ThreadId,
 } from "@t3tools/contracts";
 
 import {
   DEFAULT_SERVER_SETTINGS,
   GitCommandError,
+  ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   TextGenerationError,
@@ -48,6 +50,7 @@ import * as ServerConfig from "../config.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as GitManager from "./GitManager.ts";
 
 const encodeCliJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -637,6 +640,7 @@ function makeManager(input?: {
   serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
   gitConfigReads?: string[];
+  projectsByWorkspaceRoot?: ReadonlyMap<string, OrchestrationProject>;
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
@@ -702,6 +706,12 @@ function makeManager(input?: {
     ),
     vcsDriverLayer,
     serverSettingsLayer,
+    input?.projectsByWorkspaceRoot === undefined
+      ? Layer.empty
+      : Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
+          getActiveProjectByWorkspaceRoot: (workspaceRoot) =>
+            Effect.succeed(Option.fromNullishOr(input.projectsByWorkspaceRoot?.get(workspaceRoot))),
+        }),
   ).pipe(Layer.provideMerge(sourceControlRegistryLayer), Layer.provideMerge(NodeServices.layer));
 
   return GitManager.make.pipe(
@@ -2850,6 +2860,71 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           Effect.map((result) => result.stdout.trim()),
         ),
       ).toBe("Implement stacked git actions");
+    }),
+  );
+
+  it.effect("applies the project's settings to a commit in its submodule", () =>
+    Effect.gen(function* () {
+      const repoDir = NodeFS.realpathSync.native(yield* makeTempDir("t3code-git-manager-"));
+      const libSource = yield* makeTempDir("t3code-git-manager-lib-");
+      yield* initRepo(repoDir);
+      yield* initRepo(libSource);
+      yield* runGit(repoDir, [
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        libSource,
+        "lib",
+      ]);
+      yield* runGit(repoDir, ["commit", "-m", "Add lib"]);
+      const libDir = NodePath.join(repoDir, "lib");
+      yield* runGit(libDir, ["config", "user.email", "test@example.com"]);
+      yield* runGit(libDir, ["config", "user.name", "Test User"]);
+      NodeFS.writeFileSync(NodePath.join(libDir, "README.md"), "changed\n");
+
+      const projectId = ProjectId.make("project-submodule");
+      let generatedPolicy: TextGeneration.CommitMessageGenerationInput["policy"] = undefined;
+      const { manager } = yield* makeManager({
+        serverSettings: {
+          projectSettingsOverrides: {
+            [projectId]: {
+              sourceControlWritingStyle: {
+                mode: "custom" as const,
+                customInstructions: "Project tone.",
+              },
+            },
+          },
+        },
+        projectsByWorkspaceRoot: new Map([
+          [
+            repoDir,
+            {
+              id: projectId,
+              title: "Project",
+              workspaceRoot: repoDir,
+              defaultModelSelection: null,
+              scripts: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+              deletedAt: null,
+            },
+          ],
+        ]),
+        textGeneration: {
+          generateCommitMessage: (input) => {
+            generatedPolicy = input.policy;
+            return Effect.succeed({ subject: "Update lib readme", body: "" });
+          },
+        },
+      });
+
+      const result = yield* runStackedAction(manager, { cwd: libDir, action: "commit" });
+
+      expect(result.commit.status).toBe("created");
+      expect(generatedPolicy).toMatchObject({ commitInstructions: "Project tone." });
+      const rootStatus = yield* manager.localStatus({ cwd: repoDir });
+      expect(rootStatus.submodules).toEqual([{ path: "lib", cwd: libDir, hasChanges: true }]);
     }),
   );
 

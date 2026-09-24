@@ -7,7 +7,7 @@ import { useCheckpointDiff } from "../../state/queries";
 import { useEnvironmentQuery } from "../../state/query";
 import { reviewEnvironment } from "../../state/review";
 import { useSelectedThreadDetail } from "../../state/use-thread-detail";
-import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
+import { useSelectedThreadGitTargetRepository } from "../../state/use-selected-thread-git-target";
 import {
   buildReviewSectionItems,
   getDefaultReviewSectionId,
@@ -32,12 +32,13 @@ export function useReviewSections(input: {
   const { environmentId, reviewCache, threadId } = input;
   const enabled = input.enabled ?? true;
   const selectedThread = useSelectedThreadDetail();
-  const { selectedThreadCwd } = useSelectedThreadWorktree();
+  const gitTargetRepository = useSelectedThreadGitTargetRepository();
+  const { targetCwd } = gitTargetRepository;
   const diffPreview = useEnvironmentQuery(
-    enabled && environmentId !== undefined && selectedThreadCwd !== null
+    enabled && environmentId !== undefined && targetCwd !== null
       ? reviewEnvironment.diffPreview({
           environmentId,
-          input: { cwd: selectedThreadCwd },
+          input: { cwd: targetCwd },
         })
       : null,
   );
@@ -186,5 +187,6 @@ export function useReviewSections(input: {
     selectedSection,
     refreshSelectedSection,
     selectSection,
+    gitTargetRepository,
   };
 }

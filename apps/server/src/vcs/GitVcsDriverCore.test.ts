@@ -3196,3 +3196,57 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
     );
   });
 });
+
+it.effect("lists submodules with their change state in local status", () =>
+  Effect.gen(function* () {
+    const driver = yield* GitVcsDriver.GitVcsDriver;
+    const pathService = yield* Path.Path;
+    const root = NodeFS.realpathSync.native(yield* makeTmpDir("git-vcs-submodule-root-"));
+    const libSource = yield* makeTmpDir("git-vcs-submodule-lib-");
+    const nestedSource = yield* makeTmpDir("git-vcs-submodule-nested-");
+    const addSubmodule = (cwd: string, source: string, target: string) =>
+      git(cwd, ["-c", "protocol.file.allow=always", "submodule", "add", source, target]);
+
+    yield* initRepoWithCommit(nestedSource);
+    yield* initRepoWithCommit(libSource);
+    yield* addSubmodule(libSource, nestedSource, "nested");
+    yield* git(libSource, ["commit", "-m", "add nested"]);
+    yield* initRepoWithCommit(root);
+    yield* addSubmodule(root, libSource, "libs/lib");
+    yield* git(root, [
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "update",
+      "--init",
+      "--recursive",
+    ]);
+    yield* git(root, ["commit", "-m", "add lib"]);
+
+    const lib = pathService.join(root, "libs", "lib");
+    const nested = pathService.join(lib, "nested");
+    const clean = yield* driver.statusDetailsLocal(root);
+    assert.deepStrictEqual(clean.submodules, [
+      { path: "libs/lib", cwd: lib, hasChanges: false },
+      { path: "libs/lib/nested", cwd: nested, hasChanges: false },
+    ]);
+    // A submodule cwd lists only its own submodules, relative to itself.
+    assert.deepStrictEqual((yield* driver.statusDetailsLocal(lib)).submodules, [
+      { path: "nested", cwd: nested, hasChanges: false },
+    ]);
+    assert.strictEqual((yield* driver.statusDetailsLocal(nested)).submodules, undefined);
+
+    yield* writeTextFile(lib, "README.md", "# changed\n");
+    assert.deepStrictEqual(
+      (yield* driver.statusDetailsLocal(root)).submodules?.map((entry) => entry.hasChanges),
+      [true, false],
+    );
+
+    yield* git(lib, ["checkout", "--", "README.md"]);
+    yield* writeTextFile(nested, "untracked.txt", "new\n");
+    assert.deepStrictEqual(
+      (yield* driver.statusDetailsLocal(root)).submodules?.map((entry) => entry.hasChanges),
+      [true, true],
+    );
+  }).pipe(Effect.provide(TestLayer)),
+);

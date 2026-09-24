@@ -26,7 +26,15 @@ import { showGitActionResult } from "./use-vcs-action-state";
 import { useThreadSelection } from "./use-thread-selection";
 import { useSelectedThreadWorktree } from "./use-selected-thread-worktree";
 
-export function useSelectedThreadGitActions() {
+/**
+ * @param targetCwdOverride Repository to run commit/push/PR/pull actions and
+ * status refreshes against, when it differs from the thread's own worktree —
+ * e.g. a submodule selected in the git overview or review sheet. `undefined`
+ * (the default) keeps the thread's own worktree. Branch and worktree
+ * operations always stay on the thread's own worktree regardless of this
+ * override, since they control the thread's checked-out branch.
+ */
+export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -36,7 +44,15 @@ export function useSelectedThreadGitActions() {
   const createWorktree = useAtomCommand(vcsEnvironment.createWorktree, { reportFailure: false });
   const pull = useAtomCommand(vcsEnvironment.pull, { reportFailure: false });
   const { selectedThread, selectedThreadProject } = useThreadSelection();
-  const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
+  const { selectedThreadCwd: selectedThreadWorktreeCwd, selectedThreadWorktreePath } =
+    useSelectedThreadWorktree();
+  const selectedThreadCwd =
+    targetCwdOverride !== undefined ? targetCwdOverride : selectedThreadWorktreeCwd;
+  // Thread metadata (`branch`, `worktreePath`) tracks the thread's own
+  // worktree only — never a submodule's. Actions that ran against a
+  // submodule must still refresh status/branches but must not let a
+  // submodule branch name overwrite the thread's own branch metadata.
+  const isTargetingThreadWorktree = selectedThreadCwd === selectedThreadWorktreeCwd;
   const runStackedAction = useAtomCommand(
     vcsActionManager.runStackedAction({
       environmentId: selectedThread?.environmentId ?? null,
@@ -209,16 +225,19 @@ export function useSelectedThreadGitActions() {
           const syncResult = await syncSelectedThreadBranchState({
             thread,
             cwd,
-            nextThreadState: {
-              branch: result.value.refName ?? thread.branch,
-              worktreePath: selectedThreadWorktreePath,
-            },
+            nextThreadState: isTargetingThreadWorktree
+              ? {
+                  branch: result.value.refName ?? thread.branch,
+                  worktreePath: selectedThreadWorktreePath,
+                }
+              : undefined,
           });
           return AsyncResult.isFailure(syncResult) ? AsyncResult.failure(syncResult.cause) : result;
         },
       );
     },
     [
+      isTargetingThreadWorktree,
       runSelectedThreadGitMutation,
       selectedThreadWorktreePath,
       syncSelectedThreadBranchState,
@@ -242,16 +261,19 @@ export function useSelectedThreadGitActions() {
           const syncResult = await syncSelectedThreadBranchState({
             thread,
             cwd,
-            nextThreadState: {
-              branch: result.value.refName ?? thread.branch,
-              worktreePath: selectedThreadWorktreePath,
-            },
+            nextThreadState: isTargetingThreadWorktree
+              ? {
+                  branch: result.value.refName ?? thread.branch,
+                  worktreePath: selectedThreadWorktreePath,
+                }
+              : undefined,
           });
           return AsyncResult.isFailure(syncResult) ? AsyncResult.failure(syncResult.cause) : result;
         },
       );
     },
     [
+      isTargetingThreadWorktree,
       runSelectedThreadGitMutation,
       selectedThreadWorktreePath,
       syncSelectedThreadBranchState,
@@ -349,10 +371,12 @@ export function useSelectedThreadGitActions() {
             const syncResult = await syncSelectedThreadBranchState({
               thread,
               cwd,
-              nextThreadState: {
-                branch: result.value.branch.name,
-                worktreePath: selectedThreadWorktreePath,
-              },
+              nextThreadState: isTargetingThreadWorktree
+                ? {
+                    branch: result.value.branch.name,
+                    worktreePath: selectedThreadWorktreePath,
+                  }
+                : undefined,
             });
             if (AsyncResult.isFailure(syncResult)) {
               return AsyncResult.failure(syncResult.cause);
@@ -366,6 +390,7 @@ export function useSelectedThreadGitActions() {
       );
     },
     [
+      isTargetingThreadWorktree,
       runStackedAction,
       refreshSelectedThreadGitStatus,
       runSelectedThreadGitMutation,

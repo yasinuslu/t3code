@@ -286,6 +286,90 @@ it.effect("checkpoint recovery refuses excessive candidates before probing", () 
   }).pipe(Effect.scoped, Effect.provide(GitContractLayer)),
 );
 
+it.effect("checkpoints include changes inside initialized submodules", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const driver = yield* GitVcsDriver.makeVcsDriverShape();
+    const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-checkpoint-submodule-" });
+    const sources = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-submodule-source-" });
+    yield* makeCheckpointFixture(driver, cwd);
+    const gitIn = (dir: string, args: ReadonlyArray<string>) =>
+      driver.execute({
+        operation: "checkpoint-test",
+        cwd: dir,
+        args: [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@test.com",
+          "-c",
+          "protocol.file.allow=always",
+          ...args,
+        ],
+      });
+    const makeSource = Effect.fn("makeSource")(function* (name: string) {
+      const dir = path.join(sources, name);
+      yield* fileSystem.makeDirectory(dir);
+      yield* gitIn(dir, ["init"]);
+      yield* fileSystem.writeFileString(path.join(dir, `${name}.txt`), `${name} original\n`);
+      yield* gitIn(dir, ["add", "."]);
+      yield* gitIn(dir, ["commit", "-m", "initial"]);
+      return dir;
+    });
+    const deepSource = yield* makeSource("deep");
+    const libSource = yield* makeSource("lib");
+    yield* gitIn(libSource, ["submodule", "add", deepSource, "deep"]);
+    yield* gitIn(libSource, ["commit", "-m", "add deep"]);
+    yield* gitIn(cwd, ["submodule", "add", libSource, "vendor/lib"]);
+    yield* gitIn(cwd, ["submodule", "update", "--init", "--recursive"]);
+    yield* gitIn(cwd, ["commit", "-m", "add lib"]);
+    const lib = path.join(cwd, "vendor/lib");
+    const libFile = path.join(lib, "lib.txt");
+    const deepFile = path.join(lib, "deep/deep.txt");
+    const first = CheckpointRef.make("refs/t3/checkpoints/submodules/turn/1");
+    const second = CheckpointRef.make("refs/t3/checkpoints/submodules/turn/2");
+
+    yield* driver.checkpoints.captureCheckpoint({ cwd, checkpointRef: first });
+    // Commit inside the submodule so the root gitlink moves too, then leave dirty work behind.
+    yield* fileSystem.writeFileString(libFile, "lib committed\n");
+    yield* gitIn(lib, ["commit", "-am", "agent commit"]);
+    yield* fileSystem.writeFileString(path.join(lib, "new.txt"), "new\n");
+    yield* fileSystem.writeFileString(deepFile, "deep edited\n");
+    yield* driver.checkpoints.captureCheckpoint({ cwd, checkpointRef: second });
+
+    const diffInput = {
+      cwd,
+      fromCheckpointRef: first,
+      toCheckpointRef: second,
+      ignoreWhitespace: false,
+    };
+    const patch = yield* driver.checkpoints.diffCheckpoints(diffInput);
+    assert.include(patch, "diff --git a/vendor/lib/lib.txt b/vendor/lib/lib.txt");
+    assert.include(patch, "+lib committed");
+    assert.include(patch, "b/vendor/lib/new.txt");
+    assert.include(patch, "diff --git a/vendor/lib/deep/deep.txt b/vendor/lib/deep/deep.txt");
+    assert.notInclude(patch, "Subproject commit");
+
+    const numstat = yield* driver.checkpoints.diffCheckpoints({ ...diffInput, format: "numstat" });
+    assert.deepEqual(numstat.split("\0").filter(Boolean).sort(), [
+      "1\t0\tvendor/lib/new.txt",
+      "1\t1\tvendor/lib/deep/deep.txt",
+      "1\t1\tvendor/lib/lib.txt",
+    ]);
+
+    assert.isTrue(yield* driver.checkpoints.restoreCheckpoint({ cwd, checkpointRef: first }));
+    assert.strictEqual(yield* fileSystem.readFileString(libFile), "lib original\n");
+    assert.strictEqual(yield* fileSystem.readFileString(deepFile), "deep original\n");
+    assert.isFalse(yield* fileSystem.exists(path.join(lib, "new.txt")));
+    assert.strictEqual(yield* fileSystem.readFileString(path.join(cwd, "file.txt")), "unstaged\n");
+
+    yield* driver.checkpoints.deleteCheckpointRefs({ cwd, checkpointRefs: [first, second] });
+    const libRefs = yield* gitIn(lib, ["for-each-ref", "refs/t3/"]);
+    assert.strictEqual(libRefs.stdout, "");
+  }).pipe(Effect.scoped, Effect.provide(GitContractLayer)),
+);
+
 it.effect.each([
   { phase: "add", nestedRecovery: false, expireRecovery: false },
   { phase: "update-ref", nestedRecovery: false, expireRecovery: false },

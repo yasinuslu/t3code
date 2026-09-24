@@ -37,6 +37,7 @@ import {
   PATCH_RENDER_PREFIX_ARGS,
   splitNullSeparatedGitStdoutPaths,
 } from "./GitVcsDriverCore.ts";
+import { type GitSubmodule, listInitializedSubmodules } from "./gitSubmodules.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
@@ -80,6 +81,8 @@ export interface GitStatusDetails {
   aheadCount: number;
   behindCount: number;
   aheadOfDefaultCount: number;
+  /** Initialized submodules of this repository, nested ones included. Omitted when none. */
+  submodules?: VcsStatusResult["submodules"];
 }
 
 export interface GitRemoteStatusDetails {
@@ -409,6 +412,32 @@ const nowFreshness = Effect.fn("GitVcsDriver.nowFreshness")(function* () {
     expiresAt: Option.none(),
   };
 });
+
+/** Prefixes every path in `git diff --numstat -z` output, including both sides of renames. */
+function prefixNumstatPaths(output: string, pathPrefix: string): string {
+  const fields = output.split("\0");
+  const rendered: string[] = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index]!;
+    if (field.length === 0 && index === fields.length - 1) break;
+    // Counts never contain tabs; paths may.
+    const statEnd = field.indexOf("\t", field.indexOf("\t") + 1);
+    const counts = field.slice(0, statEnd + 1);
+    const path = field.slice(statEnd + 1);
+    if (path.length > 0) {
+      rendered.push(`${counts}${pathPrefix}/${path}`);
+      continue;
+    }
+    // A rename record is `added\tdeleted\t\0old\0new`.
+    rendered.push(
+      counts,
+      `${pathPrefix}/${fields[index + 1]}`,
+      `${pathPrefix}/${fields[index + 2]}`,
+    );
+    index += 2;
+  }
+  return rendered.length > 0 ? `${rendered.join("\0")}\0` : "";
+}
 
 function chunkPathsForGitCheckIgnore(relativePaths: ReadonlyArray<string>): string[][] {
   const chunks: string[][] = [];
@@ -775,8 +804,8 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     "core.fsyncMethod=fsync",
   ] as const;
 
-  const checkpoints: VcsDriver.VcsCheckpointOps = {
-    captureCheckpoint: Effect.fn("GitVcsDriver.checkpoints.captureCheckpoint")(function* (input) {
+  const captureRepositoryCheckpoint = Effect.fn("GitVcsDriver.checkpoints.captureRepository")(
+    function* (input: VcsDriver.VcsCaptureCheckpointInput) {
       const operation = VcsProcess.CHECKPOINT_CAPTURE_OPERATION;
       const indexConfig = [
         "-c",
@@ -1042,25 +1071,14 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           args: [...durableWrite, "update-ref", input.checkpointRef, commitOid],
         });
       }).pipe(Effect.ensuring(cleanupTempIndex));
-    }),
+    },
+  );
 
-    hasCheckpointRef: (input) =>
-      resolveCheckpointCommit(input.cwd, input.checkpointRef).pipe(
-        Effect.map((commit) => commit !== null),
-      ),
-
-    restoreCheckpoint: Effect.fn("GitVcsDriver.checkpoints.restoreCheckpoint")(function* (input) {
+  /** Restores one repository's worktree and index to `commitOid`, leaving HEAD alone. */
+  const restoreRepositoryCheckpoint = Effect.fn("GitVcsDriver.checkpoints.restoreRepository")(
+    function* (input: { readonly cwd: string; readonly commitOid: string }) {
       const operation = "GitVcsDriver.checkpoints.restoreCheckpoint";
-
-      let commitOid = yield* resolveCheckpointCommit(input.cwd, input.checkpointRef);
-
-      if (!commitOid && input.fallbackToHead === true) {
-        commitOid = yield* resolveHeadCommit(input.cwd);
-      }
-
-      if (!commitOid) {
-        return false;
-      }
+      const commitOid = input.commitOid;
 
       const tracked = yield* execute({
         operation,
@@ -1121,12 +1139,166 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           args: ["reset", "--quiet", "--", "."],
         });
       }
+    },
+  );
 
+  /**
+   * Diffs one repository's checkpoints. Paths are rendered below `pathPrefix` (empty for the
+   * root) and `excludePaths` (relative to this repository) are left out, so expanded submodules
+   * do not also appear as gitlink changes.
+   */
+  const diffRepositoryCheckpoints = Effect.fn("GitVcsDriver.checkpoints.diffRepository")(function* (
+    input: VcsDriver.VcsDiffCheckpointsInput,
+    options: {
+      readonly pathPrefix: string;
+      readonly excludePaths: ReadonlyArray<string>;
+      readonly maxOutputBytes: number;
+    },
+  ) {
+    const operation = "GitVcsDriver.checkpoints.diffCheckpoints";
+    let fromRevision: string = input.fromCheckpointRef;
+    if (input.fallbackFromToHead === true) {
+      const resolvedFromCommit = yield* resolveCheckpointCommit(input.cwd, input.fromCheckpointRef);
+      if (resolvedFromCommit) {
+        fromRevision = resolvedFromCommit;
+      } else {
+        const headCommit = yield* resolveHeadCommit(input.cwd);
+        if (!headCommit) {
+          return yield* new VcsProcessExitError({
+            operation,
+            command: "git diff",
+            cwd: input.cwd,
+            exitCode: 1,
+            detail: "Checkpoint ref is unavailable for diff operation.",
+          });
+        }
+        fromRevision = headCommit;
+      }
+    }
+
+    const result = yield* execute({
+      operation,
+      cwd: input.cwd,
+      args: [
+        "diff",
+        ...(input.format === "numstat" ? ["--numstat", "-z"] : ["--patch"]),
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        ...(options.pathPrefix.length > 0
+          ? [`--src-prefix=a/${options.pathPrefix}/`, `--dst-prefix=b/${options.pathPrefix}/`]
+          : PATCH_RENDER_PREFIX_ARGS),
+        ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+        `${fromRevision}^{commit}`,
+        `${input.toCheckpointRef}^{commit}`,
+        ...(options.excludePaths.length > 0
+          ? [
+              "--",
+              ":(top)",
+              ...options.excludePaths.map((excluded) => `:(top,exclude,literal)${excluded}`),
+            ]
+          : []),
+      ],
+      allowNonZeroExit: true,
+      maxOutputBytes: options.maxOutputBytes,
+      outputMode: input.format === "numstat" ? "error" : "truncate",
+    });
+
+    if (result.exitCode !== 0) {
+      return yield* new VcsProcessExitError({
+        operation,
+        command: "git diff",
+        cwd: input.cwd,
+        exitCode: result.exitCode,
+        detail: result.stderr.trim() || "Checkpoint ref is unavailable for diff operation.",
+      });
+    }
+
+    return {
+      output:
+        options.pathPrefix.length > 0 && input.format === "numstat"
+          ? prefixNumstatPaths(result.stdout, options.pathPrefix)
+          : result.stdout,
+      truncated: result.stdoutTruncated,
+    };
+  });
+
+  const deleteRepositoryCheckpointRefs = (cwd: string, checkpointRefs: ReadonlyArray<string>) =>
+    Effect.forEach(
+      checkpointRefs,
+      (checkpointRef) =>
+        execute({
+          operation: "GitVcsDriver.checkpoints.deleteCheckpointRefs",
+          cwd,
+          args: ["update-ref", "-d", checkpointRef],
+          allowNonZeroExit: true,
+        }),
+      { discard: true },
+    );
+
+  // Initialized submodules are checkpointed as part of the root: each one keeps the same ref in
+  // its own repository (which also protects its objects from gc), diffs render under the
+  // submodule path, and restores apply to its worktree. Only a workspace at the repository top
+  // level expands submodules; `.gitmodules` is looked up in the checkpoint cwd.
+  const listCheckpointSubmodules = (cwd: string) =>
+    listInitializedSubmodules(cwd, (submoduleCwd, args) =>
+      execute({
+        operation: "GitVcsDriver.checkpoints.listSubmodules",
+        cwd: submoduleCwd,
+        args,
+        allowNonZeroExit: true,
+      }),
+    ).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+
+  const checkpoints: VcsDriver.VcsCheckpointOps = {
+    captureCheckpoint: Effect.fn("GitVcsDriver.checkpoints.captureCheckpoint")(function* (input) {
+      yield* captureRepositoryCheckpoint(input);
+      for (const submodule of yield* listCheckpointSubmodules(input.cwd)) {
+        yield* captureRepositoryCheckpoint({ ...input, cwd: submodule.cwd }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Could not capture a submodule checkpoint", {
+              submodule: submodule.path,
+              error,
+            }),
+          ),
+        );
+      }
+    }),
+
+    hasCheckpointRef: (input) =>
+      resolveCheckpointCommit(input.cwd, input.checkpointRef).pipe(
+        Effect.map((commit) => commit !== null),
+      ),
+
+    restoreCheckpoint: Effect.fn("GitVcsDriver.checkpoints.restoreCheckpoint")(function* (input) {
+      let commitOid = yield* resolveCheckpointCommit(input.cwd, input.checkpointRef);
+      // Submodules fall back to HEAD only when the whole checkpoint is missing. A submodule that
+      // merely lacks the ref was never captured, so restoring it could discard real work.
+      const fellBackToHead = !commitOid && input.fallbackToHead === true;
+      if (fellBackToHead) {
+        commitOid = yield* resolveHeadCommit(input.cwd);
+      }
+      if (!commitOid) {
+        return false;
+      }
+
+      // The root restore records gitlinks only; `clean -fd` leaves submodule worktrees alone.
+      yield* restoreRepositoryCheckpoint({ cwd: input.cwd, commitOid });
+      for (const submodule of yield* listCheckpointSubmodules(input.cwd)) {
+        const submoduleCommit =
+          (yield* resolveCheckpointCommit(submodule.cwd, input.checkpointRef)) ??
+          (fellBackToHead ? yield* resolveHeadCommit(submodule.cwd) : null);
+        if (submoduleCommit) {
+          yield* restoreRepositoryCheckpoint({ cwd: submodule.cwd, commitOid: submoduleCommit });
+        }
+      }
       return true;
     }),
 
     diffCheckpoints: Effect.fn("GitVcsDriver.checkpoints.diffCheckpoints")(function* (input) {
-      const operation = "GitVcsDriver.checkpoints.diffCheckpoints";
       yield* Effect.annotateCurrentSpan({
         "checkpoint.cwd": input.cwd,
         "checkpoint.from_ref": input.fromCheckpointRef,
@@ -1136,74 +1308,64 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         "checkpoint.fallback_from_to_head": input.fallbackFromToHead,
       });
 
-      let fromRevision: string = input.fromCheckpointRef;
-      if (input.fallbackFromToHead === true) {
-        const resolvedFromCommit = yield* resolveCheckpointCommit(
-          input.cwd,
-          input.fromCheckpointRef,
-        );
-        if (resolvedFromCommit) {
-          fromRevision = resolvedFromCommit;
-        } else {
-          const headCommit = yield* resolveHeadCommit(input.cwd);
-          if (!headCommit) {
-            return yield* new VcsProcessExitError({
-              operation,
-              command: "git diff",
-              cwd: input.cwd,
-              exitCode: 1,
-              detail: "Checkpoint ref is unavailable for diff operation.",
-            });
-          }
-          fromRevision = headCommit;
+      const submodules = yield* listCheckpointSubmodules(input.cwd);
+      const expanded: GitSubmodule[] = [];
+      for (const submodule of submodules) {
+        const hasFrom =
+          input.fallbackFromToHead === true ||
+          (yield* resolveCheckpointCommit(submodule.cwd, input.fromCheckpointRef)) !== null;
+        if (hasFrom && (yield* resolveCheckpointCommit(submodule.cwd, input.toCheckpointRef))) {
+          expanded.push(submodule);
         }
       }
+      const excludePathsBelow = (prefix: string) =>
+        expanded.flatMap((submodule) =>
+          prefix.length === 0
+            ? [submodule.path]
+            : submodule.path.startsWith(`${prefix}/`)
+              ? [submodule.path.slice(prefix.length + 1)]
+              : [],
+        );
 
-      const result = yield* execute({
-        operation,
-        cwd: input.cwd,
-        args: [
-          "diff",
-          ...(input.format === "numstat" ? ["--numstat", "-z"] : ["--patch"]),
-          "--no-color",
-          "--no-ext-diff",
-          "--no-textconv",
-          ...PATCH_RENDER_PREFIX_ARGS,
-          ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-          `${fromRevision}^{commit}`,
-          `${input.toCheckpointRef}^{commit}`,
-        ],
-        allowNonZeroExit: true,
+      const root = yield* diffRepositoryCheckpoints(input, {
+        pathPrefix: "",
+        excludePaths: excludePathsBelow(""),
         maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
-        outputMode: input.format === "numstat" ? "error" : "truncate",
       });
-
-      if (result.exitCode !== 0) {
-        return yield* new VcsProcessExitError({
-          operation,
-          command: "git diff",
-          cwd: input.cwd,
-          exitCode: result.exitCode,
-          detail: result.stderr.trim() || "Checkpoint ref is unavailable for diff operation.",
-        });
+      let output = root.output;
+      let truncated = root.truncated;
+      for (const submodule of expanded) {
+        const remainingBytes = CHECKPOINT_DIFF_MAX_OUTPUT_BYTES - Buffer.byteLength(output);
+        if (truncated || remainingBytes <= 0) break;
+        const diff = yield* diffRepositoryCheckpoints(
+          { ...input, cwd: submodule.cwd },
+          {
+            pathPrefix: submodule.path,
+            excludePaths: excludePathsBelow(submodule.path),
+            maxOutputBytes: remainingBytes,
+          },
+        ).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Could not diff a submodule checkpoint", {
+              submodule: submodule.path,
+              error,
+            }).pipe(Effect.as({ output: "", truncated: false })),
+          ),
+        );
+        output += diff.output;
+        truncated = diff.truncated;
       }
-
-      return result.stdout;
+      return output;
     }),
 
     deleteCheckpointRefs: Effect.fn("GitVcsDriver.checkpoints.deleteCheckpointRefs")(
       function* (input) {
-        yield* Effect.forEach(
-          input.checkpointRefs,
-          (checkpointRef) =>
-            execute({
-              operation: "GitVcsDriver.checkpoints.deleteCheckpointRefs",
-              cwd: input.cwd,
-              args: ["update-ref", "-d", checkpointRef],
-              allowNonZeroExit: true,
-            }),
-          { discard: true },
-        );
+        yield* deleteRepositoryCheckpointRefs(input.cwd, input.checkpointRefs);
+        for (const submodule of yield* listCheckpointSubmodules(input.cwd)) {
+          yield* deleteRepositoryCheckpointRefs(submodule.cwd, input.checkpointRefs).pipe(
+            Effect.ignore,
+          );
+        }
       },
     ),
   };

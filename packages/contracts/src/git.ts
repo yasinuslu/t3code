@@ -210,8 +210,24 @@ const VcsStatusChangeRequest = Schema.Struct({
   updatedAt: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
+/**
+ * An initialized submodule of the repository, nested ones included. Clients
+ * pass `cwd` to the same status, diff and stacked-action RPCs to target it.
+ */
+export const VcsStatusSubmodule = Schema.Struct({
+  /** Path relative to the superproject's worktree root, `/`-separated. */
+  path: TrimmedNonEmptyStringSchema,
+  /** Absolute worktree root of the submodule. */
+  cwd: TrimmedNonEmptyStringSchema,
+  /** Changes in its working tree or a moved commit, as the parent sees it. */
+  hasChanges: Schema.Boolean,
+});
+export type VcsStatusSubmodule = typeof VcsStatusSubmodule.Type;
+
 const VcsStatusLocalShape = {
   isRepo: Schema.Boolean,
+  /** Optional for compatibility with older servers. */
+  submodules: Schema.optional(Schema.Array(VcsStatusSubmodule)),
   sourceControlProvider: Schema.optional(SourceControlProviderInfo),
   hasPrimaryRemote: Schema.Boolean,
   isDefaultRef: Schema.Boolean,

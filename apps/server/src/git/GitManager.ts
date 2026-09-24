@@ -709,6 +709,36 @@ export const make = Effect.gen(function* () {
   const projectionQuery = yield* Effect.serviceOption(
     ProjectionSnapshotQuery.ProjectionSnapshotQuery,
   );
+  /**
+   * The project whose workspace root is `cwd`, or, for a submodule checkout,
+   * the project of the closest superproject that is one.
+   */
+  const projectIdForWorkspaceCwd = Effect.fnUntraced(function* (
+    query: ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"],
+    cwd: string,
+  ) {
+    let candidate = cwd;
+    // Bounded: each step moves to a strictly shorter superproject path.
+    for (let depth = 0; depth < 8; depth += 1) {
+      const project = yield* query.getActiveProjectByWorkspaceRoot(candidate);
+      if (Option.isSome(project)) return Option.some(project.value.id);
+      const superproject = yield* gitCore
+        .execute({
+          operation: "GitManager.projectSettingsFor.superproject",
+          cwd: candidate,
+          args: ["rev-parse", "--show-superproject-working-tree"],
+          allowNonZeroExit: true,
+          timeoutMs: 5_000,
+        })
+        .pipe(
+          Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : "")),
+          Effect.orElseSucceed(() => ""),
+        );
+      if (superproject.length === 0) break;
+      candidate = superproject;
+    }
+    return Option.none<ProjectId>();
+  });
   /** Environment settings with the acting project's overrides applied. */
   const projectSettingsFor = Effect.fnUntraced(function* (input: {
     readonly cwd: string;
@@ -721,9 +751,7 @@ export const make = Effect.gen(function* () {
         ? projectionQuery.value
             .getThreadShellById(input.threadId)
             .pipe(Effect.map(Option.map((thread) => thread.projectId)))
-        : projectionQuery.value
-            .getActiveProjectByWorkspaceRoot(input.cwd)
-            .pipe(Effect.map(Option.map((project) => project.id)))
+        : projectIdForWorkspaceCwd(projectionQuery.value, input.cwd)
     ).pipe(Effect.orElseSucceed(() => Option.none<ProjectId>()));
     return resolveProjectSettings(settings, Option.getOrNull(projectId)).settings;
   });
@@ -1014,7 +1042,7 @@ export const make = Effect.gen(function* () {
     aheadOfDefaultCount: 0,
   } satisfies GitVcsDriver.GitStatusDetails;
   const readLocalStatus = Effect.fn("readLocalStatus")(function* (cwd: string) {
-    const details = yield* gitCore
+    const details: GitVcsDriver.GitStatusDetails = yield* gitCore
       .statusDetailsLocal(cwd)
       .pipe(
         Effect.catchIf(isNotGitRepositoryError, () => Effect.succeed(nonRepositoryStatusDetails)),
@@ -1025,6 +1053,9 @@ export const make = Effect.gen(function* () {
 
     return {
       isRepo: details.isRepo,
+      ...(details.submodules && details.submodules.length > 0
+        ? { submodules: details.submodules }
+        : {}),
       ...(hostingProvider ? { sourceControlProvider: hostingProvider } : {}),
       hasPrimaryRemote: details.hasOriginRemote,
       isDefaultRef: details.isDefaultBranch,

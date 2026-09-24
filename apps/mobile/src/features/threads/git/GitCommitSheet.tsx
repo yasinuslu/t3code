@@ -13,7 +13,7 @@ import { useEnvironmentQuery } from "../../../state/query";
 import { useThreadSelection } from "../../../state/use-thread-selection";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
-import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
+import { useSelectedThreadGitTargetRepository } from "../../../state/use-selected-thread-git-target";
 import { vcsEnvironment } from "../../../state/vcs";
 import { SheetActionButton } from "./gitSheetComponents";
 
@@ -27,9 +27,9 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const { selectedThread } = useThreadSelection();
-  const { selectedThreadCwd } = useSelectedThreadWorktree();
+  const { targetCwd: selectedThreadCwd } = useSelectedThreadGitTargetRepository();
   const gitState = useSelectedThreadGitState();
-  const gitActions = useSelectedThreadGitActions();
+  const gitActions = useSelectedThreadGitActions(selectedThreadCwd);
 
   const gitStatus = useEnvironmentQuery(
     selectedThread !== null && selectedThreadCwd !== null

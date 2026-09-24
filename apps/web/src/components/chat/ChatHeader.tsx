@@ -394,6 +394,7 @@ export const ChatHeader = memo(function ChatHeader({
           <GitActionsControl
             presentation={actionsCollapsed ? "menu" : "toolbar"}
             gitCwd={gitCwd}
+            rootRepoLabel={activeProjectName}
             activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
             onOpenPullRequest={onOpenPullRequest}
             {...(draftId ? { draftId } : {})}

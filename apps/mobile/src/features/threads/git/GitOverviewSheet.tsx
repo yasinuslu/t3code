@@ -39,9 +39,11 @@ import { useEnvironmentQuery } from "../../../state/query";
 import { useThreadSelection } from "../../../state/use-thread-selection";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
+import { useSelectedThreadGitTargetRepository } from "../../../state/use-selected-thread-git-target";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
 import { resolveGitOverviewReviewNavigationAction } from "./git-overview-navigation";
+import { GitTargetRepositoryPicker } from "./GitTargetRepositoryPicker";
 import { MetaCard, SheetListRow, menuItemIconName, statusSummary } from "./gitSheetComponents";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
@@ -63,7 +65,9 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
   const { selectedThread, selectedEnvironmentRuntime } = useThreadSelection();
-  const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
+  const { selectedThreadWorktreePath } = useSelectedThreadWorktree();
+  const gitTargetRepository = useSelectedThreadGitTargetRepository();
+  const { targetCwd: selectedThreadCwd } = gitTargetRepository;
   const supportsLinkedPrSnapshots =
     selectedEnvironmentRuntime?.serverConfig?.environment.capabilities.threadPullRequests === true;
   const linkedPrChains = useMemo(
@@ -74,7 +78,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
     [selectedThread?.pullRequests, supportsLinkedPrSnapshots],
   );
   const gitState = useSelectedThreadGitState();
-  const gitActions = useSelectedThreadGitActions();
+  const gitActions = useSelectedThreadGitActions(selectedThreadCwd);
   const theme = useUniwindTheme();
   const foregroundColor = theme["--color-foreground"];
   const sheetColor = theme["--color-sheet"];
@@ -247,6 +251,13 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
         <RefreshControl refreshing={isPullRefreshing} onRefresh={() => void handlePullRefresh()} />
       }
     >
+      {gitTargetRepository.hasSubmodules ? (
+        <GitTargetRepositoryPicker
+          options={gitTargetRepository.options}
+          selectedPath={gitTargetRepository.selectedPath}
+          onSelect={gitTargetRepository.selectTarget}
+        />
+      ) : null}
       <View
         className={`overflow-hidden bg-card android:rounded-[20px] ios:border ios:border-border ${
           isInspector ? "ios:rounded-2xl ios:px-3 ios:py-1" : "ios:rounded-[22px] ios:px-4 ios:py-1"

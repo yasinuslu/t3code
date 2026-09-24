@@ -404,11 +404,43 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  /**
+   * A change in a submodule also changes its superproject's status (the
+   * recorded commit moves), and a refreshed superproject can reveal submodule
+   * changes. Refresh the subscribed repositories on either side of `cwd`:
+   * its listed submodules, and loaded superprojects that list `cwd`. Nothing
+   * runs when nobody streams those repositories.
+   */
+  const refreshRelatedLocalStatuses = Effect.fn("VcsStatusBroadcaster.refreshRelatedLocalStatuses")(
+    function* (cwd: string) {
+      const subscribed = yield* SynchronizedRef.get(pollersRef);
+      if (subscribed.size === 0) return;
+      const cache = yield* Ref.get(cacheRef);
+      const related = new Set<string>();
+      for (const submodule of cache.get(cwd)?.local?.value.submodules ?? []) {
+        related.add(submodule.cwd);
+      }
+      for (const [cachedCwd, cached] of cache) {
+        if (cached.local?.value.submodules?.some((submodule) => submodule.cwd === cwd)) {
+          related.add(cachedCwd);
+        }
+      }
+      related.delete(cwd);
+      yield* Effect.forEach(
+        [...related].filter((relatedCwd) => subscribed.has(relatedCwd)),
+        (relatedCwd) => refreshLocalStatusCore(relatedCwd).pipe(Effect.ignoreCause({ log: true })),
+        { concurrency: "unbounded", discard: true },
+      );
+    },
+  );
+
   const refreshLocalStatus: VcsStatusBroadcaster["Service"]["refreshLocalStatus"] = Effect.fn(
     "VcsStatusBroadcaster.refreshLocalStatus",
   )(function* (rawCwd) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
-    return yield* refreshLocalStatusCore(cwd);
+    const local = yield* refreshLocalStatusCore(cwd);
+    yield* refreshRelatedLocalStatuses(cwd);
+    return local;
   });
 
   const maybeAutoPull = Effect.fn("VcsStatusBroadcaster.maybeAutoPull")(function* (
@@ -476,7 +508,7 @@ export const make = Effect.gen(function* () {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
     // invalidateStatus (not the two partial invalidations) so an explicit
     // refresh also bypasses GitManager's slow PR-lookup cache.
-    return yield* withRemoteWriteLock(
+    const status = yield* withRemoteWriteLock(
       cwd,
       Effect.gen(function* () {
         yield* workflow.invalidateStatus(cwd);
@@ -489,6 +521,8 @@ export const make = Effect.gen(function* () {
         return yield* updateCachedStatus(cwd, local, remote, { publish: true });
       }),
     );
+    yield* refreshRelatedLocalStatuses(cwd);
+    return status;
   });
 
   const refreshPullRequestStatus: VcsStatusBroadcaster["Service"]["refreshPullRequestStatus"] =

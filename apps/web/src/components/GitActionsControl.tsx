@@ -104,6 +104,8 @@ import {
   useVcsPullAction,
 } from "~/lib/sourceControlActions";
 import { useThreadShell } from "~/state/entities";
+import { useGitRepoTarget } from "~/hooks/useGitRepoTarget";
+import { GitRepoPicker } from "./GitRepoPicker";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
 import { sourceControlEnvironment } from "~/state/sourceControl";
@@ -119,7 +121,10 @@ import { useOpenPrLink } from "~/lib/openPullRequestLink";
 
 interface GitActionsControlProps {
   presentation?: "toolbar" | "menu";
+  /** The root repo's cwd. Actions target the thread's selected submodule when there is one. */
   gitCwd: string | null;
+  /** Names the root repo in the submodule picker. */
+  rootRepoLabel: string;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
   /**
@@ -954,7 +959,8 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
 
 export default function GitActionsControl({
   presentation = "toolbar",
-  gitCwd,
+  gitCwd: rootGitCwd,
+  rootRepoLabel,
   activeThreadRef,
   draftId,
   onOpenPullRequest,
@@ -964,6 +970,10 @@ export default function GitActionsControl({
     "thread branch metadata update",
   );
   const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
+  const repoTarget = useGitRepoTarget(activeThreadRef, rootGitCwd);
+  const gitCwd = repoTarget.cwd;
+  // A submodule's branch is not the thread's branch, so actions there never rewrite it.
+  const targetsSubmodule = repoTarget.submodule !== null;
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(activeEnvironmentId));
   const openInPreferredEditor = useOpenInPreferredEditor(
     activeEnvironmentId,
@@ -1014,7 +1024,7 @@ export default function GitActionsControl({
 
   const persistThreadBranchSync = useCallback(
     (branch: string | null, manualSelection = false) => {
-      if (!activeThreadRef) {
+      if (!activeThreadRef || targetsSubmodule) {
         return;
       }
 
@@ -1053,6 +1063,7 @@ export default function GitActionsControl({
       activeThreadRef,
       draftId,
       setDraftThreadContext,
+      targetsSubmodule,
       updateThreadMetadata,
     ],
   );
@@ -1747,8 +1758,20 @@ export default function GitActionsControl({
 
   if (!gitCwd) return null;
 
+  const repoPicker = (
+    <GitRepoPicker
+      presentation={presentation}
+      rootLabel={rootRepoLabel}
+      submodules={repoTarget.submodules}
+      selected={repoTarget.submodule}
+      onSelect={repoTarget.selectSubmodule}
+      disabled={isGitActionRunning}
+    />
+  );
+
   return (
     <>
+      {repoPicker}
       {presentation === "menu" ? (
         !isRepo ? (
           <MenuItem
@@ -1873,6 +1896,12 @@ export default function GitActionsControl({
           <DialogPanel>
             <div className="space-y-3 rounded-xl bg-zinc-25 p-3 text-sm ring-1 ring-black/5 dark:bg-white/[0.035] dark:ring-white/5">
               <div className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1">
+                {repoTarget.submodule && (
+                  <>
+                    <span className="text-muted-foreground">Submodule</span>
+                    <span className="truncate font-medium">{repoTarget.submodule.path}</span>
+                  </>
+                )}
                 <span className="text-muted-foreground">Branch</span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">
