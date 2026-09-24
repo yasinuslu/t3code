@@ -100,6 +100,7 @@ import {
 } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
+import type { ClaudeConfigDirResolver } from "../Drivers/ClaudeConfigDirCommand.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
@@ -259,6 +260,8 @@ type PromptQueueItem =
 interface ClaudeResumeState {
   readonly threadId?: ThreadId;
   readonly resume?: string;
+  /** The per-project config dir the session was started with, if any. */
+  readonly configDir?: string;
   readonly resumeSessionAt?: string;
   readonly turnCount?: number;
   readonly turnStartMessageIds?: ReadonlyArray<string | null>;
@@ -416,6 +419,10 @@ function rememberPendingTaskModel(
 interface ClaudeSessionContext {
   session: ProviderSession;
   startInput: Parameters<ClaudeAdapterShape["startSession"]>[0];
+  /** The CLI's environment for this session (per-project config dir applied). */
+  readonly environment: NodeJS.ProcessEnv;
+  /** The per-project config dir from `homePathCommand`, kept across resumes. */
+  readonly projectConfigDir: string | undefined;
   readonly turnStartMessageIds: Array<string | null>;
   readonly promptQueue: Queue.Queue<PromptQueueItem>;
   readonly query: ClaudeQueryRuntime;
@@ -484,6 +491,8 @@ export interface ClaudeAdapterLiveOptions {
   readonly modelCatalog?: Effect.Effect<ClaudeModelCatalog>;
   /** Scoped-bucket names the driver's status probe last saw; see `claudeUsageLimits`. */
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
+  /** Resolves the config dir per project when the instance sets `homePathCommand`. */
+  readonly configDirResolver?: ClaudeConfigDirResolver;
 }
 
 function isUuid(value: string): boolean {
@@ -984,6 +993,7 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     resumeSessionAt?: unknown;
     turnCount?: unknown;
     turnStartMessageIds?: unknown;
+    configDir?: unknown;
   };
 
   const threadIdCandidate = typeof cursor.threadId === "string" ? cursor.threadId : undefined;
@@ -1007,9 +1017,15 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
       ? (cursor.turnStartMessageIds as Array<string | null>)
       : undefined;
 
+  const configDir =
+    typeof cursor.configDir === "string" && cursor.configDir.trim().length > 0
+      ? cursor.configDir
+      : undefined;
+
   return {
     ...(threadId ? { threadId } : {}),
     ...(resume ? { resume } : {}),
+    ...(configDir ? { configDir } : {}),
     ...(resumeSessionAt ? { resumeSessionAt } : {}),
     ...(turnStartMessageIds ? { turnStartMessageIds } : {}),
     ...(turnCountValue !== undefined && Number.isInteger(turnCountValue) && turnCountValue >= 0
@@ -2204,6 +2220,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const resumeCursor = {
       threadId,
       ...(context.resumeSessionId ? { resume: context.resumeSessionId } : {}),
+      ...(context.projectConfigDir ? { configDir: context.projectConfigDir } : {}),
       ...(context.lastAssistantUuid ? { resumeSessionAt: context.lastAssistantUuid } : {}),
       turnCount: context.turnStartMessageIds.length,
       turnStartMessageIds: [...context.turnStartMessageIds],
@@ -3469,7 +3486,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // generic API error, so retain that evidence for the result fallback.
       if (message.error === "authentication_failed") {
         context.turnState.authenticationFailureMessage = claudeSignedOutMessage({
-          configDir: claudeEnvironment.CLAUDE_CONFIG_DIR,
+          configDir: context.environment.CLAUDE_CONFIG_DIR,
           cwd: path.resolve(context.session.cwd ?? "."),
         });
       }
@@ -4432,6 +4449,21 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const existingResumeSessionId = resumeState?.resume;
       const newSessionId = existingResumeSessionId === undefined ? yield* randomUUIDv4 : undefined;
       const sessionId = existingResumeSessionId ?? newSessionId;
+      // A resumed session keeps the dir its transcript lives in, even if the
+      // command would now answer differently (or the thread moved worktree).
+      const configDirProjectRoot = input.projectRoot ?? input.cwd;
+      const projectConfigDir = options?.configDirResolver
+        ? (resumeState?.configDir ??
+          (configDirProjectRoot
+            ? yield* options.configDirResolver.resolve(configDirProjectRoot)
+            : undefined))
+        : undefined;
+      const sessionEnvironment: NodeJS.ProcessEnv = projectConfigDir
+        ? { ...claudeEnvironment, CLAUDE_CONFIG_DIR: projectConfigDir }
+        : claudeEnvironment;
+      const sessionConfiguredConfigDir = projectConfigDir
+        ? describeClaudeConfigDir(projectConfigDir)
+        : configuredConfigDir;
 
       const runtimeContext = yield* Effect.context<never>();
       const runFork = Effect.runForkWith(runtimeContext);
@@ -4863,7 +4895,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           payload: {
             config: {},
             configDir: {
-              configured: configuredConfigDir,
+              configured: sessionConfiguredConfigDir,
               effective: describeClaudeConfigDir(effectivePath),
             },
           },
@@ -5000,7 +5032,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         onUserDialog,
         hooks: { UserPromptSubmit: [{ hooks: [onUserPromptSubmit] }] },
         supportedDialogKinds: ["resume_return"],
-        env: McpProviderSession.withAgentDeviceEnvironment(claudeEnvironment, mcpSession),
+        env: McpProviderSession.withAgentDeviceEnvironment(sessionEnvironment, mcpSession),
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
         ...(mcpSession
@@ -5070,6 +5102,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         resumeCursor: {
           ...(threadId ? { threadId } : {}),
           ...(sessionId ? { resume: sessionId } : {}),
+          ...(projectConfigDir ? { configDir: projectConfigDir } : {}),
           ...(resumeState?.resumeSessionAt ? { resumeSessionAt: resumeState.resumeSessionAt } : {}),
           turnCount: resumeState?.turnCount ?? 0,
           ...(resumeState?.turnStartMessageIds
@@ -5083,6 +5116,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const context: ClaudeSessionContext = {
         session,
         startInput: input,
+        environment: sessionEnvironment,
+        projectConfigDir,
         turnStartMessageIds: resumeState?.turnStartMessageIds
           ? [...resumeState.turnStartMessageIds]
           : Array.from({ length: resumeState?.turnCount ?? 0 }, () => null),
@@ -5303,7 +5338,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const skills = yield* discoverClaudeSkills(
       claudeSettings,
       context.session.cwd,
-      claudeEnvironment,
+      context.environment,
     ).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
@@ -5416,7 +5451,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ChildProcess.make(
               process.execPath,
               [...historyWorkerArguments, method, historySessionId, encodeHistoryArgs(args)],
-              { env: { ...claudeEnvironment, ELECTRON_RUN_AS_NODE: "1" } },
+              { env: { ...context.environment, ELECTRON_RUN_AS_NODE: "1" } },
             ),
           ).pipe(
             Effect.timeout("30 seconds"),
@@ -5435,7 +5470,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             };
             if (options?.getSessionMessages)
               return options.getSessionMessages(historySessionId, readOptions);
-            if (claudeEnvironment.CLAUDE_CONFIG_DIR === process.env.CLAUDE_CONFIG_DIR) {
+            if (context.environment.CLAUDE_CONFIG_DIR === process.env.CLAUDE_CONFIG_DIR) {
               return getSessionMessages(historySessionId, readOptions);
             }
             return decodeSessionMessages(
@@ -5494,7 +5529,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
                 upToMessageId: rollbackAt,
               };
               if (options?.forkSession) return options.forkSession(sessionId, forkOptions);
-              if (claudeEnvironment.CLAUDE_CONFIG_DIR === process.env.CLAUDE_CONFIG_DIR) {
+              if (context.environment.CLAUDE_CONFIG_DIR === process.env.CLAUDE_CONFIG_DIR) {
                 return forkSession(sessionId, forkOptions);
               }
               return decodeHistoryFork(await runScopedHistoryCommand("forkSession", forkOptions));
@@ -5527,6 +5562,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         resumeCursor: fork
           ? {
               resume: fork.sessionId,
+              ...(context.projectConfigDir ? { configDir: context.projectConfigDir } : {}),
               turnCount: retainedCount,
               turnStartMessageIds: retainedBoundaries,
             }

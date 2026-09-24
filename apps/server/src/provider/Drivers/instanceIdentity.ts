@@ -18,6 +18,7 @@ export const withInstanceIdentity =
     readonly accentColor: string | undefined;
     readonly continuationGroupKey: string;
     readonly configDir?: ProviderConfigDir | undefined;
+    readonly configDirInherited?: boolean | undefined;
   }) =>
   (snapshot: ServerProviderDraft): ServerProvider => ({
     ...snapshot,
@@ -27,4 +28,5 @@ export const withInstanceIdentity =
     ...(input.accentColor ? { accentColor: input.accentColor } : {}),
     continuation: { groupKey: input.continuationGroupKey },
     ...(input.configDir ? { configDir: input.configDir } : {}),
+    ...(input.configDir && input.configDirInherited ? { configDirInherited: true } : {}),
   });

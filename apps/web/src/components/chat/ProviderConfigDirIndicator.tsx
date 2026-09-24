@@ -16,7 +16,8 @@ export interface ThreadProviderConfigDir {
 
 /**
  * Which provider profile a thread runs on: the instance badge, its name, and
- * the config dir its CLI uses. Turns into a warning when a launcher sent the
+ * the config dir its CLI uses. Shows "auto" while an instance that sets no dir
+ * has not reported one yet, and turns into a warning when a launcher sent the
  * CLI to a different dir than the instance is configured with.
  */
 export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicator(props: {
@@ -26,6 +27,7 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
 }) {
   const { driverKind, displayName, accentColor, configDir } = props.value;
   const { current, configured, redirected } = configDir;
+  const currentLabel = current?.displayPath ?? "auto";
   return (
     <Tooltip>
       <TooltipTrigger
@@ -34,8 +36,8 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
             data-provider-config-dir
             aria-label={
               redirected
-                ? `${displayName}: redirected to ${current.path}, configured ${configured.path}`
-                : `${displayName}: ${current.path}`
+                ? `${displayName}: redirected to ${current?.path}, configured ${configured.path}`
+                : `${displayName}: ${current?.path ?? "config dir chosen by the CLI"}`
             }
             className={cn(
               "inline-flex min-w-0 items-center gap-1.5 text-xs",
@@ -58,8 +60,8 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
           <>
             <span className="shrink-0 font-medium text-foreground">{displayName}</span>
             {redirected ? <CircleAlertIcon aria-hidden className="size-3 shrink-0" /> : null}
-            <span className="min-w-0 truncate font-mono">
-              {redirected ? `redirected to ${current.displayPath}` : current.displayPath}
+            <span className={cn("min-w-0 truncate", current ? "font-mono" : "italic")}>
+              {redirected ? `redirected to ${currentLabel}` : currentLabel}
             </span>
           </>
         )}
@@ -72,13 +74,18 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
           <span className="font-medium">{displayName}</span>
           {redirected ? (
             <>
-              <span className="break-all">Running on {current.path}</span>
+              <span className="break-all">Running on {current?.path}</span>
               <span className="break-all text-muted-foreground">
                 Configured {configured.path}; the launcher switched it.
               </span>
             </>
-          ) : (
+          ) : current ? (
             <span className="break-all">{current.path}</span>
+          ) : (
+            <span className="text-muted-foreground">
+              No config dir is set, so the CLI picks one (an inherited CLAUDE_CONFIG_DIR or its
+              default). The actual dir appears after the first message.
+            </span>
           )}
         </div>
       </TooltipPopup>

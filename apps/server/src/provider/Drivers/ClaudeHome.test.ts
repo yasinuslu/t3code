@@ -9,6 +9,7 @@ import {
   claudeConfigDirFromTranscriptPath,
   claudeSignedOutMessage,
   describeClaudeConfigDir,
+  isClaudeConfigDirInherited,
   makeClaudeCapabilitiesCacheKey,
   makeClaudeContinuationGroupKey,
   makeClaudeEnvironment,
@@ -66,6 +67,14 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
         );
       }),
     );
+
+    it("treats only a blank homePath as leaving the config dir to the CLI", () => {
+      expect(isClaudeConfigDirInherited({ homePath: "" })).toBe(true);
+      expect(isClaudeConfigDirInherited({ homePath: "   " })).toBe(true);
+      // Naming the default dir explicitly still pins it via CLAUDE_CONFIG_DIR.
+      expect(isClaudeConfigDirInherited({ homePath: "~/.claude" })).toBe(false);
+      expect(isClaudeConfigDirInherited({ homePath: "/synthetic/claude-work" })).toBe(false);
+    });
 
     it("points the signed-out hint at the configured Claude home", () => {
       expect(claudeSignedOutMessage({ configDir: undefined, cwd: "/synthetic" })).toContain(

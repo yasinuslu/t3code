@@ -55,6 +55,7 @@ import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import {
   deriveLatestConfigDirObservation,
   resolveProviderConfigDirIndicator,
+  resolveProviderWorkspaceConfigDir,
 } from "@t3tools/client-runtime/state/provider-instance-display";
 import { type CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
@@ -2913,10 +2914,16 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveLatestConfigDirObservation(threadActivities),
     [threadActivities],
   );
+  const providerConfigDirCwd = activeProject
+    ? projectScriptCwd({
+        project: { cwd: activeProject.workspaceRoot },
+        worktreePath: activeThread?.worktreePath ?? null,
+      })
+    : null;
   const providerConfigDir = useMemo((): ThreadProviderConfigDir | null => {
     if (!selectedProviderEntry) return null;
     const configDir = resolveProviderConfigDirIndicator({
-      configured: selectedProviderEntry.snapshot.configDir,
+      ...resolveProviderWorkspaceConfigDir(selectedProviderEntry.snapshot, providerConfigDirCwd),
       observation: configDirObservation,
     });
     return configDir
@@ -2927,7 +2934,7 @@ export default function ChatView(props: ChatViewProps) {
           configDir,
         }
       : null;
-  }, [configDirObservation, selectedProviderEntry]);
+  }, [configDirObservation, providerConfigDirCwd, selectedProviderEntry]);
   const latestCheckpointCompletedAt = activeThread?.checkpoints.at(-1)?.completedAt ?? null;
   const workspaceMutationId = useMemo(() => {
     const activityId = latestWorkspaceMutationId(threadActivities);
@@ -10223,6 +10230,7 @@ export default function ChatView(props: ChatViewProps) {
                             keybindings={keybindings}
                             terminalOpen={Boolean(terminalUiState.terminalOpen)}
                             gitCwd={gitCwd}
+                            projectRoot={activeProject?.workspaceRoot ?? null}
                             pullRequestProjectId={
                               supportsPullRequests ? (activeProject?.id ?? null) : null
                             }

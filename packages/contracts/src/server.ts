@@ -120,6 +120,9 @@ export const ServerProviderWorkspaceSnapshot = Schema.Struct({
   checkedAt: IsoDateTime,
   slashCommands: Schema.Array(ServerProviderSlashCommand),
   skills: Schema.Array(ServerProviderSkill),
+  // The config dir sessions in this workspace are launched with, when the
+  // instance resolves it per project rather than using one for every project.
+  configDir: Schema.optional(ProviderConfigDir),
 });
 export type ServerProviderWorkspaceSnapshot = typeof ServerProviderWorkspaceSnapshot.Type;
 
@@ -216,6 +219,11 @@ export const ServerProvider = Schema.Struct({
   // The config directory this instance's sessions are launched with, for
   // drivers that isolate instances by directory (Claude's CLAUDE_CONFIG_DIR).
   configDir: Schema.optional(ProviderConfigDir),
+  // True when the instance sets no config dir, so `configDir` is only the
+  // server's inherited/default guess and the CLI (or a wrapper binary) picks
+  // the real one per session. Absent means the dir was set explicitly. A
+  // workspace snapshot's `configDir`, when present, is explicit.
+  configDirInherited: Schema.optional(Schema.Boolean),
   showInteractionModeToggle: Schema.optional(Schema.Boolean),
   // The driver streams context window usage, so a started thread will have a
   // meter once its activities load. Clients reserve the meter's space on it.
