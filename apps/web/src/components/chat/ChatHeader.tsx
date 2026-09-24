@@ -33,6 +33,10 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { OpenInPicker } from "./OpenInPicker";
+import {
+  ProviderConfigDirIndicator,
+  type ThreadProviderConfigDir,
+} from "./ProviderConfigDirIndicator";
 import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useT3ProjectFileScripts } from "~/hooks/useT3ProjectFileScripts";
@@ -68,6 +72,8 @@ interface ChatHeaderProps {
   availableEditors: ReadonlyArray<EditorId>;
   rightPanelOpen: boolean;
   gitCwd: string | null;
+  /** The provider profile the thread runs on, for drivers that report one. */
+  providerConfigDir: ThreadProviderConfigDir | null;
   readonly onOpenPullRequest?: ((number: number) => void) | undefined;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
@@ -137,6 +143,7 @@ export const ChatHeader = memo(function ChatHeader({
   availableEditors,
   rightPanelOpen,
   gitCwd,
+  providerConfigDir,
   onOpenPullRequest,
   onNewThreadInProject,
   onOpenProjectSettings,
@@ -487,6 +494,11 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {providerConfigDir ? (
+        <div className="flex min-w-0 max-w-80 shrink items-center">
+          <ProviderConfigDirIndicator value={providerConfigDir} compact={actionsCollapsed} />
+        </div>
+      ) : null}
       <div
         ref={headerActionsRef}
         data-chat-header-actions

@@ -7,10 +7,14 @@
  */
 import {
   defaultInstanceIdForDriver,
+  type OrchestrationThreadActivity,
   PROVIDER_DISPLAY_NAMES,
+  type ProviderConfigDir,
   type ProviderDriverKind,
   type ServerProvider,
+  SessionConfigDirObservation,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 /**
  * Title-case a slug: splits on `_` / `-` and camelCase boundaries, so
@@ -85,4 +89,57 @@ export function shouldShowInstanceBadge(
     if (candidate.driverKind === entry.driverKind && ++sharedDriverCount > 1) return true;
   }
   return false;
+}
+
+const isSessionConfigDirObservation = Schema.is(SessionConfigDirObservation);
+
+/**
+ * The newest config-dir observation a provider session reported for a thread
+ * (the dir it was launched with next to the dir the CLI actually used).
+ */
+export function deriveLatestConfigDirObservation(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): SessionConfigDirObservation | null {
+  for (let index = activities.length - 1; index >= 0; index -= 1) {
+    const activity = activities[index];
+    if (activity?.kind !== "provider.config-dir") continue;
+    if (isSessionConfigDirObservation(activity.payload)) return activity.payload;
+  }
+  return null;
+}
+
+export interface ProviderConfigDirIndicator {
+  /** The dir the thread runs on: observed when known, otherwise configured. */
+  readonly current: ProviderConfigDir;
+  readonly configured: ProviderConfigDir;
+  /** A wrapper binary sent the CLI to a different dir than configured. */
+  readonly redirected: boolean;
+}
+
+function sameConfigDir(left: ProviderConfigDir, right: ProviderConfigDir): boolean {
+  const trim = (value: string) => value.replace(/(?<=.)[\\/]+$/u, "");
+  return trim(left.path) === trim(right.path);
+}
+
+/**
+ * Combine an instance's configured dir with the latest session observation.
+ * Instances without a configured dir (drivers that don't report one) get no
+ * indicator. An observation made under a different configured dir (another
+ * instance, or this instance's homePath changed since) is stale and ignored
+ * until the next prompt reports again.
+ */
+export function resolveProviderConfigDirIndicator(input: {
+  readonly configured: ProviderConfigDir | undefined;
+  readonly observation: SessionConfigDirObservation | null;
+}): ProviderConfigDirIndicator | null {
+  const { configured, observation } = input;
+  if (!configured) return null;
+  if (observation && sameConfigDir(observation.configured, configured)) {
+    return {
+      current: observation.effective,
+      configured: observation.configured,
+      redirected: !sameConfigDir(observation.effective, observation.configured),
+    };
+  }
+  return { current: configured, configured, redirected: false };
 }

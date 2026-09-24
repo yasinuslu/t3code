@@ -52,6 +52,10 @@ import {
 } from "@t3tools/client-runtime/errors";
 import { readPastedComposerContext } from "./composerInlineTokenPaste";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
+import {
+  deriveLatestConfigDirObservation,
+  resolveProviderConfigDirIndicator,
+} from "@t3tools/client-runtime/state/provider-instance-display";
 import { type CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import {
@@ -374,6 +378,7 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import { type ThreadProviderConfigDir } from "./chat/ProviderConfigDirIndicator";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -2904,6 +2909,25 @@ export default function ChatView(props: ChatViewProps) {
     conversationProviderStatus.supportsConversationRollback !== false;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
+  const configDirObservation = useMemo(
+    () => deriveLatestConfigDirObservation(threadActivities),
+    [threadActivities],
+  );
+  const providerConfigDir = useMemo((): ThreadProviderConfigDir | null => {
+    if (!selectedProviderEntry) return null;
+    const configDir = resolveProviderConfigDirIndicator({
+      configured: selectedProviderEntry.snapshot.configDir,
+      observation: configDirObservation,
+    });
+    return configDir
+      ? {
+          driverKind: selectedProviderEntry.driverKind,
+          displayName: selectedProviderEntry.displayName,
+          accentColor: selectedProviderEntry.accentColor,
+          configDir,
+        }
+      : null;
+  }, [configDirObservation, selectedProviderEntry]);
   const latestCheckpointCompletedAt = activeThread?.checkpoints.at(-1)?.completedAt ?? null;
   const workspaceMutationId = useMemo(() => {
     const activityId = latestWorkspaceMutationId(threadActivities);
@@ -9901,6 +9925,7 @@ export default function ChatView(props: ChatViewProps) {
             availableEditors={availableEditors}
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
+            providerConfigDir={providerConfigDir}
             onNewThreadInProject={handleNewThreadInActiveProject}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }

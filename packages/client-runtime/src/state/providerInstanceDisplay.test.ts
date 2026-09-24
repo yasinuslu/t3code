@@ -1,9 +1,16 @@
-import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
+import {
+  EventId,
+  type OrchestrationThreadActivity,
+  ProviderDriverKind,
+  ProviderInstanceId,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  deriveLatestConfigDirObservation,
   normalizeProviderAccentColor,
   providerInstanceInitials,
+  resolveProviderConfigDirIndicator,
   resolveProviderInstanceDisplayName,
   shouldShowInstanceBadge,
 } from "./providerInstanceDisplay.ts";
@@ -104,5 +111,98 @@ describe("shouldShowInstanceBadge", () => {
     const entry = { driverKind: codex, accentColor: undefined };
     const other = { driverKind: claude, accentColor: undefined };
     expect(shouldShowInstanceBadge(entry, [entry, other])).toBe(false);
+  });
+});
+
+const workDir = {
+  path: "/home/user/code/work/home/claude",
+  displayPath: "~/code/work/home/claude",
+};
+const personalDir = {
+  path: "/home/user/code/personal/home/claude",
+  displayPath: "~/code/personal/home/claude",
+};
+
+function activity(id: string, kind: string, payload: unknown): OrchestrationThreadActivity {
+  return {
+    id: EventId.make(id),
+    tone: "info",
+    kind,
+    summary: kind,
+    payload,
+    turnId: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+describe("deriveLatestConfigDirObservation", () => {
+  it("returns the newest well-formed observation", () => {
+    const older = { configured: workDir, effective: workDir };
+    const newer = { configured: workDir, effective: personalDir };
+    expect(
+      deriveLatestConfigDirObservation([
+        activity("a", "provider.config-dir", older),
+        activity("b", "provider.config-dir", newer),
+        activity("c", "context-window.updated", { usedTokens: 1 }),
+        activity("d", "provider.config-dir", { configured: workDir }),
+      ]),
+    ).toEqual(newer);
+  });
+
+  it("returns null when no session reported a config dir", () => {
+    expect(deriveLatestConfigDirObservation([])).toBeNull();
+    expect(deriveLatestConfigDirObservation([activity("a", "tool.completed", workDir)])).toBeNull();
+  });
+});
+
+describe("resolveProviderConfigDirIndicator", () => {
+  it("shows the configured dir until a session reports one", () => {
+    expect(resolveProviderConfigDirIndicator({ configured: workDir, observation: null })).toEqual({
+      current: workDir,
+      configured: workDir,
+      redirected: false,
+    });
+    expect(
+      resolveProviderConfigDirIndicator({ configured: undefined, observation: null }),
+    ).toBeNull();
+  });
+
+  it("flags a session the CLI ran under a different dir", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: workDir,
+        observation: { configured: workDir, effective: personalDir },
+      }),
+    ).toEqual({ current: personalDir, configured: workDir, redirected: true });
+  });
+
+  it("ignores trailing separators when comparing dirs", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: workDir,
+        observation: {
+          configured: workDir,
+          effective: { path: `${workDir.path}/`, displayPath: `${workDir.displayPath}/` },
+        },
+      })?.redirected,
+    ).toBe(false);
+  });
+
+  it("drops an observation made under a previous configured dir", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: personalDir,
+        observation: { configured: workDir, effective: workDir },
+      }),
+    ).toEqual({ current: personalDir, configured: personalDir, redirected: false });
+  });
+
+  it("shows nothing for instances that do not report a config dir", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: undefined,
+        observation: { configured: workDir, effective: personalDir },
+      }),
+    ).toBeNull();
   });
 });
