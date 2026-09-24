@@ -50,6 +50,10 @@ const forcedShutdownTimeoutMs = 1_500;
 const restartDebounceMs = 120;
 const childTreeGracePeriodMs = 1_200;
 const remoteDebuggingPort = process.env.T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
+// Chromium's mock keychain keeps safeStorage off the macOS keychain. A dev app running on
+// copied state cannot decrypt secrets another app wrote anyway, and touching an existing
+// keychain entry from a new dev bundle blocks startup on a system password prompt.
+const useMockKeychain = process.env.T3CODE_DESKTOP_MOCK_KEYCHAIN?.trim() === "1";
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone dev script has no Effect runtime.
 const hostPlatform = NodeOS.platform();
 
@@ -104,9 +108,10 @@ function startApp() {
     return;
   }
 
-  const electronArgs = remoteDebuggingPort
-    ? [`--remote-debugging-port=${remoteDebuggingPort}`]
-    : [];
+  const electronArgs = [
+    ...(remoteDebuggingPort ? [`--remote-debugging-port=${remoteDebuggingPort}`] : []),
+    ...(useMockKeychain ? ["--use-mock-keychain"] : []),
+  ];
   const launchArgs = devProtocolClient
     ? electronArgs
     : [...electronArgs, `--t3code-dev-root=${desktopDir}`, "dist-electron/main.cjs"];
@@ -257,6 +262,16 @@ async function shutdown(exitCode) {
 startWatchers();
 cleanupStaleDevApps();
 startApp();
+
+// The runner that started this supervisor can die without signalling it (SIGKILL, a
+// crashed terminal). An orphan would keep relaunching Electron, and with it a backend on
+// the same state, on every rebuild, so exit once reparented.
+const parentPid = process.ppid;
+setInterval(() => {
+  if (process.ppid !== parentPid) {
+    void shutdown(0);
+  }
+}, 1_000).unref();
 
 process.once("SIGINT", () => {
   void shutdown(130);
