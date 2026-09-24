@@ -51,6 +51,8 @@ export interface ProviderRegistryShape {
   readonly refreshWorkspaceSnapshot: (input: {
     readonly instanceId: ProviderInstanceId;
     readonly cwd: string;
+    /** The project's workspace root when `cwd` is one of its worktrees. */
+    readonly projectRoot?: string | undefined;
   }) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
   /**

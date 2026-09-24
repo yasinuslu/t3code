@@ -109,8 +109,12 @@ export function deriveLatestConfigDirObservation(
 }
 
 export interface ProviderConfigDirIndicator {
-  /** The dir the thread runs on: observed when known, otherwise configured. */
-  readonly current: ProviderConfigDir;
+  /**
+   * The dir the thread runs on: observed when known, otherwise configured.
+   * `null` while the instance leaves the dir to the CLI and no session has
+   * reported one yet, since the server's default is only a guess then.
+   */
+  readonly current: ProviderConfigDir | null;
   readonly configured: ProviderConfigDir;
   /** A wrapper binary sent the CLI to a different dir than configured. */
   readonly redirected: boolean;
@@ -122,24 +126,44 @@ function sameConfigDir(left: ProviderConfigDir, right: ProviderConfigDir): boole
 }
 
 /**
+ * The config dir an instance launches sessions with in a workspace: a dir the
+ * server resolved for that workspace wins, otherwise the instance-level dir,
+ * which is only a guess when the instance leaves the dir to the CLI.
+ */
+export function resolveProviderWorkspaceConfigDir(
+  provider: Pick<ServerProvider, "configDir" | "configDirInherited" | "workspaceSnapshots">,
+  cwd: string | null | undefined,
+): { readonly configured: ProviderConfigDir | undefined; readonly inherited: boolean } {
+  const workspaceConfigDir = cwd
+    ? provider.workspaceSnapshots?.find((snapshot) => snapshot.cwd === cwd)?.configDir
+    : undefined;
+  if (workspaceConfigDir) return { configured: workspaceConfigDir, inherited: false };
+  return { configured: provider.configDir, inherited: provider.configDirInherited === true };
+}
+
+/**
  * Combine an instance's configured dir with the latest session observation.
  * Instances without a configured dir (drivers that don't report one) get no
  * indicator. An observation made under a different configured dir (another
  * instance, or this instance's homePath changed since) is stale and ignored
- * until the next prompt reports again.
+ * until the next prompt reports again. When the dir is `inherited` (the
+ * instance sets none), nothing was configured, so a differing observed dir is
+ * not a redirect.
  */
 export function resolveProviderConfigDirIndicator(input: {
   readonly configured: ProviderConfigDir | undefined;
+  readonly inherited?: boolean | undefined;
   readonly observation: SessionConfigDirObservation | null;
 }): ProviderConfigDirIndicator | null {
   const { configured, observation } = input;
+  const inherited = input.inherited === true;
   if (!configured) return null;
   if (observation && sameConfigDir(observation.configured, configured)) {
     return {
       current: observation.effective,
       configured: observation.configured,
-      redirected: !sameConfigDir(observation.effective, observation.configured),
+      redirected: !inherited && !sameConfigDir(observation.effective, observation.configured),
     };
   }
-  return { current: configured, configured, redirected: false };
+  return { current: inherited ? null : configured, configured, redirected: false };
 }

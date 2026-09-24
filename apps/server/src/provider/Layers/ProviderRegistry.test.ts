@@ -612,6 +612,37 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         ]);
       });
 
+      it("keeps a workspace-resolved config dir but not an inherited guess", () => {
+        const guess = { path: "/synthetic/default", displayPath: "/synthetic/default" };
+        const resolved = { path: "/synthetic/project", displayPath: "/synthetic/project" };
+        const provider = {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          driver: ProviderDriverKind.make("claudeAgent"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-03-25T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [],
+          skills: [],
+          configDir: guess,
+          configDirInherited: true,
+        } satisfies ServerProvider;
+
+        const unresolved = upsertProviderWorkspaceSnapshot(provider, "/a", provider);
+        assert.strictEqual(unresolved.workspaceSnapshots?.[0]?.configDir, undefined);
+
+        const { configDirInherited: _inherited, ...explicit } = provider;
+        const withDir = upsertProviderWorkspaceSnapshot(provider, "/b", {
+          ...explicit,
+          configDir: resolved,
+        });
+        assert.deepStrictEqual(withDir.workspaceSnapshots?.[0]?.configDir, resolved);
+        assert.deepStrictEqual(withDir.configDir, guess);
+      });
+
       it("preserves previously discovered provider models when a refresh returns none", () => {
         const previousProvider = {
           instanceId: ProviderInstanceId.make("cursor"),

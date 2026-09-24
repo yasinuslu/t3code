@@ -92,6 +92,11 @@ export function upsertProviderWorkspaceSnapshot(
     checkedAt: scopedSnapshot.checkedAt,
     slashCommands: scopedSnapshot.slashCommands,
     skills: scopedSnapshot.skills,
+    // Only a dir resolved for this workspace; an inherited instance-level
+    // guess stays on the provider so clients can tell the two apart.
+    ...(scopedSnapshot.configDir && scopedSnapshot.configDirInherited !== true
+      ? { configDir: scopedSnapshot.configDir }
+      : {}),
   } satisfies NonNullable<ServerProvider["workspaceSnapshots"]>[number];
   return {
     ...provider,
@@ -838,6 +843,7 @@ export const ProviderRegistryLive = Layer.effect(
     const refreshWorkspaceSnapshot = Effect.fn("refreshWorkspaceSnapshot")(function* (input: {
       readonly instanceId: ProviderInstanceId;
       readonly cwd: string;
+      readonly projectRoot?: string | undefined;
     }) {
       const providers = yield* Ref.get(providersRef);
       const provider = providers.find((candidate) => candidate.instanceId === input.instanceId);
@@ -858,7 +864,7 @@ export const ProviderRegistryLive = Layer.effect(
         return [true, next] as const;
       });
       if (!claimed) return yield* Ref.get(providersRef);
-      return yield* instance.snapshotForCwd(input.cwd).pipe(
+      return yield* instance.snapshotForCwd(input.cwd, { projectRoot: input.projectRoot }).pipe(
         Effect.flatMap((scopedSnapshot) =>
           scopedSnapshot.status === "error"
             ? Ref.get(providersRef)

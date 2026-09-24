@@ -11,6 +11,7 @@ import {
   normalizeProviderAccentColor,
   providerInstanceInitials,
   resolveProviderConfigDirIndicator,
+  resolveProviderWorkspaceConfigDir,
   resolveProviderInstanceDisplayName,
   shouldShowInstanceBadge,
 } from "./providerInstanceDisplay.ts";
@@ -197,6 +198,36 @@ describe("resolveProviderConfigDirIndicator", () => {
     ).toEqual({ current: personalDir, configured: personalDir, redirected: false });
   });
 
+  it("leaves an inherited dir unknown until a session reports one", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: workDir,
+        inherited: true,
+        observation: null,
+      }),
+    ).toEqual({ current: null, configured: workDir, redirected: false });
+  });
+
+  it("shows the observed dir without a redirect when nothing was configured", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: workDir,
+        inherited: true,
+        observation: { configured: workDir, effective: personalDir },
+      }),
+    ).toEqual({ current: personalDir, configured: workDir, redirected: false });
+  });
+
+  it("treats an observation from before the dir became inherited as stale", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: workDir,
+        inherited: true,
+        observation: { configured: personalDir, effective: personalDir },
+      }),
+    ).toEqual({ current: null, configured: workDir, redirected: false });
+  });
+
   it("shows nothing for instances that do not report a config dir", () => {
     expect(
       resolveProviderConfigDirIndicator({
@@ -204,5 +235,48 @@ describe("resolveProviderConfigDirIndicator", () => {
         observation: { configured: workDir, effective: personalDir },
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveProviderWorkspaceConfigDir", () => {
+  const workspace = (cwd: string, configDir?: typeof workDir) => ({
+    cwd,
+    checkedAt: "2026-01-01T00:00:00.000Z",
+    slashCommands: [],
+    skills: [],
+    ...(configDir ? { configDir } : {}),
+  });
+
+  it("prefers the dir resolved for the workspace over the instance guess", () => {
+    expect(
+      resolveProviderWorkspaceConfigDir(
+        {
+          configDir: personalDir,
+          configDirInherited: true,
+          workspaceSnapshots: [workspace("/repo/other"), workspace("/repo/work", workDir)],
+        },
+        "/repo/work",
+      ),
+    ).toEqual({ configured: workDir, inherited: false });
+  });
+
+  it("falls back to the instance dir when the workspace has none", () => {
+    const provider = {
+      configDir: personalDir,
+      configDirInherited: true,
+      workspaceSnapshots: [workspace("/repo/work")],
+    };
+    expect(resolveProviderWorkspaceConfigDir(provider, "/repo/work")).toEqual({
+      configured: personalDir,
+      inherited: true,
+    });
+    expect(resolveProviderWorkspaceConfigDir(provider, null)).toEqual({
+      configured: personalDir,
+      inherited: true,
+    });
+    expect(resolveProviderWorkspaceConfigDir({ configDir: workDir }, "/repo/work")).toEqual({
+      configured: workDir,
+      inherited: false,
+    });
   });
 });

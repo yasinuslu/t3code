@@ -33,6 +33,14 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
   return path.resolve(path.join(NodeOS.homedir(), ".claude"));
 });
 
+/**
+ * Whether the instance leaves the config dir to the CLI: no `homePath`, so the
+ * dir comes from an inherited `CLAUDE_CONFIG_DIR` or Claude's default, and a
+ * wrapper binary may still choose another one per session.
+ */
+export const isClaudeConfigDirInherited = (config: Pick<ClaudeSettings, "homePath">): boolean =>
+  config.homePath.trim().length === 0;
+
 /** Pair an absolute Claude config dir with its `~`-abbreviated display form. */
 export const describeClaudeConfigDir = (configDir: string): ProviderConfigDir => ({
   path: configDir,

@@ -1412,6 +1412,8 @@ export interface ChatComposerProps {
   keybindings: ResolvedKeybindingsConfig;
   terminalOpen: boolean;
   gitCwd: string | null;
+  /** The project's workspace root; differs from `gitCwd` in a worktree. */
+  projectRoot: string | null;
   pullRequestProjectId: ProjectId | null;
   pullRequestRepository: string | null;
   restingControlsHost: HTMLDivElement | null;
@@ -1537,6 +1539,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     keybindings,
     terminalOpen,
     gitCwd,
+    projectRoot,
     pullRequestProjectId,
     pullRequestRepository,
     restingControlsHost,
@@ -1990,7 +1993,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
     void refreshProviders({
       environmentId,
-      input: { instanceId: selectedProviderEntry.instanceId, cwd: gitCwd },
+      input: {
+        instanceId: selectedProviderEntry.instanceId,
+        cwd: gitCwd,
+        ...(projectRoot ? { projectRoot } : {}),
+      },
     }).then((result) => {
       const hasWorkspaceSnapshot =
         result._tag === "Success" &&
@@ -2001,7 +2008,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         retryLater();
       }
     }, retryLater);
-  }, [environmentId, gitCwd, prompt, refreshProviders, selectedProviderEntry]);
+  }, [environmentId, gitCwd, projectRoot, prompt, refreshProviders, selectedProviderEntry]);
   const selectedProviderModels = useMemo<ReadonlyArray<ServerProvider["models"][number]>>(
     () => selectedProviderEntry?.models ?? [],
     [selectedProviderEntry],

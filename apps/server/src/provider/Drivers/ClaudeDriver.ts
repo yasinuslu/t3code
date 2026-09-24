@@ -61,11 +61,13 @@ import {
 } from "../providerUpdateSettings.ts";
 import {
   describeClaudeConfigDir,
+  isClaudeConfigDirInherited,
   makeClaudeCapabilitiesCacheKey,
   makeClaudeContinuationGroupKey,
   resolveClaudeHomePath,
 } from "./ClaudeHome.ts";
 import { discoverClaudeSkills } from "./ClaudeSkills.ts";
+import { makeClaudeConfigDirResolver } from "./ClaudeConfigDirCommand.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
@@ -147,6 +149,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const configDir = describeClaudeConfigDir(
         yield* resolveClaudeHomePath(effectiveConfig, processEnv),
       );
+      const configDirResolver = yield* makeClaudeConfigDirResolver(
+        effectiveConfig,
+        processEnv,
+      ).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(Path.Path, path),
+      );
       const stampIdentity = withInstanceIdentity({
         instanceId,
         driverKind: DRIVER_KIND,
@@ -154,6 +163,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         accentColor,
         continuationGroupKey,
         configDir,
+        configDirInherited: isClaudeConfigDirInherited(effectiveConfig),
       });
 
       // One per instance: the status probe writes the model-scoped bucket
@@ -164,6 +174,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         environment: processEnv,
         modelCatalog,
         scopedLimitNames,
+        ...(configDirResolver ? { configDirResolver } : {}),
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       };
       const adapter = yield* makeClaudeAdapter(effectiveConfig, adapterOptions);
@@ -247,14 +258,34 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             }),
         ),
       );
-      const snapshotForCwd = (cwd: string) =>
+      const snapshotForCwd = (
+        cwd: string,
+        context?: { readonly projectRoot?: string | undefined },
+      ) =>
         !effectiveConfig.enabled
           ? snapshot.getSnapshot
-          : Effect.all([
-              snapshot.getSnapshot,
-              discoverClaudeSkills(effectiveConfig, cwd, processEnv),
-            ]).pipe(
-              Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })),
+          : Effect.gen(function* () {
+              const projectConfigDir = configDirResolver
+                ? yield* configDirResolver.resolve(context?.projectRoot ?? cwd)
+                : undefined;
+              const [machineSnapshot, skills] = yield* Effect.all([
+                snapshot.getSnapshot,
+                discoverClaudeSkills(
+                  effectiveConfig,
+                  cwd,
+                  projectConfigDir
+                    ? { ...processEnv, CLAUDE_CONFIG_DIR: projectConfigDir }
+                    : processEnv,
+                ),
+              ]);
+              if (!projectConfigDir) return { ...machineSnapshot, skills };
+              const { configDirInherited: _inherited, ...explicitSnapshot } = machineSnapshot;
+              return {
+                ...explicitSnapshot,
+                skills,
+                configDir: describeClaudeConfigDir(projectConfigDir),
+              };
+            }).pipe(
               Effect.provideService(FileSystem.FileSystem, fileSystem),
               Effect.provideService(Path.Path, path),
             );
@@ -270,7 +301,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         accentColor,
         enabled,
         snapshot,
-        invalidateCaches: Cache.invalidateAll(capabilitiesProbeCache),
+        invalidateCaches: Effect.andThen(
+          Cache.invalidateAll(capabilitiesProbeCache),
+          configDirResolver?.invalidate ?? Effect.void,
+        ),
         snapshotForCwd,
         adapter,
         textGeneration,

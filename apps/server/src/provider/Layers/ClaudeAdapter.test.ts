@@ -173,6 +173,7 @@ function makeHarness(config?: {
   readonly environment?: ClaudeAdapterLiveOptions["environment"];
   readonly getSessionMessages?: ClaudeAdapterLiveOptions["getSessionMessages"];
   readonly forkSession?: ClaudeAdapterLiveOptions["forkSession"];
+  readonly configDirResolver?: ClaudeAdapterLiveOptions["configDirResolver"];
 }) {
   const query = new FakeClaudeQuery();
   const queries = [query];
@@ -190,6 +191,7 @@ function makeHarness(config?: {
     modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
     ...(config?.getSessionMessages ? { getSessionMessages: config.getSessionMessages } : {}),
     ...(config?.forkSession ? { forkSession: config.forkSession } : {}),
+    ...(config?.configDirResolver ? { configDirResolver: config.configDirResolver } : {}),
     createQuery: (input) => {
       if (createInput && config?.getSessionMessages) queries.push(new FakeClaudeQuery());
       createInput = input;
@@ -698,6 +700,64 @@ describe("ClaudeAdapterLive", () => {
       Effect.provide(harness.layer),
     );
   });
+
+  it.effect(
+    "launches with the config dir resolved for the project root and keeps it on resume",
+    () => {
+      const resolvedRoots: Array<string> = [];
+      const harness = makeHarness({
+        configDirResolver: {
+          resolve: (projectRoot) =>
+            Effect.sync(() => {
+              resolvedRoots.push(projectRoot);
+              return `/tmp/claude-config-dirs/for${projectRoot}`;
+            }),
+          invalidate: Effect.void,
+        },
+      });
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          cwd: "/tmp/worktrees/repo-feature",
+          projectRoot: "/tmp/repo",
+          runtimeMode: "full-access",
+        });
+        // Keyed on the project root, not the worktree the session runs in.
+        assert.deepEqual(resolvedRoots, ["/tmp/repo"]);
+        assert.equal(
+          harness.getLastCreateQueryInput()?.options.env?.CLAUDE_CONFIG_DIR,
+          "/tmp/claude-config-dirs/for/tmp/repo",
+        );
+        assert.equal(
+          (session.resumeCursor as { configDir?: string } | undefined)?.configDir,
+          "/tmp/claude-config-dirs/for/tmp/repo",
+        );
+        yield* adapter.stopSession(session.threadId);
+
+        // A resumed session reuses the dir its transcript lives in.
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          cwd: "/tmp/elsewhere",
+          resumeCursor: {
+            resume: "00000000-0000-4000-8000-000000000001",
+            configDir: "/tmp/claude-config-dirs/original",
+          },
+          runtimeMode: "full-access",
+        });
+        assert.deepEqual(resolvedRoots, ["/tmp/repo"]);
+        assert.equal(
+          harness.getLastCreateQueryInput()?.options.env?.CLAUDE_CONFIG_DIR,
+          "/tmp/claude-config-dirs/original",
+        );
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
 
   it.effect("forwards Claude thinking toggle for models that support it", () => {
     const harness = makeHarness();

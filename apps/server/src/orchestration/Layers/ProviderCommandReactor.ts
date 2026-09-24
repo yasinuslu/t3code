@@ -707,7 +707,11 @@ const make = Effect.gen(function* () {
     });
     const refreshWorkspaceSnapshot = effectiveCwd
       ? providerRegistry
-          .refreshWorkspaceSnapshot({ instanceId: desiredInstanceId, cwd: effectiveCwd })
+          .refreshWorkspaceSnapshot({
+            instanceId: desiredInstanceId,
+            cwd: effectiveCwd,
+            ...(project ? { projectRoot: project.workspaceRoot } : {}),
+          })
           .pipe(Effect.forkDetach)
       : Effect.void;
 
@@ -721,6 +725,7 @@ const make = Effect.gen(function* () {
           ...(preferredProvider ? { provider: preferredProvider } : {}),
           providerInstanceId: desiredInstanceId,
           ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+          ...(project ? { projectRoot: project.workspaceRoot } : {}),
           ...(thread.title ? { title: thread.title } : {}),
           modelSelection: desiredModelSelection,
           ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
