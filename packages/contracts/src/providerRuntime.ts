@@ -13,7 +13,7 @@ import {
   TrimmedNonEmptyString,
   TurnId,
 } from "./baseSchemas.ts";
-import { ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
+import { ProviderConfigDir, ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
 import { ProviderUsageLimitsUpdate } from "./providerUsageLimits.ts";
 import { ProviderApprovalOption } from "./orchestration.ts";
 
@@ -222,8 +222,20 @@ const SessionStartedPayload = Schema.Struct({
 });
 export type SessionStartedPayload = typeof SessionStartedPayload.Type;
 
+/**
+ * The config directory a session was launched with next to the one the
+ * provider CLI reported using. They differ when a wrapper binary rewrote the
+ * directory before starting the CLI.
+ */
+export const SessionConfigDirObservation = Schema.Struct({
+  configured: ProviderConfigDir,
+  effective: ProviderConfigDir,
+});
+export type SessionConfigDirObservation = typeof SessionConfigDirObservation.Type;
+
 const SessionConfiguredPayload = Schema.Struct({
   config: UnknownRecordSchema,
+  configDir: Schema.optional(SessionConfigDirObservation),
 });
 export type SessionConfiguredPayload = typeof SessionConfiguredPayload.Type;
 

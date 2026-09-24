@@ -4507,6 +4507,55 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  it("projects the Claude config dir observation into a thread activity", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    // A bare configuration echo carries no thread state.
+    harness.emit({
+      type: "session.configured",
+      eventId: asEventId("evt-session-configured-echo"),
+      provider: ProviderDriverKind.make("claudeAgent"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      payload: { config: { model: "claude-sonnet" } },
+    });
+    const configDir = {
+      configured: {
+        path: "/home/user/code/work/home/claude",
+        displayPath: "~/code/work/home/claude",
+      },
+      effective: {
+        path: "/home/user/code/personal/home/claude",
+        displayPath: "~/code/personal/home/claude",
+      },
+    };
+    harness.emit({
+      type: "session.configured",
+      eventId: asEventId("evt-session-configured-config-dir"),
+      provider: ProviderDriverKind.make("claudeAgent"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      payload: { config: {}, configDir },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.kind === "provider.config-dir",
+      ),
+    );
+    const configDirActivities = thread.activities.filter(
+      (activity: ProviderRuntimeTestActivity) => activity.kind === "provider.config-dir",
+    );
+    expect(configDirActivities).toHaveLength(1);
+    expect(configDirActivities[0]?.payload).toEqual(configDir);
+    expect(
+      thread.activities.some((activity: ProviderRuntimeTestActivity) =>
+        String(activity.id).includes("evt-session-configured-echo"),
+      ),
+    ).toBe(false);
+  });
+
   it("projects Codex camelCase token usage payloads into normalized thread activities", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

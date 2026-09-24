@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
+  HookInput,
   Options as ClaudeQueryOptions,
   PermissionMode,
   PermissionResult,
@@ -609,6 +610,89 @@ describe("ClaudeAdapterLive", () => {
         createInput?.options.env?.CLAUDE_CONFIG_DIR,
         NodePath.join(NodeOS.homedir(), ".claude-work"),
       );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("reports the config dir the CLI actually used from the prompt hook", () => {
+    const harness = makeHarness({ claudeConfig: { homePath: "/tmp/claude-config-dirs/work" } });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* Stream.take(adapter.streamEvents, 3).pipe(Stream.runDrain);
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "hello", attachments: [] });
+      yield* Stream.take(adapter.streamEvents, 1).pipe(Stream.runDrain);
+
+      const promptHook =
+        harness.getLastCreateQueryInput()?.options.hooks?.UserPromptSubmit?.[0]?.hooks[0];
+      assert.equal(typeof promptHook, "function");
+      if (!promptHook) return;
+      const hookInput = (transcriptPath: string) =>
+        ({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "sdk-session-config-dir",
+          transcript_path: transcriptPath,
+          cwd: "/tmp/repo",
+          prompt: "hello",
+        }) as HookInput;
+      const signal = new AbortController().signal;
+
+      // A wrapper binary redirected the CLI to another profile's dir.
+      const output = yield* Effect.promise(() =>
+        promptHook(
+          hookInput("/tmp/claude-config-dirs/personal/projects/-tmp-repo/session.jsonl"),
+          undefined,
+          { signal },
+        ),
+      );
+      assert.deepEqual(output, { continue: true });
+      const redirected = yield* Stream.runHead(adapter.streamEvents);
+      assert.equal(redirected._tag, "Some");
+      if (redirected._tag !== "Some" || redirected.value.type !== "session.configured") {
+        assert.fail("expected a session.configured event");
+        return;
+      }
+      assert.deepEqual(redirected.value.payload.configDir, {
+        configured: {
+          path: "/tmp/claude-config-dirs/work",
+          displayPath: "/tmp/claude-config-dirs/work",
+        },
+        effective: {
+          path: "/tmp/claude-config-dirs/personal",
+          displayPath: "/tmp/claude-config-dirs/personal",
+        },
+      });
+      assert.equal(redirected.value.threadId, THREAD_ID);
+      assert.isDefined(redirected.value.turnId);
+
+      // A path that is not a session transcript reports nothing, and the
+      // prompt still proceeds.
+      assert.deepEqual(
+        yield* Effect.promise(() =>
+          promptHook(hookInput("/tmp/elsewhere/session.jsonl"), undefined, { signal }),
+        ),
+        { continue: true },
+      );
+      yield* Effect.promise(() =>
+        promptHook(
+          hookInput("/tmp/claude-config-dirs/work/projects/-tmp-repo/session.jsonl"),
+          undefined,
+          { signal },
+        ),
+      );
+      const next = yield* Stream.runHead(adapter.streamEvents);
+      assert.equal(next._tag, "Some");
+      if (next._tag !== "Some" || next.value.type !== "session.configured") {
+        assert.fail("expected a session.configured event");
+        return;
+      }
+      assert.equal(next.value.payload.configDir?.effective.path, "/tmp/claude-config-dirs/work");
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

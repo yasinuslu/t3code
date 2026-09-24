@@ -1,11 +1,11 @@
 import * as NodeOS from "node:os";
 
-import type { ClaudeSettings } from "@t3tools/contracts";
+import type { ClaudeSettings, ProviderConfigDir } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { expandHomePath } from "../../pathExpansion.ts";
+import { abbreviateHomePath, expandHomePath } from "../../pathExpansion.ts";
 
 const quotePath = Schema.encodeSync(Schema.fromJsonString(Schema.String));
 
@@ -32,6 +32,26 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
   }
   return path.resolve(path.join(NodeOS.homedir(), ".claude"));
 });
+
+/** Pair an absolute Claude config dir with its `~`-abbreviated display form. */
+export const describeClaudeConfigDir = (configDir: string): ProviderConfigDir => ({
+  path: configDir,
+  displayPath: abbreviateHomePath(configDir),
+});
+
+/**
+ * Recover the config dir a Claude CLI process actually used from a session
+ * transcript path it reported (hook inputs carry `transcript_path`). Claude
+ * writes transcripts to `<configDir>/projects/<sanitized cwd>/<session>.jsonl`,
+ * so the config dir is three levels up. Returns `undefined` for any other
+ * shape rather than guessing.
+ */
+export const claudeConfigDirFromTranscriptPath = (transcriptPath: string): string | undefined => {
+  const match = /^(.+?)[\\/]+projects[\\/]+[^\\/]+[\\/]+[^\\/]+\.jsonl$/u.exec(
+    transcriptPath.trim(),
+  );
+  return match?.[1];
+};
 
 export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function* (
   config: Pick<ClaudeSettings, "homePath">,

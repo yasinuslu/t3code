@@ -40,3 +40,19 @@ export function expandHomePathWith(value: string, path: Path.Path): string {
   }
   return value;
 }
+
+/**
+ * Inverse of `expandHomePath` for display: shortens a path inside the home
+ * directory to `~/…` (or `~\…` for Windows-style paths). Anything outside the
+ * home directory is returned unchanged.
+ */
+export function abbreviateHomePath(value: string, homeDir: string = NodeOS.homedir()): string {
+  const home = homeDir.replace(/[\\/]+$/u, "");
+  if (home.length === 0) return value;
+  if (value === home) return "~";
+  const separator = value.charAt(home.length);
+  if (value.startsWith(home) && (separator === "/" || separator === "\\")) {
+    return `~${value.slice(home.length)}`;
+  }
+  return value;
+}

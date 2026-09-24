@@ -11,6 +11,7 @@
 import * as NodeUtil from "node:util";
 import {
   type CanUseTool,
+  type HookCallback,
   query,
   getSessionMessages,
   forkSession,
@@ -90,7 +91,13 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
-import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
+import {
+  claudeConfigDirFromTranscriptPath,
+  claudeSignedOutMessage,
+  describeClaudeConfigDir,
+  makeClaudeEnvironment,
+  resolveClaudeHomePath,
+} from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
@@ -2079,6 +2086,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
     Effect.provideService(Path.Path, path),
+  );
+  const configuredConfigDir = describeClaudeConfigDir(
+    yield* resolveClaudeHomePath(claudeSettings, options?.environment).pipe(
+      Effect.provideService(Path.Path, path),
+    ),
   );
   const claudeSdkExecutablePath = yield* resolveClaudeSdkExecutablePath(
     claudeSettings.binaryPath,
@@ -4830,6 +4842,46 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         callbackOptions,
       ) => runPromise(handleResumeDialog(request, callbackOptions));
 
+      // The configured binary may be a wrapper that rewrites CLAUDE_CONFIG_DIR
+      // before exec'ing the CLI. Hook inputs carry the transcript path the CLI
+      // writes, which lives under the dir it actually used, so each prompt
+      // reports that dir next to the configured one.
+      const reportConfigDir = Effect.fn("reportClaudeConfigDir")(function* (
+        transcriptPath: string,
+      ) {
+        const context = yield* Ref.get(contextRef);
+        const effectivePath = claudeConfigDirFromTranscriptPath(transcriptPath);
+        if (!context || effectivePath === undefined) return;
+        const stamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "session.configured",
+          eventId: stamp.eventId,
+          provider: PROVIDER,
+          createdAt: stamp.createdAt,
+          threadId: context.session.threadId,
+          ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+          payload: {
+            config: {},
+            configDir: {
+              configured: configuredConfigDir,
+              effective: describeClaudeConfigDir(effectivePath),
+            },
+          },
+          providerRefs: {},
+        });
+      });
+      const onUserPromptSubmit: HookCallback = (hookInput) =>
+        runPromise(
+          reportConfigDir(hookInput.transcript_path).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to report the Claude config dir", {
+                cause: Cause.pretty(cause),
+              }),
+            ),
+            Effect.as({ continue: true }),
+          ),
+        );
+
       const claudeBinaryPath = claudeSdkExecutablePath;
       const {
         "permission-mode": launchArgPermissionMode,
@@ -4946,6 +4998,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         includePartialMessages: true,
         canUseTool,
         onUserDialog,
+        hooks: { UserPromptSubmit: [{ hooks: [onUserPromptSubmit] }] },
         supportedDialogKinds: ["resume_return"],
         env: McpProviderSession.withAgentDeviceEnvironment(claudeEnvironment, mcpSession),
         additionalDirectories,

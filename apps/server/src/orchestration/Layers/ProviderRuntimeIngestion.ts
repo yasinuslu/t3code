@@ -886,6 +886,26 @@ export function runtimeEventToActivities(
       ];
     }
 
+    case "session.configured": {
+      // Only the config-dir observation is thread state; the rest of the
+      // configuration echo stays in the native event log.
+      if (!event.payload.configDir) {
+        return [];
+      }
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "provider.config-dir",
+          summary: "Provider config dir",
+          payload: event.payload.configDir,
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "thread.token-usage.updated": {
       const payload = buildContextWindowActivityPayload(event);
       if (!payload) {

@@ -94,6 +94,17 @@ export const ProviderInstanceRef = Schema.Struct({
 });
 export type ProviderInstanceRef = typeof ProviderInstanceRef.Type;
 
+/**
+ * A provider's config directory as the server resolved it (e.g. Claude's
+ * `CLAUDE_CONFIG_DIR`). `displayPath` abbreviates the server user's home to
+ * `~`, which clients cannot do themselves because they may run elsewhere.
+ */
+export const ProviderConfigDir = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  displayPath: TrimmedNonEmptyString,
+});
+export type ProviderConfigDir = typeof ProviderConfigDir.Type;
+
 export const ProviderInstanceEnvironmentVariableName = TrimmedNonEmptyString.check(
   Schema.isMaxLength(ENVIRONMENT_VARIABLE_NAME_MAX_CHARS),
   Schema.isPattern(ENVIRONMENT_VARIABLE_NAME_PATTERN),

@@ -6,7 +6,9 @@ import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 
 import {
+  claudeConfigDirFromTranscriptPath,
   claudeSignedOutMessage,
+  describeClaudeConfigDir,
   makeClaudeCapabilitiesCacheKey,
   makeClaudeContinuationGroupKey,
   makeClaudeEnvironment,
@@ -82,6 +84,57 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
         const first = yield* makeClaudeCapabilitiesCacheKey(config, "/repo-a");
         const second = yield* makeClaudeCapabilitiesCacheKey(config, "/repo-b");
         expect(first).not.toBe(second);
+      }),
+    );
+  });
+
+  describe("effective config dir", () => {
+    it("recovers the config dir from a session transcript path", () => {
+      expect(
+        claudeConfigDirFromTranscriptPath(
+          "/home/user/code/work/home/claude/projects/-home-user-code-work-repo/0b6c.jsonl",
+        ),
+      ).toBe("/home/user/code/work/home/claude");
+      expect(
+        claudeConfigDirFromTranscriptPath(
+          "C:\\Users\\user\\.claude\\projects\\C--repo\\0b6c.jsonl",
+        ),
+      ).toBe("C:\\Users\\user\\.claude");
+    });
+
+    it("keeps the last projects segment when the config dir itself contains one", () => {
+      expect(
+        claudeConfigDirFromTranscriptPath("/srv/projects/claude/projects/-srv-repo/0b6c.jsonl"),
+      ).toBe("/srv/projects/claude");
+    });
+
+    it("rejects paths that are not session transcripts", () => {
+      expect(claudeConfigDirFromTranscriptPath("")).toBeUndefined();
+      expect(claudeConfigDirFromTranscriptPath("/tmp/0b6c.jsonl")).toBeUndefined();
+      expect(
+        claudeConfigDirFromTranscriptPath("/home/user/.claude/projects/0b6c.jsonl"),
+      ).toBeUndefined();
+      expect(
+        claudeConfigDirFromTranscriptPath("/home/user/.claude/sessions/-repo/0b6c.jsonl"),
+      ).toBeUndefined();
+      expect(
+        claudeConfigDirFromTranscriptPath("/home/user/.claude/projects/-repo/0b6c.json"),
+      ).toBeUndefined();
+    });
+
+    it.effect("describes a config dir with a home-abbreviated display path", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const relative = path.join("code", "personal", "home", "claude");
+        const configDir = path.join(NodeOS.homedir(), relative);
+        expect(describeClaudeConfigDir(configDir)).toEqual({
+          path: configDir,
+          displayPath: `~${path.sep}${relative}`,
+        });
+        expect(describeClaudeConfigDir("/opt/claude")).toEqual({
+          path: "/opt/claude",
+          displayPath: "/opt/claude",
+        });
       }),
     );
   });
