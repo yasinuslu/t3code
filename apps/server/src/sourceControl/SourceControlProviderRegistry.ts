@@ -13,6 +13,7 @@ import { detectSourceControlProviderFromRemoteUrl } from "@t3tools/shared/source
 
 import * as AzureDevOpsSourceControlProvider from "./AzureDevOpsSourceControlProvider.ts";
 import * as BitbucketSourceControlProvider from "./BitbucketSourceControlProvider.ts";
+import * as GitCodeSourceControlProvider from "./GitCodeSourceControlProvider.ts";
 import * as GitHubSourceControlProvider from "./GitHubSourceControlProvider.ts";
 import * as GitLabSourceControlProvider from "./GitLabSourceControlProvider.ts";
 import * as ForgejoSourceControlProvider from "./ForgejoSourceControlProvider.ts";
@@ -310,6 +311,8 @@ export const make = Effect.gen(function* () {
   const forgejoDiscovery = yield* ForgejoSourceControlProvider.makeDiscovery;
   const bitbucket = yield* BitbucketSourceControlProvider.make;
   const bitbucketDiscovery = yield* BitbucketSourceControlProvider.makeDiscovery;
+  const gitcode = yield* GitCodeSourceControlProvider.make;
+  const gitcodeDiscovery = yield* GitCodeSourceControlProvider.makeDiscovery;
   const azureDevOps = yield* AzureDevOpsSourceControlProvider.make;
   return yield* makeWithProviders([
     {
@@ -333,6 +336,7 @@ export const make = Effect.gen(function* () {
       discovery: bitbucketDiscovery,
     },
     { kind: "forgejo", provider: forgejo, discovery: forgejoDiscovery },
+    { kind: "gitcode", provider: gitcode, discovery: gitcodeDiscovery },
   ]);
 });
 

@@ -222,3 +222,17 @@ it("names nothing for a project with no remote to name it by", () => {
   expect(sourceControlRepositorySelector(null)).toBeNull();
   expect(sourceControlRepositorySelector({ provider: "github" })).toBeNull();
 });
+
+describe("GitCode detection", () => {
+  it("recognises GitCode and AtomGit remotes", () => {
+    expect(
+      detectSourceControlProviderFromRemoteUrl("git@gitcode.com:Turkey-PC-Migration/jmeter.git"),
+    ).toEqual({ kind: "gitcode", name: "GitCode", baseUrl: "https://gitcode.com" });
+    expect(
+      detectSourceControlProviderFromRemoteUrl("https://atomgit.com/owner/repo.git")?.kind,
+    ).toBe("gitcode");
+    expect(
+      detectSourceControlProviderFromRemoteUrl("https://notgitcode.com/owner/repo.git")?.kind,
+    ).toBe("unknown");
+  });
+});

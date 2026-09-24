@@ -188,3 +188,19 @@ describe("changeRequestUrlFor", () => {
     });
   });
 });
+
+describe("GitCode change request URLs", () => {
+  it("parses current and older pull request paths", () => {
+    const expected = { host: "gitcode.com", repository: "owner/repo", number: 7 };
+    expect(parseChangeRequestUrl("https://gitcode.com/Owner/Repo/pull/7")).toEqual(expected);
+    expect(parseChangeRequestUrl("https://gitcode.com/owner/repo/merge_requests/7")).toEqual(
+      expected,
+    );
+    expect(changeRequestUrlFor("gitcode", "gitcode.com", "owner/repo", 7)).toBe(
+      "https://gitcode.com/owner/repo/pull/7",
+    );
+    expect(siblingPullRequestUrl("https://gitcode.com/owner/repo/pull/7", 8)).toBe(
+      "https://gitcode.com/owner/repo/pull/8",
+    );
+  });
+});

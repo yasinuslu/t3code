@@ -66,7 +66,7 @@ export function resolvePullRequestMergeMethod(
 }
 
 const safeShellArgument = /^[A-Za-z0-9._/@+=,-]+$/;
-const bitbucketRepositoryName = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+const ownerRepositoryName = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 export type PullRequestPrimaryControl =
   | "resolve"
@@ -128,13 +128,22 @@ export function pullRequestCheckoutCommand(
     case "bitbucket": {
       if (
         !headRepositoryNameWithOwner ||
-        !bitbucketRepositoryName.test(headRepositoryNameWithOwner) ||
+        !ownerRepositoryName.test(headRepositoryNameWithOwner) ||
         !safeShellArgument.test(headBranch)
       ) {
         return null;
       }
       return `git clone --single-branch --branch ${headBranch} https://bitbucket.org/${headRepositoryNameWithOwner}.git t3code-pr-${number}`;
     }
+    case "gitcode":
+      if (
+        !headRepositoryNameWithOwner ||
+        !ownerRepositoryName.test(headRepositoryNameWithOwner) ||
+        !safeShellArgument.test(headBranch)
+      ) {
+        return null;
+      }
+      return `git clone --single-branch --branch ${headBranch} https://gitcode.com/${headRepositoryNameWithOwner}.git t3code-pr-${number}`;
     case "unknown":
       return null;
   }
@@ -1048,7 +1057,7 @@ const OPERATION_PREFIX = /^Pull request operation \w+ failed:\s*/iu;
  * host says is worth more than what this page could invent, so only these are replaced.
  */
 const TOOL_NOISE = [
-  /^(github|gitlab|bitbucket|azure devops)?\s*(cli|api)?\s*(command\s*)?failed\.?$/iu,
+  /^(github|gitlab|bitbucket|gitcode|azure devops)?\s*(cli|api)?\s*(command\s*)?failed\.?$/iu,
   /^exited? with (code|status) \d+\.?$/iu,
   /^unknown error\.?$/iu,
 ];

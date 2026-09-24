@@ -13,10 +13,18 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
 import * as BitbucketApi from "./BitbucketApi.ts";
+import * as GitCodeApi from "./GitCodeApi.ts";
 import * as GitHubCli from "./GitHubCli.ts";
 import * as GitLabCli from "./GitLabCli.ts";
 import * as ForgejoCli from "./ForgejoCli.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
+
+const GITCODE_UNAUTHENTICATED = {
+  status: "unauthenticated",
+  account: Option.none(),
+  host: Option.some("gitcode.com"),
+  detail: Option.some(GitCodeApi.GITCODE_TOKEN_HINT),
+} as const;
 
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
@@ -94,6 +102,7 @@ function makeRegistry(input: {
         processLayer,
         Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({}),
         Layer.mock(BitbucketApi.BitbucketApi)({}),
+        Layer.mock(GitCodeApi.GitCodeApi)({ probeAuth: Effect.succeed(GITCODE_UNAUTHENTICATED) }),
         Layer.mock(GitHubCli.GitHubCli)(input.github ?? {}),
         Layer.mock(GitLabCli.GitLabCli)(input.gitlab ?? {}),
         Layer.mock(ForgejoCli.ForgejoCli)({ listLogins: () => Effect.succeed([]) }),

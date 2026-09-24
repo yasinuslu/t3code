@@ -5,7 +5,14 @@ import type {
 } from "@t3tools/contracts";
 
 export interface ChangeRequestPresentation {
-  readonly icon: "github" | "gitlab" | "forgejo" | "azure-devops" | "bitbucket" | "change-request";
+  readonly icon:
+    | "github"
+    | "gitlab"
+    | "forgejo"
+    | "azure-devops"
+    | "bitbucket"
+    | "gitcode"
+    | "change-request";
   readonly providerName: string;
   readonly shortName: string;
   readonly longName: string;
@@ -79,6 +86,16 @@ const BITBUCKET_CHANGE_REQUEST_PRESENTATION: ChangeRequestPresentation = {
   urlExample: "https://bitbucket.org/workspace/repo/pull-requests/42",
 };
 
+const GITCODE_CHANGE_REQUEST_PRESENTATION: ChangeRequestPresentation = {
+  icon: "gitcode",
+  providerName: "GitCode",
+  shortName: "PR",
+  longName: "pull request",
+  pluralLongName: "pull requests",
+  providerLongName: "GitCode pull request",
+  urlExample: "https://gitcode.com/owner/repo/pull/42",
+};
+
 const GENERIC_CHANGE_REQUEST_PRESENTATION: ChangeRequestPresentation = {
   icon: "change-request",
   providerName: "source control",
@@ -104,6 +121,8 @@ export function resolveChangeRequestPresentation(
       return AZURE_DEVOPS_CHANGE_REQUEST_PRESENTATION;
     case "bitbucket":
       return BITBUCKET_CHANGE_REQUEST_PRESENTATION;
+    case "gitcode":
+      return GITCODE_CHANGE_REQUEST_PRESENTATION;
     case "unknown":
       return GENERIC_CHANGE_REQUEST_PRESENTATION;
   }
@@ -204,6 +223,11 @@ function isBitbucketHost(host: string): boolean {
   return host === "bitbucket.org" || hasDnsLabel(host, "bitbucket");
 }
 
+/** GitCode also serves the same accounts under its AtomGit brand. */
+export function isGitCodeHost(host: string): boolean {
+  return ["gitcode.com", "atomgit.com"].some((apex) => host === apex || host.endsWith(`.${apex}`));
+}
+
 export function detectSourceControlProviderFromRemoteUrl(
   remoteUrl: string,
 ): SourceControlProviderInfo | null {
@@ -255,6 +279,14 @@ export function detectSourceControlProviderFromRemoteUrl(
     return {
       kind: "bitbucket",
       name: hostname === "bitbucket.org" ? "Bitbucket" : "Bitbucket Self-Hosted",
+      baseUrl: toBaseUrl(host),
+    };
+  }
+
+  if (isGitCodeHost(hostname)) {
+    return {
+      kind: "gitcode",
+      name: "GitCode",
       baseUrl: toBaseUrl(host),
     };
   }

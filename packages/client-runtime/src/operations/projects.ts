@@ -25,7 +25,7 @@ import type { EnvironmentProject } from "../state/models.ts";
 
 export type AddProjectRemoteProviderKind = Extract<
   SourceControlProviderKind,
-  "github" | "gitlab" | "forgejo" | "bitbucket" | "azure-devops"
+  "github" | "gitlab" | "forgejo" | "bitbucket" | "gitcode" | "azure-devops"
 >;
 export type AddProjectRemoteSource = AddProjectRemoteProviderKind | "url";
 
@@ -61,6 +61,7 @@ const ADD_PROJECT_REMOTE_SOURCES: ReadonlyArray<AddProjectRemoteSource> = [
   "gitlab",
   "forgejo",
   "bitbucket",
+  "gitcode",
   "azure-devops",
 ];
 
@@ -69,6 +70,7 @@ const ADD_PROJECT_REMOTE_PROVIDER_SOURCES: ReadonlyArray<AddProjectRemoteProvide
   "gitlab",
   "forgejo",
   "bitbucket",
+  "gitcode",
   "azure-devops",
 ];
 
@@ -82,6 +84,8 @@ export function addProjectRemoteSourceLabel(source: AddProjectRemoteSource): str
       return "GitLab";
     case "bitbucket":
       return "Bitbucket";
+    case "gitcode":
+      return "GitCode";
     case "azure-devops":
       return "Azure DevOps";
     case "url":
@@ -93,6 +97,7 @@ export function addProjectRemoteSourcePathHint(source: AddProjectRemoteSource): 
   switch (source) {
     case "forgejo":
     case "github":
+    case "gitcode":
       return "owner/repo";
     case "gitlab":
       return "group/project";
@@ -162,6 +167,7 @@ export function buildAddProjectRemoteSourceReadiness(
     gitlab: unavailable,
     forgejo: unavailable,
     bitbucket: unavailable,
+    gitcode: unavailable,
     "azure-devops": unavailable,
   };
 

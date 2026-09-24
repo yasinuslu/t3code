@@ -111,15 +111,17 @@ export function linkedPullRequestSnapshotStatus(
 ): LinkedThreadPullRequestStatus | null {
   const snapshot = link.snapshot;
   if (snapshot === null) return null;
-  const kind = link.url.includes("/-/merge_requests/")
-    ? "gitlab"
-    : link.url.includes("/pullrequest/")
-      ? "azure-devops"
-      : link.url.includes("/pull-requests/")
-        ? "bitbucket"
-        : link.url.includes("/pulls/")
-          ? "forgejo"
-          : "github";
+  const kind = /^https?:\/\/(?:[^/]+\.)?(?:gitcode|atomgit)\.com\//iu.test(link.url)
+    ? "gitcode"
+    : link.url.includes("/-/merge_requests/")
+      ? "gitlab"
+      : link.url.includes("/pullrequest/")
+        ? "azure-devops"
+        : link.url.includes("/pull-requests/")
+          ? "bitbucket"
+          : link.url.includes("/pulls/")
+            ? "forgejo"
+            : "github";
   return {
     pr: {
       number: link.number,

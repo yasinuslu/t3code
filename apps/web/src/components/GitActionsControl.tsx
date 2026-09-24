@@ -42,6 +42,7 @@ import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import {
   AzureDevOpsIcon,
   BitbucketIcon,
+  GitCodeIcon,
   GitHubIcon,
   GitLabIcon,
   ForgejoIcon,
@@ -139,7 +140,7 @@ interface PendingDefaultBranchAction {
 
 type PublishProviderKind = Extract<
   SourceControlProviderKind,
-  "github" | "gitlab" | "forgejo" | "bitbucket" | "azure-devops"
+  "github" | "gitlab" | "forgejo" | "bitbucket" | "gitcode" | "azure-devops"
 >;
 
 type GitActionToastId = ReturnType<typeof toastManager.add>;
@@ -218,6 +219,14 @@ const PUBLISH_PROVIDER_OPTIONS = [
     host: "bitbucket.org",
     pathPlaceholder: "workspace/repository",
     Icon: BitbucketIcon,
+  },
+  {
+    value: "gitcode",
+    label: "GitCode",
+    description: "gitcode.com",
+    host: "gitcode.com",
+    pathPlaceholder: "owner/repo",
+    Icon: GitCodeIcon,
   },
   {
     value: "azure-devops",
@@ -452,6 +461,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
       gitlab: null,
       forgejo: null,
       bitbucket: null,
+      gitcode: null,
       "azure-devops": null,
     };
     for (const provider of sourceControlDiscovery.data?.sourceControlProviders ?? []) {

@@ -16,6 +16,7 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
 import * as BitbucketApi from "./BitbucketApi.ts";
+import * as GitCodeApi from "./GitCodeApi.ts";
 import * as GitHubCli from "./GitHubCli.ts";
 import * as GitLabCli from "./GitLabCli.ts";
 import * as ForgejoCli from "./ForgejoCli.ts";
@@ -24,6 +25,13 @@ import * as ForgejoPullRequestProvider from "../pullRequest/ForgejoPullRequestPr
 import * as SourceControlDiscovery from "./SourceControlDiscovery.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
 import { firstNonEmptyLine } from "./SourceControlProviderDiscovery.ts";
+
+const GITCODE_UNAUTHENTICATED = {
+  status: "unauthenticated",
+  account: Option.none(),
+  host: Option.some("gitcode.com"),
+  detail: Option.some(GitCodeApi.GITCODE_TOKEN_HINT),
+} as const;
 
 const sourceControlProviderRegistryTestLayer = (input: {
   readonly bitbucket: Partial<BitbucketApi.BitbucketApi["Service"]>;
@@ -37,6 +45,7 @@ const sourceControlProviderRegistryTestLayer = (input: {
         }).pipe(Layer.provide(NodeServices.layer)),
         Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({}),
         Layer.mock(BitbucketApi.BitbucketApi)(input.bitbucket),
+        Layer.mock(GitCodeApi.GitCodeApi)({ probeAuth: Effect.succeed(GITCODE_UNAUTHENTICATED) }),
         Layer.mock(GitHubCli.GitHubCli)({}),
         Layer.mock(GitLabCli.GitLabCli)({}),
         Layer.mock(ForgejoCli.ForgejoCli)({ listLogins: () => Effect.succeed([]) }),
@@ -485,6 +494,12 @@ it.effect("reports implemented tools separately from locally available executabl
           auth: "unknown",
           account: Option.none(),
         },
+        {
+          kind: "gitcode",
+          status: "available",
+          auth: "unauthenticated",
+          account: Option.none(),
+        },
       ],
     );
     const bitbucket = result.sourceControlProviders.find((item) => item.kind === "bitbucket");
@@ -622,6 +637,12 @@ Logged in to gitlab.com as gitlab-user
           auth: "authenticated",
           account: Option.some("forgejo-user"),
           detail: Option.none(),
+        },
+        {
+          kind: "gitcode",
+          auth: "unauthenticated",
+          account: Option.none(),
+          detail: Option.some(GitCodeApi.GITCODE_TOKEN_HINT),
         },
       ],
     );

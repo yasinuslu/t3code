@@ -60,6 +60,7 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
+import * as GitCodeApi from "./sourceControl/GitCodeApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as ForgejoCli from "./sourceControl/ForgejoCli.ts";
@@ -283,6 +284,7 @@ const SourceControlProviderRegistryLayerLive = SourceControlProviderRegistry.lay
     Layer.mergeAll(
       AzureDevOpsCli.layer,
       BitbucketApi.layer,
+      GitCodeApi.layer,
       GitHubCli.layer,
       GitLabCli.layer,
       ForgejoCli.layer,

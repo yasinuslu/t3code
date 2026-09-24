@@ -1281,6 +1281,12 @@ const PROVIDER_REQUIREMENT: Partial<
     unauthenticated:
       "Bitbucket rejected the configured credentials. Check T3CODE_BITBUCKET_EMAIL and T3CODE_BITBUCKET_API_TOKEN.",
   },
+  gitcode: {
+    missing:
+      "GitCode needs an access token on the server. Create one at https://gitcode.com/setting/token-classic and set T3CODE_GITCODE_ACCESS_TOKEN.",
+    unauthenticated:
+      "GitCode rejected the configured access token. Check T3CODE_GITCODE_ACCESS_TOKEN.",
+  },
 };
 
 /**

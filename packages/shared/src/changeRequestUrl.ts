@@ -1,5 +1,5 @@
 import type { RepositoryIdentity, ThreadLinkedPullRequest } from "@t3tools/contracts";
-import { canonicalRepositoryKey } from "./sourceControl.ts";
+import { canonicalRepositoryKey, isGitCodeHost } from "./sourceControl.ts";
 
 /**
  * A change request named the way a thread link names one: the host below which the repository
@@ -51,6 +51,11 @@ export function parseChangeRequestUrl(targetUrl: string): ChangeRequestLink | nu
   // GitHub, and any Enterprise install: /{owner}/{repo}/pull/{n}
   if (isHostOf(host, "github.com", "github")) {
     const match = /^\/([^/]+\/[^/]+)\/pull\/(\d+)(?:\/|$)/u.exec(url.pathname);
+    if (match) return claim(host, match);
+  }
+  // GitCode: /{owner}/{repo}/pull/{n}, or /merge_requests/{n} on older links.
+  if (isGitCodeHost(host)) {
+    const match = /^\/([^/]+\/[^/]+)\/(?:pull|merge_requests)\/(\d+)(?:\/|$)/u.exec(url.pathname);
     if (match) return claim(host, match);
   }
   // Forgejo and Gitea use /pulls/ on arbitrary self-hosted domains.
@@ -113,6 +118,8 @@ export function changeRequestUrlFor(
     }
     case "gitlab":
       return `https://${host}/${repository}/-/merge_requests/${number}`;
+    case "gitcode":
+      return `https://${host}/${repository}/pull/${number}`;
     case "bitbucket":
       return `https://${host}/${repository}/pull-requests/${number}`;
     case "azure-devops":
@@ -210,7 +217,7 @@ export function changeRequestRepositoryUrl(targetUrl: string): string | null {
   const url = new URL(targetUrl);
   const repositoryPath =
     /^(.*?)\/-\/merge_requests\/\d+(?:\/|$)/iu.exec(url.pathname)?.[1] ??
-    /^(.*?)(?:\/pulls?\/\d+|\/-\/merge_requests\/\d+|\/pull-requests\/\d+|\/pullrequest\/\d+)(?:\/|$)/iu.exec(
+    /^(.*?)(?:\/pulls?\/\d+|\/(?:-\/)?merge_requests\/\d+|\/pull-requests\/\d+|\/pullrequest\/\d+)(?:\/|$)/iu.exec(
       url.pathname,
     )?.[1];
   if (!repositoryPath) return null;
@@ -224,7 +231,7 @@ export function siblingPullRequestUrl(url: string, number: number): string | nul
   const reference = parseChangeRequestUrl(url);
   if (reference === null || !Number.isSafeInteger(number) || number < 1) return null;
   const sibling = new URL(url);
-  const route = /^\/(-\/merge_requests|pulls?|pull-requests|pullrequest)\/\d+(?:\/|$)/u.exec(
+  const route = /^\/((?:-\/)?merge_requests|pulls?|pull-requests|pullrequest)\/\d+(?:\/|$)/u.exec(
     sibling.pathname.slice(reference.repository.length + 1),
   )?.[1];
   if (route === undefined) return null;
