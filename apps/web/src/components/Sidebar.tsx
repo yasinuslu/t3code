@@ -247,6 +247,13 @@ import {
 } from "./sidebar/SpaceSwitcher";
 import { useSidebarSpaces } from "./sidebar/useSidebarSpaces";
 import { ALL_SPACE_ID, isCustomSpace } from "../spaceStore";
+import {
+  SpaceDragLayer,
+  SpaceRowProjectContext,
+  THREAD_PROJECT_KEY_ATTRIBUTE,
+  ThreadSpaceBadges,
+  useOptionKeyTracking,
+} from "./sidebar/SpaceDrag";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -1064,6 +1071,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     [thread.environmentId, thread.id],
   );
   const threadKey = scopedThreadKey(threadRef);
+  const threadProjectKey = `${thread.environmentId}:${thread.projectId}`;
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
@@ -1607,11 +1615,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     return (
       <li
         data-thread-item
+        {...{ [THREAD_PROJECT_KEY_ATTRIBUTE]: threadProjectKey }}
         {...sortableRootProps}
         {...(fileDropHandlers ?? {})}
         className={cn(
           // Matches the h-9 row so unrendered rows never shift the list when they paint.
-          "list-none [content-visibility:auto] [contain-intrinsic-size:auto_36px]",
+          "relative list-none [content-visibility:auto] [contain-intrinsic-size:auto_36px]",
           sortable?.isDragging && "relative z-20",
         )}
       >
@@ -1754,6 +1763,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           </TooltipTrigger>
           {detailsTooltip}
         </Tooltip>
+        <ThreadSpaceBadges projectKey={threadProjectKey} />
       </li>
     );
   }
@@ -1763,11 +1773,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   return (
     <li
       data-thread-item
+      {...{ [THREAD_PROJECT_KEY_ATTRIBUTE]: threadProjectKey }}
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
         // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+        "relative list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -2013,6 +2024,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         </TooltipTrigger>
         {detailsTooltip}
       </Tooltip>
+      <ThreadSpaceBadges projectKey={threadProjectKey} />
     </li>
   );
 });
@@ -2367,6 +2379,8 @@ export default function Sidebar() {
     activeSpaceId,
     spaceProjectGroups: projectGroups,
     groupSpaces,
+    projectSpaces,
+    projectMemberKeys,
     switchSpace,
     setProjectInSpace,
   } = useSidebarSpaces({
@@ -4498,8 +4512,19 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  useOptionKeyTracking();
+  const resolveSpaceRowProject = useCallback(
+    (projectKey: string) => ({
+      memberKeys: projectMemberKeys(projectKey),
+      spaces: projectSpaces(projectKey),
+      label: (projectDisplayNameByKey as ReadonlyMap<string, string>).get(projectKey) ?? null,
+    }),
+    [projectDisplayNameByKey, projectMemberKeys, projectSpaces],
+  );
+
   return (
-    <>
+    <SpaceRowProjectContext.Provider value={resolveSpaceRowProject}>
+      <SpaceDragLayer />
       <SidebarChromeHeader isElectron={isElectron} />
       <CodeProfileProbes projects={projects} />
       <SidebarContent
@@ -5053,7 +5078,7 @@ export default function Sidebar() {
               ) : scopedProjectGroup ? (
                 `No threads in ${scopedProjectGroup.displayName} yet`
               ) : activeSpace && isCustomSpace(activeSpace) ? (
-                `No threads in ${activeSpace.name} yet. Add a project from a thread's menu: Add to space.`
+                `No threads in ${activeSpace.name} yet. Option-drag a thread here, or use its menu: Add to space.`
               ) : activeSpace && activeSpace.id !== ALL_SPACE_ID ? (
                 `No threads in ${activeSpace.name} yet`
               ) : (
@@ -5064,6 +5089,6 @@ export default function Sidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarChromeFooter spaces={<SpaceSwitcher onSwitch={switchSpace} />} />
-    </>
+    </SpaceRowProjectContext.Provider>
   );
 }

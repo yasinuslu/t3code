@@ -190,11 +190,18 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
     [],
   );
 
+  const projectMemberKeys = useCallback(
+    (projectKey: string) => memberKeysByProjectKey.get(projectKey) ?? [projectKey],
+    [memberKeysByProjectKey],
+  );
+
   return {
     spaces,
     activeSpaceId,
     spaceProjectGroups,
     groupSpaces,
+    projectSpaces,
+    projectMemberKeys,
     switchSpace,
     setProjectInSpace,
   };
