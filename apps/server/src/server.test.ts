@@ -127,6 +127,7 @@ import { OrchestrationThreadSettleBlockedError } from "./orchestration/Errors.ts
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 import * as PullRequestSyncReactor from "./orchestration/PullRequestSyncReactor.ts";
+import * as ThreadBootstrapDispatcher from "./orchestration/ThreadBootstrapDispatcher.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
@@ -570,6 +571,7 @@ const buildAppUnderTest = (options?: {
     desktopTelemetryReceiver?: Partial<
       DesktopTelemetryReceiver.DesktopTelemetryReceiver["Service"]
     >;
+    threadBootstrapDispatcher?: ThreadBootstrapDispatcher.ThreadBootstrapDispatcher["Service"];
   };
 }) =>
   Effect.gen(function* () {
@@ -767,7 +769,18 @@ const buildAppUnderTest = (options?: {
       // Viewed-file marks for a host that keeps none of its own are rows, so the routes want a
       // database. Its own, in memory: nothing here shares a table with the auth store.
       makeRoutesLayer.pipe(
-        Layer.provide(Layer.mergeAll(serviceLauncherClientLayer, SqlitePersistenceMemory)),
+        Layer.provide(
+          Layer.mergeAll(
+            serviceLauncherClientLayer,
+            SqlitePersistenceMemory,
+            options?.layers?.threadBootstrapDispatcher
+              ? Layer.succeed(
+                  ThreadBootstrapDispatcher.ThreadBootstrapDispatcher,
+                  options.layers.threadBootstrapDispatcher,
+                )
+              : ThreadBootstrapDispatcher.layer,
+          ),
+        ),
       ),
       {
         disableListenLog: true,
@@ -10815,6 +10828,94 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const [first] = Array.from(items);
       assert.equal(first?.kind, "project-removed");
       assert.equal(first?.kind === "project-removed" ? first.projectId : null, projectId);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("lets server-side callers bootstrap threads through a connected client", () =>
+    Effect.gen(function* () {
+      const threadBootstrapDispatcher = yield* ThreadBootstrapDispatcher.make;
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+      const threadId = ThreadId.make("thread-server-bootstrap");
+      const now = "2026-01-01T00:00:00.000Z";
+
+      yield* buildAppUnderTest({
+        layers: {
+          threadBootstrapDispatcher,
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                return { sequence: dispatchedCommands.length };
+              }),
+          },
+        },
+      });
+
+      const noClient = yield* threadBootstrapDispatcher
+        .dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-no-client"),
+          threadId,
+          message: {
+            messageId: MessageId.make("message-no-client"),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: now,
+        })
+        .pipe(Effect.flip);
+      assert.include(noClient.message, "No T3 Code client");
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            // Any request, so the connection is up before the server-side call.
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.meta.update",
+              commandId: CommandId.make("cmd-connect"),
+              threadId: ThreadId.make("thread-other"),
+              title: "Other",
+            });
+            yield* threadBootstrapDispatcher.dispatch({
+              type: "thread.turn.start",
+              commandId: CommandId.make("cmd-server-bootstrap"),
+              threadId,
+              message: {
+                messageId: MessageId.make("message-server-bootstrap"),
+                role: "user",
+                text: "hello",
+                attachments: [],
+              },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              bootstrap: {
+                createThread: {
+                  projectId: defaultProjectId,
+                  title: "Server bootstrap",
+                  modelSelection: defaultModelSelection,
+                  runtimeMode: "full-access",
+                  interactionMode: "default",
+                  branch: null,
+                  worktreePath: null,
+                  createdAt: now,
+                },
+              },
+              createdAt: now,
+            });
+          }),
+        ),
+      );
+
+      assert.deepEqual(
+        dispatchedCommands
+          .filter((command) => "threadId" in command && command.threadId === threadId)
+          .map((command) => command.type),
+        ["thread.create", "thread.message.user.append", "thread.turn.start"],
+      );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

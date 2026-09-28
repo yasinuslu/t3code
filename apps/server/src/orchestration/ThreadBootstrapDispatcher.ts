@@ -26,7 +26,7 @@ export class ThreadBootstrapDispatcher extends Context.Service<
   }
 >()("t3/orchestration/ThreadBootstrapDispatcher") {}
 
-const make = Effect.sync(() => {
+export const make = Effect.sync(() => {
   const dispatchers = new Set<{ readonly dispatch: Dispatch }>();
   return ThreadBootstrapDispatcher.of({
     register: (dispatch) =>

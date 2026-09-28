@@ -15,6 +15,7 @@ import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
+import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import {
@@ -503,6 +504,8 @@ const makeWsRpcLayer = (
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
+  // The socket's lifetime; the layer's own scope closes once the socket is set up.
+  connectionScope: Scope.Scope,
 ) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -1806,9 +1809,9 @@ const makeWsRpcLayer = (
             ),
           );
       };
-      yield* (yield* ThreadBootstrapDispatcher.ThreadBootstrapDispatcher).register(
-        dispatchNormalizedCommand,
-      );
+      yield* (yield* ThreadBootstrapDispatcher.ThreadBootstrapDispatcher)
+        .register(dispatchNormalizedCommand)
+        .pipe(Effect.provideService(Scope.Scope, connectionScope));
 
       // Only clients that answer /usage-limits themselves see it in the catalogs;
       // an older client would send the injected command to the provider.
@@ -3888,6 +3891,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               clientOrigin,
               clientAnalyticsProps,
               previewAutomationBroker,
+              yield* Scope.Scope,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
