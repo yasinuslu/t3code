@@ -23,6 +23,10 @@ interface SpaceThread {
   readonly archivedAt: string | null;
 }
 
+function memberKeysOf(group: SpaceProjectGroup): ReadonlyArray<string> {
+  return group.memberProjectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`);
+}
+
 /**
  * Wires the sidebar to spaces: filters project groups to the active space,
  * remembers each space's last thread and project filter, restores them on
@@ -45,11 +49,22 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
   const resolveSpace = useProjectSpaceResolver();
 
   const groupSpaceId = useCallback(
-    (group: SpaceProjectGroup) => {
-      const first = group.memberProjectRefs[0];
-      return first ? resolveSpace(`${first.environmentId}:${first.projectId}`) : null;
-    },
+    (group: SpaceProjectGroup) => resolveSpace(memberKeysOf(group)),
     [resolveSpace],
+  );
+  // A project resolves through its whole group, so a thread and the group
+  // that lists it always agree on the space.
+  const memberKeysByProjectKey = useMemo(() => {
+    const byKey = new Map<string, ReadonlyArray<string>>();
+    for (const group of projectGroups) {
+      const memberKeys = memberKeysOf(group);
+      for (const key of memberKeys) byKey.set(key, memberKeys);
+    }
+    return byKey;
+  }, [projectGroups]);
+  const projectSpaceId = useCallback(
+    (projectKey: string) => resolveSpace(memberKeysByProjectKey.get(projectKey) ?? [projectKey]),
+    [memberKeysByProjectKey, resolveSpace],
   );
   const spaceProjectGroups = useMemo(
     () =>
@@ -80,7 +95,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       : routeTarget?.kind === "draft"
         ? routeDraftProjectKey
         : null;
-  const routeSpaceId = routeProjectKey === null ? null : resolveSpace(routeProjectKey);
+  const routeSpaceId = routeProjectKey === null ? null : projectSpaceId(routeProjectKey);
   const routeKey =
     routeTarget?.kind === "server"
       ? `server:${routeTarget.threadRef.environmentId}:${routeTarget.threadRef.threadId}`
@@ -131,7 +146,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       setProjectScopeKey(store.projectScopeKeyBySpaceId[spaceId] ?? null);
       const route = store.lastRouteBySpaceId[spaceId];
       const inSpace = (projectKey: string) =>
-        spaceId === ALL_SPACE_ID || resolveSpace(projectKey) === spaceId;
+        spaceId === ALL_SPACE_ID || projectSpaceId(projectKey) === spaceId;
       if (route?.kind === "server") {
         const thread = threadsRef.current.find(
           (candidate) =>
@@ -163,7 +178,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       // The index opens a draft in the space's most recent project.
       void router.navigate({ to: "/" });
     },
-    [resolveSpace, router, setProjectScopeKey],
+    [projectSpaceId, router, setProjectScopeKey],
   );
 
   const moveProjectToSpace = useCallback((group: SpaceProjectGroup, spaceId: string) => {

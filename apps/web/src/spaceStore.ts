@@ -118,16 +118,43 @@ export function resolveProjectSpaceId(
 }
 
 /**
- * Resolves project keys to spaces with the current store state; re-renders
- * only when placements, detections or the space list change.
+ * The space of a project group (one logical project that can span several
+ * checkouts and environments). A member the user placed wins, then a member
+ * whose code profile has a space. Members without a detected profile (an
+ * environment that cannot report one, or a folder outside every profile)
+ * must not drag the whole group into Other.
  */
-export function useProjectSpaceResolver(): (projectKey: string) => string {
+export function resolveProjectGroupSpaceId(
+  state: Pick<SpaceState, "spaces" | "projectSpaceByKey" | "detectedProfileByProjectKey">,
+  memberKeys: ReadonlyArray<string>,
+): string {
+  const placed = memberKeys
+    .map((key) => state.projectSpaceByKey[key])
+    .find(
+      (spaceId) =>
+        spaceId !== undefined &&
+        spaceId !== ALL_SPACE_ID &&
+        state.spaces.some((space) => space.id === spaceId),
+    );
+  if (placed !== undefined) return placed;
+  for (const key of memberKeys) {
+    const spaceId = resolveProjectSpaceId(state, key);
+    if (spaceId !== OTHER_SPACE_ID) return spaceId;
+  }
+  return OTHER_SPACE_ID;
+}
+
+/**
+ * Resolves project groups, given their member keys, to spaces with the current
+ * store state; re-renders only when placements, detections or the space list change.
+ */
+export function useProjectSpaceResolver(): (memberKeys: ReadonlyArray<string>) => string {
   const spaces = useSpaceStore((store) => store.spaces);
   const projectSpaceByKey = useSpaceStore((store) => store.projectSpaceByKey);
   const detectedProfileByProjectKey = useSpaceStore((store) => store.detectedProfileByProjectKey);
   return useMemo(() => {
     const state = { spaces, projectSpaceByKey, detectedProfileByProjectKey };
-    return (projectKey: string) => resolveProjectSpaceId(state, projectKey);
+    return (memberKeys: ReadonlyArray<string>) => resolveProjectGroupSpaceId(state, memberKeys);
   }, [detectedProfileByProjectKey, projectSpaceByKey, spaces]);
 }
 
@@ -142,7 +169,7 @@ export function useActiveSpaceProjects<
       activeSpaceId === ALL_SPACE_ID
         ? projects
         : projects.filter(
-            (project) => resolveSpace(`${project.environmentId}:${project.id}`) === activeSpaceId,
+            (project) => resolveSpace([`${project.environmentId}:${project.id}`]) === activeSpaceId,
           ),
     [activeSpaceId, projects, resolveSpace],
   );

@@ -7,6 +7,7 @@ import {
   OTHER_SPACE_ID,
   parsePersistedSpaceState,
   removeSpace,
+  resolveProjectGroupSpaceId,
   resolveProjectSpaceId,
   seedProfileSpaces,
   type SpaceState,
@@ -98,5 +99,33 @@ describe("createSpaceSwipeTracker", () => {
     expect(track({ deltaX: 200, deltaY: 0, timeStamp: 48 })).toBeNull();
     // A new gesture after a pause steps the other way.
     expect(track({ deltaX: -120, deltaY: 0, timeStamp: 1_000 })).toBe(-1);
+  });
+});
+
+describe("resolveProjectGroupSpaceId", () => {
+  // Regression: a group whose first member had no detected profile (a folder
+  // outside every profile, or an environment that cannot report one) sent the
+  // whole group, and every thread in it, to Other.
+  it("places a group by any member with a profile, not only the first", () => {
+    const state = seeded();
+    const me = state.spaces.find((space) => space.profile === "me")!;
+    const withData: SpaceState = {
+      ...state,
+      detectedProfileByProjectKey: { "remote:a": null, "local:a": "me" },
+    };
+    expect(resolveProjectGroupSpaceId(withData, ["remote:a", "local:a"])).toBe(me.id);
+    expect(resolveProjectGroupSpaceId(withData, ["remote:unknown", "local:a"])).toBe(me.id);
+    expect(resolveProjectGroupSpaceId(withData, ["remote:a"])).toBe(OTHER_SPACE_ID);
+  });
+
+  it("lets a placed member win over detected profiles", () => {
+    const state = seeded();
+    const work = state.spaces.find((space) => space.profile === "work")!;
+    const withData: SpaceState = {
+      ...state,
+      detectedProfileByProjectKey: { "local:a": "me" },
+      projectSpaceByKey: { "remote:a": work.id },
+    };
+    expect(resolveProjectGroupSpaceId(withData, ["local:a", "remote:a"])).toBe(work.id);
   });
 });
