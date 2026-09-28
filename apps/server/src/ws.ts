@@ -145,6 +145,7 @@ import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
+import * as ThreadBootstrapDispatcher from "./orchestration/ThreadBootstrapDispatcher.ts";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import { importRecentAgentThreads } from "./project/AgentSessionImporter.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -1805,6 +1806,9 @@ const makeWsRpcLayer = (
             ),
           );
       };
+      yield* (yield* ThreadBootstrapDispatcher.ThreadBootstrapDispatcher).register(
+        dispatchNormalizedCommand,
+      );
 
       // Only clients that answer /usage-limits themselves see it in the catalogs;
       // an older client would send the injected command to the provider.
@@ -3844,6 +3848,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     });
     const pullRequests = yield* PullRequestService.PullRequestService;
     const brainstorm = yield* BrainstormService.BrainstormService;
+    const threadBootstrapDispatcher = yield* ThreadBootstrapDispatcher.ThreadBootstrapDispatcher;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
       "GET",
@@ -3893,6 +3898,12 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               // mutation invalidates the HTTP diff cache that every client reads from.
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
               Layer.provide(Layer.succeed(BrainstormService.BrainstormService, brainstorm)),
+              Layer.provide(
+                Layer.succeed(
+                  ThreadBootstrapDispatcher.ThreadBootstrapDispatcher,
+                  threadBootstrapDispatcher,
+                ),
+              ),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(
                   Layer.provide(

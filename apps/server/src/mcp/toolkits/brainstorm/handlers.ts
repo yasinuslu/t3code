@@ -11,6 +11,7 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
+import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -33,8 +34,10 @@ import {
   type ParsedTask,
   updateTask,
 } from "../../../brainstorm/taskMarkdown.ts";
+import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ThreadBootstrapDispatcher from "../../../orchestration/ThreadBootstrapDispatcher.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { BrainstormToolkit, type TaskEntry, type ThreadEntry, type ThreadStatus } from "./tools.ts";
@@ -109,6 +112,8 @@ const make = Effect.gen(function* () {
   const engine = yield* OrchestrationEngine.OrchestrationEngineService;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
+  const bootstrapDispatcher = yield* ThreadBootstrapDispatcher.ThreadBootstrapDispatcher;
   const crypto = yield* Crypto.Crypto;
   const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
   const commandId = (tag: string) =>
@@ -191,20 +196,16 @@ const make = Effect.gen(function* () {
       return describeThread(context, shell.value);
     });
 
+  const couldNot = (what: string) => (cause: unknown) =>
+    fail(
+      `Could not ${what}${
+        typeof cause === "object" && cause !== null && "message" in cause
+          ? `: ${String((cause as { message: unknown }).message)}`
+          : "."
+      }`,
+    );
   const dispatch = (command: Parameters<typeof engine.dispatch>[0], what: string) =>
-    engine
-      .dispatch(command)
-      .pipe(
-        Effect.mapError((cause) =>
-          fail(
-            `Could not ${what}${
-              typeof cause === "object" && cause !== null && "message" in cause
-                ? `: ${String((cause as { message: unknown }).message)}`
-                : "."
-            }`,
-          ),
-        ),
-      );
+    engine.dispatch(command).pipe(Effect.mapError(couldNot(what)));
 
   const findProject = (
     context: BrainstormContext,
@@ -513,50 +514,113 @@ const make = Effect.gen(function* () {
           .slice(0, 80);
         const threadId = ThreadId.make(yield* uuid);
         const createdAt = DateTime.formatIso(yield* DateTime.now);
-        yield* dispatch(
-          {
-            type: "thread.create",
-            commandId: yield* commandId("thread"),
-            threadId,
-            projectId: project.id,
-            title,
-            modelSelection,
-            runtimeMode: projectSettings.defaultRuntimeMode,
-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-            branch: null,
-            worktreePath: null,
-            createdAt,
-          },
-          "create the thread",
-        );
-        // Link before the turn starts, so the task points at the thread even
-        // if the first turn fails.
-        if (taskTarget !== null && input.task !== undefined) {
+        const message = {
+          messageId: MessageId.make(yield* uuid),
+          role: "user" as const,
+          text: prompt,
+          attachments: [],
+        };
+        const linkTask = Effect.gen(function* () {
+          if (taskTarget === null || input.task === undefined) return;
           const reference = input.task;
           yield* brainstorm.editTasks(context, taskTarget, (text) => {
             const updated = updateTask(text, reference, { addThreadIds: [threadId] });
             return { text: updated.text, result: undefined };
           });
-        }
-        yield* dispatch(
-          {
-            type: "thread.turn.start",
-            commandId: yield* commandId("turn"),
-            threadId,
-            message: {
-              messageId: MessageId.make(yield* uuid),
-              role: "user",
-              text: prompt,
-              attachments: [],
+        });
+        if (input.worktree === true) {
+          // The same bootstrap the new-thread composer sends in worktree mode.
+          const baseBranch =
+            input.baseBranch?.trim() ||
+            (yield* gitWorkflow.localStatus({ cwd: project.workspaceRoot }).pipe(
+              Effect.map((status) => status.refName),
+              Effect.orElseSucceed(() => null),
+            ));
+          if (!baseBranch) {
+            return yield* fail(
+              `${project.title} is not on a git branch to start a worktree from; pass baseBranch.`,
+            );
+          }
+          const token = (yield* uuid).replaceAll("-", "");
+          yield* bootstrapDispatcher
+            .dispatch({
+              type: "thread.turn.start",
+              commandId: yield* commandId("turn"),
+              threadId,
+              message,
+              modelSelection,
+              runtimeMode: projectSettings.defaultRuntimeMode,
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              bootstrap: {
+                createThread: {
+                  projectId: project.id,
+                  title,
+                  modelSelection,
+                  runtimeMode: projectSettings.defaultRuntimeMode,
+                  interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+                  branch: baseBranch,
+                  worktreePath: null,
+                  createdAt,
+                },
+                prepareWorktree: {
+                  projectCwd: project.workspaceRoot,
+                  baseBranch,
+                  requireWorktree: true,
+                  branch: input.branch?.trim() || buildTemporaryWorktreeBranchName(() => token),
+                  ...(projectSettings.newWorktreesStartFromOrigin ? { startFromOrigin: true } : {}),
+                },
+                runSetupScript: true,
+              },
+              createdAt,
+            })
+            .pipe(Effect.mapError(couldNot("start the thread in a new worktree")));
+          // A failed bootstrap deletes the thread, so link only once it runs.
+          yield* linkTask;
+        } else {
+          yield* dispatch(
+            {
+              type: "thread.create",
+              commandId: yield* commandId("thread"),
+              threadId,
+              projectId: project.id,
+              title,
+              modelSelection,
+              runtimeMode: projectSettings.defaultRuntimeMode,
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              branch: null,
+              worktreePath: null,
+              createdAt,
             },
-            modelSelection,
-            runtimeMode: projectSettings.defaultRuntimeMode,
-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-            createdAt,
-          },
-          "start the thread's first turn",
+            "create the thread",
+          );
+          // Link before the turn starts, so the task points at the thread even
+          // if the first turn fails.
+          yield* linkTask;
+          yield* dispatch(
+            {
+              type: "thread.turn.start",
+              commandId: yield* commandId("turn"),
+              threadId,
+              message,
+              modelSelection,
+              runtimeMode: projectSettings.defaultRuntimeMode,
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              createdAt,
+            },
+            "start the thread's first turn",
+          );
+        }
+        const shell = yield* snapshots.getThreadShellById(threadId).pipe(
+          Effect.map(Option.getOrUndefined),
+          Effect.orElseSucceed(() => undefined),
         );
-        return { threadId, title, project: project.title };
+        return {
+          threadId,
+          title,
+          project: project.title,
+          branch: shell?.branch ?? null,
+          worktreePath: shell?.worktreePath ?? null,
+        };
       }),
   });
 });

@@ -25,8 +25,10 @@ import {
   taskPathOf,
 } from "../../../brainstorm/BrainstormService.ts";
 import { parseTaskMarkdown } from "../../../brainstorm/taskMarkdown.ts";
+import { GitWorkflowService } from "../../../git/GitWorkflowService.ts";
 import { OrchestrationEngineService } from "../../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ThreadBootstrapDispatcher } from "../../../orchestration/ThreadBootstrapDispatcher.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { BrainstormToolkitHandlersLive, threadStatusOf } from "./handlers.ts";
@@ -224,6 +226,13 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
         projectSettingsOverrides: {},
       } as never),
     }),
+    Layer.mock(ThreadBootstrapDispatcher)({
+      dispatch: (command) =>
+        Ref.update(commands, (recorded) => [...recorded, command]).pipe(Effect.as({ sequence: 1 })),
+    }),
+    Layer.mock(GitWorkflowService)({
+      localStatus: () => Effect.succeed({ refName: "main" } as never),
+    }),
     Layer.succeed(Crypto.Crypto, testCrypto),
   );
   const toolkit = yield* BrainstormToolkit.pipe(
@@ -387,6 +396,50 @@ describe("brainstorm toolkit", () => {
         threadId: started.threadId,
         message: { role: "user", text: "Port the parser to the server" },
       });
+      expect(harness.files.get(HOME_TASKS)).toBe(
+        `- [ ] Port the parser\n  - thread: ${started.threadId}\n`,
+      );
+    }),
+  );
+
+  it.effect("starts a worktree thread through the same bootstrap as the composer", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ [HOME_TASKS]: "- [ ] Port the parser\n" });
+      const started = yield* harness.call("start_thread", {
+        project: "t3code",
+        prompt: "Port the parser to the server",
+        task: 1,
+        worktree: true,
+      });
+      yield* harness.call("start_thread", {
+        project: "t3code",
+        prompt: "Try it on a branch",
+        worktree: true,
+        branch: "feat/parser",
+        baseBranch: "release",
+      });
+      const commands = yield* Ref.get(harness.commands);
+      expect(commands).toMatchObject([
+        {
+          type: "thread.turn.start",
+          threadId: started.threadId,
+          message: { role: "user", text: "Port the parser to the server" },
+          bootstrap: {
+            createThread: { projectId: "p-home", branch: "main", worktreePath: null },
+            prepareWorktree: {
+              projectCwd: "/code/home/t3code",
+              baseBranch: "main",
+              branch: "t3code/07070707",
+              requireWorktree: true,
+            },
+            runSetupScript: true,
+          },
+        },
+        {
+          type: "thread.turn.start",
+          bootstrap: { prepareWorktree: { baseBranch: "release", branch: "feat/parser" } },
+        },
+      ]);
       expect(harness.files.get(HOME_TASKS)).toBe(
         `- [ ] Port the parser\n  - thread: ${started.threadId}\n`,
       );

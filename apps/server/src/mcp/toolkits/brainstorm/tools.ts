@@ -293,18 +293,31 @@ const SetThreadSpaceTool = writeTool(
 
 const StartThreadTool = writeTool(
   Tool.make("start_thread", {
-    description: `Start a new thread in a project with a first prompt, for example to turn a task into a coding thread. With task, the task links to the new thread. The thread runs in the project's own checkout. ${ONLY_BRAINSTORM}`,
+    description: `Start a new thread in a project with a first prompt, for example to turn a task into a coding thread. With task, the task links to the new thread. The thread runs in the project's own checkout, or with worktree=true in a new git worktree on its own branch, like choosing "New worktree" in the new-thread composer (the worktree and the project's setup script are ready before the first turn starts). ${ONLY_BRAINSTORM}`,
     parameters: Schema.Struct({
       project: Schema.String.annotate({ description: "Project id or title (see list_projects)." }),
       prompt: Schema.String.annotate({ description: "The first message, sent as the user." }),
       title: Schema.optional(Schema.String),
       task: Schema.optional(TaskReferenceInput),
       taskSpace: SpaceInput,
+      worktree: Schema.optional(Schema.Boolean).annotate({
+        description: "Start in a new git worktree instead of the project's own checkout.",
+      }),
+      branch: Schema.optional(Schema.String).annotate({
+        description:
+          "With worktree: the new branch. Defaults to a temporary t3code/… branch that is renamed after the first turn.",
+      }),
+      baseBranch: Schema.optional(Schema.String).annotate({
+        description:
+          "With worktree: the branch to start from. Defaults to the branch the project's checkout is on.",
+      }),
     }),
     success: Schema.Struct({
       threadId: Schema.String,
       title: Schema.String,
       project: Schema.String,
+      branch: Schema.NullOr(Schema.String),
+      worktreePath: Schema.NullOr(Schema.String),
     }),
     failure: BrainstormError,
     dependencies,
