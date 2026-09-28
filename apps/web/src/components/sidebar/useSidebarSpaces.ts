@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { type DraftId, useComposerDraftStore } from "../../composerDraftStore";
 import {
   ALL_SPACE_ID,
+  isInSpace,
   type SpaceRoute,
   useProjectSpaceResolver,
   useSpaceStore,
@@ -48,7 +49,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
   const spaces = useSpaceStore((store) => store.spaces);
   const resolveSpace = useProjectSpaceResolver();
 
-  const groupSpaceId = useCallback(
+  const groupSpaces = useCallback(
     (group: SpaceProjectGroup) => resolveSpace(memberKeysOf(group)),
     [resolveSpace],
   );
@@ -62,7 +63,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
     }
     return byKey;
   }, [projectGroups]);
-  const projectSpaceId = useCallback(
+  const projectSpaces = useCallback(
     (projectKey: string) => resolveSpace(memberKeysByProjectKey.get(projectKey) ?? [projectKey]),
     [memberKeysByProjectKey, resolveSpace],
   );
@@ -70,8 +71,8 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
     () =>
       activeSpaceId === ALL_SPACE_ID
         ? projectGroups
-        : projectGroups.filter((group) => groupSpaceId(group) === activeSpaceId),
-    [activeSpaceId, groupSpaceId, projectGroups],
+        : projectGroups.filter((group) => isInSpace(groupSpaces(group), activeSpaceId)),
+    [activeSpaceId, groupSpaces, projectGroups],
   );
   const threadProjectKeyByThreadKey = useMemo(
     () =>
@@ -95,7 +96,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       : routeTarget?.kind === "draft"
         ? routeDraftProjectKey
         : null;
-  const routeSpaceId = routeProjectKey === null ? null : projectSpaceId(routeProjectKey);
+  const routeSpaces = routeProjectKey === null ? null : projectSpaces(routeProjectKey);
   const routeKey =
     routeTarget?.kind === "server"
       ? `server:${routeTarget.threadRef.environmentId}:${routeTarget.threadRef.threadId}`
@@ -103,13 +104,14 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
         ? `draft:${routeTarget.draftId}`
         : null;
 
-  // Remember the open thread for its space, and follow it there when it
-  // belongs to another one. Runs once per route, so switching spaces (which
-  // navigates right after changing the active space) and moving the open
-  // project elsewhere never bounce the active space back.
+  // Remember the open thread for its space. A thread outside the active space
+  // (opened from search, a notification, or a link) takes the sidebar to its
+  // project's home space. Runs once per route, so switching spaces (which
+  // navigates right after changing the active space) and removing the open
+  // project from a space never bounce the active space back.
   const handledRouteKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (routeTarget === null || routeKey === null || routeSpaceId === null) return;
+    if (routeTarget === null || routeKey === null || routeSpaces === null) return;
     if (handledRouteKeyRef.current === routeKey) return;
     handledRouteKeyRef.current = routeKey;
     const store = useSpaceStore.getState();
@@ -121,14 +123,15 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
             threadId: routeTarget.threadRef.threadId,
           }
         : { kind: "draft", draftId: routeTarget.draftId };
-    if (store.activeSpaceId === ALL_SPACE_ID || store.activeSpaceId === routeSpaceId) {
+    if (isInSpace(routeSpaces, store.activeSpaceId)) {
       store.rememberRoute(store.activeSpaceId, route);
       return;
     }
-    store.setActiveSpace(routeSpaceId);
-    setProjectScopeKey(store.projectScopeKeyBySpaceId[routeSpaceId] ?? null);
-    store.rememberRoute(routeSpaceId, route);
-  }, [routeKey, routeSpaceId, routeTarget, setProjectScopeKey]);
+    const homeSpaceId = routeSpaces.homeSpaceId;
+    store.setActiveSpace(homeSpaceId);
+    setProjectScopeKey(store.projectScopeKeyBySpaceId[homeSpaceId] ?? null);
+    store.rememberRoute(homeSpaceId, route);
+  }, [routeKey, routeSpaces, routeTarget, setProjectScopeKey]);
 
   useEffect(() => {
     useSpaceStore.getState().rememberProjectScope(activeSpaceId, projectScopeKey);
@@ -145,8 +148,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       store.setActiveSpace(spaceId);
       setProjectScopeKey(store.projectScopeKeyBySpaceId[spaceId] ?? null);
       const route = store.lastRouteBySpaceId[spaceId];
-      const inSpace = (projectKey: string) =>
-        spaceId === ALL_SPACE_ID || projectSpaceId(projectKey) === spaceId;
+      const inSpace = (projectKey: string) => isInSpace(projectSpaces(projectKey), spaceId);
       if (route?.kind === "server") {
         const thread = threadsRef.current.find(
           (candidate) =>
@@ -178,22 +180,22 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       // The index opens a draft in the space's most recent project.
       void router.navigate({ to: "/" });
     },
-    [projectSpaceId, router, setProjectScopeKey],
+    [projectSpaces, router, setProjectScopeKey],
   );
 
-  const moveProjectToSpace = useCallback((group: SpaceProjectGroup, spaceId: string) => {
-    useSpaceStore.getState().assignProjects(
-      group.memberProjectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`),
-      spaceId,
-    );
-  }, []);
+  const setProjectInSpace = useCallback(
+    (group: SpaceProjectGroup, spaceId: string, member: boolean) => {
+      useSpaceStore.getState().setProjectsInSpace(memberKeysOf(group), spaceId, member);
+    },
+    [],
+  );
 
   return {
     spaces,
     activeSpaceId,
     spaceProjectGroups,
-    groupSpaceId,
+    groupSpaces,
     switchSpace,
-    moveProjectToSpace,
+    setProjectInSpace,
   };
 }

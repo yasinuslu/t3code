@@ -1,10 +1,13 @@
 /**
  * Spaces: named, colored groups of projects the sidebar can switch between.
  *
- * Every project belongs to exactly one user space. "All" is a view over every
- * project and never owns one; "Other" holds projects no other space claims.
- * A project the user never moved lands in the space seeded from the code
- * profile its workspace sits in (see `filesystem.codeProfiles`), else Other.
+ * There are two kinds. A profile space is seeded from a code profile (see
+ * `filesystem.codeProfiles`) and holds exactly the projects whose workspace
+ * sits in that profile; membership follows the path and cannot be changed.
+ * A custom space (made with "+") is an overlay: the user adds projects to it,
+ * and a project can be in any number of custom spaces while it stays in its
+ * profile space. "All" shows every project; "Other" holds the projects no
+ * profile space claims, and is path-based like a profile space.
  *
  * Each space remembers the last thread or draft it showed and its project
  * filter, so switching back restores it. Right-panel tabs and drafts are
@@ -22,13 +25,15 @@ import { PROJECT_ICON_COLORS } from "./projectIconColors";
 export const ALL_SPACE_ID = "all";
 export const OTHER_SPACE_ID = "other";
 const SPACE_STORAGE_KEY = "t3code:spaces:v1";
+/** Version 2 replaced single placements with custom-space overlay memberships. */
+const SPACE_STORAGE_VERSION = 2;
 
 export interface Space {
   readonly id: string;
   readonly name: string;
   readonly color: ProjectIconColor;
   readonly icon: ProjectIconOverride;
-  /** Code profile whose projects default to this space. */
+  /** Code profile whose projects make up this space; null for custom and built-in spaces. */
   readonly profile: string | null;
 }
 
@@ -40,14 +45,20 @@ export interface SpaceState {
   /** Display order. All is always first and Other always last. */
   readonly spaces: ReadonlyArray<Space>;
   readonly activeSpaceId: string;
-  /** Profiles that already produced a space, so deleting one does not bring it back. */
-  readonly seededProfiles: ReadonlyArray<string>;
-  /** Explicit placements by `${environmentId}:${projectId}`. */
-  readonly projectSpaceByKey: Readonly<Record<string, string>>;
+  /** Custom spaces each project was added to, by `${environmentId}:${projectId}`. */
+  readonly customSpaceIdsByProjectKey: Readonly<Record<string, ReadonlyArray<string>>>;
   /** Last known code profile by `${environmentId}:${projectId}`. */
   readonly detectedProfileByProjectKey: Readonly<Record<string, string | null>>;
   readonly lastRouteBySpaceId: Readonly<Record<string, SpaceRoute>>;
   readonly projectScopeKeyBySpaceId: Readonly<Record<string, string | null>>;
+}
+
+/** Where a project group shows up besides All. */
+export interface ProjectSpaces {
+  /** The profile space its path puts it in, else Other. */
+  readonly homeSpaceId: string;
+  /** Custom spaces it was added to, in display order. */
+  readonly customSpaceIds: ReadonlyArray<string>;
 }
 
 const BUILTIN_SPACES: ReadonlyArray<Space> = [
@@ -70,8 +81,7 @@ const BUILTIN_SPACES: ReadonlyArray<Space> = [
 export const initialSpaceState: SpaceState = {
   spaces: BUILTIN_SPACES,
   activeSpaceId: ALL_SPACE_ID,
-  seededProfiles: [],
-  projectSpaceByKey: {},
+  customSpaceIdsByProjectKey: {},
   detectedProfileByProjectKey: {},
   lastRouteBySpaceId: {},
   projectScopeKeyBySpaceId: {},
@@ -79,6 +89,16 @@ export const initialSpaceState: SpaceState = {
 
 export function isBuiltinSpace(spaceId: string): boolean {
   return spaceId === ALL_SPACE_ID || spaceId === OTHER_SPACE_ID;
+}
+
+/** A space made with "+": the only kind projects can be added to or removed from. */
+export function isCustomSpace(space: Pick<Space, "id" | "profile">): boolean {
+  return !isBuiltinSpace(space.id) && space.profile === null;
+}
+
+/** Profile spaces are re-seeded from the code profiles, so only custom spaces can be deleted. */
+export function isDeletableSpace(space: Pick<Space, "id" | "profile">): boolean {
+  return isCustomSpace(space);
 }
 
 export function spaceColor(space: Pick<Space, "color" | "icon">): ProjectIconColor {
@@ -93,69 +113,65 @@ function normalizeSpaces(spaces: ReadonlyArray<Space>): ReadonlyArray<Space> {
   return [all, ...spaces.filter((space) => !isBuiltinSpace(space.id)), other];
 }
 
-/**
- * The space a project lives in, by `${environmentId}:${projectId}`: the
- * user's placement if its space still exists, else the space seeded from the
- * project's code profile, else Other.
- */
-export function resolveProjectSpaceId(
-  state: Pick<SpaceState, "spaces" | "projectSpaceByKey" | "detectedProfileByProjectKey">,
-  projectKey: string,
-): string {
-  const explicit = state.projectSpaceByKey[projectKey];
-  if (
-    explicit !== undefined &&
-    explicit !== ALL_SPACE_ID &&
-    state.spaces.some((space) => space.id === explicit)
-  ) {
-    return explicit;
-  }
-  const profile = state.detectedProfileByProjectKey[projectKey];
-  const profileSpace = profile
-    ? state.spaces.find((candidate) => candidate.profile === profile)
-    : undefined;
-  return profileSpace?.id ?? OTHER_SPACE_ID;
-}
+type ResolveState = Pick<
+  SpaceState,
+  "spaces" | "customSpaceIdsByProjectKey" | "detectedProfileByProjectKey"
+>;
 
 /**
- * The space of a project group (one logical project that can span several
- * checkouts and environments). A member the user placed wins, then a member
- * whose code profile has a space. Members without a detected profile (an
- * environment that cannot report one, or a folder outside every profile)
- * must not drag the whole group into Other.
+ * The spaces of a project group (one logical project that can span several
+ * checkouts and environments), given its `${environmentId}:${projectId}`
+ * member keys. The home space comes from the first member whose code profile
+ * has a space: members without a detected profile (an environment that cannot
+ * report one, or a folder outside every profile) must not drag the whole group
+ * into Other. Custom memberships of any member count for the group.
  */
-export function resolveProjectGroupSpaceId(
-  state: Pick<SpaceState, "spaces" | "projectSpaceByKey" | "detectedProfileByProjectKey">,
+export function resolveProjectSpaces(
+  state: ResolveState,
   memberKeys: ReadonlyArray<string>,
-): string {
-  const placed = memberKeys
-    .map((key) => state.projectSpaceByKey[key])
-    .find(
-      (spaceId) =>
-        spaceId !== undefined &&
-        spaceId !== ALL_SPACE_ID &&
-        state.spaces.some((space) => space.id === spaceId),
-    );
-  if (placed !== undefined) return placed;
+): ProjectSpaces {
+  let homeSpaceId = OTHER_SPACE_ID;
   for (const key of memberKeys) {
-    const spaceId = resolveProjectSpaceId(state, key);
-    if (spaceId !== OTHER_SPACE_ID) return spaceId;
+    const profile = state.detectedProfileByProjectKey[key];
+    const profileSpace = profile
+      ? state.spaces.find((candidate) => candidate.profile === profile)
+      : undefined;
+    if (profileSpace) {
+      homeSpaceId = profileSpace.id;
+      break;
+    }
   }
-  return OTHER_SPACE_ID;
+  const memberships = new Set(
+    memberKeys.flatMap((key) => state.customSpaceIdsByProjectKey[key] ?? []),
+  );
+  const customSpaceIds = state.spaces
+    .filter((space) => isCustomSpace(space) && memberships.has(space.id))
+    .map((space) => space.id);
+  return { homeSpaceId, customSpaceIds };
+}
+
+/** Whether a project with these spaces shows in `spaceId`; All shows everything. */
+export function isInSpace(projectSpaces: ProjectSpaces, spaceId: string): boolean {
+  return (
+    spaceId === ALL_SPACE_ID ||
+    projectSpaces.homeSpaceId === spaceId ||
+    projectSpaces.customSpaceIds.includes(spaceId)
+  );
 }
 
 /**
- * Resolves project groups, given their member keys, to spaces with the current
- * store state; re-renders only when placements, detections or the space list change.
+ * Resolves project groups, given their member keys, to their spaces with the
+ * current store state; re-renders only when memberships, detections or the
+ * space list change.
  */
-export function useProjectSpaceResolver(): (memberKeys: ReadonlyArray<string>) => string {
+export function useProjectSpaceResolver(): (memberKeys: ReadonlyArray<string>) => ProjectSpaces {
   const spaces = useSpaceStore((store) => store.spaces);
-  const projectSpaceByKey = useSpaceStore((store) => store.projectSpaceByKey);
+  const customSpaceIdsByProjectKey = useSpaceStore((store) => store.customSpaceIdsByProjectKey);
   const detectedProfileByProjectKey = useSpaceStore((store) => store.detectedProfileByProjectKey);
   return useMemo(() => {
-    const state = { spaces, projectSpaceByKey, detectedProfileByProjectKey };
-    return (memberKeys: ReadonlyArray<string>) => resolveProjectGroupSpaceId(state, memberKeys);
-  }, [detectedProfileByProjectKey, projectSpaceByKey, spaces]);
+    const state = { spaces, customSpaceIdsByProjectKey, detectedProfileByProjectKey };
+    return (memberKeys: ReadonlyArray<string>) => resolveProjectSpaces(state, memberKeys);
+  }, [customSpaceIdsByProjectKey, detectedProfileByProjectKey, spaces]);
 }
 
 /** Keeps only the projects of the active space; All keeps every project. */
@@ -163,15 +179,15 @@ export function useActiveSpaceProjects<
   TProject extends { readonly environmentId: string; readonly id: string },
 >(projects: ReadonlyArray<TProject>): ReadonlyArray<TProject> {
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
-  const resolveSpace = useProjectSpaceResolver();
+  const resolveSpaces = useProjectSpaceResolver();
   return useMemo(
     () =>
       activeSpaceId === ALL_SPACE_ID
         ? projects
-        : projects.filter(
-            (project) => resolveSpace([`${project.environmentId}:${project.id}`]) === activeSpaceId,
+        : projects.filter((project) =>
+            isInSpace(resolveSpaces([`${project.environmentId}:${project.id}`]), activeSpaceId),
           ),
-    [activeSpaceId, projects, resolveSpace],
+    [activeSpaceId, projects, resolveSpaces],
   );
 }
 
@@ -190,34 +206,64 @@ function spaceForName(name: string, profile: string | null): Space {
   };
 }
 
-/** Adds a space for each profile seen for the first time. */
+/** Adds a space for each profile that has none yet. */
 export function seedProfileSpaces(state: SpaceState, profiles: ReadonlyArray<string>): SpaceState {
-  const unseen = profiles.filter((profile) => !state.seededProfiles.includes(profile));
-  if (unseen.length === 0) return state;
-  const added = unseen
+  const added = [...new Set(profiles)]
     .filter((profile) => !state.spaces.some((space) => space.profile === profile))
     .map((profile) => spaceForName(profile, profile));
-  return {
-    ...state,
-    spaces: normalizeSpaces([...state.spaces, ...added]),
-    seededProfiles: [...state.seededProfiles, ...unseen],
-  };
+  if (added.length === 0) return state;
+  return { ...state, spaces: normalizeSpaces([...state.spaces, ...added]) };
 }
 
-export function removeSpace(state: SpaceState, spaceId: string): SpaceState {
-  if (isBuiltinSpace(spaceId) || !state.spaces.some((space) => space.id === spaceId)) {
-    return state;
+/**
+ * Adds projects, by `${environmentId}:${projectId}`, to a custom space or
+ * removes them from it. Profile spaces, Other and All are not targets.
+ */
+export function setProjectsInCustomSpace(
+  state: SpaceState,
+  projectKeys: ReadonlyArray<string>,
+  spaceId: string,
+  member: boolean,
+): SpaceState {
+  const space = state.spaces.find((candidate) => candidate.id === spaceId);
+  if (!space || !isCustomSpace(space)) return state;
+  const next: Record<string, ReadonlyArray<string>> = { ...state.customSpaceIdsByProjectKey };
+  for (const key of projectKeys) {
+    const current = next[key] ?? [];
+    const updated = member
+      ? current.includes(spaceId)
+        ? current
+        : [...current, spaceId]
+      : current.filter((id) => id !== spaceId);
+    if (updated.length > 0) next[key] = updated;
+    else delete next[key];
   }
+  return { ...state, customSpaceIdsByProjectKey: next };
+}
+
+function withoutMembership(
+  memberships: Readonly<Record<string, ReadonlyArray<string>>>,
+  spaceId: string,
+): Record<string, ReadonlyArray<string>> {
+  const next: Record<string, ReadonlyArray<string>> = {};
+  for (const [key, spaceIds] of Object.entries(memberships)) {
+    const kept = spaceIds.filter((id) => id !== spaceId);
+    if (kept.length > 0) next[key] = kept;
+  }
+  return next;
+}
+
+/** Deletes a custom space and its memberships; other spaces are left alone. */
+export function removeSpace(state: SpaceState, spaceId: string): SpaceState {
+  const space = state.spaces.find((candidate) => candidate.id === spaceId);
+  if (!space || !isDeletableSpace(space)) return state;
   const without = <T>(record: Readonly<Record<string, T>>) =>
     Object.fromEntries(Object.entries(record).filter(([key]) => key !== spaceId));
   return {
     ...state,
-    spaces: state.spaces.filter((space) => space.id !== spaceId),
+    spaces: state.spaces.filter((candidate) => candidate.id !== spaceId),
     activeSpaceId: state.activeSpaceId === spaceId ? ALL_SPACE_ID : state.activeSpaceId,
-    // Its projects fall back to their default space.
-    projectSpaceByKey: Object.fromEntries(
-      Object.entries(state.projectSpaceByKey).filter(([, value]) => value !== spaceId),
-    ),
+    customSpaceIdsByProjectKey: withoutMembership(state.customSpaceIdsByProjectKey, spaceId),
     lastRouteBySpaceId: without(state.lastRouteBySpaceId),
     projectScopeKeyBySpaceId: without(state.projectScopeKeyBySpaceId),
   };
@@ -330,13 +376,12 @@ export function parsePersistedSpaceState(value: unknown): SpaceState {
       ? persisted.activeSpaceId
       : ALL_SPACE_ID;
   const isString = (entry: unknown): entry is string => typeof entry === "string";
+  const isStringList = (entry: unknown): entry is ReadonlyArray<string> =>
+    Array.isArray(entry) && entry.every(isString);
   return {
     spaces,
     activeSpaceId,
-    seededProfiles: Array.isArray(persisted.seededProfiles)
-      ? persisted.seededProfiles.filter(isString)
-      : [],
-    projectSpaceByKey: sanitizeRecord(persisted.projectSpaceByKey, isString),
+    customSpaceIdsByProjectKey: sanitizeRecord(persisted.customSpaceIdsByProjectKey, isStringList),
     detectedProfileByProjectKey: sanitizeRecord(
       persisted.detectedProfileByProjectKey,
       (entry): entry is string | null => entry === null || typeof entry === "string",
@@ -349,13 +394,41 @@ export function parsePersistedSpaceState(value: unknown): SpaceState {
   };
 }
 
+/**
+ * Version 1 put each project in exactly one space (`projectSpaceByKey`), and
+ * remembered seeded profiles so a deleted profile space stayed deleted.
+ * Placements in a custom space become overlay memberships; placements in a
+ * profile space or Other are dropped, because those now follow the path.
+ */
+export function migrateSpaceStateFromV1(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const {
+    projectSpaceByKey,
+    seededProfiles: _seededProfiles,
+    ...rest
+  } = value as Record<string, unknown>;
+  const spaces = sanitizeSpaces(rest.spaces);
+  const customSpaceIdsByProjectKey: Record<string, ReadonlyArray<string>> = {};
+  if (projectSpaceByKey && typeof projectSpaceByKey === "object") {
+    for (const [key, spaceId] of Object.entries(projectSpaceByKey)) {
+      const space = spaces.find((candidate) => candidate.id === spaceId);
+      if (space && isCustomSpace(space)) customSpaceIdsByProjectKey[key] = [space.id];
+    }
+  }
+  return { ...rest, customSpaceIdsByProjectKey };
+}
+
 interface SpaceStore extends SpaceState {
   setActiveSpace: (spaceId: string) => void;
   createSpace: (name: string) => string;
   updateSpace: (spaceId: string, patch: Partial<Pick<Space, "name" | "color" | "icon">>) => void;
   deleteSpace: (spaceId: string) => void;
-  /** Places projects, by `${environmentId}:${projectId}`, in a space. */
-  assignProjects: (projectKeys: ReadonlyArray<string>, spaceId: string) => void;
+  /** Adds projects, by `${environmentId}:${projectId}`, to a custom space or removes them. */
+  setProjectsInSpace: (
+    projectKeys: ReadonlyArray<string>,
+    spaceId: string,
+    member: boolean,
+  ) => void;
   recordCodeProfiles: (
     profiles: ReadonlyArray<string>,
     detected: Readonly<Record<string, string | null>>,
@@ -386,17 +459,8 @@ export const useSpaceStore = create<SpaceStore>()(
           ),
         })),
       deleteSpace: (spaceId) => set((state) => removeSpace(state, spaceId)),
-      assignProjects: (projectKeys, spaceId) =>
-        set((state) =>
-          spaceId === ALL_SPACE_ID
-            ? state
-            : {
-                projectSpaceByKey: {
-                  ...state.projectSpaceByKey,
-                  ...Object.fromEntries(projectKeys.map((key) => [key, spaceId] as const)),
-                },
-              },
-        ),
+      setProjectsInSpace: (projectKeys, spaceId, member) =>
+        set((state) => setProjectsInCustomSpace(state, projectKeys, spaceId, member)),
       recordCodeProfiles: (profiles, detected) =>
         set((state) => {
           const seeded = seedProfileSpaces(state, profiles);
@@ -438,19 +502,20 @@ export const useSpaceStore = create<SpaceStore>()(
     }),
     {
       name: SPACE_STORAGE_KEY,
-      version: 1,
+      version: SPACE_STORAGE_VERSION,
       storage: createJSONStorage(() =>
         resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
       ),
       partialize: (state): SpaceState => ({
         spaces: state.spaces,
         activeSpaceId: state.activeSpaceId,
-        seededProfiles: state.seededProfiles,
-        projectSpaceByKey: state.projectSpaceByKey,
+        customSpaceIdsByProjectKey: state.customSpaceIdsByProjectKey,
         detectedProfileByProjectKey: state.detectedProfileByProjectKey,
         lastRouteBySpaceId: state.lastRouteBySpaceId,
         projectScopeKeyBySpaceId: state.projectScopeKeyBySpaceId,
       }),
+      migrate: (persisted, version) =>
+        (version < 2 ? migrateSpaceStateFromV1(persisted) : persisted) as SpaceStore,
       merge: (persisted, current) => ({ ...current, ...parsePersistedSpaceState(persisted) }),
     },
   ),

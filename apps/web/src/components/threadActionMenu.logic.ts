@@ -9,7 +9,8 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
   | "filter-by-project"
-  | `move-to-space:${string}`
+  | "toggle-space"
+  | `toggle-space:${string}`
   | "project-settings"
   | "pin"
   | "unpin"
@@ -43,13 +44,15 @@ export interface ThreadActionMenuState {
     readonly isActive: boolean;
   } | null;
   /**
-   * Spaces the thread's project can move to. Null on surfaces that do not
-   * show spaces, where the item must not show.
+   * Custom spaces the thread's project can be added to or removed from, with
+   * whether it is in each. Profile spaces, Other and All follow the path and
+   * are never listed. Null on surfaces that do not show spaces.
    */
-  readonly projectSpaces?: {
-    readonly spaces: ReadonlyArray<{ readonly id: string; readonly name: string }>;
-    readonly currentSpaceId: string;
-  } | null;
+  readonly customSpaces?: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly isMember: boolean;
+  }> | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   /** False while the user has turned automatic settlement off for this thread. */
@@ -147,16 +150,18 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
-    ...(state.projectSpaces && state.projectSpaces.spaces.length > 0
+    // Toggles, not a move: the project stays in its profile space and can
+    // be in several custom spaces at once. Picking a checked space removes it.
+    ...(state.customSpaces && state.customSpaces.length > 0
       ? [
           {
-            id: "move-to-space:" as const,
-            label: "Move project to space",
+            id: "toggle-space" as const,
+            label: "Add to space",
             icon: "folder",
-            children: state.projectSpaces.spaces.map((space) => ({
-              id: `move-to-space:${space.id}` as const,
+            children: state.customSpaces.map((space) => ({
+              id: `toggle-space:${space.id}` as const,
               label: space.name,
-              disabled: space.id === state.projectSpaces?.currentSpaceId,
+              checked: space.isMember,
             })),
           },
         ]

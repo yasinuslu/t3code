@@ -246,7 +246,7 @@ import {
   useSpaceSwipe,
 } from "./sidebar/SpaceSwitcher";
 import { useSidebarSpaces } from "./sidebar/useSidebarSpaces";
-import { ALL_SPACE_ID, OTHER_SPACE_ID } from "../spaceStore";
+import { ALL_SPACE_ID, isCustomSpace } from "../spaceStore";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -2366,9 +2366,9 @@ export default function Sidebar() {
     spaces,
     activeSpaceId,
     spaceProjectGroups: projectGroups,
-    groupSpaceId,
+    groupSpaces,
     switchSpace,
-    moveProjectToSpace,
+    setProjectInSpace,
   } = useSidebarSpaces({
     projectGroups: allProjectGroups,
     threads,
@@ -4118,6 +4118,9 @@ export default function Sidebar() {
                 projectRef.projectId === thread.projectId,
             ),
           ) ?? null;
+        const threadProjectSpaceIds = threadProjectGroup
+          ? groupSpaces(threadProjectGroup).customSpaceIds
+          : [];
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             buildThreadActionMenuItems({
@@ -4128,11 +4131,12 @@ export default function Sidebar() {
                     isActive: projectScopeKey === threadProjectGroup.projectKey,
                   }
                 : null,
-              projectSpaces: threadProjectGroup
-                ? {
-                    spaces: spaces.filter((space) => space.id !== ALL_SPACE_ID),
-                    currentSpaceId: groupSpaceId(threadProjectGroup) ?? OTHER_SPACE_ID,
-                  }
+              customSpaces: threadProjectGroup
+                ? spaces.filter(isCustomSpace).map((space) => ({
+                    id: space.id,
+                    name: space.name,
+                    isMember: threadProjectSpaceIds.includes(space.id),
+                  }))
                 : null,
               isPinned,
               isSettled,
@@ -4155,9 +4159,15 @@ export default function Sidebar() {
           ),
         );
         if (clicked._tag === "Failure") return;
-        if (clicked.value?.startsWith("move-to-space:")) {
-          const spaceId = clicked.value.slice("move-to-space:".length);
-          if (threadProjectGroup && spaceId) moveProjectToSpace(threadProjectGroup, spaceId);
+        if (clicked.value?.startsWith("toggle-space:")) {
+          const spaceId = clicked.value.slice("toggle-space:".length);
+          if (threadProjectGroup && spaceId) {
+            setProjectInSpace(
+              threadProjectGroup,
+              spaceId,
+              !threadProjectSpaceIds.includes(spaceId),
+            );
+          }
           return;
         }
         if (clicked.value?.startsWith("snooze:")) {
@@ -4358,10 +4368,10 @@ export default function Sidebar() {
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
-      groupSpaceId,
+      groupSpaces,
       handleMultiSelectContextMenu,
       markThreadUnread,
-      moveProjectToSpace,
+      setProjectInSpace,
       openProjectSettings,
       projectScopeKey,
       spaces,
@@ -5042,6 +5052,8 @@ export default function Sidebar() {
                 </>
               ) : scopedProjectGroup ? (
                 `No threads in ${scopedProjectGroup.displayName} yet`
+              ) : activeSpace && isCustomSpace(activeSpace) ? (
+                `No threads in ${activeSpace.name} yet. Add a project from a thread's menu: Add to space.`
               ) : activeSpace && activeSpace.id !== ALL_SPACE_ID ? (
                 `No threads in ${activeSpace.name} yet`
               ) : (

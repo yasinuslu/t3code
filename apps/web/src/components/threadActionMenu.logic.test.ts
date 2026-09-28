@@ -166,4 +166,28 @@ describe("buildThreadActionMenuItems", () => {
     );
     expect(archiveItem?.disabled).toBe(true);
   });
+
+  it("lists custom spaces as checkable toggles, not a move", () => {
+    const item = buildThreadActionMenuItems({
+      ...baseState,
+      customSpaces: [
+        { id: "music", name: "Music", isMember: true },
+        { id: "games", name: "Games", isMember: false },
+      ],
+    }).find((candidate) => candidate.id === "toggle-space");
+    expect(item).toMatchObject({ label: "Add to space" });
+    expect(item?.children).toEqual([
+      { id: "toggle-space:music", label: "Music", checked: true },
+      { id: "toggle-space:games", label: "Games", checked: false },
+    ]);
+    // A checked space stays pickable: picking it removes the project.
+    expect(item?.children?.some((child) => child.disabled)).toBe(false);
+  });
+
+  it("hides the space item without custom spaces or on surfaces without spaces", () => {
+    expect(allIds({ ...baseState, customSpaces: [] })).not.toContain("toggle-space");
+    expect(allIds({ ...baseState, customSpaces: null })).not.toContain("toggle-space");
+    expect(allIds(baseState)).not.toContain("toggle-space");
+    expect(allIds(baseState).some((id) => id.startsWith("move-to-space"))).toBe(false);
+  });
 });

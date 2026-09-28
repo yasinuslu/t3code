@@ -11,7 +11,7 @@ import {
   adjacentSpaceId,
   ALL_SPACE_ID,
   createSpaceSwipeTracker,
-  isBuiltinSpace,
+  isDeletableSpace,
   type Space,
   spaceColor,
   useSpaceStore,
@@ -306,7 +306,7 @@ export function useSpaceMouseButtons(onSwitch: (spaceId: string) => void) {
 
 /**
  * Zen-style row of space icons at the bottom of the sidebar. Click switches,
- * right-click edits or deletes, "+" adds a space.
+ * right-click edits (and deletes a custom space), "+" adds a custom space.
  */
 export const SpaceSwitcher = memo(function SpaceSwitcher({
   onSwitch,
@@ -326,7 +326,7 @@ export const SpaceSwitcher = memo(function SpaceSwitcher({
     const api = readLocalApi();
     const confirmed = api
       ? await api.dialogs.confirm(
-          `Delete space "${space.name}"?\nIts projects move back to their default space.`,
+          `Delete space "${space.name}"?\nIts projects stay in their profile spaces.`,
           { variant: "destructive" },
         )
       : true;
@@ -341,7 +341,7 @@ export const SpaceSwitcher = memo(function SpaceSwitcher({
     const clicked = await api.contextMenu.show<"edit" | "delete">(
       [
         { id: "edit", label: "Edit space…", icon: "pencil" },
-        ...(isBuiltinSpace(space.id)
+        ...(!isDeletableSpace(space)
           ? []
           : [
               {
