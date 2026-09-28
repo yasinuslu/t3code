@@ -54,7 +54,7 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
           className="size-4"
           iconClassName="size-4"
           indicatorBackground="var(--background)"
-          badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-[7px]"
+          badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs"
         />
         {props.compact ? null : (
           <>

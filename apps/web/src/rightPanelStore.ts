@@ -860,9 +860,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         const current = get().byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
         const active = current.surfaces.find((surface) => surface.id === current.activeSurfaceId);
         if (current.isOpen && active?.kind === kind) {
-          set((state) =>
-            userAction(state, threadKey, (thread) => ({ ...thread, isOpen: false })),
-          );
+          set((state) => userAction(state, threadKey, (thread) => ({ ...thread, isOpen: false })));
           return true;
         }
         const existing = current.surfaces.findLast((surface) => surface.kind === kind);
