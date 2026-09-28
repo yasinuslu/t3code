@@ -20,6 +20,7 @@ import {
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
+import { useActiveSpaceProjects } from "~/spaceStore";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 
 function ChatIndexRouteView() {
@@ -40,7 +41,8 @@ function ChatIndexRouteView() {
  * end. Falls back to an add-project hero when no project exists yet.
  */
 function IndexDraftLanding() {
-  const projects = useProjects();
+  // Land in the active space, so opening an empty space stays in it.
+  const projects = useActiveSpaceProjects(useProjects());
   const threads = useThreadShells();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();

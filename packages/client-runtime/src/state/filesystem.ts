@@ -79,5 +79,10 @@ export function createFilesystemEnvironmentAtoms<R, E>(
       label: "environment-data:filesystem:browse",
       tag: WS_METHODS.filesystemBrowse,
     }),
+    codeProfiles: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:filesystem:code-profiles",
+      tag: WS_METHODS.filesystemCodeProfiles,
+      staleTimeMs: 60_000,
+    }),
   };
 }

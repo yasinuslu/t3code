@@ -65,3 +65,37 @@ export class FilesystemBrowseError extends Schema.TaggedError<FilesystemBrowseEr
     } as any);
   }
 }
+
+const FILESYSTEM_CODE_PROFILES_MAX_PATHS = 1_000;
+
+/**
+ * Code profiles are directories under `~/code` that hold their own
+ * `<profile>-brain` knowledge base, e.g. `~/code/work/work-brain`. Clients use
+ * them as default spaces for grouping projects.
+ */
+export const FilesystemCodeProfilesInput = Schema.Struct({
+  /** Project workspace roots to place into a profile. */
+  paths: Schema.Array(
+    TrimmedNonEmptyString.check(Schema.isMaxLength(FILESYSTEM_PATH_MAX_LENGTH)),
+  ).check(Schema.isMaxLength(FILESYSTEM_CODE_PROFILES_MAX_PATHS)),
+});
+export type FilesystemCodeProfilesInput = typeof FilesystemCodeProfilesInput.Type;
+
+export const FilesystemCodeProfile = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  /** Real path of the profile directory. */
+  path: TrimmedNonEmptyString,
+});
+export type FilesystemCodeProfile = typeof FilesystemCodeProfile.Type;
+
+export const FilesystemCodeProfilesResult = Schema.Struct({
+  profiles: Schema.Array(FilesystemCodeProfile),
+  /** One entry per input path, matched after resolving symlinks. */
+  assignments: Schema.Array(
+    Schema.Struct({
+      path: TrimmedNonEmptyString,
+      profile: Schema.NullOr(TrimmedNonEmptyString),
+    }),
+  ),
+});
+export type FilesystemCodeProfilesResult = typeof FilesystemCodeProfilesResult.Type;

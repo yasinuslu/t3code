@@ -46,6 +46,8 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { observeResponsiveBreakpointFade, usePanelAnimationSettings } from "../../panelAnimations";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { ActiveSpaceLabel } from "../sidebar/SpaceSwitcher";
+import { ALL_SPACE_ID, useSpaceStore } from "~/spaceStore";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -152,6 +154,7 @@ export const ChatHeader = memo(function ChatHeader({
   onUpdateProjectScript,
   onDeleteProjectScript,
 }: ChatHeaderProps) {
+  const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const headerActionsRef = useRef<HTMLDivElement | null>(null);
@@ -412,8 +415,18 @@ export const ChatHeader = memo(function ChatHeader({
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
       >
-        {/* The project always leads the header: knowing which project a
-            thread lives in is priority zero, and the thread title alone
+        {activeSpaceId !== ALL_SPACE_ID ? (
+          <>
+            <WorkspaceBreadcrumbItem className="shrink-0">
+              <ActiveSpaceLabel className="text-muted-foreground" />
+            </WorkspaceBreadcrumbItem>
+            <WorkspaceBreadcrumbSeparator>
+              <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
+            </WorkspaceBreadcrumbSeparator>
+          </>
+        ) : null}
+        {/* The project always leads the thread itself: knowing which project
+            a thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
         {activeProject ? (
           <>

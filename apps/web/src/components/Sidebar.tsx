@@ -235,6 +235,9 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
+import { CodeProfileProbes, SpaceSwitcher, useSpaceSwipe } from "./sidebar/SpaceSwitcher";
+import { useSidebarSpaces } from "./sidebar/useSidebarSpaces";
+import { ALL_SPACE_ID, OTHER_SPACE_ID } from "../spaceStore";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -2304,10 +2307,34 @@ export default function Sidebar() {
       sidebarProjectSortOrder,
     ],
   );
-  const projectGroups = useMemo(
+  const allProjectGroups = useMemo(
     () => sortLogicalProjectsForSidebar(unsortedProjectGroups, threads, sidebarProjectSortOrder),
     [sidebarProjectSortOrder, threads, unsortedProjectGroups],
   );
+  // Project scope: see the scope menu below. Read here because spaces save
+  // and restore it per space.
+  const projectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
+  const setProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
+  // Spaces narrow everything below to the active space's projects.
+  const {
+    spaces,
+    activeSpaceId,
+    spaceProjectGroups: projectGroups,
+    groupSpaceId,
+    switchSpace,
+    moveProjectToSpace,
+  } = useSidebarSpaces({
+    projectGroups: allProjectGroups,
+    threads,
+    routeTarget,
+    routeDraftProjectKey: routeDraftThread
+      ? `${routeDraftThread.environmentId}:${routeDraftThread.projectId}`
+      : null,
+    projectScopeKey,
+    setProjectScopeKey,
+  });
+  const activeSpace = spaces.find((space) => space.id === activeSpaceId) ?? null;
+  const handleSpaceSwipe = useSpaceSwipe(switchSpace);
   const projectGroupsRef = useRef(projectGroups);
   projectGroupsRef.current = projectGroups;
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
@@ -2354,8 +2381,6 @@ export default function Sidebar() {
   // The selection lives in the persisted UI store next to the other sidebar
   // project preferences, so routes that unmount the sidebar (Settings) and
   // app restarts keep it.
-  const projectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
-  const setProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
   // {value, label} items let Base UI drive the combobox selection contract
   // while the popup search filters the same collection.
   const projectScopeItems = useMemo(
@@ -2413,17 +2438,23 @@ export default function Sidebar() {
         : (projectGroups.find((project) => project.projectKey === projectScopeKey) ?? null),
     [projectGroups, projectScopeKey],
   );
-  const scopedProjectKeys = useMemo(
-    () =>
-      scopedProjectGroup === null
-        ? null
-        : new Set(
-            scopedProjectGroup.memberProjectRefs.map(
+  const scopedProjectKeys = useMemo(() => {
+    const scopedGroups =
+      scopedProjectGroup !== null
+        ? [scopedProjectGroup]
+        : activeSpaceId === ALL_SPACE_ID
+          ? null
+          : projectGroups;
+    return scopedGroups === null
+      ? null
+      : new Set(
+          scopedGroups.flatMap((group) =>
+            group.memberProjectRefs.map(
               (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
             ),
           ),
-    [scopedProjectGroup],
-  );
+        );
+  }, [activeSpaceId, projectGroups, scopedProjectGroup]);
   // A persisted scope whose project is gone falls back to all projects, but
   // only after every catalog environment has a live project snapshot. Cached
   // or disconnected environments cannot establish that the project is gone.
@@ -4047,6 +4078,12 @@ export default function Sidebar() {
                     isActive: projectScopeKey === threadProjectGroup.projectKey,
                   }
                 : null,
+              projectSpaces: threadProjectGroup
+                ? {
+                    spaces: spaces.filter((space) => space.id !== ALL_SPACE_ID),
+                    currentSpaceId: groupSpaceId(threadProjectGroup) ?? OTHER_SPACE_ID,
+                  }
+                : null,
               isPinned,
               isSettled,
               isSnoozed,
@@ -4066,6 +4103,11 @@ export default function Sidebar() {
           ),
         );
         if (clicked._tag === "Failure") return;
+        if (clicked.value?.startsWith("move-to-space:")) {
+          const spaceId = clicked.value.slice("move-to-space:".length);
+          if (threadProjectGroup && spaceId) moveProjectToSpace(threadProjectGroup, spaceId);
+          return;
+        }
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
             clicked.value === "snooze:custom"
@@ -4246,10 +4288,13 @@ export default function Sidebar() {
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
+      groupSpaceId,
       handleMultiSelectContextMenu,
       markThreadUnread,
+      moveProjectToSpace,
       openProjectSettings,
       projectScopeKey,
+      spaces,
       projectByKey,
       serverConfigs,
       setProjectScopeKey,
@@ -4375,8 +4420,10 @@ export default function Sidebar() {
   return (
     <>
       <SidebarChromeHeader isElectron={isElectron} />
+      <CodeProfileProbes projects={projects} />
       <SidebarContent
         className="min-h-full"
+        onWheel={handleSpaceSwipe}
         fixedHeader={
           // Lifted above the stage backdrop, whose fade bleeds below the
           // header and would otherwise paint across the search row's outline.
@@ -4920,6 +4967,8 @@ export default function Sidebar() {
                 </>
               ) : scopedProjectGroup ? (
                 `No threads in ${scopedProjectGroup.displayName} yet`
+              ) : activeSpace && activeSpace.id !== ALL_SPACE_ID ? (
+                `No threads in ${activeSpace.name} yet`
               ) : (
                 "No threads yet"
               )}
@@ -4927,7 +4976,7 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      <SidebarChromeFooter />
+      <SidebarChromeFooter spaces={<SpaceSwitcher onSwitch={switchSpace} />} />
     </>
   );
 }

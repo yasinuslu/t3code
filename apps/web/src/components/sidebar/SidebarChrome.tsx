@@ -26,6 +26,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
+import { ActiveSpaceLabel } from "./SpaceSwitcher";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
@@ -64,6 +65,12 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         )}
       />
       <SidebarBrand onBackdrop={backdropVariant !== null} />
+      <ActiveSpaceLabel
+        className={cn(
+          "relative z-10 hidden text-sm font-medium md:inline-flex",
+          backdropVariant ? "text-white/80" : "text-muted-foreground",
+        )}
+      />
       {pillLabel ? (
         <Badge
           className="relative z-10 ml-1 hidden @[15rem]/sidebar-header:inline-flex"
@@ -219,12 +226,18 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   );
 });
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  spaces,
+}: {
+  /** The space switcher row, on sidebars that show spaces. */
+  spaces?: ReactNode;
+}) {
   return (
     <SidebarFooter>
       <SidebarThreadUndoNotice />
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
+      {spaces}
       <SidebarUtilityMenu />
     </SidebarFooter>
   );

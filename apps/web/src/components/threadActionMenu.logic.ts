@@ -9,6 +9,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
   | "filter-by-project"
+  | `move-to-space:${string}`
   | "project-settings"
   | "pin"
   | "unpin"
@@ -37,6 +38,14 @@ export interface ThreadActionMenuState {
     readonly label: string;
     /** True when the list is already scoped to this thread's project. */
     readonly isActive: boolean;
+  } | null;
+  /**
+   * Spaces the thread's project can move to. Null on surfaces that do not
+   * show spaces, where the item must not show.
+   */
+  readonly projectSpaces?: {
+    readonly spaces: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+    readonly currentSpaceId: string;
   } | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
@@ -128,6 +137,20 @@ export function buildThreadActionMenuItems(
               ? "Show all projects"
               : `Filter by ${state.projectFilter.label}`,
             icon: "folder-tree",
+          },
+        ]
+      : []),
+    ...(state.projectSpaces && state.projectSpaces.spaces.length > 0
+      ? [
+          {
+            id: "move-to-space:" as const,
+            label: "Move project to space",
+            icon: "folder",
+            children: state.projectSpaces.spaces.map((space) => ({
+              id: `move-to-space:${space.id}` as const,
+              label: space.name,
+              disabled: space.id === state.projectSpaces?.currentSpaceId,
+            })),
           },
         ]
       : []),

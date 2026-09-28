@@ -1,0 +1,184 @@
+import type { ScopedProjectRef } from "@t3tools/contracts";
+import { useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+
+import { type DraftId, useComposerDraftStore } from "../../composerDraftStore";
+import {
+  ALL_SPACE_ID,
+  type SpaceRoute,
+  useProjectSpaceResolver,
+  useSpaceStore,
+} from "../../spaceStore";
+import type { ThreadRouteTarget } from "../../threadRoutes";
+
+interface SpaceProjectGroup {
+  readonly projectKey: string;
+  readonly memberProjectRefs: ReadonlyArray<ScopedProjectRef>;
+}
+
+interface SpaceThread {
+  readonly environmentId: string;
+  readonly id: string;
+  readonly projectId: string;
+  readonly archivedAt: string | null;
+}
+
+/**
+ * Wires the sidebar to spaces: filters project groups to the active space,
+ * remembers each space's last thread and project filter, restores them on
+ * switch, and follows the route into another space when a thread outside the
+ * active one is opened (from search, a notification, or a link).
+ */
+export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
+  readonly projectGroups: ReadonlyArray<TGroup>;
+  readonly threads: ReadonlyArray<SpaceThread>;
+  readonly routeTarget: ThreadRouteTarget | null;
+  readonly routeDraftProjectKey: string | null;
+  readonly projectScopeKey: string | null;
+  readonly setProjectScopeKey: (projectKey: string | null) => void;
+}) {
+  const { projectGroups, threads, routeTarget, routeDraftProjectKey, projectScopeKey } = input;
+  const { setProjectScopeKey } = input;
+  const router = useRouter();
+  const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
+  const spaces = useSpaceStore((store) => store.spaces);
+  const resolveSpace = useProjectSpaceResolver();
+
+  const groupSpaceId = useCallback(
+    (group: SpaceProjectGroup) => {
+      const first = group.memberProjectRefs[0];
+      return first ? resolveSpace(`${first.environmentId}:${first.projectId}`) : null;
+    },
+    [resolveSpace],
+  );
+  const spaceProjectGroups = useMemo(
+    () =>
+      activeSpaceId === ALL_SPACE_ID
+        ? projectGroups
+        : projectGroups.filter((group) => groupSpaceId(group) === activeSpaceId),
+    [activeSpaceId, groupSpaceId, projectGroups],
+  );
+  const threadProjectKeyByThreadKey = useMemo(
+    () =>
+      new Map(
+        threads.map(
+          (thread) =>
+            [
+              `${thread.environmentId}:${thread.id}`,
+              `${thread.environmentId}:${thread.projectId}`,
+            ] as const,
+        ),
+      ),
+    [threads],
+  );
+
+  const routeProjectKey =
+    routeTarget?.kind === "server"
+      ? (threadProjectKeyByThreadKey.get(
+          `${routeTarget.threadRef.environmentId}:${routeTarget.threadRef.threadId}`,
+        ) ?? null)
+      : routeTarget?.kind === "draft"
+        ? routeDraftProjectKey
+        : null;
+  const routeSpaceId = routeProjectKey === null ? null : resolveSpace(routeProjectKey);
+  const routeKey =
+    routeTarget?.kind === "server"
+      ? `server:${routeTarget.threadRef.environmentId}:${routeTarget.threadRef.threadId}`
+      : routeTarget?.kind === "draft"
+        ? `draft:${routeTarget.draftId}`
+        : null;
+
+  // Remember the open thread for its space, and follow it there when it
+  // belongs to another one. Runs once per route, so switching spaces (which
+  // navigates right after changing the active space) and moving the open
+  // project elsewhere never bounce the active space back.
+  const handledRouteKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (routeTarget === null || routeKey === null || routeSpaceId === null) return;
+    if (handledRouteKeyRef.current === routeKey) return;
+    handledRouteKeyRef.current = routeKey;
+    const store = useSpaceStore.getState();
+    const route: SpaceRoute =
+      routeTarget.kind === "server"
+        ? {
+            kind: "server",
+            environmentId: routeTarget.threadRef.environmentId,
+            threadId: routeTarget.threadRef.threadId,
+          }
+        : { kind: "draft", draftId: routeTarget.draftId };
+    if (store.activeSpaceId === ALL_SPACE_ID || store.activeSpaceId === routeSpaceId) {
+      store.rememberRoute(store.activeSpaceId, route);
+      return;
+    }
+    store.setActiveSpace(routeSpaceId);
+    setProjectScopeKey(store.projectScopeKeyBySpaceId[routeSpaceId] ?? null);
+    store.rememberRoute(routeSpaceId, route);
+  }, [routeKey, routeSpaceId, routeTarget, setProjectScopeKey]);
+
+  useEffect(() => {
+    useSpaceStore.getState().rememberProjectScope(activeSpaceId, projectScopeKey);
+  }, [activeSpaceId, projectScopeKey]);
+
+  const threadsRef = useRef(threads);
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+  const switchSpace = useCallback(
+    (spaceId: string) => {
+      const store = useSpaceStore.getState();
+      if (spaceId === store.activeSpaceId) return;
+      store.setActiveSpace(spaceId);
+      setProjectScopeKey(store.projectScopeKeyBySpaceId[spaceId] ?? null);
+      const route = store.lastRouteBySpaceId[spaceId];
+      const inSpace = (projectKey: string) =>
+        spaceId === ALL_SPACE_ID || resolveSpace(projectKey) === spaceId;
+      if (route?.kind === "server") {
+        const thread = threadsRef.current.find(
+          (candidate) =>
+            candidate.environmentId === route.environmentId && candidate.id === route.threadId,
+        );
+        if (
+          thread &&
+          thread.archivedAt === null &&
+          inSpace(`${thread.environmentId}:${thread.projectId}`)
+        ) {
+          void router.navigate({
+            to: "/$environmentId/$threadId",
+            params: { environmentId: route.environmentId, threadId: route.threadId },
+          });
+          return;
+        }
+      }
+      if (route?.kind === "draft") {
+        const session = useComposerDraftStore.getState().getDraftSession(route.draftId as DraftId);
+        if (
+          session &&
+          session.promotedTo == null &&
+          inSpace(`${session.environmentId}:${session.projectId}`)
+        ) {
+          void router.navigate({ to: "/draft/$draftId", params: { draftId: route.draftId } });
+          return;
+        }
+      }
+      // The index opens a draft in the space's most recent project.
+      void router.navigate({ to: "/" });
+    },
+    [resolveSpace, router, setProjectScopeKey],
+  );
+
+  const moveProjectToSpace = useCallback((group: SpaceProjectGroup, spaceId: string) => {
+    useSpaceStore.getState().assignProjects(
+      group.memberProjectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`),
+      spaceId,
+    );
+  }, []);
+
+  return {
+    spaces,
+    activeSpaceId,
+    spaceProjectGroups,
+    groupSpaceId,
+    switchSpace,
+    moveProjectToSpace,
+  };
+}

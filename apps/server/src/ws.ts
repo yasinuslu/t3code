@@ -131,6 +131,7 @@ import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
+import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
@@ -3148,6 +3149,12 @@ const makeWsRpcLayer = (
                   }),
               ),
             ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.filesystemCodeProfiles]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.filesystemCodeProfiles,
+            Effect.promise(() => resolveCodeProfiles(input)),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.attachmentsCreateUploadUrl]: (input) =>
