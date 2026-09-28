@@ -197,8 +197,25 @@ function NavigationHistoryShortcuts() {
       else window.history.forward();
     };
 
+    // Mouse thumb buttons (3 = back, 4 = forward) only navigate while the
+    // pointer is over the main sidebar; elsewhere they keep their default.
+    const onMouseUp = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      if (!(event.target instanceof Element) || !event.target.closest("[data-app-sidebar]")) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.button === 3) window.history.back();
+      else window.history.forward();
+    };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
   }, [keybindings, routeThreadRef]);
 
   return null;
