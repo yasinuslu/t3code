@@ -39,6 +39,6 @@ export function onOpenCommandPalette(
 export function isCommandPaletteOpen(): boolean {
   return (
     typeof document !== "undefined" &&
-    document.querySelector("[data-command-palette], [data-brainstorm-popup]") !== null
+    document.querySelector("[data-command-palette], [data-brainstorm-popup][data-open]") !== null
   );
 }

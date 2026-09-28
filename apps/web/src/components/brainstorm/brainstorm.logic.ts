@@ -105,3 +105,50 @@ export function brainstormAccelerator(keybindings: ResolvedKeybindingsConfig): s
   );
   return rule ? shortcutToAccelerator(rule.shortcut) : null;
 }
+
+export interface ToolStep {
+  readonly id: string;
+  readonly label: string;
+  readonly done: boolean;
+  readonly at: string;
+}
+
+/**
+ * One line per tool call, from the thread's tool activities: the last update
+ * of each call wins, labelled with the tool's name (MCP prefixes dropped).
+ */
+export function toolStepsOf(
+  activities: ReadonlyArray<{
+    readonly id: string;
+    readonly tone: string;
+    readonly kind: string;
+    readonly summary: string;
+    readonly payload: unknown;
+    readonly createdAt: string;
+  }>,
+): ReadonlyArray<ToolStep> {
+  const steps = new Map<string, ToolStep>();
+  for (const activity of activities) {
+    if (activity.tone !== "tool") continue;
+    const payload = (activity.payload ?? {}) as {
+      readonly toolCallId?: unknown;
+      readonly detail?: unknown;
+      readonly data?: { readonly toolName?: unknown };
+    };
+    const callId = typeof payload.toolCallId === "string" ? payload.toolCallId : activity.id;
+    const rawName =
+      typeof payload.data?.toolName === "string" ? payload.data.toolName : activity.summary;
+    const name = rawName.replace(/^mcp__[^_]+(?:-[^_]+)*__/, "");
+    const detail =
+      typeof payload.detail === "string" ? payload.detail.replace(/^[^:]*:\s*/, "") : "";
+    const label = detail && detail !== "{}" ? `${name} ${detail}` : name;
+    const first = steps.get(callId);
+    steps.set(callId, {
+      id: callId,
+      label: label.length > 140 ? `${label.slice(0, 139)}…` : label,
+      done: activity.kind === "tool.completed",
+      at: first?.at ?? activity.createdAt,
+    });
+  }
+  return [...steps.values()];
+}

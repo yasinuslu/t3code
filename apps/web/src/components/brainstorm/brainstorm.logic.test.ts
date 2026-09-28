@@ -7,6 +7,7 @@ import {
   brainstormSpacesInput,
   membershipChangesToAdopt,
   shortcutToAccelerator,
+  toolStepsOf,
 } from "./brainstorm.logic";
 
 const shortcut = (
@@ -98,5 +99,35 @@ describe("shortcutToAccelerator", () => {
     ] as ResolvedKeybindingsConfig;
     expect(brainstormAccelerator(keybindings)).toBe("CommandOrControl+Shift+Space");
     expect(brainstormAccelerator([])).toBeNull();
+  });
+});
+
+describe("toolStepsOf", () => {
+  it("collapses each call to its latest state and names the tool", () => {
+    const activity = (id: string, kind: string, callId: string, detail: string, at: string) => ({
+      id,
+      tone: "tool",
+      kind,
+      summary: "MCP tool call",
+      payload: { toolCallId: callId, detail, data: { toolName: "mcp__t3-code__add_task" } },
+      createdAt: at,
+    });
+    const steps = toolStepsOf([
+      activity("a1", "tool.started", "c1", "mcp__t3-code__add_task: {}", "2026-09-28T00:00:01Z"),
+      activity(
+        "a2",
+        "tool.completed",
+        "c1",
+        'mcp__t3-code__add_task: {"title":"X"}',
+        "2026-09-28T00:00:02Z",
+      ),
+      {
+        ...activity("a3", "context-window.updated", "c2", "", "2026-09-28T00:00:03Z"),
+        tone: "info",
+      },
+    ]);
+    expect(steps).toEqual([
+      { id: "c1", label: 'add_task {"title":"X"}', done: true, at: "2026-09-28T00:00:01Z" },
+    ]);
   });
 });

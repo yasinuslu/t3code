@@ -42,7 +42,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogPopup } from "../ui/dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { brainstormSpacesInput } from "./brainstorm.logic";
+import { brainstormSpacesInput, toolStepsOf } from "./brainstorm.logic";
 
 export function BrainstormPopup(props: {
   readonly environmentId: EnvironmentId;
@@ -113,6 +113,21 @@ function BrainstormContent(props: {
       cancelled = true;
     };
   }, [defaultProfile, environmentId, openBrainstorm, spaceId, syncSpaces]);
+
+  // Esc always dismisses, even when a focused field or a global handler
+  // claims the key before the dialog sees it.
+  const { onClose } = props;
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (document.querySelector("[data-slot='select-popup']")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onClose]);
 
   const threadRef = target ? scopeThreadRef(environmentId, target.threadId) : null;
   const openAsThread = () => {
@@ -237,17 +252,15 @@ function BrainstormChat(props: {
           streaming: message.streaming,
           at: message.createdAt,
         })),
-      ...detail.activities
-        .filter((activity) => activity.tone === "tool")
-        .map((activity) => ({
-          kind: "step" as const,
-          id: activity.id,
-          text: activity.summary,
-          at: activity.createdAt,
-        })),
+      ...toolStepsOf(detail.activities).map((step) => ({
+        kind: "step" as const,
+        id: step.id,
+        text: step.done || !running ? step.label : `${step.label} …`,
+        at: step.at,
+      })),
     ];
     return entries.toSorted((left, right) => left.at.localeCompare(right.at));
-  }, [detail]);
+  }, [detail, running]);
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -299,7 +312,10 @@ function BrainstormChat(props: {
           <ol className="flex flex-col gap-3">
             {timeline.map((entry) =>
               entry.kind === "step" ? (
-                <li key={entry.id} className="truncate ps-1 text-muted-foreground text-xs">
+                <li
+                  key={entry.id}
+                  className="truncate ps-1 font-mono text-muted-foreground text-xs"
+                >
                   {entry.text}
                 </li>
               ) : entry.role === "user" ? (
