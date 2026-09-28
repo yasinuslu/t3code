@@ -10,7 +10,8 @@
  *   their tasks in `<default brain>/tasks/<space-name-slug>.md`.
  * - All works in the default profile's brain and sees every list.
  *
- * The default profile is the first profile space in the client's space order.
+ * The default profile is the one the client picked, else the first profile
+ * space in the client's space order.
  *
  * Spaces live in the client; it mirrors them here (`syncSpaces`) so the
  * agent's tools can be scoped to its space. Which thread is a space's
@@ -73,6 +74,7 @@ const PersistedBrainstorm = Schema.Struct({
   spaces: Schema.Array(BrainstormSpace),
   customSpaceIdsByProjectId: Schema.Record(Schema.String, Schema.Array(Schema.String)),
   threadIdsBySpaceId: Schema.Record(Schema.String, Schema.String),
+  defaultProfile: Schema.optional(Schema.NullOr(Schema.String)),
 });
 type PersistedBrainstorm = typeof PersistedBrainstorm.Type;
 const PersistedBrainstormJson = Schema.fromJsonString(PersistedBrainstorm);
@@ -277,6 +279,7 @@ export const make = Effect.gen(function* () {
         space.kind === "profile" && profiles.some((profile) => profile.name === space.profile),
     );
     const defaultProfile =
+      profiles.find((profile) => profile.name === state.defaultProfile) ??
       profiles.find((profile) => profile.name === firstProfileSpace?.profile) ??
       profiles[0] ??
       null;
@@ -399,6 +402,7 @@ export const make = Effect.gen(function* () {
         ...current,
         spaces: input.spaces,
         customSpaceIdsByProjectId: input.customSpaceIdsByProjectId,
+        defaultProfile: input.defaultProfile ?? null,
       };
       if (encodePersisted(next) === encodePersisted(current)) return;
       yield* Ref.set(stateRef, next);
@@ -627,6 +631,8 @@ export const make = Effect.gen(function* () {
       taskLists: lists,
       customSpaceIdsByProjectId: state.customSpaceIdsByProjectId as Record<string, string[]>,
       membershipRevision: yield* Ref.get(membershipRevision),
+      profiles: ctx.profiles.map((profile) => profile.name),
+      defaultProfile: ctx.defaultProfile?.name ?? null,
     } satisfies BrainstormState;
   });
 

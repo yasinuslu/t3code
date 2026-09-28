@@ -26,7 +26,8 @@ example to answer an approval.
 | A custom space  | the default profile's brain        |
 | Other, All      | the default profile's brain        |
 
-The default profile is the first profile space in the space switcher.
+The default profile is the one picked in the popup's brain menu, shown for spaces that are not
+profile spaces. Until you pick one it is the first profile space in the space switcher.
 
 The agent gets tools on the `t3-code` MCP server, scoped to its space. The All space sees
 everything:

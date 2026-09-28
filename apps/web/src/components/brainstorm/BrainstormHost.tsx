@@ -74,6 +74,7 @@ export function BrainstormHost() {
 
   const spaces = useSpaceStore((store) => store.spaces);
   const memberships = useSpaceStore((store) => store.customSpaceIdsByProjectKey);
+  const defaultProfile = useBrainstormStore((store) => store.defaultProfile);
   const syncSpaces = useAtomCommand(brainstormEnvironment.syncSpaces, { reportFailure: false });
   useEffect(() => {
     if (environmentId === null) return;
@@ -83,11 +84,12 @@ export function BrainstormHost() {
         input: brainstormSpacesInput(
           { spaces, customSpaceIdsByProjectKey: memberships },
           environmentId,
+          defaultProfile,
         ),
       });
     }, SYNC_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [environmentId, memberships, spaces, syncSpaces]);
+  }, [defaultProfile, environmentId, memberships, spaces, syncSpaces]);
 
   const state = useEnvironmentQuery(
     environmentId === null ? null : brainstormEnvironment.state({ environmentId, input: {} }),

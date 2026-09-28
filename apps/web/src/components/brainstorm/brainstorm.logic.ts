@@ -13,6 +13,7 @@ export const BRAINSTORM_TOGGLE_COMMAND = "brainstorm.toggle";
 export function brainstormSpacesInput(
   state: Pick<SpaceState, "spaces" | "customSpaceIdsByProjectKey">,
   environmentId: string,
+  defaultProfile: string | null = null,
 ): BrainstormSyncSpacesInput {
   const spaces: BrainstormSpace[] = state.spaces.map((space: Space) => ({
     id: space.id,
@@ -34,7 +35,7 @@ export function brainstormSpacesInput(
       customSpaceIdsByProjectId[key.slice(prefix.length)] = spaceIds;
     }
   }
-  return { spaces, customSpaceIdsByProjectId };
+  return { spaces, customSpaceIdsByProjectId, defaultProfile };
 }
 
 /**

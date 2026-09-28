@@ -27,6 +27,11 @@ export const BrainstormSyncSpacesInput = Schema.Struct({
   spaces: Schema.Array(BrainstormSpace),
   /** Custom spaces each of this environment's projects was added to. */
   customSpaceIdsByProjectId: Schema.Record(Schema.String, Schema.Array(Schema.String)),
+  /**
+   * Code profile whose brain custom spaces, Other and All use. Unset: the
+   * first profile space.
+   */
+  defaultProfile: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 });
 export type BrainstormSyncSpacesInput = typeof BrainstormSyncSpacesInput.Type;
 
@@ -71,6 +76,9 @@ export const BrainstormState = Schema.Struct({
   customSpaceIdsByProjectId: Schema.Record(Schema.String, Schema.Array(Schema.String)),
   /** Bumped when the agent changes a custom membership; clients then adopt the map above. */
   membershipRevision: Schema.Int,
+  /** Code profiles that have a brain, and the one custom spaces, Other and All use. */
+  profiles: Schema.Array(Schema.String),
+  defaultProfile: Schema.NullOr(Schema.String),
 });
 export type BrainstormState = typeof BrainstormState.Type;
 

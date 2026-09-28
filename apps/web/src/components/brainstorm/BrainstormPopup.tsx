@@ -40,6 +40,7 @@ import { SpaceIcon } from "../sidebar/SpaceSwitcher";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogPopup } from "../ui/dialog";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { brainstormSpacesInput } from "./brainstorm.logic";
 
@@ -91,6 +92,9 @@ function BrainstormContent(props: {
   const openBrainstorm = useAtomCommand(brainstormEnvironment.open, { reportFailure: false });
   const [target, setTarget] = useState<BrainstormOpenResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const defaultProfile = useBrainstormStore((store) => store.defaultProfile);
+  const setDefaultProfile = useBrainstormStore((store) => store.setDefaultProfile);
+  const usesDefaultBrain = space !== undefined && space.profile === null;
 
   useEffect(() => {
     let cancelled = false;
@@ -98,7 +102,7 @@ function BrainstormContent(props: {
       // The server scopes by the spaces it knows; make sure it has this one.
       await syncSpaces({
         environmentId,
-        input: brainstormSpacesInput(useSpaceStore.getState(), environmentId),
+        input: brainstormSpacesInput(useSpaceStore.getState(), environmentId, defaultProfile),
       });
       const result = await openBrainstorm({ environmentId, input: { spaceId } });
       if (cancelled) return;
@@ -108,7 +112,7 @@ function BrainstormContent(props: {
     return () => {
       cancelled = true;
     };
-  }, [environmentId, openBrainstorm, spaceId, syncSpaces]);
+  }, [defaultProfile, environmentId, openBrainstorm, spaceId, syncSpaces]);
 
   const threadRef = target ? scopeThreadRef(environmentId, target.threadId) : null;
   const openAsThread = () => {
@@ -125,6 +129,25 @@ function BrainstormContent(props: {
       <header className="flex items-center gap-2 border-b px-4 py-2.5">
         {space ? <SpaceIcon icon={space.icon} className="size-4" /> : null}
         <h2 className="font-medium text-sm">Brainstorm · {space?.name ?? "Space"}</h2>
+        {usesDefaultBrain && (props.state?.profiles.length ?? 0) > 1 ? (
+          <Select
+            value={props.state?.defaultProfile ?? ""}
+            onValueChange={(value) => {
+              if (typeof value === "string" && value) setDefaultProfile(value);
+            }}
+          >
+            <SelectTrigger size="xs" className="w-auto" aria-label="Brain for this space">
+              <SelectValue>{`${props.state?.defaultProfile ?? "?"}-brain`}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="start" alignItemWithTrigger={false}>
+              {(props.state?.profiles ?? []).map((profile) => (
+                <SelectItem key={profile} hideIndicator value={profile}>
+                  {`${profile}-brain`}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        ) : null}
         {target ? (
           <span className="truncate text-muted-foreground text-xs">{target.brainPath}</span>
         ) : null}
