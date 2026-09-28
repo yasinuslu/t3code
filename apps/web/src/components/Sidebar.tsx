@@ -235,7 +235,12 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
-import { CodeProfileProbes, SpaceSwitcher, useSpaceSwipe } from "./sidebar/SpaceSwitcher";
+import {
+  CodeProfileProbes,
+  SpaceSwitcher,
+  useSpaceMouseButtons,
+  useSpaceSwipe,
+} from "./sidebar/SpaceSwitcher";
 import { useSidebarSpaces } from "./sidebar/useSidebarSpaces";
 import { ALL_SPACE_ID, OTHER_SPACE_ID } from "../spaceStore";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
@@ -2335,6 +2340,7 @@ export default function Sidebar() {
   });
   const activeSpace = spaces.find((space) => space.id === activeSpaceId) ?? null;
   const handleSpaceSwipe = useSpaceSwipe(switchSpace);
+  useSpaceMouseButtons(switchSpace);
   const projectGroupsRef = useRef(projectGroups);
   projectGroupsRef.current = projectGroups;
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
