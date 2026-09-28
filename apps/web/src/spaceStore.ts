@@ -223,14 +223,18 @@ export function removeSpace(state: SpaceState, spaceId: string): SpaceState {
   };
 }
 
-/** The neighbour of the active space in display order, or null at either end. */
+/** The neighbour of the active space in display order, wrapping at both ends. */
 export function adjacentSpaceId(
   spaces: ReadonlyArray<Pick<Space, "id">>,
   activeSpaceId: string,
   direction: 1 | -1,
 ): string | null {
-  const index = spaces.findIndex((space) => space.id === activeSpaceId);
-  return spaces[(index === -1 ? 0 : index) + direction]?.id ?? null;
+  if (spaces.length < 2) return null;
+  const index = Math.max(
+    0,
+    spaces.findIndex((space) => space.id === activeSpaceId),
+  );
+  return spaces[(index + direction + spaces.length) % spaces.length]?.id ?? null;
 }
 
 const SWIPE_THRESHOLD_PX = 90;

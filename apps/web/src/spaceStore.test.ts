@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  adjacentSpaceId,
   ALL_SPACE_ID,
   createSpaceSwipeTracker,
   initialSpaceState,
@@ -127,5 +128,23 @@ describe("resolveProjectGroupSpaceId", () => {
       projectSpaceByKey: { "remote:a": work.id },
     };
     expect(resolveProjectGroupSpaceId(withData, ["local:a", "remote:a"])).toBe(work.id);
+  });
+});
+
+describe("adjacentSpaceId", () => {
+  const spaces = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+  it("steps between neighbours", () => {
+    expect(adjacentSpaceId(spaces, "b", 1)).toBe("c");
+    expect(adjacentSpaceId(spaces, "b", -1)).toBe("a");
+  });
+
+  it("wraps around at both ends", () => {
+    expect(adjacentSpaceId(spaces, "c", 1)).toBe("a");
+    expect(adjacentSpaceId(spaces, "a", -1)).toBe("c");
+  });
+
+  it("has no neighbour with a single space", () => {
+    expect(adjacentSpaceId([{ id: "a" }], "a", 1)).toBeNull();
   });
 });
