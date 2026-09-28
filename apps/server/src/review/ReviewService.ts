@@ -16,6 +16,7 @@ import {
 } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
@@ -38,6 +39,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);
@@ -74,6 +76,18 @@ export const make = Effect.gen(function* () {
     ]);
 
     if (isWithinRoot(candidate, workspaceRoot) || isWithinRoot(candidate, worktreesRoot)) {
+      return;
+    }
+
+    // Project workspaces (and their submodules) live wherever the user keeps them, not under
+    // the server's own cwd, so any active project's root is an allowed review root too.
+    const projectRoots = yield* projections.getProjectShells().pipe(
+      Effect.flatMap((projects) =>
+        Effect.forEach(projects, (project) => canonicalizePath(project.workspaceRoot)),
+      ),
+      Effect.orElseSucceed((): ReadonlyArray<string> => []),
+    );
+    if (projectRoots.some((root) => isWithinRoot(candidate, root))) {
       return;
     }
 

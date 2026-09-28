@@ -5,7 +5,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 
+import type { OrchestrationProjectShell } from "@t3tools/contracts";
+
 import { ServerConfig } from "../config.ts";
+import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as ReviewService from "./ReviewService.ts";
@@ -13,6 +16,7 @@ import * as ReviewService from "./ReviewService.ts";
 function makeLayer(input: {
   readonly workspaceRoot: string;
   readonly baseDir: string;
+  readonly projectRoots?: ReadonlyArray<string>;
   readonly detectCalls?: Array<{ readonly cwd: string }>;
 }) {
   return ReviewService.layer.pipe(
@@ -28,6 +32,16 @@ function makeLayer(input: {
       }),
     ),
     Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+    Layer.provide(
+      Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
+        getProjectShells: () =>
+          Effect.succeed(
+            (input.projectRoots ?? []).map(
+              (workspaceRoot) => ({ workspaceRoot }) as OrchestrationProjectShell,
+            ),
+          ),
+      }),
+    ),
     Layer.provide(ServerConfig.layerTest(input.workspaceRoot, input.baseDir)),
     Layer.provideMerge(NodeServices.layer),
   );
@@ -105,6 +119,30 @@ describe("ReviewService", () => {
       assert.strictEqual(result.cwd, workspaceRoot);
       assert.deepStrictEqual(result.sources, []);
       assert.deepStrictEqual(detectCalls, [{ cwd: workspaceRoot }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("allows diff preview cwd inside a submodule of a registered project", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-workspace-" });
+      const projectRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-project-" });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-base-" });
+      const submoduleCwd = `${projectRoot}/repos/child`;
+      yield* fs.makeDirectory(submoduleCwd, { recursive: true });
+      const detectCalls: Array<{ readonly cwd: string }> = [];
+
+      const result = yield* Effect.gen(function* () {
+        const review = yield* ReviewService.ReviewService;
+        return yield* review.getDiffPreview({ cwd: submoduleCwd });
+      }).pipe(
+        Effect.provide(
+          makeLayer({ workspaceRoot, baseDir, projectRoots: [projectRoot], detectCalls }),
+        ),
+      );
+
+      assert.strictEqual(result.cwd, submoduleCwd);
+      assert.deepStrictEqual(detectCalls, [{ cwd: submoduleCwd }]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
