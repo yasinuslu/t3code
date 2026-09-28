@@ -29,7 +29,7 @@ export const BrainstormSyncSpacesInput = Schema.Struct({
   customSpaceIdsByProjectId: Schema.Record(Schema.String, Schema.Array(Schema.String)),
   /**
    * Code profile whose brain custom spaces, Other and All use. Unset: the
-   * first profile space.
+   * profile a symlink directly under `~/code` points into, else the first.
    */
   defaultProfile: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 });

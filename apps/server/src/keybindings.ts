@@ -132,6 +132,12 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{ from: KeybindingRule; to: Keybi
     from: { key: "mod+alt+b", command: "rightPanel.toggle" },
     to: { key: "mod+alt+\\", command: "rightPanel.toggle" },
   },
+  // `brainstorm.toggle` first shipped on `mod+shift+space`, which is also
+  // registered system-wide and collides with 1Password's Quick Access.
+  {
+    from: { key: "mod+shift+space", command: "brainstorm.toggle" },
+    to: { key: "ctrl+alt+space", command: "brainstorm.toggle" },
+  },
 ];
 
 /**

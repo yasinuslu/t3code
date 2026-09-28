@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
 
-import { resolveCodeProfiles } from "./CodeProfiles.ts";
+import { resolveCodeProfiles, resolveDefaultCodeProfile } from "./CodeProfiles.ts";
 
 describe("resolveCodeProfiles", () => {
   let home: string;
@@ -59,5 +59,38 @@ describe("resolveCodeProfiles", () => {
   it("returns no profiles when the code directory is missing", async () => {
     const result = await resolveCodeProfiles({ paths: ["/tmp"] }, NodePath.join(home, "missing"));
     expect(result).toEqual({ profiles: [], assignments: [{ path: "/tmp", profile: null }] });
+  });
+});
+
+describe("resolveDefaultCodeProfile", () => {
+  let home: string;
+  const profiles = () =>
+    ["alpha", "work"].map((name) => ({ name, path: NodePath.join(home, "code", name) }));
+
+  beforeEach(() => {
+    home = NodeFS.realpathSync(
+      NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "default-profile-")),
+    );
+    for (const name of ["alpha", "work"]) {
+      NodeFS.mkdirSync(NodePath.join(home, "code", name, `${name}-brain`), { recursive: true });
+    }
+  });
+
+  afterEach(() => {
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("picks the profile a top-level symlink points into", async () => {
+    NodeFS.mkdirSync(NodePath.join(home, "code", "work", "config"));
+    NodeFS.symlinkSync(
+      NodePath.join(home, "code", "work", "config"),
+      NodePath.join(home, "code", "config"),
+    );
+    expect(await resolveDefaultCodeProfile(profiles(), home)).toBe("work");
+  });
+
+  it("falls back to the first profile by name", async () => {
+    expect(await resolveDefaultCodeProfile(profiles(), home)).toBe("alpha");
+    expect(await resolveDefaultCodeProfile([], home)).toBeNull();
   });
 });

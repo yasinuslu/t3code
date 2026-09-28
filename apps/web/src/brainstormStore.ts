@@ -15,7 +15,7 @@ interface BrainstormStore {
   readonly spaceId: string | null;
   /** `${environmentId}:${threadId}` of every brainstorm chat. */
   readonly hiddenThreadKeys: ReadonlySet<string>;
-  /** Profile whose brain custom spaces, Other and All use; null: the first profile space. */
+  /** Profile whose brain custom spaces, Other and All use; null: the server picks. */
   readonly defaultProfile: string | null;
   readonly toggle: (spaceId: string) => void;
   readonly close: () => void;

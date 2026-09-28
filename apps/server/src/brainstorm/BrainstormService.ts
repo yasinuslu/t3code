@@ -10,8 +10,8 @@
  *   their tasks in `<default brain>/tasks/<space-name-slug>.md`.
  * - All works in the default profile's brain and sees every list.
  *
- * The default profile is the one the client picked, else the first profile
- * space in the client's space order.
+ * The default profile is the one the client picked, else the profile a
+ * symlink directly under `~/code` points into, else the first profile.
  *
  * Spaces live in the client; it mirrors them here (`syncSpaces`) so the
  * agent's tools can be scoped to its space. Which thread is a space's
@@ -57,7 +57,7 @@ import * as ServerConfig from "../config.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { resolveCodeProfiles } from "../workspace/CodeProfiles.ts";
+import { resolveCodeProfiles, resolveDefaultCodeProfile } from "../workspace/CodeProfiles.ts";
 import {
   addTask,
   deleteTask,
@@ -274,14 +274,13 @@ export const make = Effect.gen(function* () {
       path: profile.path,
       brainPath: NodePath.join(profile.path, `${profile.name}-brain`),
     }));
-    const firstProfileSpace = state.spaces.find(
-      (space) =>
-        space.kind === "profile" && profiles.some((profile) => profile.name === space.profile),
+    // The client's pick wins; otherwise the profile the user's code is linked into.
+    const fallbackProfile = yield* Effect.promise(() =>
+      resolveDefaultCodeProfile(resolved.profiles),
     );
     const defaultProfile =
       profiles.find((profile) => profile.name === state.defaultProfile) ??
-      profiles.find((profile) => profile.name === firstProfileSpace?.profile) ??
-      profiles[0] ??
+      profiles.find((profile) => profile.name === fallbackProfile) ??
       null;
     const profileByProjectId = new Map(
       projects.map((project, index) => [

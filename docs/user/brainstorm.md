@@ -6,7 +6,7 @@ small task list next to it. It needs spaces, which come from code profiles: dire
 
 ## Opening it
 
-Press `Mod+Shift+Space`, or rebind `brainstorm.toggle` in **Settings > Keybindings**. The popup opens
+Press `Ctrl+Alt+Space` (`Ctrl+Option+Space` on a Mac), or rebind `brainstorm.toggle` in **Settings > Keybindings**. The popup opens
 over whatever is on screen, for the active space. Press `Esc` or the shortcut again to close it.
 
 In the desktop app the shortcut is also registered system-wide while T3 Code runs. It then brings
@@ -27,7 +27,8 @@ example to answer an approval.
 | Other, All      | the default profile's brain        |
 
 The default profile is the one picked in the popup's brain menu, shown for spaces that are not
-profile spaces. Until you pick one it is the first profile space in the space switcher.
+profile spaces. Until you pick one, it is the profile that a symlink directly under `~/code` points
+into (a shared checkout linked out of its profile), or else the first profile by name.
 
 The agent gets tools on the `t3-code` MCP server, scoped to its space. The All space sees
 everything:

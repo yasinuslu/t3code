@@ -97,6 +97,7 @@ const DEFAULT_BINDINGS = compile([
   { shortcut: modShortcut("j"), command: "terminal.toggle" },
   { shortcut: modShortcut("\\", { altKey: true }), command: "rightPanel.toggle" },
   { shortcut: surfaceShortcut("b"), command: "preview.toggle" },
+  { shortcut: surfaceShortcut(" "), command: "brainstorm.toggle" },
   { shortcut: surfaceShortcut("t"), command: "rightPanel.toggleTerminal" },
   { shortcut: surfaceShortcut("f"), command: "rightPanel.toggleFiles" },
   { shortcut: surfaceShortcut("d"), command: "diff.toggle" },
@@ -1010,6 +1011,17 @@ describe("resolveShortcutCommand", () => {
         { platform: "MacIntel" },
       ),
       "preview.toggle",
+    );
+  });
+
+  it("matches Ctrl+Option+Space on macOS, where Option types a no-break space", () => {
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "\u00a0", code: "Space", ctrlKey: true, altKey: true }),
+        DEFAULT_BINDINGS,
+        { platform: "MacIntel" },
+      ),
+      "brainstorm.toggle",
     );
   });
 

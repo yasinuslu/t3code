@@ -57,6 +57,8 @@ const TERMINAL_LINE_START = "\u0001";
 const TERMINAL_LINE_END = "\u0005";
 const TERMINAL_DELETE_TO_LINE_START = "\u0015";
 const EVENT_CODE_SHORTCUT_KEYS: Readonly<Record<string, string>> = {
+  // Option+Space types a no-break space on macOS.
+  Space: " ",
   Backquote: "`",
   Backslash: "\\",
   BracketLeft: "[",

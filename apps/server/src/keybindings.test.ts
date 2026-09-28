@@ -312,6 +312,28 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
+  it.effect("moves the first brainstorm.toggle default off mod+shift+space on startup", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "mod+shift+space", command: "brainstorm.toggle" },
+      ]);
+
+      yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+      });
+
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.deepStrictEqual(
+        persisted
+          .filter((entry) => entry.command === "brainstorm.toggle")
+          .map((entry) => entry.key),
+        ["ctrl+alt+space"],
+      );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
   it.effect("leaves a user's own mod+alt+b rule alone", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;

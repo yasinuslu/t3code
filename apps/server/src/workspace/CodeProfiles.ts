@@ -70,3 +70,33 @@ export async function resolveCodeProfiles(
   );
   return { profiles, assignments };
 }
+
+/**
+ * The profile the user's code lives in by default: the one a symlink directly
+ * under `~/code` points into (a shared checkout linked out of its profile).
+ * With several, the first by name; with none, the first profile. Null when
+ * there are no profiles.
+ */
+export async function resolveDefaultCodeProfile(
+  profiles: ReadonlyArray<FilesystemCodeProfile>,
+  homeDir: string = NodeOS.homedir(),
+): Promise<string | null> {
+  const root = NodePath.join(homeDir, CODE_PROFILES_DIRECTORY);
+  let entries: Array<import("node:fs").Dirent> = [];
+  try {
+    entries = await NodeFSP.readdir(root, { withFileTypes: true });
+  } catch {
+    entries = [];
+  }
+  const linked = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
+    const target = await realPathOrSelf(NodePath.join(root, entry.name));
+    const profile = profiles.find((candidate) =>
+      target.startsWith(`${candidate.path}${NodePath.sep}`),
+    );
+    if (profile) linked.add(profile.name);
+  }
+  const byName = profiles.toSorted((left, right) => left.name.localeCompare(right.name));
+  return (byName.find((profile) => linked.has(profile.name)) ?? byName[0])?.name ?? null;
+}
