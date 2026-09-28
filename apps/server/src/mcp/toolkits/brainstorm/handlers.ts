@@ -175,7 +175,7 @@ const make = Effect.gen(function* () {
       if (!thread || !inScope(context, space, thread.projectId)) {
         return yield* fail(`Thread ${threadId} is not in ${space.name}.`);
       }
-      if (Object.values(context.threadIdsBySpaceId).includes(thread.id)) {
+      if (context.brainstormThreadIds.has(thread.id)) {
         return yield* fail("That is a brainstorm chat, not a work thread.");
       }
       return thread;
@@ -345,7 +345,7 @@ const make = Effect.gen(function* () {
           input.project === undefined
             ? null
             : yield* findProject(context, filterSpace, input.project);
-        const brainstormIds = new Set(Object.values(context.threadIdsBySpaceId));
+        const brainstormIds = context.brainstormThreadIds;
         const threads = (yield* allThreads(input.includeArchived === true))
           .filter((thread) => !brainstormIds.has(thread.id))
           .filter((thread) => inScope(context, filterSpace, thread.projectId))

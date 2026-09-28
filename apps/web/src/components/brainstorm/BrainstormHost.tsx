@@ -100,7 +100,9 @@ export function BrainstormHost() {
     if (environmentId === null || state === null) return;
     setHiddenThreadKeys(
       new Set(
-        Object.values(state.threadIdsBySpaceId).map((threadId) => `${environmentId}:${threadId}`),
+        [...Object.values(state.threadIdsBySpaceId), ...state.hiddenThreadIds].map(
+          (threadId) => `${environmentId}:${threadId}`,
+        ),
       ),
     );
   }, [environmentId, setHiddenThreadKeys, state]);

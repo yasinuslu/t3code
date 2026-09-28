@@ -42,7 +42,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogPopup } from "../ui/dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { brainstormSpacesInput, toolStepsOf } from "./brainstorm.logic";
+import { brainstormActivity, brainstormSpacesInput, toolStepsOf } from "./brainstorm.logic";
 
 export function BrainstormPopup(props: {
   readonly environmentId: EnvironmentId;
@@ -191,6 +191,7 @@ function BrainstormContent(props: {
               environmentId={environmentId}
               threadId={threadRef.threadId}
               cwd={target?.brainPath}
+              onOpenAsThread={openAsThread}
             />
           )}
         </section>
@@ -223,6 +224,7 @@ function BrainstormChat(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: OrchestrationThreadShell["id"];
   readonly cwd: string | undefined;
+  readonly onOpenAsThread: () => void;
 }) {
   const ref = useMemo(
     () => scopeThreadRef(props.environmentId, props.threadId),
@@ -235,9 +237,22 @@ function BrainstormChat(props: {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [awaitingSince, setAwaitingSince] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const running = shell?.session?.status === "running" || shell?.session?.status === "starting";
+  const lastAnswerAt =
+    detail?.messages.findLast((message) => message.role === "assistant" && !message.streaming)
+      ?.updatedAt ?? null;
+  const activity = brainstormActivity({
+    sessionStatus: shell?.session?.status ?? null,
+    sessionError: shell?.session?.lastError ?? null,
+    latestTurnState: shell?.latestTurn?.state ?? null,
+    hasPendingApprovals: shell?.hasPendingApprovals ?? false,
+    hasPendingUserInput: shell?.hasPendingUserInput ?? false,
+    awaitingSince,
+    lastAnswerAt,
+  });
+  const running = activity.kind === "thinking";
 
   const timeline = useMemo<ReadonlyArray<TimelineEntry>>(() => {
     if (!detail) return [];
@@ -277,6 +292,7 @@ function BrainstormChat(props: {
     if (text.length === 0 || !shell || sending) return;
     setSending(true);
     setSendError(null);
+    setAwaitingSince(new Date().toISOString());
     const result = await startTurn({
       environmentId: props.environmentId,
       input: {
@@ -288,6 +304,7 @@ function BrainstormChat(props: {
     });
     setSending(false);
     if (result._tag === "Failure") {
+      setAwaitingSince(null);
       setSendError(formatEnvironmentQueryError(result.cause));
       return;
     }
@@ -333,9 +350,33 @@ function BrainstormChat(props: {
             )}
           </ol>
         )}
-        {running ? (
-          <div className="mt-3 flex items-center gap-2 text-muted-foreground text-xs">
-            <Spinner className="size-3" /> Working…
+        {activity.kind === "thinking" ? (
+          <div
+            className="mt-3 flex items-center gap-2 text-muted-foreground text-sm"
+            data-brainstorm-activity="thinking"
+          >
+            <Spinner className="size-3.5" /> Thinking…
+          </div>
+        ) : activity.kind === "needs-input" ? (
+          <div
+            className="mt-3 flex items-center gap-2 rounded-md border border-warning/40 bg-warning-surface px-3 py-2 text-sm"
+            data-brainstorm-activity="needs-input"
+          >
+            <span className="flex-1">
+              {activity.what === "approval"
+                ? "The agent is waiting for your approval."
+                : "The agent asked you a question."}
+            </span>
+            <Button size="compact" variant="outline" onClick={props.onOpenAsThread}>
+              Open as thread
+            </Button>
+          </div>
+        ) : activity.kind === "error" ? (
+          <div
+            className="mt-3 rounded-md border border-destructive/30 px-3 py-2 text-destructive-foreground text-sm"
+            data-brainstorm-activity="error"
+          >
+            {activity.message}
           </div>
         ) : null}
       </div>
@@ -352,7 +393,7 @@ function BrainstormChat(props: {
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
           />
-          {running ? (
+          {shell?.session?.status === "running" ? (
             <Button
               size="icon"
               variant="outline"

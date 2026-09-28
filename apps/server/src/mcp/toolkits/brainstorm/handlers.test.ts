@@ -135,6 +135,7 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
       "space-work": BRAINSTORM_WORK,
       "space-home": BRAINSTORM_HOME,
     },
+    brainstormThreadIds: new Set([BRAINSTORM_ALL, BRAINSTORM_WORK, BRAINSTORM_HOME]),
     customSpaceIdsByProjectId: memberships,
     profileByProjectId: new Map([
       ["p-work", "work"],

@@ -68,12 +68,27 @@ import {
 } from "./taskMarkdown.ts";
 
 export const ALL_SPACE_ID = "all";
+
+function allBrainstormThreadIds(state: {
+  readonly threadIdsBySpaceId: Readonly<Record<string, string>>;
+  readonly threadIdsBySpaceBrain?: Readonly<Record<string, string>> | undefined;
+}): ReadonlySet<string> {
+  return new Set([
+    ...Object.values(state.threadIdsBySpaceId),
+    ...Object.values(state.threadIdsBySpaceBrain ?? {}),
+  ]);
+}
 export const OTHER_SPACE_ID = "other";
 
 const PersistedBrainstorm = Schema.Struct({
   spaces: Schema.Array(BrainstormSpace),
   customSpaceIdsByProjectId: Schema.Record(Schema.String, Schema.Array(Schema.String)),
   threadIdsBySpaceId: Schema.Record(Schema.String, Schema.String),
+  /**
+   * Every brainstorm thread by `${spaceId}|${projectId}`: switching a space
+   * to another brain and back returns to the same conversation.
+   */
+  threadIdsBySpaceBrain: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   defaultProfile: Schema.optional(Schema.NullOr(Schema.String)),
 });
 type PersistedBrainstorm = typeof PersistedBrainstorm.Type;
@@ -117,6 +132,8 @@ export interface BrainstormContext {
   readonly profiles: ReadonlyArray<BrainstormProfile>;
   readonly defaultProfile: BrainstormProfile | null;
   readonly threadIdsBySpaceId: Readonly<Record<string, string>>;
+  /** Every brainstorm thread, current or not; none of them is a work thread. */
+  readonly brainstormThreadIds: ReadonlySet<string>;
   readonly customSpaceIdsByProjectId: Readonly<Record<string, ReadonlyArray<string>>>;
   /** Code profile of each project, by project id. */
   readonly profileByProjectId: ReadonlyMap<string, string | null>;
@@ -293,6 +310,7 @@ export const make = Effect.gen(function* () {
       profiles,
       defaultProfile,
       threadIdsBySpaceId: state.threadIdsBySpaceId,
+      brainstormThreadIds: allBrainstormThreadIds(state),
       customSpaceIdsByProjectId: state.customSpaceIdsByProjectId,
       profileByProjectId,
       projects,
@@ -446,9 +464,13 @@ export const make = Effect.gen(function* () {
   const spaceOfThread: BrainstormService["Service"]["spaceOfThread"] = (threadId) =>
     Ref.get(stateRef).pipe(
       Effect.map((state) => {
-        const spaceId = Object.entries(state.threadIdsBySpaceId).find(
-          ([, candidate]) => candidate === threadId,
-        )?.[0];
+        const spaceId =
+          Object.entries(state.threadIdsBySpaceId).find(
+            ([, candidate]) => candidate === threadId,
+          )?.[0] ??
+          Object.entries(state.threadIdsBySpaceBrain ?? {})
+            .find(([, candidate]) => candidate === threadId)?.[0]
+            .split("|")[0];
         return state.spaces.find((space) => space.id === spaceId) ?? null;
       }),
     );
@@ -524,11 +546,33 @@ export const make = Effect.gen(function* () {
         }
 
         const state = yield* Ref.get(stateRef);
-        const existingId = state.threadIdsBySpaceId[space.id];
-        const existing = existingId
-          ? snapshot.threads.find((thread) => thread.id === existingId)
-          : undefined;
-        if (existing && existing.archivedAt === null && existing.projectId === project.id) {
+        const brainKey = `${space.id}|${project.id}`;
+        // This space's conversation in this brain, from before or current.
+        const existing = [
+          state.threadIdsBySpaceBrain?.[brainKey],
+          state.threadIdsBySpaceId[space.id],
+        ]
+          .map((id) => (id ? snapshot.threads.find((thread) => thread.id === id) : undefined))
+          .find(
+            (thread) =>
+              thread !== undefined && thread.archivedAt === null && thread.projectId === project.id,
+          );
+        if (existing) {
+          if (
+            state.threadIdsBySpaceId[space.id] !== existing.id ||
+            state.threadIdsBySpaceBrain?.[brainKey] !== existing.id
+          ) {
+            yield* Ref.update(stateRef, (current) => ({
+              ...current,
+              threadIdsBySpaceId: { ...current.threadIdsBySpaceId, [space.id]: existing.id },
+              threadIdsBySpaceBrain: {
+                ...current.threadIdsBySpaceBrain,
+                [brainKey]: existing.id,
+              },
+            }));
+            yield* save;
+            yield* notify;
+          }
           return { spaceId: space.id, projectId: project.id, threadId: existing.id, brainPath };
         }
 
@@ -563,6 +607,7 @@ export const make = Effect.gen(function* () {
         yield* Ref.update(stateRef, (current) => ({
           ...current,
           threadIdsBySpaceId: { ...current.threadIdsBySpaceId, [space.id]: threadId },
+          threadIdsBySpaceBrain: { ...current.threadIdsBySpaceBrain, [brainKey]: threadId },
         }));
         yield* save;
         yield* notify;
@@ -627,6 +672,7 @@ export const make = Effect.gen(function* () {
     const state = yield* Ref.get(stateRef);
     return {
       threadIdsBySpaceId: state.threadIdsBySpaceId as Record<string, ThreadId>,
+      hiddenThreadIds: [...allBrainstormThreadIds(state)] as ThreadId[],
       taskLists: lists,
       customSpaceIdsByProjectId: state.customSpaceIdsByProjectId as Record<string, string[]>,
       membershipRevision: yield* Ref.get(membershipRevision),

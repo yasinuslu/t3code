@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { initialSpaceState, type Space } from "../../spaceStore";
 import {
   brainstormAccelerator,
+  brainstormActivity,
   brainstormSpacesInput,
   membershipChangesToAdopt,
   shortcutToAccelerator,
@@ -129,5 +130,46 @@ describe("toolStepsOf", () => {
     expect(steps).toEqual([
       { id: "c1", label: 'add_task {"title":"X"}', done: true, at: "2026-09-28T00:00:01Z" },
     ]);
+  });
+});
+
+describe("brainstormActivity", () => {
+  const base = {
+    sessionStatus: "ready",
+    sessionError: null,
+    latestTurnState: "completed",
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    awaitingSince: null,
+    lastAnswerAt: "2026-09-28T10:00:00Z",
+  } as const;
+
+  it("is thinking from the send until an answer lands", () => {
+    const sent = { ...base, awaitingSince: "2026-09-28T11:00:00Z" };
+    expect(brainstormActivity(sent)).toEqual({ kind: "thinking" });
+    expect(brainstormActivity({ ...sent, lastAnswerAt: "2026-09-28T11:00:30Z" })).toEqual({
+      kind: "idle",
+    });
+    expect(brainstormActivity({ ...base, sessionStatus: "running" })).toEqual({ kind: "thinking" });
+  });
+
+  it("puts prompts and failures ahead of silence", () => {
+    expect(
+      brainstormActivity({ ...base, hasPendingApprovals: true, sessionStatus: "running" }),
+    ).toEqual({
+      kind: "needs-input",
+      what: "approval",
+    });
+    expect(brainstormActivity({ ...base, hasPendingUserInput: true })).toEqual({
+      kind: "needs-input",
+      what: "answer",
+    });
+    expect(
+      brainstormActivity({ ...base, sessionStatus: "error", sessionError: "Not logged in" }),
+    ).toEqual({ kind: "error", message: "Not logged in" });
+    expect(brainstormActivity({ ...base, latestTurnState: "error" })).toEqual({
+      kind: "error",
+      message: "The last turn failed.",
+    });
   });
 });

@@ -71,6 +71,8 @@ export type BrainstormTaskList = typeof BrainstormTaskList.Type;
 export const BrainstormState = Schema.Struct({
   /** Brainstorm threads by space; clients hide these from thread lists. */
   threadIdsBySpaceId: Schema.Record(Schema.String, ThreadId),
+  /** Every brainstorm chat, including ones for a brain a space no longer uses. */
+  hiddenThreadIds: Schema.Array(ThreadId),
   taskLists: Schema.Array(BrainstormTaskList),
   /** Custom memberships as the server last saw them. */
   customSpaceIdsByProjectId: Schema.Record(Schema.String, Schema.Array(Schema.String)),

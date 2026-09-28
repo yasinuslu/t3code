@@ -152,3 +152,43 @@ export function toolStepsOf(
   }
   return [...steps.values()];
 }
+
+export type BrainstormActivity =
+  | { readonly kind: "idle" }
+  | { readonly kind: "thinking" }
+  | { readonly kind: "needs-input"; readonly what: "approval" | "answer" }
+  | { readonly kind: "error"; readonly message: string };
+
+/**
+ * What the chat is doing, for the popup to say out loud: a turn in flight
+ * (including the gap between sending and the provider picking it up), a
+ * prompt waiting on the user, or a failure.
+ */
+export function brainstormActivity(input: {
+  readonly sessionStatus: string | null;
+  readonly sessionError: string | null;
+  readonly latestTurnState: string | null;
+  readonly hasPendingApprovals: boolean;
+  readonly hasPendingUserInput: boolean;
+  /** When the popup sent a message it has not seen answered yet. */
+  readonly awaitingSince: string | null;
+  /** Newest assistant message that is complete. */
+  readonly lastAnswerAt: string | null;
+}): BrainstormActivity {
+  if (input.hasPendingApprovals) return { kind: "needs-input", what: "approval" };
+  if (input.hasPendingUserInput) return { kind: "needs-input", what: "answer" };
+  if (input.sessionStatus === "running" || input.sessionStatus === "starting") {
+    return { kind: "thinking" };
+  }
+  if (input.latestTurnState === "running") return { kind: "thinking" };
+  if (input.sessionStatus === "error" || input.latestTurnState === "error") {
+    return { kind: "error", message: input.sessionError ?? "The last turn failed." };
+  }
+  if (
+    input.awaitingSince !== null &&
+    (input.lastAnswerAt === null || input.lastAnswerAt < input.awaitingSince)
+  ) {
+    return { kind: "thinking" };
+  }
+  return { kind: "idle" };
+}
