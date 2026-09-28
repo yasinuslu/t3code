@@ -248,12 +248,12 @@ import {
 import { useSidebarSpaces } from "./sidebar/useSidebarSpaces";
 import { ALL_SPACE_ID, isCustomSpace } from "../spaceStore";
 import {
-  SpaceDragLayer,
+  SpaceMembershipPopoverLayer,
   SpaceRowProjectContext,
   THREAD_PROJECT_KEY_ATTRIBUTE,
   ThreadSpaceBadges,
   useOptionKeyTracking,
-} from "./sidebar/SpaceDrag";
+} from "./sidebar/SpaceMembership";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -4524,7 +4524,7 @@ export default function Sidebar() {
 
   return (
     <SpaceRowProjectContext.Provider value={resolveSpaceRowProject}>
-      <SpaceDragLayer />
+      <SpaceMembershipPopoverLayer />
       <SidebarChromeHeader isElectron={isElectron} />
       <CodeProfileProbes projects={projects} />
       <SidebarContent
@@ -5078,7 +5078,7 @@ export default function Sidebar() {
               ) : scopedProjectGroup ? (
                 `No threads in ${scopedProjectGroup.displayName} yet`
               ) : activeSpace && isCustomSpace(activeSpace) ? (
-                `No threads in ${activeSpace.name} yet. Option-drag a thread here, or use its menu: Add to space.`
+                `No threads in ${activeSpace.name} yet. Option-click a thread, or use its menu: Add to space.`
               ) : activeSpace && activeSpace.id !== ALL_SPACE_ID ? (
                 `No threads in ${activeSpace.name} yet`
               ) : (

@@ -20,7 +20,7 @@ export class SidebarPointerSensor {
   static activators = [
     {
       eventName: "onPointerDown" as const,
-      // Option-drag belongs to the space drop panel (SpaceDrag.tsx).
+      // Option-press belongs to the space popover (SpaceMembership.tsx).
       handler: ({ nativeEvent }: ReactPointerEvent) =>
         nativeEvent.isPrimary && nativeEvent.button === 0 && !nativeEvent.altKey,
     },

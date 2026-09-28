@@ -9,7 +9,11 @@ import {
   type Space,
   type SpaceState,
 } from "../../spaceStore";
-import { applySpaceDrop, spaceDropTargets, threadSpaceBadges } from "./spaceDrag.logic";
+import {
+  spaceToggleEntries,
+  threadSpaceBadges,
+  toggleProjectInSpace,
+} from "./spaceMembership.logic";
 
 function custom(id: string, name: string): Space {
   return { id, name, color: "red", icon: { kind: "emoji", emoji: "🎵" }, profile: null };
@@ -37,7 +41,6 @@ describe("threadSpaceBadges", () => {
     const s = state();
     const badges = threadSpaceBadges(s.spaces, resolveProjectSpaces(s, ["env:a"]));
     expect(badges.map((space) => space.id)).toEqual([yuId(s), "games"]);
-    expect(badges.map((space) => space.id)).not.toContain(ALL_SPACE_ID);
   });
 
   it("shows Other for a project without a profile", () => {
@@ -47,47 +50,47 @@ describe("threadSpaceBadges", () => {
   });
 });
 
-describe("spaceDropTargets", () => {
-  it("lists only custom spaces and marks the ones the project is in", () => {
+describe("spaceToggleEntries", () => {
+  it("lists the home space fixed, then custom spaces with their state", () => {
     const s = state();
-    const targets = spaceDropTargets(s.spaces, resolveProjectSpaces(s, ["env:a"]));
-    expect(targets.map((target) => [target.space.id, target.isMember])).toEqual([
-      ["music", false],
-      ["games", true],
+    const entries = spaceToggleEntries(s.spaces, resolveProjectSpaces(s, ["env:a"]));
+    expect(entries.map((entry) => [entry.space.id, entry.checked, entry.fixed])).toEqual([
+      [yuId(s), true, true],
+      ["music", false, false],
+      ["games", true, false],
     ]);
   });
 
-  it("is empty without custom spaces", () => {
-    const s = seedProfileSpaces(initialSpaceState, ["yu"]);
-    expect(spaceDropTargets(s.spaces, resolveProjectSpaces(s, ["env:a"]))).toEqual([]);
+  it("never lists All, other profile spaces, or Other as toggles", () => {
+    const s = state();
+    const toggles = spaceToggleEntries(s.spaces, resolveProjectSpaces(s, ["env:b"])).filter(
+      (entry) => !entry.fixed,
+    );
+    expect(toggles.map((entry) => entry.space.id)).toEqual(["music", "games"]);
   });
 });
 
-describe("applySpaceDrop", () => {
-  it("adds every member key of the project to the custom space", () => {
-    const { state: next, outcome } = applySpaceDrop(state(), ["env:a", "remote:a"], "music");
-    expect(outcome).toBe("added");
-    expect(next.customSpaceIdsByProjectKey).toEqual({
+describe("toggleProjectInSpace", () => {
+  it("adds every member key, then removes them again", () => {
+    const added = toggleProjectInSpace(state(), ["env:a", "remote:a"], "music");
+    expect(added.customSpaceIdsByProjectKey).toEqual({
       "env:a": ["games", "music"],
       "remote:a": ["music"],
     });
-    // Overlay: still in its profile space.
-    expect(resolveProjectSpaces(next, ["env:a"]).homeSpaceId).toBe(yuId(next));
+    expect(resolveProjectSpaces(added, ["env:a"]).homeSpaceId).toBe(yuId(added));
+    const removed = toggleProjectInSpace(added, ["env:a", "remote:a"], "music");
+    expect(removed.customSpaceIdsByProjectKey).toEqual({ "env:a": ["games"] });
   });
 
-  it("leaves a project that is already in the space alone", () => {
-    const before = state();
-    const { state: next, outcome } = applySpaceDrop(before, ["env:a"], "games");
-    expect(outcome).toBe("already-member");
-    expect(next).toBe(before);
+  it("removes a project already in the space", () => {
+    const next = toggleProjectInSpace(state(), ["env:a"], "games");
+    expect(next.customSpaceIdsByProjectKey).toEqual({});
   });
 
-  it("rejects profile spaces, Other, All and unknown spaces", () => {
+  it("leaves profile spaces, Other, All and unknown spaces alone", () => {
     const before = state();
     for (const target of [yuId(before), OTHER_SPACE_ID, ALL_SPACE_ID, "gone"]) {
-      const { state: next, outcome } = applySpaceDrop(before, ["env:a"], target);
-      expect(outcome).toBe("rejected");
-      expect(next).toBe(before);
+      expect(toggleProjectInSpace(before, ["env:a"], target)).toBe(before);
     }
   });
 });
