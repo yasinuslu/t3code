@@ -31,6 +31,7 @@ import {
   usePanelAnimationSettings,
   usePanelNavigationSuppression,
 } from "../panelAnimations";
+import { BrainstormHost } from "./brainstorm/BrainstormHost";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
@@ -300,6 +301,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         style={sidebarProviderStyle}
       >
         <ProjectProjectionRetention />
+        <BrainstormHost />
         <Sidebar
           side="left"
           collapsible="offcanvas"

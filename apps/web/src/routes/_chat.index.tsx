@@ -4,6 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { isElectron } from "../env";
 import { NoProjectsHero } from "../components/NoProjectsHero";
@@ -13,11 +14,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import {
-  useAllEnvironmentShellsBootstrapped,
-  useProjects,
-  useThreadShells,
-} from "../state/entities";
+import { useAllEnvironmentShellsBootstrapped, useProjects } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { useActiveSpaceProjects } from "~/spaceStore";
@@ -43,7 +40,7 @@ function ChatIndexRouteView() {
 function IndexDraftLanding() {
   // Land in the active space, so opening an empty space stays in it.
   const projects = useActiveSpaceProjects(useProjects());
-  const threads = useThreadShells();
+  const threads = useThreadShellsWithoutBrainstorms();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const startingRef = useRef(false);

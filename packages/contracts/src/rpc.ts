@@ -33,6 +33,14 @@ import {
   FilesystemCodeProfilesResult,
 } from "./filesystem.ts";
 import {
+  BrainstormError,
+  BrainstormMutateTasksInput,
+  BrainstormOpenInput,
+  BrainstormOpenResult,
+  BrainstormState,
+  BrainstormSyncSpacesInput,
+} from "./brainstorm.ts";
+import {
   AgentSessionImportInput,
   AgentSessionImportProjectChangedError,
   AgentSessionImportProjectNotFoundError,
@@ -293,6 +301,10 @@ export const WS_METHODS = {
   // Filesystem methods
   filesystemBrowse: "filesystem.browse",
   filesystemCodeProfiles: "filesystem.codeProfiles",
+  brainstormSyncSpaces: "brainstorm.syncSpaces",
+  brainstormOpen: "brainstorm.open",
+  brainstormMutateTasks: "brainstorm.mutateTasks",
+  subscribeBrainstorm: "subscribeBrainstorm",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
   assetsCreateUrl: "assets.createUrl",
@@ -977,6 +989,29 @@ const WsFilesystemCodeProfilesRpc = Rpc.make(WS_METHODS.filesystemCodeProfiles, 
   error: EnvironmentAuthorizationError,
 });
 
+const WsBrainstormSyncSpacesRpc = Rpc.make(WS_METHODS.brainstormSyncSpaces, {
+  payload: BrainstormSyncSpacesInput,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBrainstormOpenRpc = Rpc.make(WS_METHODS.brainstormOpen, {
+  payload: BrainstormOpenInput,
+  success: BrainstormOpenResult,
+  error: Schema.Union([BrainstormError, EnvironmentAuthorizationError]),
+});
+
+const WsBrainstormMutateTasksRpc = Rpc.make(WS_METHODS.brainstormMutateTasks, {
+  payload: BrainstormMutateTasksInput,
+  error: Schema.Union([BrainstormError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribeBrainstormRpc = Rpc.make(WS_METHODS.subscribeBrainstorm, {
+  payload: Schema.Struct({}),
+  success: BrainstormState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsAgentSessionsScanRpc = Rpc.make(WS_METHODS.agentSessionsScan, {
   payload: AgentSessionScanInput,
   success: AgentSessionScanResult,
@@ -1483,6 +1518,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsFilesystemCodeProfilesRpc,
+  WsBrainstormSyncSpacesRpc,
+  WsBrainstormOpenRpc,
+  WsBrainstormMutateTasksRpc,
+  WsSubscribeBrainstormRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
   WsAssetsCreateUrlRpc,

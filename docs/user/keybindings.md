@@ -124,6 +124,10 @@ through the pages you have visited, like a browser's back and forward buttons.
 `chat.newLocal` skips that chooser. Both use your
 [new-thread defaults](./thread-sidebar.md#start-a-thread).
 
+`brainstorm.toggle` (`mod+shift+space` by default) opens the
+[brainstorm](./brainstorm.md) popup for the active space. The desktop app also registers it
+system-wide while it runs; a `when` condition keeps a binding in the app only.
+
 ## Right panel surfaces
 
 Each right-panel surface has a `Ctrl+Alt` chord that works anywhere in the app,

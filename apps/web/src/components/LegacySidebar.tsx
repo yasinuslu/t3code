@@ -74,6 +74,7 @@ import {
   type SidebarThreadPreviewCount,
   type SidebarThreadSortOrder,
 } from "@t3tools/contracts/settings";
+import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { isDesktopLocalConnectionTarget, isWslConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
@@ -84,12 +85,7 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { isMacPlatform } from "../lib/utils";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
-import {
-  readThreadShell,
-  useProjects,
-  useThreadShells,
-  useThreadShellsForProjectRefs,
-} from "../state/entities";
+import { readThreadShell, useProjects, useThreadShellsForProjectRefs } from "../state/entities";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useThreadDiscoveredPorts } from "../portDiscoveryState";
@@ -3126,7 +3122,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
 export default function LegacySidebar() {
   const projects = useProjects();
-  const sidebarThreads = useThreadShells();
+  const sidebarThreads = useThreadShellsWithoutBrainstorms();
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);

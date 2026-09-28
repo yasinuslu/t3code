@@ -71,6 +71,7 @@ import {
 } from "react";
 import { useAtomValue } from "@effect/atom-react";
 
+import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -96,7 +97,7 @@ import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
-import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
+import { useProjects, useServerConfigs, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -790,7 +791,7 @@ function OpenCommandPaletteDialog(props: {
     }
   }, [activeThreadReferenceCopyTarget]);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
-  const threads = useThreadShells();
+  const threads = useThreadShellsWithoutBrainstorms();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const {
     theme,

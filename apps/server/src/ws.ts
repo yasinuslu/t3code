@@ -132,6 +132,7 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/Atta
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
+import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
@@ -558,6 +559,7 @@ const makeWsRpcLayer = (
       const review = yield* ReviewService.ReviewService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      const brainstorm = yield* BrainstormService.BrainstormService;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
       const deviceService = yield* DeviceService.DeviceService;
@@ -3288,6 +3290,22 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "vcs",
             },
           ),
+        [WS_METHODS.brainstormSyncSpaces]: (input) =>
+          observeRpcEffect(WS_METHODS.brainstormSyncSpaces, brainstorm.syncSpaces(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.brainstormOpen]: (input) =>
+          observeRpcEffect(WS_METHODS.brainstormOpen, brainstorm.open(input.spaceId), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.brainstormMutateTasks]: (input) =>
+          observeRpcEffect(WS_METHODS.brainstormMutateTasks, brainstorm.mutateTasks(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.subscribeBrainstorm]: () =>
+          observeRpcStream(WS_METHODS.subscribeBrainstorm, brainstorm.stateChanges, {
+            "rpc.aggregate": "workspace",
+          }),
         [WS_METHODS.subscribeWorktreeSetup]: (input) =>
           observeRpcStream(
             WS_METHODS.subscribeWorktreeSetup,
@@ -3825,6 +3843,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         ),
     });
     const pullRequests = yield* PullRequestService.PullRequestService;
+    const brainstorm = yield* BrainstormService.BrainstormService;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
       "GET",
@@ -3873,6 +3892,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               // One server-lifetime service means clients share the same PR caches, and a WS
               // mutation invalidates the HTTP diff cache that every client reads from.
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
+              Layer.provide(Layer.succeed(BrainstormService.BrainstormService, brainstorm)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(
                   Layer.provide(

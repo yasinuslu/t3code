@@ -95,6 +95,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.branch",
   "chat.new",
   "chat.newLocal",
+  "brainstorm.toggle",
   "editor.openFavorite",
   "usage.cost",
   "usage.tokens",
