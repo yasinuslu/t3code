@@ -1,6 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { normalizeGitCodePullRequest, parseGitCodeRemoteUrl } from "./GitCodeApi.ts";
+import {
+  normalizeGitCodePullRequest,
+  parseGitCodeRemoteUrl,
+  parseGitCredentialPassword,
+} from "./GitCodeApi.ts";
 
 describe("parseGitCodeRemoteUrl", () => {
   it("reads owner and repository from SSH and HTTPS remotes", () => {
@@ -43,5 +47,21 @@ describe("normalizeGitCodePullRequest", () => {
     });
     assert.strictEqual(normalized.headRepositoryNameWithOwner, undefined);
     assert.strictEqual(normalized.isCrossRepository, undefined);
+  });
+});
+
+describe("parseGitCredentialPassword", () => {
+  it("reads the token git's credential helpers answered with", () => {
+    assert.strictEqual(
+      parseGitCredentialPassword(
+        "protocol=https\nhost=gitcode.com\nusername=me\npassword=tok123\n",
+      ),
+      "tok123",
+    );
+  });
+
+  it("reads no answer as no token", () => {
+    assert.strictEqual(parseGitCredentialPassword("protocol=https\nhost=gitcode.com\n"), null);
+    assert.strictEqual(parseGitCredentialPassword("password=\n"), null);
   });
 });

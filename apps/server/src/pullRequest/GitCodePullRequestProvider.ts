@@ -268,23 +268,26 @@ export const make = Effect.gen(function* () {
     repoPath(input).pipe(Effect.map((path) => `${path}/pulls/${input.number}`));
   const getPull = (input: ProviderRepositoryRef & { readonly number: number }) =>
     pullPath(input).pipe(
-      Effect.flatMap((path) => read({ operation: "getChangeRequest", path }, GitCodePullRequest)),
+      Effect.flatMap((path) =>
+        read({ operation: "getChangeRequest", cwd: input.cwd, path }, GitCodePullRequest),
+      ),
     );
   const getFiles = (input: ProviderRepositoryRef & { readonly number: number }) =>
     pullPath(input).pipe(
       Effect.flatMap((path) =>
         // The files endpoint is documented without paging; it answers with every file at once.
         read(
-          { operation: "getDiff", path: `${path}/files` },
+          { operation: "getDiff", cwd: input.cwd, path: `${path}/files` },
           Schema.NullOr(Schema.Array(GitCodeFile)),
         ),
       ),
       Effect.map((files) => files ?? []),
     );
-  const getViewer = () =>
-    read({ operation: "getViewer", path: "/user" }, Schema.Struct({ login: Schema.String })).pipe(
-      Effect.map((user) => user.login),
-    );
+  const getViewer = (input: { readonly cwd: string }) =>
+    read(
+      { operation: "getViewer", cwd: input.cwd, path: "/user" },
+      Schema.Struct({ login: Schema.String }),
+    ).pipe(Effect.map((user) => user.login));
 
   const permissions = (
     pullRequest: GitCodePullRequest,
@@ -328,6 +331,7 @@ export const make = Effect.gen(function* () {
           const rows = yield* read(
             {
               operation: "listChangeRequests",
+              cwd: input.cwd,
               path: `${path}/pulls`,
               query: {
                 state: input.state,
@@ -353,7 +357,7 @@ export const make = Effect.gen(function* () {
     getChangeRequestSummary: (input) => getPull(input).pipe(Effect.map(gitCodeChangeRequest)),
     getChangeRequest: Effect.fn("GitCodePullRequestProvider.getChangeRequest")(function* (input) {
       const [pullRequest, files, viewer] = yield* Effect.all(
-        [getPull(input), getFiles(input), getViewer()],
+        [getPull(input), getFiles(input), getViewer(input)],
         { concurrency: 3 },
       );
       return {
@@ -375,7 +379,7 @@ export const make = Effect.gen(function* () {
     }),
     getViewerPermissions: Effect.fn("GitCodePullRequestProvider.getViewerPermissions")(
       function* (input) {
-        const [pullRequest, viewer] = yield* Effect.all([getPull(input), getViewer()], {
+        const [pullRequest, viewer] = yield* Effect.all([getPull(input), getViewer(input)], {
           concurrency: 2,
         });
         return permissions(pullRequest, viewer);
@@ -387,11 +391,11 @@ export const make = Effect.gen(function* () {
         const [comments, commits] = yield* Effect.all(
           [
             readAll(
-              { operation: "getChangeRequestActivity", path: `${path}/comments` },
+              { operation: "getChangeRequestActivity", cwd: input.cwd, path: `${path}/comments` },
               GitCodeComment,
             ),
             readAll(
-              { operation: "getChangeRequestActivity", path: `${path}/commits` },
+              { operation: "getChangeRequestActivity", cwd: input.cwd, path: `${path}/commits` },
               GitCodeCommit,
             ),
           ],
@@ -465,6 +469,7 @@ export const make = Effect.gen(function* () {
         case "merge":
           return yield* write({
             operation: "merge",
+            cwd: input.cwd,
             method: "PUT",
             path: `${path}/merge`,
             body: {
@@ -476,6 +481,7 @@ export const make = Effect.gen(function* () {
         case "reopen":
           return yield* write({
             operation: input.action,
+            cwd: input.cwd,
             method: "PATCH",
             path,
             body: { state: input.action === "close" ? "closed" : "open" },
@@ -489,6 +495,7 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((path) =>
           write({
             operation: "updateChangeRequest",
+            cwd: input.cwd,
             method: "PATCH",
             path,
             body: {
@@ -503,6 +510,7 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((path) =>
           write({
             operation: "comment",
+            cwd: input.cwd,
             method: "POST",
             path: `${path}/comments`,
             body: { body: input.body },
@@ -514,6 +522,7 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((path) =>
           write({
             operation: "updateComment",
+            cwd: input.cwd,
             method: "PATCH",
             path: `${path}/pulls/comments/${encodeURIComponent(input.commentId)}`,
             body: { body: input.body },
@@ -525,6 +534,7 @@ export const make = Effect.gen(function* () {
       if (input.verdict === "approve") {
         yield* write({
           operation: "submitReview",
+          cwd: input.cwd,
           method: "POST",
           path: `${path}/review`,
           body: {},
@@ -535,6 +545,7 @@ export const make = Effect.gen(function* () {
       if (input.body.trim().length > 0) {
         yield* write({
           operation: "submitReview",
+          cwd: input.cwd,
           method: "POST",
           path: `${path}/comments`,
           body: { body: input.body },

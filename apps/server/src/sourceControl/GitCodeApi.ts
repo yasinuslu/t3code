@@ -1,6 +1,8 @@
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
+import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -20,6 +22,7 @@ import {
   isSshRemoteUrl,
 } from "@t3tools/shared/sourceControl";
 
+import { ServerConfig } from "../config.ts";
 import { collectUint8StreamText } from "../stream/collectUint8StreamText.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -48,7 +51,18 @@ const GitCodeApiEnvConfig = Config.all({
 });
 
 export const GITCODE_TOKEN_HINT =
-  "Create a GitCode access token at https://gitcode.com/setting/token-classic and set T3CODE_GITCODE_ACCESS_TOKEN on the server.";
+  "Create a GitCode access token at https://gitcode.com/setting/token-classic and set T3CODE_GITCODE_ACCESS_TOKEN on the server, or give git an HTTPS credential for gitcode.com.";
+
+/** How long a token git's credential helpers returned for a repository is reused. */
+const GIT_CREDENTIAL_TTL = Duration.minutes(5);
+
+/** The password in `git credential fill` output, which for GitCode is an access token. */
+export function parseGitCredentialPassword(output: string): string | null {
+  for (const line of output.split(/\r?\n/u)) {
+    if (line.startsWith("password=")) return line.slice("password=".length).trim() || null;
+  }
+  return null;
+}
 
 /** No token is configured, which GitCode's API refuses even for public repositories. */
 export class GitCodeTokenMissingError extends Schema.TaggedError<GitCodeTokenMissingError>()(
@@ -56,7 +70,7 @@ export class GitCodeTokenMissingError extends Schema.TaggedError<GitCodeTokenMis
   { operation: Schema.String },
 ) {
   get detail(): string {
-    return "T3CODE_GITCODE_ACCESS_TOKEN is not set.";
+    return "T3CODE_GITCODE_ACCESS_TOKEN is not set, and git has no HTTPS credential for gitcode.com.";
   }
 
   override get message(): string {
@@ -88,6 +102,11 @@ export interface GitCodeRepositoryLocator {
 
 export interface GitCodeRequestInput {
   readonly operation: string;
+  /**
+   * The repository the request is for. Without `T3CODE_GITCODE_ACCESS_TOKEN`, the token is the
+   * HTTPS credential git's helpers give for gitcode.com there, which may differ per directory.
+   */
+  readonly cwd?: string;
   readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** A path below the API base, such as `/repos/owner/repo/pulls`. */
   readonly path: string;
@@ -271,13 +290,55 @@ export const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const fileSystem = yield* FileSystem.FileSystem;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const serverConfig = yield* ServerConfig;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
 
   const apiUrl = (path: string) => `${config.baseUrl.replace(/\/+$/u, "")}${path}`;
 
+  // Git already holds the token when it pushes to GitCode over HTTPS, and its helpers answer per
+  // directory (an `includeIf` can scope one account to one tree), so it is asked in the
+  // repository itself, never interactively.
+  const gitCredentialCache = yield* Cache.makeWith<string, Option.Option<string>>(
+    (cwd) =>
+      git
+        .execute({
+          operation: "GitCodeApi.gitCredential",
+          cwd,
+          args: ["-c", "credential.interactive=false", "-c", "core.askPass=", "credential", "fill"],
+          stdin: "protocol=https\nhost=gitcode.com\n\n",
+          env: { GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "" },
+          allowNonZeroExit: true,
+          timeoutMs: 10_000,
+          maxOutputBytes: 16_384,
+        })
+        .pipe(
+          Effect.map((result) =>
+            result.exitCode === 0
+              ? Option.fromNullishOr(parseGitCredentialPassword(result.stdout))
+              : Option.none(),
+          ),
+          Effect.orElseSucceed(() => Option.none<string>()),
+        ),
+    { capacity: 256, timeToLive: () => GIT_CREDENTIAL_TTL },
+  );
+  // Requests that name no repository (the signed-in account, the connection probe) reuse the
+  // token git gave for the last one that did.
+  let lastGitCredential: Option.Option<string> = Option.none();
+
+  const resolveToken = Effect.fn("GitCodeApi.resolveToken")(function* (cwd: string | undefined) {
+    if (Option.isSome(config.accessToken)) return config.accessToken;
+    const fromGit = yield* Cache.get(gitCredentialCache, cwd ?? serverConfig.cwd);
+    if (Option.isSome(fromGit)) {
+      lastGitCredential = fromGit;
+      return fromGit;
+    }
+    return cwd === undefined ? lastGitCredential : fromGit;
+  });
+
   const request: GitCodeApi["Service"]["request"] = (input) =>
     Effect.gen(function* () {
-      if (Option.isNone(config.accessToken)) {
+      const accessToken = yield* resolveToken(input.cwd);
+      if (Option.isNone(accessToken)) {
         return yield* new GitCodeTokenMissingError({ operation: input.operation });
       }
       const method = input.method ?? "GET";
@@ -301,7 +362,7 @@ export const make = Effect.gen(function* () {
         .execute(
           withBody.pipe(
             HttpClientRequest.acceptJson,
-            HttpClientRequest.bearerToken(config.accessToken.value),
+            HttpClientRequest.bearerToken(accessToken.value),
           ),
         )
         .pipe(
@@ -395,16 +456,25 @@ export const make = Effect.gen(function* () {
     });
   });
 
-  const getRepository = (repository: GitCodeRepositoryLocator) =>
+  const getRepository = (repository: GitCodeRepositoryLocator, cwd?: string) =>
     requestJson(
-      { operation: "getRepository", path: gitCodeRepositoryPath(repository) },
+      {
+        operation: "getRepository",
+        ...(cwd === undefined ? {} : { cwd }),
+        path: gitCodeRepositoryPath(repository),
+      },
       GitCodeRepository,
     );
 
-  const getRawPullRequest = (repository: GitCodeRepositoryLocator, reference: string) =>
+  const getRawPullRequest = (
+    repository: GitCodeRepositoryLocator,
+    reference: string,
+    cwd: string,
+  ) =>
     requestJson(
       {
         operation: "getPullRequest",
+        cwd,
         path: `${gitCodeRepositoryPath(repository)}/pulls/${encodeURIComponent(normalizeChangeRequestNumber(reference))}`,
       },
       GitCodePullRequest,
@@ -424,7 +494,7 @@ export const make = Effect.gen(function* () {
       if (remoteName) return remoteName;
     }
     const cloneUrls = normalizeCloneUrls(
-      yield* getRepository(input.sourceRepository),
+      yield* getRepository(input.sourceRepository, input.cwd),
       input.sourceRepository,
     );
     const originRemoteUrl = yield* git
@@ -440,29 +510,26 @@ export const make = Effect.gen(function* () {
   return GitCodeApi.of({
     request,
     requestJson,
-    probeAuth: Option.isNone(config.accessToken)
-      ? Effect.succeed({
+    probeAuth: requestJson({ operation: "probeAuth", path: "/user" }, GitCodeViewer).pipe(
+      Effect.map((viewer): SourceControlProviderAuth => ({
+        status: "authenticated",
+        account: Option.some(viewer.login),
+        host: Option.some("gitcode.com"),
+        detail: Option.none(),
+      })),
+      Effect.catch((error) =>
+        Effect.succeed<SourceControlProviderAuth>({
           status: "unauthenticated",
           account: Option.none(),
           host: Option.some("gitcode.com"),
-          detail: Option.some(GITCODE_TOKEN_HINT),
-        })
-      : requestJson({ operation: "probeAuth", path: "/user" }, GitCodeViewer).pipe(
-          Effect.map((viewer): SourceControlProviderAuth => ({
-            status: "authenticated",
-            account: Option.some(viewer.login),
-            host: Option.some("gitcode.com"),
-            detail: Option.none(),
-          })),
-          Effect.orElseSucceed((): SourceControlProviderAuth => ({
-            status: "unauthenticated",
-            account: Option.none(),
-            host: Option.some("gitcode.com"),
-            detail: Option.some(
-              "GitCode rejected T3CODE_GITCODE_ACCESS_TOKEN, or could not be reached.",
-            ),
-          })),
-        ),
+          detail: Option.some(
+            error._tag === "GitCodeTokenMissingError"
+              ? GITCODE_TOKEN_HINT
+              : "GitCode rejected the access token, or could not be reached.",
+          ),
+        }),
+      ),
+    ),
     listPullRequests: (input) =>
       Effect.gen(function* () {
         const repository = yield* resolveRepository(input);
@@ -475,6 +542,7 @@ export const make = Effect.gen(function* () {
           const rows = yield* requestJson(
             {
               operation: "listPullRequests",
+              cwd: input.cwd,
               path: `${gitCodeRepositoryPath(repository)}/pulls`,
               query: {
                 state: input.state,
@@ -498,13 +566,15 @@ export const make = Effect.gen(function* () {
       }),
     getPullRequest: (input) =>
       resolveRepository(input).pipe(
-        Effect.flatMap((repository) => getRawPullRequest(repository, input.reference)),
+        Effect.flatMap((repository) => getRawPullRequest(repository, input.reference, input.cwd)),
         Effect.map(normalizeGitCodePullRequest),
       ),
     getRepositoryCloneUrls: (input) => {
       const repository = parseGitCodeRepository(input.repository);
       return repository
-        ? getRepository(repository).pipe(Effect.map((raw) => normalizeCloneUrls(raw, repository)))
+        ? getRepository(repository, input.cwd).pipe(
+            Effect.map((raw) => normalizeCloneUrls(raw, repository)),
+          )
         : Effect.fail(
             new GitCodeApiError({
               operation: "getRepositoryCloneUrls",
@@ -522,12 +592,13 @@ export const make = Effect.gen(function* () {
           });
         }
         const viewer = yield* requestJson(
-          { operation: "createRepository", path: "/user" },
+          { operation: "createRepository", cwd: input.cwd, path: "/user" },
           GitCodeViewer,
         );
         const created = yield* requestJson(
           {
             operation: "createRepository",
+            cwd: input.cwd,
             method: "POST",
             path:
               viewer.login.toLowerCase() === repository.owner.toLowerCase()
@@ -564,6 +635,7 @@ export const make = Effect.gen(function* () {
         yield* requestJson(
           {
             operation: "createPullRequest",
+            cwd: input.cwd,
             method: "POST",
             path: `${gitCodeRepositoryPath(repository)}/pulls`,
             body: {
@@ -581,7 +653,7 @@ export const make = Effect.gen(function* () {
       }),
     getDefaultBranch: (input) =>
       resolveRepository(input).pipe(
-        Effect.flatMap(getRepository),
+        Effect.flatMap((repository) => getRepository(repository, input.cwd)),
         Effect.map((repository) => repository.default_branch?.trim() || null),
       ),
     // GitCode has no checkout CLI, so the pull request's branch is fetched with git directly,
@@ -589,7 +661,7 @@ export const make = Effect.gen(function* () {
     checkoutPullRequest: (input) =>
       Effect.gen(function* () {
         const repository = yield* resolveRepository(input);
-        const pullRequest = yield* getRawPullRequest(repository, input.reference);
+        const pullRequest = yield* getRawPullRequest(repository, input.reference, input.cwd);
         const isCrossRepository = isGitCodeCrossRepository(pullRequest);
         const sourceName = gitCodeRepositoryName(pullRequest.head.repo);
         const sourceRepository =
