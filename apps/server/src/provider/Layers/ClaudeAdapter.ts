@@ -3399,6 +3399,33 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           );
         }
       }
+      // Keep what the subagent said, attributed to its agent: a task.message
+      // lands in the agent's own log and never in the parent transcript (no
+      // content.delta, no assistant item, no synthetic turn).
+      const subagentContent = message.message?.content;
+      if (owningTaskId && Array.isArray(subagentContent)) {
+        for (const block of subagentContent) {
+          if (block.type !== "text" || typeof block.text !== "string") continue;
+          const text = block.text.trim();
+          if (text.length === 0) continue;
+          const stamp = yield* makeEventStamp();
+          yield* offerRuntimeEvent({
+            type: "task.message",
+            eventId: stamp.eventId,
+            provider: PROVIDER,
+            createdAt: stamp.createdAt,
+            threadId: context.session.threadId,
+            ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+            payload: { taskId: RuntimeTaskId.make(owningTaskId), text },
+            providerRefs: nativeProviderRefs(context),
+            raw: {
+              source: "claude.sdk.message",
+              method: "claude/assistant",
+              payload: message,
+            },
+          });
+        }
+      }
       context.lastAssistantUuid = message.uuid;
       yield* updateResumeCursor(context);
       return;

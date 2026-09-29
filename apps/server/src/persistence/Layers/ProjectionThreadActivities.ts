@@ -13,6 +13,7 @@ import {
   DeleteProjectionThreadActivitiesInput,
   ListProjectionThreadActivitiesInput,
   GetLatestProjectionThreadTaskActivityInput,
+  GetProjectionThreadActivityInput,
   ProjectionThreadActivity,
   ProjectionThreadActivityRepository,
   type ProjectionThreadActivityRepositoryShape,
@@ -189,6 +190,27 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
       `,
   });
 
+  const getProjectionThreadActivityRow = SqlSchema.findOneOption({
+    Request: GetProjectionThreadActivityInput,
+    Result: ProjectionThreadActivityDbRowSchema,
+    execute: ({ threadId, activityId }) =>
+      sql`
+        SELECT
+          activity_id AS "activityId",
+          thread_id AS "threadId",
+          turn_id AS "turnId",
+          tone,
+          kind,
+          summary,
+          payload_json AS "payload",
+          sequence,
+          created_at AS "createdAt"
+        FROM projection_thread_activities
+        WHERE thread_id = ${threadId}
+          AND activity_id = ${activityId}
+      `,
+  });
+
   const deleteProjectionThreadActivityRows = SqlSchema.void({
     Request: DeleteProjectionThreadActivitiesInput,
     execute: ({ threadId }) =>
@@ -244,6 +266,17 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
       Effect.map(Option.map(toProjectionThreadActivity)),
     );
 
+  const getById: ProjectionThreadActivityRepositoryShape["getById"] = (input) =>
+    getProjectionThreadActivityRow(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "ProjectionThreadActivityRepository.getById:query",
+          "ProjectionThreadActivityRepository.getById:decodeRow",
+        ),
+      ),
+      Effect.map(Option.map(toProjectionThreadActivity)),
+    );
+
   const deleteByThreadId: ProjectionThreadActivityRepositoryShape["deleteByThreadId"] = (input) =>
     deleteProjectionThreadActivityRows(input).pipe(
       Effect.mapError(
@@ -256,6 +289,7 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
     listByThreadId,
     listUserInputLifecycleByThreadId,
     getLatestTaskActivity,
+    getById,
     deleteByThreadId,
   } satisfies ProjectionThreadActivityRepositoryShape;
 });

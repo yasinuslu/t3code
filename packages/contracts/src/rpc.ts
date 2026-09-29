@@ -110,6 +110,7 @@ import {
   OrchestrationGetTurnDiffInput,
   OrchestrationRpcSchemas,
   OrchestrationGetWorkflowScriptError,
+  OrchestrationGetActivityOutputError,
 } from "./orchestration.ts";
 import {
   ProviderUploadFeedbackError,
@@ -1330,6 +1331,12 @@ const WsOrchestrationGetWorkflowScriptRpc = Rpc.make(ORCHESTRATION_WS_METHODS.ge
   error: Schema.Union([OrchestrationGetWorkflowScriptError, EnvironmentAuthorizationError]),
 });
 
+const WsOrchestrationGetActivityOutputRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getActivityOutput, {
+  payload: OrchestrationRpcSchemas.getActivityOutput.input,
+  success: OrchestrationRpcSchemas.getActivityOutput.output,
+  error: Schema.Union([OrchestrationGetActivityOutputError, EnvironmentAuthorizationError]),
+});
+
 const WsOrchestrationGetTurnDiffRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getTurnDiff, {
   payload: OrchestrationGetTurnDiffInput,
   success: OrchestrationRpcSchemas.getTurnDiff.output,
@@ -1581,6 +1588,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeResourceTelemetryRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
+  WsOrchestrationGetActivityOutputRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
   WsOrchestrationSearchThreadsRpc,

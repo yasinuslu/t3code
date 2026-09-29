@@ -484,6 +484,8 @@ export function deriveWorkLogEntries(
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
     if (activity.kind === "provider.config-dir") continue;
+    // Subagent narration belongs to the agent's log, never the chat.
+    if (activity.kind === "agent.message") continue;
     if (activity.kind === "turn.plan.updated") continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isNoContentRuntimeWarning(activity)) continue;
@@ -513,6 +515,83 @@ export function deriveWorkLogEntries(
     entries.push(entry);
   }
   return collapseDerivedWorkLogEntries(entries);
+}
+
+/**
+ * Whether an expanded work-log row can show its tool's full output, and
+ * whether the call is still running. Only tool lifecycle rows carry output;
+ * a settled row's id is the activity whose persisted payload holds it.
+ */
+export function workEntryToolOutputState(
+  entry: Pick<
+    WorkLogEntry,
+    "itemType" | "sourceActivityKind" | "toolLifecycleStatus" | "agentSpawn" | "questionAnswer"
+  >,
+): "running" | "settled" | null {
+  if (entry.itemType === undefined || entry.agentSpawn || entry.questionAnswer) return null;
+  if (
+    entry.sourceActivityKind !== "tool.updated" &&
+    entry.sourceActivityKind !== "tool.completed"
+  ) {
+    return null;
+  }
+  return entry.toolLifecycleStatus === "inProgress" ? "running" : "settled";
+}
+
+export type AgentLogEntry =
+  | {
+      readonly kind: "tool";
+      readonly id: string;
+      /** Provider tool name (e.g. "Bash", "Read") when the payload names one. */
+      readonly toolName: string | null;
+      readonly entry: WorkLogEntry;
+    }
+  | {
+      readonly kind: "message";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly text: string;
+    };
+
+/**
+ * One agent's own log for the Agents panel: its tool calls (one row per call,
+ * lifecycle updates folded in) and its narration, in order. These are the
+ * rows the quiet-timeline filter keeps out of the chat (payload.agentId).
+ */
+export function deriveAgentLogEntries(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  agentId: string,
+): AgentLogEntry[] {
+  const entries: AgentLogEntry[] = [];
+  const toolIndexByCallId = new Map<string, number>();
+  for (const activity of [...activities].toSorted(compareActivitiesByOrder)) {
+    const payload = asRecord(activity.payload);
+    if (asTrimmedString(payload?.agentId) !== agentId) continue;
+    if (activity.kind === "agent.message") {
+      const text = asTrimmedString(payload?.text);
+      const previous = entries.at(-1);
+      if (!text || (previous?.kind === "message" && previous.text === text)) continue;
+      entries.push({ kind: "message", id: activity.id, createdAt: activity.createdAt, text });
+      continue;
+    }
+    if (activity.kind !== "tool.updated" && activity.kind !== "tool.completed") continue;
+    const entry = toDerivedWorkLogEntry(activity);
+    const toolName = asTrimmedString(asRecord(payload?.data)?.toolName);
+    const existingIndex = entry.toolCallId ? toolIndexByCallId.get(entry.toolCallId) : undefined;
+    const existing = existingIndex === undefined ? undefined : entries[existingIndex];
+    if (existingIndex !== undefined && existing?.kind === "tool") {
+      entries[existingIndex] = {
+        kind: "tool",
+        id: existing.id,
+        toolName: toolName ?? existing.toolName,
+        entry: mergeDerivedWorkLogEntries(existing.entry as DerivedWorkLogEntry, entry),
+      };
+      continue;
+    }
+    if (entry.toolCallId) toolIndexByCallId.set(entry.toolCallId, entries.length);
+    entries.push({ kind: "tool", id: entry.toolCallId ?? entry.id, toolName, entry });
+  }
+  return entries;
 }
 
 /** Adapters forward unknown wire-only SDK messages (background_tasks_changed,

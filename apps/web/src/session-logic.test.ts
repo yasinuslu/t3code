@@ -13,6 +13,7 @@ import {
   createMessageAttachmentPreviewProjector,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveAgentLogEntries,
   deriveTimelineEntries,
   deriveTimelineEntriesWithState,
   deriveWorkLogEntries,
@@ -22,6 +23,7 @@ import {
   selectHandoffImageResources,
   selectMessageImageResources,
   workEntryIndicatesToolNeutralStatus,
+  workEntryToolOutputState,
 } from "./session-logic";
 
 let nextActivityId = 0;
@@ -2517,5 +2519,154 @@ describe("session activity performance", () => {
       command: "git diff",
       toolLifecycleStatus: "completed",
     });
+  });
+});
+
+describe("agent logs", () => {
+  // Payloads as clients receive them: projected (data.command, one-line
+  // rawOutput summary), full output only in persistence.
+  const subagentActivities = () => [
+    makeActivity({
+      id: "task-start",
+      kind: "task.started",
+      tone: "info",
+      sequence: 1,
+      turnId: "turn-1",
+      payload: {
+        taskId: "agent-a",
+        taskType: "local_agent",
+        toolUseId: "toolu-a",
+        title: "Agent A",
+      },
+    }),
+    makeActivity({
+      id: "a-says-1",
+      kind: "agent.message",
+      tone: "info",
+      summary: "Listing files first.",
+      sequence: 2,
+      turnId: "turn-1",
+      payload: { agentId: "agent-a", text: "Listing files first." },
+    }),
+    makeActivity({
+      id: "a-bash-running",
+      kind: "tool.updated",
+      summary: "Ran command",
+      sequence: 3,
+      turnId: "turn-1",
+      payload: {
+        itemType: "command_execution",
+        toolCallId: "toolu-a-bash",
+        status: "inProgress",
+        title: "Ran command",
+        agentId: "agent-a",
+        data: { toolName: "Bash", command: "ls -la" },
+      },
+    }),
+    makeActivity({
+      id: "b-bash",
+      kind: "tool.completed",
+      summary: "Ran command",
+      sequence: 4,
+      turnId: "turn-1",
+      payload: {
+        itemType: "command_execution",
+        toolCallId: "toolu-b-bash",
+        status: "completed",
+        title: "Ran command",
+        agentId: "agent-b",
+        data: { toolName: "Bash", command: "pwd" },
+      },
+    }),
+    makeActivity({
+      id: "a-bash-done",
+      kind: "tool.completed",
+      summary: "Ran command",
+      sequence: 5,
+      turnId: "turn-1",
+      payload: {
+        itemType: "command_execution",
+        toolCallId: "toolu-a-bash",
+        status: "completed",
+        title: "Ran command",
+        agentId: "agent-a",
+        data: {
+          toolName: "Bash",
+          command: "ls -la",
+          rawOutput: { content: "total 0" },
+        },
+      },
+    }),
+    makeActivity({
+      id: "a-says-2",
+      kind: "agent.message",
+      tone: "info",
+      summary: "Done.",
+      sequence: 6,
+      turnId: "turn-1",
+      payload: { agentId: "agent-a", text: "Done." },
+    }),
+  ];
+
+  it("selects one agent's narration and tool calls in order, one row per call", () => {
+    const log = deriveAgentLogEntries(subagentActivities(), "agent-a");
+
+    expect(log.map((entry) => entry.kind)).toEqual(["message", "tool", "message"]);
+    expect(log[0]).toMatchObject({ kind: "message", text: "Listing files first." });
+    const tool = log[1];
+    expect(tool?.kind).toBe("tool");
+    if (tool?.kind === "tool") {
+      expect(tool.toolName).toBe("Bash");
+      expect(tool.entry.command).toBe("ls -la");
+      // The running update folded into its completion: the row's id is the
+      // completed activity, whose persisted payload holds the output.
+      expect(tool.entry.id).toBe("a-bash-done");
+      expect(tool.entry.toolLifecycleStatus).toBe("completed");
+      expect(workEntryToolOutputState(tool.entry)).toBe("settled");
+    }
+    expect(log[2]).toMatchObject({ kind: "message", text: "Done." });
+    expect(deriveAgentLogEntries(subagentActivities(), "agent-b").map((e) => e.kind)).toEqual([
+      "tool",
+    ]);
+  });
+
+  it("marks a call still in flight as running", () => {
+    const log = deriveAgentLogEntries(subagentActivities().slice(0, 3), "agent-a");
+    const tool = log.find((entry) => entry.kind === "tool");
+    expect(tool?.kind === "tool" && workEntryToolOutputState(tool.entry)).toBe("running");
+  });
+
+  it("keeps subagent narration and tool rows out of the chat work log", () => {
+    const entries = deriveWorkLogEntries(subagentActivities());
+
+    expect(entries.map((entry) => entry.id)).not.toEqual(
+      expect.arrayContaining(["a-says-1", "a-says-2", "a-bash-done", "b-bash"]),
+    );
+    expect(entries.some((entry) => entry.sourceActivityKind === "agent.message")).toBe(false);
+    expect(entries.some((entry) => entry.command === "ls -la" || entry.command === "pwd")).toBe(
+      false,
+    );
+    // The agent itself is still represented by its single spawn row.
+    expect(entries.filter((entry) => entry.agentSpawn)).toHaveLength(1);
+  });
+
+  it("offers output only for tool lifecycle rows", () => {
+    const [bash] = deriveWorkLogEntries([
+      makeActivity({
+        id: "main-bash",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          toolCallId: "toolu-main",
+          status: "failed",
+          title: "Ran command",
+          data: { toolName: "Bash", command: "false" },
+        },
+      }),
+    ]);
+    expect(bash && workEntryToolOutputState(bash)).toBe("settled");
+    const [task] = deriveWorkLogEntries(subagentActivities().slice(0, 1));
+    expect(task && workEntryToolOutputState(task)).toBeNull();
   });
 });

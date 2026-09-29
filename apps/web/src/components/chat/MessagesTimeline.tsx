@@ -84,8 +84,10 @@ import {
   selectMessageImageResources,
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
+  workEntryToolOutputState,
   workLogEntryIsToolLike,
 } from "../../session-logic";
+import { ToolOutputBlock } from "./ToolOutputBlock";
 import {
   type ChatMessage,
   type ChatFileAttachment,
@@ -4415,6 +4417,7 @@ function buildToolCallExpandedBody(
   workspaceRoot: string | undefined,
   visibleLabel: string,
   viewedImagePath: string | null,
+  showsFullOutput = false,
 ): string | null {
   const blocks: string[] = [];
   const seen = new Set<string>([visibleLabel.trim()]);
@@ -4435,7 +4438,10 @@ function buildToolCallExpandedBody(
     addBlock(raw ?? command);
   }
   const detail = workEntry.detail?.trim();
-  if (detail !== viewedImagePath?.trim()) {
+  // A command row's detail is the first line of its output; the full output
+  // block below replaces it.
+  const detailIsOutputSummary = showsFullOutput && workEntry.itemType === "command_execution";
+  if (detail !== viewedImagePath?.trim() && !detailIsOutputSummary) {
     addBlock(detail);
   }
   const viewedImagePaths = new Set(
@@ -4772,7 +4778,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           workspaceRoot,
         })
       : null;
+  const outputState = threadRef ? workEntryToolOutputState(workEntry) : null;
   const canExpand =
+    outputState !== null ||
     Boolean(workEntry.questionAnswer) ||
     (showFailedIndicator && previewText.trim().length > 0) ||
     (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) ||
@@ -4789,6 +4797,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         workspaceRoot,
         previewText,
         viewedImage ? viewedImagePath : null,
+        outputState !== null,
       )
     : null;
   // Reserve destructive row styling for severe failures, not routine tool errors.
@@ -4927,13 +4936,25 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       {expanded && workEntry.questionAnswer ? (
         <QuestionAnswerHistory answer={workEntry.questionAnswer} />
       ) : null}
-      {expanded && canExpand && expandedBody && !workEntry.questionAnswer ? (
+      {expanded && canExpand && (expandedBody || outputState) && !workEntry.questionAnswer ? (
         <div
           className="mt-1 ms-7 cursor-default rounded-md bg-muted/40 px-3 py-2"
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >
-          <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          {expandedBody ? (
+            <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          ) : null}
+          {outputState && threadRef ? (
+            <ToolOutputBlock
+              environmentId={threadRef.environmentId}
+              threadId={threadRef.threadId}
+              activityId={workEntry.id}
+              running={outputState === "running"}
+              failed={showFailedIndicator}
+              className={expandedBody ? "mt-2" : undefined}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

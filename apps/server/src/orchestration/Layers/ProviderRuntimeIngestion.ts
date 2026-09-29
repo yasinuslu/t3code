@@ -184,6 +184,8 @@ function maxCheckpointTurnCount(
   return maxTurnCount;
 }
 
+const AGENT_MESSAGE_TEXT_LIMIT = 8_000;
+
 function truncateDetail(value: string, limit = 180): string {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
@@ -871,6 +873,28 @@ export function runtimeEventToActivities(
               : {}),
             ...(event.payload.usage !== undefined ? { usage: event.payload.usage } : {}),
             ...taskLinkageActivityFields(event.payload as Record<string, unknown>),
+          },
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
+    case "task.message": {
+      // Subagent narration. `agentId` makes it agent-owned, so clients keep it
+      // out of the main work log (quiet timeline) and show it in the agent's
+      // log. Bounded like other activity text: a long final report must not
+      // bloat every thread snapshot.
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "agent.message",
+          summary: truncateDetail(event.payload.text.replace(/\s+/g, " ")),
+          payload: {
+            agentId: event.payload.taskId,
+            text: truncateDetail(event.payload.text, AGENT_MESSAGE_TEXT_LIMIT),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,

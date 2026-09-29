@@ -35,6 +35,7 @@ import {
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getWorkflowScript: "orchestration.getWorkflowScript",
+  getActivityOutput: "orchestration.getActivityOutput",
   getTurnDiff: "orchestration.getTurnDiff",
   getFullThreadDiff: "orchestration.getFullThreadDiff",
   searchThreads: "orchestration.searchThreads",
@@ -2364,6 +2365,33 @@ export class OrchestrationGetWorkflowScriptError extends Schema.TaggedError<Orch
   }
 }
 
+export const OrchestrationGetActivityOutputInput = Schema.Struct({
+  threadId: ThreadId,
+  activityId: EventId,
+});
+export type OrchestrationGetActivityOutputInput = typeof OrchestrationGetActivityOutputInput.Type;
+
+/**
+ * Full output of one tool activity. Thread snapshots and live activity events
+ * carry only a one-line output summary; clients fetch the persisted output on
+ * demand when a row is expanded. `output` is size-capped (head and tail kept)
+ * with `truncated` set when bytes were dropped.
+ */
+export const OrchestrationGetActivityOutputResult = Schema.Struct({
+  activityId: EventId,
+  output: Schema.NullOr(Schema.String),
+  truncated: Schema.Boolean,
+});
+export type OrchestrationGetActivityOutputResult = typeof OrchestrationGetActivityOutputResult.Type;
+
+export class OrchestrationGetActivityOutputError extends Schema.TaggedError<OrchestrationGetActivityOutputError>()(
+  "OrchestrationGetActivityOutputError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
 export const OrchestrationRpcSchemas = {
   dispatchCommand: {
     input: ClientOrchestrationCommand,
@@ -2372,6 +2400,10 @@ export const OrchestrationRpcSchemas = {
   getWorkflowScript: {
     input: OrchestrationGetWorkflowScriptInput,
     output: OrchestrationGetWorkflowScriptResult,
+  },
+  getActivityOutput: {
+    input: OrchestrationGetActivityOutputInput,
+    output: OrchestrationGetActivityOutputResult,
   },
   getTurnDiff: {
     input: OrchestrationGetTurnDiffInput,

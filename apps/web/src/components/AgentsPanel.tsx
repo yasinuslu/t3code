@@ -9,6 +9,8 @@
  * - Workflow expansion is presentation state. A live run stays expanded when
  *   it settles; older collapsed runs can still be opened at run granularity.
  * - Static status dots, DOM-write elapsed timers, plain token counters.
+ * - Clicking an agent opens its log below the row: its narration and tool
+ *   calls in order, each call expandable to its full output.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -20,11 +22,19 @@ import {
   formatSubagentModelLabel,
   formatSubagentTokenCount,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, OrchestrationThreadActivity, ThreadId } from "@t3tools/contracts";
 import { Bot, Braces, Check, ChevronDown, ChevronRight, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { createContext, use, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
+import {
+  deriveAgentLogEntries,
+  workEntryDisplayIndicatesToolFailure,
+  workEntryToolOutputState,
+  type AgentLogEntry,
+} from "~/session-logic";
+import { workEntryDisplayLabel } from "./chat/MessagesTimeline.logic";
+import { ToolOutputBlock } from "./chat/ToolOutputBlock";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
@@ -136,8 +146,148 @@ function agentActivityText(agent: RuntimeSubagent): string | null {
   );
 }
 
-/** Flat, non-interactive agent status line. No unfold. */
+interface AgentLogSource {
+  readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+}
+
+const AgentLogSourceCtx = createContext<AgentLogSource | null>(null);
+
+/** Agent status line; opens the agent's log when a thread is in scope. */
 function AgentRow({ agent }: { agent: RuntimeSubagent }) {
+  const logSource = use(AgentLogSourceCtx);
+  const [logOpen, setLogOpen] = useState(false);
+  const row = <AgentStatusLine agent={agent} logOpen={logSource ? logOpen : null} />;
+  if (!logSource) {
+    return row;
+  }
+  return (
+    <div data-agent-id={agent.id}>
+      <button
+        type="button"
+        className="block w-full rounded-md text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        aria-expanded={logOpen}
+        aria-label={`${agent.title} log`}
+        onClick={() => setLogOpen((value) => !value)}
+      >
+        {row}
+      </button>
+      {logOpen ? <AgentLog agent={agent} source={logSource} /> : null}
+    </div>
+  );
+}
+
+function AgentLog({ agent, source }: { agent: RuntimeSubagent; source: AgentLogSource }) {
+  const entries = useMemo(
+    () => deriveAgentLogEntries(source.activities, agent.id),
+    [source.activities, agent.id],
+  );
+  return (
+    <div
+      className="mx-1.5 mb-1.5 max-h-[28rem] space-y-1 overflow-auto rounded-md border border-border/60 bg-background/60 p-1.5"
+      data-agent-log={agent.id}
+    >
+      {entries.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground">No activity recorded yet.</p>
+      ) : (
+        entries.map((entry) =>
+          entry.kind === "message" ? (
+            <p
+              key={entry.id}
+              className="whitespace-pre-wrap break-words px-1 py-0.5 text-xs leading-relaxed text-foreground/90"
+              data-agent-log-message
+            >
+              {entry.text}
+            </p>
+          ) : (
+            <AgentLogToolRow key={entry.id} entry={entry} source={source} />
+          ),
+        )
+      )}
+    </div>
+  );
+}
+
+function AgentLogToolRow({
+  entry,
+  source,
+}: {
+  entry: Extract<AgentLogEntry, { kind: "tool" }>;
+  source: AgentLogSource;
+}) {
+  const [open, setOpen] = useState(false);
+  const workEntry = entry.entry;
+  const outputState = workEntryToolOutputState(workEntry);
+  const failed = workEntryDisplayIndicatesToolFailure(workEntry);
+  const label = workEntryDisplayLabel(workEntry, undefined);
+  const command = workEntry.rawCommand ?? workEntry.command;
+  return (
+    <div className="rounded-md" data-agent-log-tool={entry.toolName ?? workEntry.label}>
+      <button
+        type="button"
+        className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-accent/40"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            "size-3 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-90",
+          )}
+        />
+        {entry.toolName ? (
+          <span className="shrink-0 rounded-sm border border-border/60 px-1 font-mono text-3xs text-muted-foreground">
+            {entry.toolName}
+          </span>
+        ) : null}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate font-mono text-2xs",
+            failed ? "text-destructive-foreground" : "text-secondary-label",
+          )}
+        >
+          {label}
+        </span>
+        {outputState === "running" ? (
+          <span className="shrink-0 text-3xs text-info-foreground">running</span>
+        ) : failed ? (
+          <span className="shrink-0 text-3xs text-destructive-foreground">failed</span>
+        ) : null}
+      </button>
+      {open ? (
+        <div className="ms-5 mt-0.5 mb-1 rounded-md bg-muted/40 px-2 py-1.5">
+          {command && command !== label ? (
+            <pre className="mb-2 whitespace-pre-wrap break-words font-mono text-2xs text-secondary-label">
+              {command}
+            </pre>
+          ) : label.length > 60 ? (
+            <pre className="mb-2 whitespace-pre-wrap break-words font-mono text-2xs text-secondary-label">
+              {label}
+            </pre>
+          ) : null}
+          {outputState ? (
+            <ToolOutputBlock
+              environmentId={source.environmentId}
+              threadId={source.threadId}
+              activityId={workEntry.id}
+              running={outputState === "running"}
+              failed={failed}
+            />
+          ) : workEntry.detail ? (
+            <pre className="whitespace-pre-wrap break-words font-mono text-2xs text-secondary-label">
+              {workEntry.detail}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The three fixed status lines of an agent row. */
+function AgentStatusLine({ agent, logOpen }: { agent: RuntimeSubagent; logOpen: boolean | null }) {
   const visuals = STATUS_VISUALS[agent.status];
   const statusLabel =
     agent.kind === "subagent_batch" && agent.status === "idle" ? "Idle" : visuals.label;
@@ -183,9 +333,18 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
       >
         {activity ?? statusLabel}
       </span>
-      <span className="col-start-2 col-end-4 row-start-3 truncate font-mono text-2xs tabular-nums text-muted-foreground/70">
+      <span className="col-start-2 col-end-3 row-start-3 truncate font-mono text-2xs tabular-nums text-muted-foreground/70">
         {metadata.join(" · ")}
       </span>
+      {logOpen !== null ? (
+        <span className="col-start-3 row-start-3 flex justify-end text-muted-foreground/70">
+          {logOpen ? (
+            <ChevronDown aria-hidden className="size-3" />
+          ) : (
+            <ChevronRight aria-hidden className="size-3" />
+          )}
+        </span>
+      ) : null}
       <span className="sr-only">{statusLabel}</span>
     </div>
   );
@@ -523,13 +682,23 @@ function WorkflowSection({
 
 export function AgentsPanel({
   model,
+  activities,
   environmentId = null,
   threadId = null,
 }: {
   model: AgentPanelModel;
+  /** The thread's activities; each agent's log is selected from them. */
+  activities?: ReadonlyArray<OrchestrationThreadActivity>;
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
 }) {
+  const logSource = useMemo<AgentLogSource | null>(
+    () =>
+      activities && environmentId !== null && threadId !== null
+        ? { activities, environmentId, threadId }
+        : null,
+    [activities, environmentId, threadId],
+  );
   if (!model.hasAgents) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -544,41 +713,43 @@ export function AgentsPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-2 p-2">
-          {model.workflows.map((group) => (
-            <WorkflowSection
-              key={group.workflow.id}
-              group={group}
-              environmentId={environmentId}
-              threadId={threadId}
-            />
-          ))}
-          {model.directAgents.length > 0 ? (
-            <section>
-              <div className="px-1.5 pt-1 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
-                Direct spawns
-              </div>
-              {model.directAgents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
-              ))}
-            </section>
-          ) : null}
-        </div>
-      </ScrollArea>
-      <footer className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-2xs text-muted-foreground">
-        <span className="flex items-center gap-2">
-          {model.runningCount + model.waitingCount > 0 ? (
-            <span className="text-info-foreground">
-              ● {model.runningCount + model.waitingCount} working
-            </span>
-          ) : null}
-          {model.idleCount > 0 ? <span>{model.idleCount} idle</span> : null}
-          {model.settledCount > 0 ? <span>{model.settledCount} settled</span> : null}
-        </span>
-        <span className="tabular-nums">Σ {formatSubagentTokenCount(model.totalTokens)} tok</span>
-      </footer>
-    </div>
+    <AgentLogSourceCtx value={logSource}>
+      <div className="flex h-full min-h-0 flex-col">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="flex flex-col gap-2 p-2">
+            {model.workflows.map((group) => (
+              <WorkflowSection
+                key={group.workflow.id}
+                group={group}
+                environmentId={environmentId}
+                threadId={threadId}
+              />
+            ))}
+            {model.directAgents.length > 0 ? (
+              <section>
+                <div className="px-1.5 pt-1 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Direct spawns
+                </div>
+                {model.directAgents.map((agent) => (
+                  <AgentRow key={agent.id} agent={agent} />
+                ))}
+              </section>
+            ) : null}
+          </div>
+        </ScrollArea>
+        <footer className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-2xs text-muted-foreground">
+          <span className="flex items-center gap-2">
+            {model.runningCount + model.waitingCount > 0 ? (
+              <span className="text-info-foreground">
+                ● {model.runningCount + model.waitingCount} working
+              </span>
+            ) : null}
+            {model.idleCount > 0 ? <span>{model.idleCount} idle</span> : null}
+            {model.settledCount > 0 ? <span>{model.settledCount} settled</span> : null}
+          </span>
+          <span className="tabular-nums">Σ {formatSubagentTokenCount(model.totalTokens)} tok</span>
+        </footer>
+      </div>
+    </AgentLogSourceCtx>
   );
 }

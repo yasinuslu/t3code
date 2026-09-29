@@ -181,6 +181,7 @@ const TaskStartedType = Schema.Literal("task.started");
 const TaskProgressType = Schema.Literal("task.progress");
 const TaskUpdatedType = Schema.Literal("task.updated");
 const TaskCompletedType = Schema.Literal("task.completed");
+const TaskMessageType = Schema.Literal("task.message");
 const HookStartedType = Schema.Literal("hook.started");
 const HookProgressType = Schema.Literal("hook.progress");
 const HookCompletedType = Schema.Literal("hook.completed");
@@ -691,6 +692,17 @@ const TaskCompletedPayload = Schema.Struct({
 });
 export type TaskCompletedPayload = typeof TaskCompletedPayload.Type;
 
+/**
+ * Narration a subagent wrote (its assistant text), attributed to the owning
+ * task. Kept out of the parent transcript: clients show it in the agent's
+ * own log, never as a thread message.
+ */
+const TaskMessagePayload = Schema.Struct({
+  taskId: RuntimeTaskId,
+  text: TrimmedNonEmptyStringSchema,
+});
+export type TaskMessagePayload = typeof TaskMessagePayload.Type;
+
 const HookStartedPayload = Schema.Struct({
   hookId: TrimmedNonEmptyStringSchema,
   hookName: TrimmedNonEmptyStringSchema,
@@ -1064,6 +1076,13 @@ const ProviderRuntimeTaskCompletedEvent = Schema.Struct({
 });
 export type ProviderRuntimeTaskCompletedEvent = typeof ProviderRuntimeTaskCompletedEvent.Type;
 
+const ProviderRuntimeTaskMessageEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: TaskMessageType,
+  payload: TaskMessagePayload,
+});
+export type ProviderRuntimeTaskMessageEvent = typeof ProviderRuntimeTaskMessageEvent.Type;
+
 const ProviderRuntimeHookStartedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: HookStartedType,
@@ -1219,6 +1238,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeTaskProgressEvent,
   ProviderRuntimeTaskUpdatedEvent,
   ProviderRuntimeTaskCompletedEvent,
+  ProviderRuntimeTaskMessageEvent,
   ProviderRuntimeHookStartedEvent,
   ProviderRuntimeHookProgressEvent,
   ProviderRuntimeHookCompletedEvent,

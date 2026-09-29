@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   RuntimeTaskId,
   ThreadId,
+  TurnId,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -140,5 +141,35 @@ describe("runtimeEventToActivities tool streaming persistence", () => {
     expect(activities).toHaveLength(1);
     const payload = activities[0]?.payload as Record<string, unknown>;
     expect(payload.data).toEqual(streamingData);
+  });
+});
+
+describe("runtimeEventToActivities subagent narration", () => {
+  it("persists task.message as an agent-owned, bounded agent.message row", () => {
+    const text = `Checked the build.\n${"x".repeat(10_000)}`;
+    const event = {
+      ...base,
+      type: "task.message",
+      eventId: EventId.make("evt-agent-text"),
+      turnId: TurnId.make("turn-1"),
+      payload: { taskId: RuntimeTaskId.make("agent-7"), text },
+    } satisfies ProviderRuntimeEvent;
+
+    const activities = runtimeEventToActivities(event);
+
+    expect(activities).toHaveLength(1);
+    const activity = activities[0]!;
+    expect(activity.kind).toBe("agent.message");
+    expect(activity.id).toBe("evt-agent-text");
+    expect(activity.turnId).toBe("turn-1");
+    // One-line summary; the owning agent id is what keeps it out of the chat.
+    expect(activity.summary.startsWith("Checked the build. xxx")).toBe(true);
+    expect(activity.summary.length).toBeLessThanOrEqual(180);
+    const payload = activity.payload as Record<string, unknown>;
+    expect(payload.agentId).toBe("agent-7");
+    expect(typeof payload.text).toBe("string");
+    expect((payload.text as string).startsWith("Checked the build.\nxxx")).toBe(true);
+    expect((payload.text as string).length).toBe(8_000);
+    expect((payload.text as string).endsWith("...")).toBe(true);
   });
 });

@@ -48,6 +48,12 @@ export const GetLatestProjectionThreadTaskActivityInput = Schema.Struct({
 export type GetLatestProjectionThreadTaskActivityInput =
   typeof GetLatestProjectionThreadTaskActivityInput.Type;
 
+export const GetProjectionThreadActivityInput = Schema.Struct({
+  threadId: ThreadId,
+  activityId: EventId,
+});
+export type GetProjectionThreadActivityInput = typeof GetProjectionThreadActivityInput.Type;
+
 export const DeleteProjectionThreadActivitiesInput = Schema.Struct({
   threadId: ThreadId,
 });
@@ -91,6 +97,13 @@ export interface ProjectionThreadActivityRepositoryShape {
    */
   readonly getLatestTaskActivity: (
     input: GetLatestProjectionThreadTaskActivityInput,
+  ) => Effect.Effect<Option.Option<ProjectionThreadActivity>, ProjectionRepositoryError>;
+
+  /**
+   * Read one activity row, with its full persisted payload, by id.
+   */
+  readonly getById: (
+    input: GetProjectionThreadActivityInput,
   ) => Effect.Effect<Option.Option<ProjectionThreadActivity>, ProjectionRepositoryError>;
 
   /**

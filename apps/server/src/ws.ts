@@ -136,6 +136,8 @@ import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
+import { readActivityOutput } from "./orchestration/activityOutputQuery.ts";
+import { ProjectionThreadActivityRepositoryLive } from "./persistence/Layers/ProjectionThreadActivities.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -1975,6 +1977,12 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getWorkflowScript,
             readWorkflowScript({ scriptPath: input.scriptPath }),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.getActivityOutput]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getActivityOutput,
+            readActivityOutput(input).pipe(Effect.provide(ProjectionThreadActivityRepositoryLive)),
             { "rpc.aggregate": "orchestration" },
           ),
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
