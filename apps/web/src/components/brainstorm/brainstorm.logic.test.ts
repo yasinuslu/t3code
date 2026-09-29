@@ -1,12 +1,22 @@
-import type { KeybindingShortcut, ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import {
+  type KeybindingShortcut,
+  type ModelSelection,
+  ProviderInstanceId,
+  type ResolvedKeybindingsConfig,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { initialSpaceState, type Space } from "../../spaceStore";
 import {
   brainstormAccelerator,
   brainstormActivity,
+  brainstormModelChoice,
+  brainstormModelSelection,
+  brainstormModelsOffered,
   brainstormSpacesInput,
+  isBrainstormModelShortcut,
   membershipChangesToAdopt,
+  otherBrainstormModel,
   shortcutToAccelerator,
   toolStepsOf,
 } from "./brainstorm.logic";
@@ -171,5 +181,61 @@ describe("brainstormActivity", () => {
       kind: "error",
       message: "The last turn failed.",
     });
+  });
+});
+
+describe("brainstorm model", () => {
+  const claude = ProviderInstanceId.make("claudeAgent");
+  const opus: ModelSelection = {
+    instanceId: claude,
+    model: "claude-opus-5-5",
+    options: [{ id: "contextWindow", value: "1m" }],
+  };
+
+  it("defaults to Sonnet until the user toggles", () => {
+    expect(brainstormModelChoice(undefined)).toBe("sonnet");
+    expect(brainstormModelChoice("bogus")).toBe("sonnet");
+    expect(brainstormModelChoice("opus")).toBe("opus");
+    expect(otherBrainstormModel("sonnet")).toBe("opus");
+    expect(otherBrainstormModel("opus")).toBe("sonnet");
+  });
+
+  it("moves an Opus thread to Sonnet on the same instance, dropping Opus options", () => {
+    expect(brainstormModelSelection(opus, brainstormModelChoice(undefined))).toEqual({
+      instanceId: claude,
+      model: "claude-sonnet-5-5",
+    });
+  });
+
+  it("keeps the selection untouched when it already has the chosen model", () => {
+    expect(brainstormModelSelection(opus, "opus")).toBe(opus);
+  });
+
+  it("switches only instances that offer both models", () => {
+    expect(
+      brainstormModelsOffered([
+        { slug: "claude-fable-5-1" },
+        { slug: "claude-opus-5-5" },
+        { slug: "claude-sonnet-5-5" },
+      ]),
+    ).toBe(true);
+    expect(brainstormModelsOffered([{ slug: "claude-opus-5-5" }])).toBe(false);
+    expect(brainstormModelsOffered(undefined)).toBe(false);
+  });
+
+  it("flips on Cmd+/ on macOS and Ctrl+/ elsewhere", () => {
+    const key = (modifiers: Partial<KeyboardEvent>) => ({
+      key: "/",
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      ...modifiers,
+    });
+    expect(isBrainstormModelShortcut(key({ metaKey: true }), true)).toBe(true);
+    expect(isBrainstormModelShortcut(key({ ctrlKey: true }), true)).toBe(false);
+    expect(isBrainstormModelShortcut(key({ ctrlKey: true }), false)).toBe(true);
+    expect(isBrainstormModelShortcut(key({ metaKey: true, shiftKey: true }), true)).toBe(false);
+    expect(isBrainstormModelShortcut(key({}), true)).toBe(false);
   });
 });

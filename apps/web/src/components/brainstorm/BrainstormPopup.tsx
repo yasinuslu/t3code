@@ -13,6 +13,7 @@ import type {
   BrainstormTask,
   BrainstormTaskList,
   EnvironmentId,
+  ModelSelection,
   OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -28,21 +29,72 @@ import {
 } from "react";
 
 import { useBrainstormStore } from "../../brainstormStore";
-import { cn, newMessageId } from "../../lib/utils";
+import { cn, isMacPlatform, newMessageId } from "../../lib/utils";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment } from "../../state/brainstorm";
-import { useThreadDetail, useThreadShell, useThreadShells } from "../../state/entities";
+import {
+  useServerConfigs,
+  useThreadDetail,
+  useThreadShell,
+  useThreadShells,
+} from "../../state/entities";
 import { formatEnvironmentQueryError } from "../../state/query";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import ChatMarkdown from "../ChatMarkdown";
+import { resolveThreadMetadataUpdateForNextTurn } from "../ChatView.logic";
 import { SpaceIcon } from "../sidebar/SpaceSwitcher";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogPopup } from "../ui/dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { brainstormActivity, brainstormSpacesInput, toolStepsOf } from "./brainstorm.logic";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  BRAINSTORM_MODELS,
+  brainstormActivity,
+  brainstormModelChoice,
+  brainstormModelSelection,
+  brainstormModelsOffered,
+  brainstormSpacesInput,
+  isBrainstormModelChoice,
+  isBrainstormModelShortcut,
+  otherBrainstormModel,
+  toolStepsOf,
+} from "./brainstorm.logic";
+
+const IS_MAC = typeof navigator !== "undefined" && isMacPlatform(navigator.platform);
+const MODEL_SHORTCUT_LABEL = IS_MAC ? "⌘/" : "Ctrl+/";
+
+/**
+ * Put the thread on a model selection before its next turn, the way the
+ * composer does; resolves to an error message, or null when done.
+ */
+function usePersistModelSelection(environmentId: EnvironmentId) {
+  const updateMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
+  return useCallback(
+    async (
+      shell: Pick<OrchestrationThreadShell, "id" | "modelSelection" | "branch">,
+      next: ModelSelection,
+    ): Promise<string | null> => {
+      const update = resolveThreadMetadataUpdateForNextTurn({
+        currentModelSelection: shell.modelSelection,
+        nextModelSelection: next,
+        currentBranch: shell.branch,
+      });
+      if (!update) return null;
+      const result = await updateMetadata({
+        environmentId,
+        input: { threadId: shell.id, ...update },
+      });
+      return result._tag === "Failure" ? formatEnvironmentQueryError(result.cause) : null;
+    },
+    [environmentId, updateMetadata],
+  );
+}
 
 export function BrainstormPopup(props: {
   readonly environmentId: EnvironmentId;
@@ -129,7 +181,62 @@ function BrainstormContent(props: {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onClose]);
 
-  const threadRef = target ? scopeThreadRef(environmentId, target.threadId) : null;
+  const threadRef = useMemo(
+    () => (target ? scopeThreadRef(environmentId, target.threadId) : null),
+    [environmentId, target],
+  );
+  const threadKey = target ? `${environmentId}:${target.threadId}` : null;
+  const shell = useThreadShell(threadRef);
+  const serverConfig = useServerConfigs().get(environmentId);
+  const modelsOffered = brainstormModelsOffered(
+    serverConfig?.providers.find(
+      (provider) => provider.instanceId === shell?.modelSelection.instanceId,
+    )?.models,
+  );
+  const storedModelChoice = useBrainstormStore((store) =>
+    threadKey ? store.modelChoiceByThreadKey[threadKey] : undefined,
+  );
+  const setModelChoice = useBrainstormStore((store) => store.setModelChoice);
+  const modelChoice = brainstormModelChoice(storedModelChoice);
+  // Only a Claude instance that offers both models is switched; others keep theirs.
+  const modelSelection = useMemo(
+    () =>
+      shell === null
+        ? null
+        : modelsOffered
+          ? brainstormModelSelection(shell.modelSelection, modelChoice)
+          : shell.modelSelection,
+    [modelChoice, modelsOffered, shell],
+  );
+  const persistModelSelection = usePersistModelSelection(environmentId);
+  const threadBusy = shell?.session?.status === "running" || shell?.session?.status === "starting";
+  // Opening or toggling moves an idle thread right away, so "Open as thread"
+  // shows the model the next turn will use.
+  const persistedModelRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (shell === null || modelSelection === null || threadBusy) return;
+    if (modelSelection === shell.modelSelection) return;
+    const key = `${shell.id}:${modelSelection.model}`;
+    if (persistedModelRef.current === key) return;
+    persistedModelRef.current = key;
+    void persistModelSelection(shell, modelSelection);
+  }, [modelSelection, persistModelSelection, shell, threadBusy]);
+
+  const flipModel = useCallback(() => {
+    if (threadKey === null || !modelsOffered) return;
+    setModelChoice(threadKey, otherBrainstormModel(modelChoice));
+  }, [modelChoice, modelsOffered, setModelChoice, threadKey]);
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (!isBrainstormModelShortcut(event, IS_MAC)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      flipModel();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [flipModel]);
+
   const openAsThread = () => {
     if (!target) return;
     props.onClose();
@@ -167,6 +274,32 @@ function BrainstormContent(props: {
           <span className="truncate text-muted-foreground text-xs">{target.brainPath}</span>
         ) : null}
         <div className="ms-auto flex items-center gap-1">
+          {modelsOffered && threadKey !== null ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <ToggleGroup
+                    aria-label="Brainstorm model"
+                    data-brainstorm-model={modelChoice}
+                    value={[modelChoice]}
+                    onValueChange={(value) => {
+                      const next = value[0];
+                      if (isBrainstormModelChoice(next)) setModelChoice(threadKey, next);
+                    }}
+                  />
+                }
+              >
+                {(["sonnet", "opus"] as const).map((choice) => (
+                  <Toggle key={choice} value={choice}>
+                    {BRAINSTORM_MODELS[choice].label}
+                  </Toggle>
+                ))}
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">
+                Model for the next turn · {MODEL_SHORTCUT_LABEL} to switch
+              </TooltipPopup>
+            </Tooltip>
+          ) : null}
           <Button size="compact" variant="ghost-muted" disabled={!target} onClick={openAsThread}>
             <ExternalLinkIcon />
             Open as thread
@@ -190,6 +323,7 @@ function BrainstormContent(props: {
             <BrainstormChat
               environmentId={environmentId}
               threadId={threadRef.threadId}
+              modelSelection={modelSelection}
               cwd={target?.brainPath}
               onOpenAsThread={openAsThread}
             />
@@ -223,6 +357,7 @@ type TimelineEntry =
 function BrainstormChat(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: OrchestrationThreadShell["id"];
+  readonly modelSelection: ModelSelection | null;
   readonly cwd: string | undefined;
   readonly onOpenAsThread: () => void;
 }) {
@@ -234,6 +369,7 @@ function BrainstormChat(props: {
   const detail = useThreadDetail(ref);
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn);
+  const persistModelSelection = usePersistModelSelection(props.environmentId);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -293,11 +429,20 @@ function BrainstormChat(props: {
     setSending(true);
     setSendError(null);
     setAwaitingSince(new Date().toISOString());
+    const modelSelection = props.modelSelection ?? shell.modelSelection;
+    const modelError = await persistModelSelection(shell, modelSelection);
+    if (modelError !== null) {
+      setSending(false);
+      setAwaitingSince(null);
+      setSendError(modelError);
+      return;
+    }
     const result = await startTurn({
       environmentId: props.environmentId,
       input: {
         threadId: props.threadId,
         message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+        modelSelection,
         runtimeMode: shell.runtimeMode,
         interactionMode: shell.interactionMode,
       },
@@ -309,7 +454,16 @@ function BrainstormChat(props: {
       return;
     }
     setDraft("");
-  }, [draft, props.environmentId, props.threadId, sending, shell, startTurn]);
+  }, [
+    draft,
+    persistModelSelection,
+    props.environmentId,
+    props.modelSelection,
+    props.threadId,
+    sending,
+    shell,
+    startTurn,
+  ]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {

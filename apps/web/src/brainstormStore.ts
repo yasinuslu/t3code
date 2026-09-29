@@ -7,6 +7,10 @@ import { useMemo } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import {
+  type BrainstormModelChoice,
+  isBrainstormModelChoice,
+} from "./components/brainstorm/brainstorm.logic";
 import { resolveStorage } from "./lib/storage";
 import { useThreadShells } from "./state/entities";
 
@@ -17,10 +21,13 @@ interface BrainstormStore {
   readonly hiddenThreadKeys: ReadonlySet<string>;
   /** Profile whose brain custom spaces, Other and All use; null: the server picks. */
   readonly defaultProfile: string | null;
+  /** `${environmentId}:${threadId}` → the model toggled in the popup. */
+  readonly modelChoiceByThreadKey: Readonly<Record<string, BrainstormModelChoice>>;
   readonly toggle: (spaceId: string) => void;
   readonly close: () => void;
   readonly setHiddenThreadKeys: (keys: ReadonlySet<string>) => void;
   readonly setDefaultProfile: (profile: string | null) => void;
+  readonly setModelChoice: (threadKey: string, choice: BrainstormModelChoice) => void;
 }
 
 export const useBrainstormStore = create<BrainstormStore>()(
@@ -30,6 +37,7 @@ export const useBrainstormStore = create<BrainstormStore>()(
       spaceId: null,
       hiddenThreadKeys: new Set(),
       defaultProfile: null,
+      modelChoiceByThreadKey: {},
       toggle: (spaceId) => set((state) => (state.open ? { open: false } : { open: true, spaceId })),
       close: () => set({ open: false }),
       setHiddenThreadKeys: (keys) =>
@@ -40,16 +48,39 @@ export const useBrainstormStore = create<BrainstormStore>()(
             : { hiddenThreadKeys: keys },
         ),
       setDefaultProfile: (defaultProfile) => set({ defaultProfile }),
+      setModelChoice: (threadKey, choice) =>
+        set((state) => ({
+          modelChoiceByThreadKey: { ...state.modelChoiceByThreadKey, [threadKey]: choice },
+        })),
     }),
     {
       name: "t3code:brainstorm:v1",
       storage: createJSONStorage(() =>
         resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
       ),
-      partialize: (state) => ({ defaultProfile: state.defaultProfile }),
+      partialize: (state) => ({
+        defaultProfile: state.defaultProfile,
+        modelChoiceByThreadKey: state.modelChoiceByThreadKey,
+      }),
       merge: (persisted, current) => {
-        const profile = (persisted as { defaultProfile?: unknown } | null)?.defaultProfile;
-        return { ...current, defaultProfile: typeof profile === "string" ? profile : null };
+        const stored = persisted as {
+          defaultProfile?: unknown;
+          modelChoiceByThreadKey?: unknown;
+        } | null;
+        const profile = stored?.defaultProfile;
+        const choices =
+          stored?.modelChoiceByThreadKey && typeof stored.modelChoiceByThreadKey === "object"
+            ? Object.fromEntries(
+                Object.entries(stored.modelChoiceByThreadKey).filter(([, choice]) =>
+                  isBrainstormModelChoice(choice),
+                ),
+              )
+            : {};
+        return {
+          ...current,
+          defaultProfile: typeof profile === "string" ? profile : null,
+          modelChoiceByThreadKey: choices,
+        };
       },
     },
   ),
