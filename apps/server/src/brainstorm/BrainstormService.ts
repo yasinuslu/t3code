@@ -66,6 +66,11 @@ import {
   TaskNotFoundError,
   updateTask,
 } from "./taskMarkdown.ts";
+import {
+  completeSettledTasks,
+  isSettledAfterSuccess,
+  makeTurnEndTracker,
+} from "./taskAutoComplete.ts";
 
 export const ALL_SPACE_ID = "all";
 
@@ -366,6 +371,51 @@ export const make = Effect.gen(function* () {
         return outcome.result;
       }),
     );
+
+  // When a thread's turn ends, check off the tasks it finishes. Runs here, not
+  // in a chat, so tasks close whether or not their brainstorm is open.
+  const completeTasksOf = (threadId: ThreadId) =>
+    Effect.gen(function* () {
+      const ctx = yield* context;
+      const paths = new Set<string>();
+      for (const space of ctx.spaces) {
+        const path = taskPathOf(ctx, space);
+        if (path === null || paths.has(path)) continue;
+        paths.add(path);
+        const list = yield* readTaskList(ctx, space);
+        const linked = new Set(
+          list.tasks
+            .filter((task) => !task.done && task.threadIds.includes(threadId))
+            .flatMap((task) => task.threadIds),
+        );
+        if (linked.size === 0) continue;
+        const settled = new Set<string>();
+        for (const id of linked) {
+          const thread = yield* snapshots.getThreadShellById(ThreadId.make(id)).pipe(
+            Effect.map(Option.getOrUndefined),
+            Effect.orElseSucceed(() => undefined),
+          );
+          if (isSettledAfterSuccess(thread)) settled.add(id);
+        }
+        if (settled.size === 0) continue;
+        yield* editTasks(ctx, space, (text) => {
+          const outcome = completeSettledTasks(text, threadId, (id) => settled.has(id));
+          return { text: outcome.text, result: undefined };
+        });
+      }
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("could not complete brainstorm tasks", { threadId, cause }),
+      ),
+    );
+  const turnEnded = makeTurnEndTracker();
+  const domainEvents = yield* engine.subscribeDomainEvents;
+  yield* Effect.forkScoped(
+    Stream.runForEach(domainEvents, (event) => {
+      const threadId = turnEnded(event);
+      return threadId === null ? Effect.void : completeTasksOf(threadId);
+    }),
+  );
 
   const requireSpace = (ctx: BrainstormContext, spaceId: string) => {
     const space = ctx.spaces.find((candidate) => candidate.id === spaceId);
