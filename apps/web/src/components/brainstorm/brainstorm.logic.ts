@@ -2,6 +2,7 @@ import type {
   BrainstormSpace,
   BrainstormSyncSpacesInput,
   KeybindingShortcut,
+  ModelSelection,
   ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 
@@ -191,4 +192,58 @@ export function brainstormActivity(input: {
     return { kind: "thinking" };
   }
   return { kind: "idle" };
+}
+
+/** The two models the brainstorm chat switches between; it is meant to be quick. */
+export const BRAINSTORM_MODELS = {
+  sonnet: { model: "claude-sonnet-5-5", label: "Sonnet 5.5" },
+  opus: { model: "claude-opus-5-5", label: "Opus 5.5" },
+} as const;
+
+export type BrainstormModelChoice = keyof typeof BRAINSTORM_MODELS;
+
+export const DEFAULT_BRAINSTORM_MODEL: BrainstormModelChoice = "sonnet";
+
+export function isBrainstormModelChoice(value: unknown): value is BrainstormModelChoice {
+  return value === "sonnet" || value === "opus";
+}
+
+/** The chat's model choice: what the user toggled, else the default. */
+export function brainstormModelChoice(stored: unknown): BrainstormModelChoice {
+  return isBrainstormModelChoice(stored) ? stored : DEFAULT_BRAINSTORM_MODEL;
+}
+
+export function otherBrainstormModel(choice: BrainstormModelChoice): BrainstormModelChoice {
+  return choice === "sonnet" ? "opus" : "sonnet";
+}
+
+/** Whether the thread's provider instance offers both brainstorm models. */
+export function brainstormModelsOffered(
+  models: ReadonlyArray<{ readonly slug: string }> | undefined,
+): boolean {
+  if (!models) return false;
+  const slugs = new Set(models.map((model) => model.slug));
+  return Object.values(BRAINSTORM_MODELS).every((entry) => slugs.has(entry.model));
+}
+
+/**
+ * The thread's selection with the chosen model, on the same provider
+ * instance. Options belong to the previous model, so a switch drops them; an
+ * unchanged model keeps its selection as is.
+ */
+export function brainstormModelSelection(
+  current: ModelSelection,
+  choice: BrainstormModelChoice,
+): ModelSelection {
+  const model = BRAINSTORM_MODELS[choice].model;
+  return current.model === model ? current : { instanceId: current.instanceId, model };
+}
+
+/** Cmd+/ (Ctrl+/ elsewhere) flips the model while the popup is open. */
+export function isBrainstormModelShortcut(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
+  isMac: boolean,
+): boolean {
+  if (event.key !== "/" || event.altKey || event.shiftKey) return false;
+  return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 }
