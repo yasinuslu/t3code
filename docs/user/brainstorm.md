@@ -66,7 +66,9 @@ space starts a new file; rename the file too to keep its tasks.
 
 A task is a top-level `- [ ]` or `- [x]` item. `*` and `+` bullets work too. The indented lines under
 it are its notes. A `thread: <id>` line links the task to a thread. The task list then shows that
-thread's state (working, waiting on you, finished, settled), and the agent can mark the task done.
+thread's state (working, waiting on you, finished, settled). When a linked thread finishes a turn
+successfully and all of the task's threads are finished, the task is marked done. Reopen it and it
+stays open until one of its threads works again.
 Anything else in the file, such as headings and prose, is left alone.
 
 Edits from the popup and the agent re-read the file first and change only the lines of the one task
