@@ -24,6 +24,7 @@ import {
   brainPathOf,
   BrainstormService,
   findSpace,
+  homeSpaceIdOf,
   isProjectInSpace,
   spaceIdsOfProject,
   taskPathOf,
@@ -119,17 +120,27 @@ const make = Effect.gen(function* () {
   const commandId = (tag: string) =>
     uuid.pipe(Effect.map((id) => CommandId.make(`server:brainstorm-${tag}:${id}`)));
 
-  /** The calling thread's brainstorm space and a fresh context, or a refusal. */
+  /**
+   * What the calling thread sees and a fresh context. A brainstorm chat sees
+   * its space; any other thread sees All, and its task tools default to its
+   * project's home space.
+   */
   const scope = Effect.gen(function* () {
     const invocation = yield* McpInvocationContext.McpInvocationContext;
-    const space = yield* brainstorm.spaceOfThread(invocation.threadId);
-    if (space === null) {
-      return yield* fail(
-        "These tools only work in a brainstorm chat (open it with the brainstorm shortcut).",
-      );
-    }
     const context = yield* brainstorm.context;
-    return { space, context, threadId: invocation.threadId };
+    const brainstormSpace = yield* brainstorm.spaceOfThread(invocation.threadId);
+    if (brainstormSpace !== null) {
+      return { space: brainstormSpace, taskHome: null, context, threadId: invocation.threadId };
+    }
+    const all = context.spaces.find((candidate) => candidate.id === ALL_SPACE_ID);
+    if (!all) return yield* fail("The All space is missing.");
+    const own = yield* snapshots.getThreadShellById(invocation.threadId).pipe(
+      Effect.map(Option.getOrUndefined),
+      Effect.orElseSucceed(() => undefined),
+    );
+    const homeId = own === undefined ? null : homeSpaceIdOf(context, own.projectId);
+    const taskHome = context.spaces.find((candidate) => candidate.id === homeId) ?? null;
+    return { space: all, taskHome, context, threadId: invocation.threadId };
   });
 
   /** Active and (optionally) archived thread shells. */
@@ -143,14 +154,19 @@ const make = Effect.gen(function* () {
   const inScope = (context: BrainstormContext, space: BrainstormSpace, projectId: string) =>
     isProjectInSpace(context, projectId, space.id);
 
-  /** The space a task tool works on: the given one (checked against scope) or this chat's. */
+  /**
+   * The space a task tool works on: the given one (checked against scope), or
+   * this chat's, or the calling thread's home space.
+   */
   const taskSpace = (
     context: BrainstormContext,
     own: BrainstormSpace,
     reference: string | undefined,
+    home: BrainstormSpace | null = null,
   ): Effect.Effect<BrainstormSpace, BrainstormError> => {
     if (reference === undefined) {
       if (own.id !== ALL_SPACE_ID) return Effect.succeed(own);
+      if (home !== null) return Effect.succeed(home);
       const fallback = context.spaces.find(
         (space) => space.kind === "profile" && space.profile === context.defaultProfile?.name,
       );
@@ -251,16 +267,16 @@ const make = Effect.gen(function* () {
 
     list_tasks: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
+        const { space, taskHome, context } = yield* scope;
         const spaces =
-          input.space === undefined && space.id === ALL_SPACE_ID
+          input.space === undefined && space.id === ALL_SPACE_ID && taskHome === null
             ? context.spaces.filter((candidate) => candidate.kind !== "all")
-            : [yield* taskSpace(context, space, input.space)];
+            : [yield* taskSpace(context, space, input.space, taskHome)];
         const threads = yield* allThreads(true);
         const lists = [];
         for (const candidate of spaces) {
           const list = yield* brainstorm.readTaskList(context, candidate);
-          if (space.id === ALL_SPACE_ID && input.space === undefined && list.tasks.length === 0) {
+          if (spaces.length > 1 && list.tasks.length === 0) {
             continue;
           }
           lists.push({
@@ -275,8 +291,8 @@ const make = Effect.gen(function* () {
 
     add_task: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space);
+        const { space, taskHome, context } = yield* scope;
+        const target = yield* taskSpace(context, space, input.space, taskHome);
         if (input.title.trim().length === 0) return yield* fail("A task needs a title.");
         const number = yield* brainstorm.editTasks(context, target, (text) => {
           const added = addTask(text, {
@@ -291,8 +307,8 @@ const make = Effect.gen(function* () {
 
     update_task: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space);
+        const { space, taskHome, context } = yield* scope;
+        const target = yield* taskSpace(context, space, input.space, taskHome);
         const task = yield* brainstorm.editTasks(context, target, (text) => {
           const updated = updateTask(text, input.task, {
             ...(input.title === undefined ? {} : { title: input.title }),
@@ -310,8 +326,8 @@ const make = Effect.gen(function* () {
 
     complete_task: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space);
+        const { space, taskHome, context } = yield* scope;
+        const target = yield* taskSpace(context, space, input.space, taskHome);
         const task = yield* brainstorm.editTasks(context, target, (text) => {
           const updated = updateTask(text, input.task, { done: input.done ?? true });
           return { text: updated.text, result: updated.task };
@@ -321,8 +337,8 @@ const make = Effect.gen(function* () {
 
     delete_task: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space);
+        const { space, taskHome, context } = yield* scope;
+        const target = yield* taskSpace(context, space, input.space, taskHome);
         const removed = yield* brainstorm.editTasks(context, target, (text) => {
           const result = deleteTask(text, input.task);
           return { text: result.text, result: result.task };
@@ -488,12 +504,14 @@ const make = Effect.gen(function* () {
 
     start_thread: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
+        const { space, taskHome, context } = yield* scope;
         const project = yield* findProject(context, space, input.project);
         const prompt = input.prompt.trim();
         if (prompt.length === 0) return yield* fail("The first prompt cannot be empty.");
         const taskTarget =
-          input.task === undefined ? null : yield* taskSpace(context, space, input.taskSpace);
+          input.task === undefined
+            ? null
+            : yield* taskSpace(context, space, input.taskSpace, taskHome);
         const settings = yield* serverSettings.getSettings.pipe(
           Effect.mapError(() => fail("Could not read the server settings.")),
         );

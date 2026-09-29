@@ -266,11 +266,67 @@ const HOME_TASKS = "/code/home/home-brain/tasks.md";
 const WORK_TASKS = "/code/work/work-brain/tasks.md";
 
 describe("brainstorm toolkit", () => {
-  it.effect("refuses threads that are not a brainstorm", () =>
+  it.effect("a regular thread sees every space and projects", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
-      const error = yield* harness.call("list_tasks", {}, WORK_THREAD).pipe(Effect.flip);
-      expect(error.message).toContain("only work in a brainstorm chat");
+      const overview = yield* harness.call("brainstorm_overview", {}, WORK_THREAD);
+      expect(overview).toMatchObject({ spaceId: "all", seesEverything: true });
+      const projects = yield* harness.call("list_projects", {}, WORK_THREAD);
+      expect(projects.projects.map((entry) => entry.title)).toEqual([
+        "api",
+        "t3code",
+        "home-brain",
+      ]);
+      const scoped = yield* harness.call("list_projects", { space: "work" }, WORK_THREAD);
+      expect(scoped.projects.map((entry) => entry.title)).toEqual(["api"]);
+      const threads = yield* harness.call("list_threads", {}, WORK_THREAD);
+      expect(threads.threads.map((entry) => entry.threadId)).toEqual([HOME_THREAD, WORK_THREAD]);
+    }),
+  );
+
+  it.effect("a regular thread's task tools default to its project's space", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        [HOME_TASKS]: "- [ ] home task\n",
+        [WORK_TASKS]: "- [ ] work task\n",
+      });
+      const listed = yield* harness.call("list_tasks", {}, WORK_THREAD);
+      expect(listed.lists.map((list) => list.space)).toEqual(["work"]);
+      const added = yield* harness.call("add_task", { title: "From work" }, WORK_THREAD);
+      expect(added).toEqual({ space: "work", number: 2, path: WORK_TASKS });
+      yield* harness.call("add_task", { title: "For home", space: "home" }, WORK_THREAD);
+      expect(harness.files.get(HOME_TASKS)).toBe("- [ ] home task\n- [ ] For home\n");
+      expect(harness.files.get(WORK_TASKS)).toBe("- [ ] work task\n- [ ] From work\n");
+    }),
+  );
+
+  it.effect("a regular thread starts threads in any space's project", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ [WORK_TASKS]: "- [ ] Ship it\n" });
+      const started = yield* harness.call(
+        "start_thread",
+        { project: "t3code", prompt: "hi", task: 1, taskSpace: "work" },
+        WORK_THREAD,
+      );
+      expect(started.project).toBe("t3code");
+      expect((yield* Ref.get(harness.commands)).map((command) => command.type)).toEqual([
+        "thread.create",
+        "thread.turn.start",
+      ]);
+      expect((yield* Ref.get(harness.commands))[0]).toMatchObject({ projectId: "p-home" });
+      expect(harness.files.get(WORK_TASKS)).toBe(
+        `- [ ] Ship it\n  - thread: ${started.threadId}\n`,
+      );
+    }),
+  );
+
+  it.effect("a regular thread still cannot act on brainstorm chats", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const error = yield* harness
+        .call("rename_thread", { threadId: BRAINSTORM_HOME, title: "x" }, WORK_THREAD)
+        .pipe(Effect.flip);
+      expect(error.message).toContain("brainstorm chat, not a work thread");
     }),
   );
 

@@ -17,13 +17,13 @@ const dependencies = [
   ServerSettings.ServerSettingsService,
 ];
 
-const ONLY_BRAINSTORM =
-  "Only available in a T3 Code brainstorm chat, scoped to its space (the All space sees everything).";
+const SCOPE =
+  "In a T3 Code brainstorm chat it is scoped to that chat's space (the All space sees everything); in any other thread it sees every space.";
 
 const SpaceInput = Schema.optional(
   Schema.String.annotate({
     description:
-      "Space id or name. Defaults to this brainstorm's space; in the All space it selects which space's list to use.",
+      "Space id or name. Defaults to this brainstorm's space, or in a regular thread to its project's space; in the All space it selects which space's list to use.",
   }),
 );
 
@@ -102,7 +102,7 @@ const writeTool = <T extends Tool.Any>(tool: T, destructive = false): T =>
 
 const BrainstormOverviewTool = readonlyTool(
   Tool.make("brainstorm_overview", {
-    description: `Start here. Says which space this brainstorm chat belongs to, what it can see, where each space keeps its task list (a markdown checklist in the brain repository), and the spaces there are. ${ONLY_BRAINSTORM}`,
+    description: `Start here. Says which space this chat belongs to (All for a regular thread), what it can see, where each space keeps its task list (a markdown checklist in the brain repository), and the spaces there are. ${SCOPE}`,
     success: Schema.Struct({
       space: Schema.String,
       spaceId: Schema.String,
@@ -125,7 +125,7 @@ const BrainstormOverviewTool = readonlyTool(
 
 const ListTasksTool = readonlyTool(
   Tool.make("list_tasks", {
-    description: `List the tasks of this space (in All: of every space, unless space is given), with the status of the threads each task links to. ${ONLY_BRAINSTORM}`,
+    description: `List the tasks of this space (in the All brainstorm: of every space; in a regular thread: of its project's space; unless space is given), with the status of the threads each task links to. ${SCOPE}`,
     parameters: Schema.Struct({ space: SpaceInput }),
     success: Schema.Struct({ lists: Schema.Array(TaskListEntry) }),
     failure: BrainstormError,
@@ -135,7 +135,7 @@ const ListTasksTool = readonlyTool(
 
 const AddTaskTool = writeTool(
   Tool.make("add_task", {
-    description: `Add a task to the end of a space's task list. ${ONLY_BRAINSTORM}`,
+    description: `Add a task to the end of a space's task list. ${SCOPE}`,
     parameters: Schema.Struct({
       title: Schema.String.annotate({ description: "One line." }),
       notes: Schema.optional(
@@ -152,7 +152,7 @@ const AddTaskTool = writeTool(
 
 const UpdateTaskTool = writeTool(
   Tool.make("update_task", {
-    description: `Change a task: rename it, replace its notes, mark it done or not, or link/unlink threads. Only that task's lines in the file change. ${ONLY_BRAINSTORM}`,
+    description: `Change a task: rename it, replace its notes, mark it done or not, or link/unlink threads. Only that task's lines in the file change. ${SCOPE}`,
     parameters: Schema.Struct({
       task: TaskReferenceInput,
       space: SpaceInput,
@@ -170,7 +170,7 @@ const UpdateTaskTool = writeTool(
 
 const CompleteTaskTool = writeTool(
   Tool.make("complete_task", {
-    description: `Check a task off (or reopen it with done=false). ${ONLY_BRAINSTORM}`,
+    description: `Check a task off (or reopen it with done=false). ${SCOPE}`,
     parameters: Schema.Struct({
       task: TaskReferenceInput,
       space: SpaceInput,
@@ -184,7 +184,7 @@ const CompleteTaskTool = writeTool(
 
 const DeleteTaskTool = writeTool(
   Tool.make("delete_task", {
-    description: `Remove a task and its notes from the list. Prefer complete_task for finished work. ${ONLY_BRAINSTORM}`,
+    description: `Remove a task and its notes from the list. Prefer complete_task for finished work. ${SCOPE}`,
     parameters: Schema.Struct({ task: TaskReferenceInput, space: SpaceInput }),
     success: Schema.Struct({ title: Schema.String }),
     failure: BrainstormError,
@@ -195,7 +195,7 @@ const DeleteTaskTool = writeTool(
 
 const ListThreadsTool = readonlyTool(
   Tool.make("list_threads", {
-    description: `List the T3 Code threads in scope, most recent activity first, with status, project and spaces. Settled and archived threads are left out unless asked for. ${ONLY_BRAINSTORM}`,
+    description: `List the T3 Code threads in scope, most recent activity first, with status, project and spaces. Settled and archived threads are left out unless asked for. ${SCOPE}`,
     parameters: Schema.Struct({
       space: SpaceInput,
       project: Schema.optional(
@@ -213,7 +213,7 @@ const ListThreadsTool = readonlyTool(
 
 const ReadThreadTool = readonlyTool(
   Tool.make("read_thread", {
-    description: `Read a thread's recent messages (user and assistant text, newest last). ${ONLY_BRAINSTORM}`,
+    description: `Read a thread's recent messages (user and assistant text, newest last). ${SCOPE}`,
     parameters: Schema.Struct({
       threadId: Schema.String,
       turns: Schema.optional(
@@ -233,7 +233,7 @@ const ReadThreadTool = readonlyTool(
 
 const ListProjectsTool = readonlyTool(
   Tool.make("list_projects", {
-    description: `List the projects in scope, to pick one for start_thread. ${ONLY_BRAINSTORM}`,
+    description: `List the projects in scope, to pick one for start_thread. ${SCOPE}`,
     parameters: Schema.Struct({ space: SpaceInput }),
     success: Schema.Struct({ projects: Schema.Array(ProjectEntry) }),
     failure: BrainstormError,
@@ -243,7 +243,7 @@ const ListProjectsTool = readonlyTool(
 
 const SettleThreadTool = writeTool(
   Tool.make("settle_thread", {
-    description: `Settle a thread (mark it done; it leaves the active list) or, with settled=false, bring it back. A running thread cannot be settled. ${ONLY_BRAINSTORM}`,
+    description: `Settle a thread (mark it done; it leaves the active list) or, with settled=false, bring it back. A running thread cannot be settled. ${SCOPE}`,
     parameters: Schema.Struct({
       threadId: Schema.String,
       settled: Schema.optional(Schema.Boolean),
@@ -256,7 +256,7 @@ const SettleThreadTool = writeTool(
 
 const ArchiveThreadTool = writeTool(
   Tool.make("archive_thread", {
-    description: `Archive a thread (hide it) or, with archived=false, restore it. ${ONLY_BRAINSTORM}`,
+    description: `Archive a thread (hide it) or, with archived=false, restore it. ${SCOPE}`,
     parameters: Schema.Struct({
       threadId: Schema.String,
       archived: Schema.optional(Schema.Boolean),
@@ -269,7 +269,7 @@ const ArchiveThreadTool = writeTool(
 
 const RenameThreadTool = writeTool(
   Tool.make("rename_thread", {
-    description: `Rename a thread. ${ONLY_BRAINSTORM}`,
+    description: `Rename a thread. ${SCOPE}`,
     parameters: Schema.Struct({ threadId: Schema.String, title: Schema.String }),
     success: ThreadEntry,
     failure: BrainstormError,
@@ -279,7 +279,7 @@ const RenameThreadTool = writeTool(
 
 const SetThreadSpaceTool = writeTool(
   Tool.make("set_thread_space", {
-    description: `Add a thread's project to a custom space, or remove it (member=false). Custom spaces hold projects, so every thread of that project follows. Profile spaces and Other follow the project's path and cannot be changed. ${ONLY_BRAINSTORM}`,
+    description: `Add a thread's project to a custom space, or remove it (member=false). Custom spaces hold projects, so every thread of that project follows. Profile spaces and Other follow the project's path and cannot be changed. ${SCOPE}`,
     parameters: Schema.Struct({
       threadId: Schema.String,
       space: Schema.String.annotate({ description: "Custom space id or name." }),
@@ -293,7 +293,7 @@ const SetThreadSpaceTool = writeTool(
 
 const StartThreadTool = writeTool(
   Tool.make("start_thread", {
-    description: `Start a new thread in a project with a first prompt, for example to turn a task into a coding thread. With task, the task links to the new thread. The thread runs in the project's own checkout, or with worktree=true in a new git worktree on its own branch, like choosing "New worktree" in the new-thread composer (the worktree and the project's setup script are ready before the first turn starts). ${ONLY_BRAINSTORM}`,
+    description: `Start a new thread in a project with a first prompt, for example to turn a task into a coding thread. With task, the task links to the new thread. The thread runs in the project's own checkout, or with worktree=true in a new git worktree on its own branch, like choosing "New worktree" in the new-thread composer (the worktree and the project's setup script are ready before the first turn starts). ${SCOPE}`,
     parameters: Schema.Struct({
       project: Schema.String.annotate({ description: "Project id or title (see list_projects)." }),
       prompt: Schema.String.annotate({ description: "The first message, sent as the user." }),

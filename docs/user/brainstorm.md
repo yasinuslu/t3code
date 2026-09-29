@@ -40,7 +40,8 @@ everything:
 - `start_thread` starts a thread in a project with a first prompt, and can link it to a task.
 - `brainstorm_overview` describes the space, its scope and where its tasks live.
 
-These tools refuse to run in any other thread.
+Regular threads get the same tools and see every space. Their task tools default to the task list
+of the thread's own project space; pass `space` to use another.
 
 ## Tasks
 
