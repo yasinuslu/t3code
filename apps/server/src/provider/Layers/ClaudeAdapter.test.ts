@@ -4222,96 +4222,130 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  it.effect("keeps subagent narration as task.message, out of the parent transcript", () => {
-    const harness = makeHarness();
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
+  it.effect(
+    "keeps subagent narration and tool calls agent-owned, out of the parent transcript",
+    () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
 
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => !event.type.startsWith("session.")),
-        Stream.takeUntil((event) => event.type === "task.progress"),
-        Stream.runCollect,
-        Effect.forkChild,
+        const eventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.filter((event) => !event.type.startsWith("session.")),
+          Stream.takeUntil((event) => event.type === "task.progress"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({
+          threadId: session.threadId,
+          input: "spawn an agent",
+          attachments: [],
+        });
+
+        harness.query.emit({
+          type: "system",
+          subtype: "task_started",
+          task_id: "task-narrate",
+          description: "Agent N",
+          task_type: "local_agent",
+          tool_use_id: "toolu_agent_n",
+          uuid: "task-narrate-uuid",
+          session_id: "sdk-session",
+        } as unknown as SDKMessage);
+        harness.query.emit({
+          type: "assistant",
+          parent_tool_use_id: "toolu_agent_n",
+          message: {
+            model: SYNTHETIC_SUBAGENT_MODEL,
+            content: [
+              { type: "text", text: "  Listing the files first.  " },
+              { type: "text", text: "   " },
+              { type: "tool_use", id: "toolu_sub_bash", name: "Bash", input: { command: "ls" } },
+            ],
+          },
+          uuid: "subagent-narration-uuid",
+          session_id: "sdk-session",
+        } as unknown as SDKMessage);
+        harness.query.emit({
+          type: "user",
+          parent_tool_use_id: "toolu_agent_n",
+          message: {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "toolu_sub_bash", content: "a.txt" }],
+          },
+          uuid: "subagent-result-uuid",
+          session_id: "sdk-session",
+        } as unknown as SDKMessage);
+        // A snapshot whose agent is unknown has nowhere to go: dropped, not
+        // leaked into the parent transcript.
+        harness.query.emit({
+          type: "assistant",
+          parent_tool_use_id: "toolu_unknown_agent",
+          message: { model: SYNTHETIC_SUBAGENT_MODEL, content: [{ type: "text", text: "orphan" }] },
+          uuid: "orphan-narration-uuid",
+          session_id: "sdk-session",
+        } as unknown as SDKMessage);
+        harness.query.emit({
+          type: "system",
+          subtype: "task_progress",
+          task_id: "task-narrate",
+          description: "Agent N",
+          usage: { total_tokens: 100, tool_uses: 1, duration_ms: 10 },
+          uuid: "task-narrate-progress-uuid",
+          session_id: "sdk-session",
+        } as unknown as SDKMessage);
+
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+        const messages = events.filter((event) => event.type === "task.message");
+        assert.equal(messages.length, 1);
+        const message = messages[0];
+        if (message?.type === "task.message") {
+          assert.equal(message.payload.taskId, "task-narrate");
+          assert.equal(message.payload.text, "Listing the files first.");
+        }
+        // Nothing from the subagent reaches the parent transcript or turns:
+        // no assistant or reasoning text (a tool's command_output delta is
+        // not transcript text), no synthetic turn.
+        const types = events.map((event) => event.type);
+        assert.deepEqual(
+          events.flatMap((event) =>
+            event.type === "content.delta" ? [event.payload.streamKind] : [],
+          ),
+          ["command_output"],
+        );
+        assert.deepEqual(
+          types.filter((type) => type.startsWith("turn.")),
+          ["turn.started"],
+        );
+        assert.ok(types.indexOf("task.started") < types.indexOf("task.message"));
+        // Its tool call (only present in the snapshot) becomes an agent-owned
+        // item, completed by the subagent's tool_result.
+        const items = events.filter((event) => event.type.startsWith("item."));
+        assert.deepEqual(
+          items.map((event) => event.type),
+          ["item.started", "item.updated", "item.updated", "item.completed"],
+        );
+        for (const item of items) {
+          assert.equal(String(item.itemId), "toolu_sub_bash");
+          assert.equal((item.payload as { agentId?: string }).agentId, "task-narrate");
+        }
+        const completed = items.at(-1);
+        assert.equal(completed?.type, "item.completed");
+        if (completed?.type === "item.completed") {
+          assert.equal(completed.payload.itemType, "command_execution");
+          assert.equal(completed.payload.status, "completed");
+        }
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
       );
-
-      const session = yield* adapter.startSession({
-        threadId: THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        runtimeMode: "full-access",
-      });
-      yield* adapter.sendTurn({
-        threadId: session.threadId,
-        input: "spawn an agent",
-        attachments: [],
-      });
-
-      harness.query.emit({
-        type: "system",
-        subtype: "task_started",
-        task_id: "task-narrate",
-        description: "Agent N",
-        task_type: "local_agent",
-        tool_use_id: "toolu_agent_n",
-        uuid: "task-narrate-uuid",
-        session_id: "sdk-session",
-      } as unknown as SDKMessage);
-      harness.query.emit({
-        type: "assistant",
-        parent_tool_use_id: "toolu_agent_n",
-        message: {
-          model: SYNTHETIC_SUBAGENT_MODEL,
-          content: [
-            { type: "text", text: "  Listing the files first.  " },
-            { type: "text", text: "   " },
-            { type: "tool_use", id: "toolu_sub_bash", name: "Bash", input: { command: "ls" } },
-          ],
-        },
-        uuid: "subagent-narration-uuid",
-        session_id: "sdk-session",
-      } as unknown as SDKMessage);
-      // A snapshot whose agent is unknown has nowhere to go: dropped, not
-      // leaked into the parent transcript.
-      harness.query.emit({
-        type: "assistant",
-        parent_tool_use_id: "toolu_unknown_agent",
-        message: { model: SYNTHETIC_SUBAGENT_MODEL, content: [{ type: "text", text: "orphan" }] },
-        uuid: "orphan-narration-uuid",
-        session_id: "sdk-session",
-      } as unknown as SDKMessage);
-      harness.query.emit({
-        type: "system",
-        subtype: "task_progress",
-        task_id: "task-narrate",
-        description: "Agent N",
-        usage: { total_tokens: 100, tool_uses: 1, duration_ms: 10 },
-        uuid: "task-narrate-progress-uuid",
-        session_id: "sdk-session",
-      } as unknown as SDKMessage);
-
-      const events = Array.from(yield* Fiber.join(eventsFiber));
-      const messages = events.filter((event) => event.type === "task.message");
-      assert.equal(messages.length, 1);
-      const message = messages[0];
-      if (message?.type === "task.message") {
-        assert.equal(message.payload.taskId, "task-narrate");
-        assert.equal(message.payload.text, "Listing the files first.");
-      }
-      // Nothing from the subagent reaches the parent transcript or turns:
-      // no assistant text, no items, no synthetic turn.
-      const types = events.map((event) => event.type);
-      assert.deepEqual(
-        types.filter(
-          (type) =>
-            type === "content.delta" || type.startsWith("item.") || type.startsWith("turn."),
-        ),
-        ["turn.started"],
-      );
-      assert.ok(types.indexOf("task.started") < types.indexOf("task.message"));
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
+    },
+  );
 
   it.effect("closes the session when the Claude stream aborts after a turn starts", () => {
     const harness = makeHarness();

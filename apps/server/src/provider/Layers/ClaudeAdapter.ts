@@ -3366,6 +3366,77 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
   });
 
+  const startSubagentSnapshotTool = Effect.fn("startSubagentSnapshotTool")(function* (
+    context: ClaudeSessionContext,
+    message: SDKMessage,
+    block: { readonly id: string; readonly name: string; readonly input: unknown },
+    owner: { readonly agentId: string; readonly parentToolUseId: string },
+  ) {
+    // Streamed subagent blocks (older SDKs) already opened this item.
+    for (const tool of context.inFlightTools.values()) {
+      if (tool.itemId === block.id) return;
+    }
+    const toolInput =
+      typeof block.input === "object" && block.input !== null
+        ? (block.input as Record<string, unknown>)
+        : {};
+    const itemType = classifyToolItemType(block.name, toolInput);
+    const detail = summarizeToolRequest(block.name, toolInput);
+    const tool: ToolInFlight = {
+      itemId: block.id,
+      itemType,
+      toolName: block.name,
+      title: titleForTool(itemType),
+      detail,
+      input: toolInput,
+      partialInputJson: "",
+      agentId: owner.agentId,
+      parentToolUseId: owner.parentToolUseId,
+    };
+    // Stream block indexes are non-negative; snapshot tools take negative
+    // keys so they can never collide with a streaming block.
+    let key = -1;
+    for (const index of context.inFlightTools.keys()) {
+      if (index <= key) key = index - 1;
+    }
+    context.inFlightTools.set(key, tool);
+
+    const payload = {
+      itemType: tool.itemType,
+      status: "inProgress" as const,
+      title: tool.title,
+      ...(tool.detail ? { detail: tool.detail } : {}),
+      agentId: owner.agentId,
+      parentToolUseId: owner.parentToolUseId,
+      data: { toolName: tool.toolName, input: toolInput },
+    };
+    const base = {
+      provider: PROVIDER,
+      threadId: context.session.threadId,
+      ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+      itemId: asRuntimeItemId(tool.itemId),
+      providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
+      raw: { source: "claude.sdk.message" as const, method: "claude/assistant", payload: message },
+    };
+    const startedStamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      ...base,
+      type: "item.started",
+      eventId: startedStamp.eventId,
+      createdAt: startedStamp.createdAt,
+      payload,
+    });
+    // The work log renders in-flight rows from item.updated.
+    const updatedStamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      ...base,
+      type: "item.updated",
+      eventId: updatedStamp.eventId,
+      createdAt: updatedStamp.createdAt,
+      payload,
+    });
+  });
+
   const handleAssistantMessage = Effect.fn("handleAssistantMessage")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
@@ -3399,12 +3470,22 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           );
         }
       }
-      // Keep what the subagent said, attributed to its agent: a task.message
-      // lands in the agent's own log and never in the parent transcript (no
-      // content.delta, no assistant item, no synthetic turn).
+      // Keep what the subagent did, attributed to its agent. Its text becomes
+      // a task.message (the agent's own log, never the parent transcript: no
+      // content.delta, no assistant item, no synthetic turn). Its tool calls
+      // arrive only in these snapshots (the SDK does not stream subagent
+      // blocks), so they open agent-owned tool items here; the tool_result
+      // in the matching user message completes them.
       const subagentContent = message.message?.content;
       if (owningTaskId && Array.isArray(subagentContent)) {
         for (const block of subagentContent) {
+          if (block.type === "tool_use" || block.type === "mcp_tool_use") {
+            yield* startSubagentSnapshotTool(context, message, block, {
+              agentId: owningTaskId,
+              parentToolUseId: assistantParentToolUseId,
+            });
+            continue;
+          }
           if (block.type !== "text" || typeof block.text !== "string") continue;
           const text = block.text.trim();
           if (text.length === 0) continue;
@@ -5071,6 +5152,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
         ...(newSessionId ? { sessionId: newSessionId } : {}),
         includePartialMessages: true,
+        // Subagent text arrives as parent_tool_use_id snapshots, kept as the
+        // agent's own log (task.message), never the parent transcript.
+        forwardSubagentText: true,
         canUseTool,
         onUserDialog,
         hooks: { UserPromptSubmit: [{ hooks: [onUserPromptSubmit] }] },
