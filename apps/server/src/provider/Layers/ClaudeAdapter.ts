@@ -3884,6 +3884,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         // later ones refine the record in place. AgentInput.effort may be a
         // named level or an integer.
         const launchInput = launchingTool?.input;
+        const prompt = trimmedString(launchInput?.prompt);
         const toolUseId = message.tool_use_id;
         const bufferedModel = toolUseId ? context.pendingTaskModels.get(toolUseId) : undefined;
         if (toolUseId) {
@@ -3921,6 +3922,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           payload: {
             taskId: RuntimeTaskId.make(message.task_id),
             description: message.description,
+            ...(prompt ? { prompt } : {}),
             ...(message.task_type ? { taskType: message.task_type } : {}),
             ...(owningAgentId ? { agentId: owningAgentId } : {}),
             ...(message.description ? { title: message.description } : {}),

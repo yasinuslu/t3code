@@ -343,4 +343,34 @@ describe("projectActivityPayload", () => {
     const projected = projectActivityPayload(source);
     expect(projected.payload).toEqual(source.payload);
   });
+
+  it("keeps a subagent's prompt and a Read image's bytes out of the wire payload", () => {
+    const started = projectActivityPayload({
+      ...activity({ taskId: "task-9", detail: "Audit auth", prompt: "p".repeat(8_000) }),
+      kind: "task.started",
+    } as OrchestrationThreadActivity);
+    expect(started.payload).toEqual({ taskId: "task-9", detail: "Audit auth" });
+
+    const imageData = "A".repeat(200_000);
+    const read = projectActivityPayload(
+      activity({
+        itemType: "dynamic_tool_call",
+        data: {
+          toolName: "Read",
+          input: { file_path: "/workspace/shot.png" },
+          result: {
+            type: "tool_result",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/png", data: imageData },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(read.payload).toMatchObject({ data: { imagePath: "/workspace/shot.png" } });
+    expect(JSON.stringify(read.payload)).not.toContain(imageData.slice(0, 64));
+  });
 });

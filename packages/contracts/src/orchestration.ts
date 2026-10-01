@@ -2375,12 +2375,21 @@ export type OrchestrationGetActivityOutputInput = typeof OrchestrationGetActivit
  * Full output of one tool activity. Thread snapshots and live activity events
  * carry only a one-line output summary; clients fetch the persisted output on
  * demand when a row is expanded. `output` is size-capped (head and tail kept)
- * with `truncated` set when bytes were dropped.
+ * with `truncated` set when bytes were dropped. For a subagent's `task.started`
+ * activity, `output` is the prompt the agent was given.
  */
 export const OrchestrationGetActivityOutputResult = Schema.Struct({
   activityId: EventId,
   output: Schema.NullOr(Schema.String),
   truncated: Schema.Boolean,
+  /** An image the tool returned (base64); `data` is null when it exceeds the size cap. */
+  image: Schema.optional(
+    Schema.Struct({
+      mimeType: Schema.String,
+      byteLength: Schema.Number,
+      data: Schema.NullOr(Schema.String),
+    }),
+  ),
 });
 export type OrchestrationGetActivityOutputResult = typeof OrchestrationGetActivityOutputResult.Type;
 

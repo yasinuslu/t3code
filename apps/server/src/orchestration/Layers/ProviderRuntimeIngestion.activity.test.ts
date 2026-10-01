@@ -173,3 +173,25 @@ describe("runtimeEventToActivities subagent narration", () => {
     expect((payload.text as string).endsWith("...")).toBe(true);
   });
 });
+
+describe("runtimeEventToActivities subagent prompt", () => {
+  it("persists a bounded task.started prompt for on-demand reads", () => {
+    const event = {
+      ...base,
+      type: "task.started",
+      eventId: EventId.make("evt-agent-started"),
+      turnId: TurnId.make("turn-1"),
+      payload: {
+        taskId: RuntimeTaskId.make("agent-7"),
+        description: "Audit auth",
+        prompt: `Audit the auth module.\n${"x".repeat(10_000)}`,
+      },
+    } satisfies ProviderRuntimeEvent;
+
+    const payload = runtimeEventToActivities(event)[0]?.payload as Record<string, unknown>;
+
+    expect(payload.detail).toBe("Audit auth");
+    expect((payload.prompt as string).startsWith("Audit the auth module.\nxxx")).toBe(true);
+    expect((payload.prompt as string).length).toBe(8_000);
+  });
+});

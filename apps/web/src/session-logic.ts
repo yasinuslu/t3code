@@ -57,6 +57,8 @@ export interface WorkLogEntry {
   questionAnswer?: UserInputAttachmentAnswerPayload;
   id: string;
   createdAt: string;
+  /** When the tool call started (its `tool.started` activity), for row durations. */
+  startedAt?: string;
   turnId?: TurnId | null;
   /** Stable provider identity across in-progress and completed lifecycle updates. */
   toolCallId?: string;
@@ -467,6 +469,7 @@ export function deriveWorkLogEntries(
     }
   }
   const entries: DerivedWorkLogEntry[] = [];
+  const startedAtByToolCallId = new Map<string, string>();
   for (const activity of foldUserInputActivities(ordered)) {
     if (
       isWorktreeSetupActivity(activity.kind) &&
@@ -474,7 +477,10 @@ export function deriveWorkLogEntries(
     ) {
       continue;
     }
-    if (activity.kind === "tool.started") continue;
+    if (activity.kind === "tool.started") {
+      recordToolStartedAt(startedAtByToolCallId, activity);
+      continue;
+    }
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
     // which is the batch key (completions of background subagents arrive
     // under later synthetic turns and must not start new batches). They
@@ -514,7 +520,31 @@ export function deriveWorkLogEntries(
     }
     entries.push(entry);
   }
-  return collapseDerivedWorkLogEntries(entries);
+  return withToolStartedAt(collapseDerivedWorkLogEntries(entries), startedAtByToolCallId);
+}
+
+function recordToolStartedAt(target: Map<string, string>, activity: OrchestrationThreadActivity) {
+  const toolCallId = extractToolCallId(asRecord(activity.payload));
+  if (toolCallId && !target.has(toolCallId)) target.set(toolCallId, activity.createdAt);
+}
+
+const entryWithStartedAt = new WeakMap<WorkLogEntry, WorkLogEntry>();
+
+/** Stamps tool rows with their start time; cached so unchanged rows keep their identity. */
+function withToolStartedAt<T extends WorkLogEntry>(
+  entries: T[],
+  startedAtByToolCallId: ReadonlyMap<string, string>,
+): T[] {
+  if (startedAtByToolCallId.size === 0) return entries;
+  return entries.map((entry) => {
+    const startedAt = entry.toolCallId ? startedAtByToolCallId.get(entry.toolCallId) : undefined;
+    if (!startedAt || entry.startedAt === startedAt) return entry;
+    const cached = entryWithStartedAt.get(entry);
+    if (cached?.startedAt === startedAt) return cached as T;
+    const stamped = { ...entry, startedAt };
+    entryWithStartedAt.set(entry, stamped);
+    return stamped;
+  });
 }
 
 /**
@@ -564,9 +594,14 @@ export function deriveAgentLogEntries(
 ): AgentLogEntry[] {
   const entries: AgentLogEntry[] = [];
   const toolIndexByCallId = new Map<string, number>();
+  const startedAtByToolCallId = new Map<string, string>();
   for (const activity of [...activities].toSorted(compareActivitiesByOrder)) {
     const payload = asRecord(activity.payload);
     if (asTrimmedString(payload?.agentId) !== agentId) continue;
+    if (activity.kind === "tool.started") {
+      recordToolStartedAt(startedAtByToolCallId, activity);
+      continue;
+    }
     if (activity.kind === "agent.message") {
       const text = asTrimmedString(payload?.text);
       const previous = entries.at(-1);
@@ -591,7 +626,11 @@ export function deriveAgentLogEntries(
     if (entry.toolCallId) toolIndexByCallId.set(entry.toolCallId, entries.length);
     entries.push({ kind: "tool", id: entry.toolCallId ?? entry.id, toolName, entry });
   }
-  return entries;
+  return entries.map((logEntry) =>
+    logEntry.kind === "tool"
+      ? { ...logEntry, entry: withToolStartedAt([logEntry.entry], startedAtByToolCallId)[0]! }
+      : logEntry,
+  );
 }
 
 /** Adapters forward unknown wire-only SDK messages (background_tasks_changed,

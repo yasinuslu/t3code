@@ -8,7 +8,9 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { ProjectionThreadActivityRepository } from "../persistence/Services/ProjectionThreadActivities.ts";
 import {
   ACTIVITY_OUTPUT_CHAR_CAP,
+  ACTIVITY_OUTPUT_IMAGE_BYTE_CAP,
   capActivityOutput,
+  extractActivityOutputImage,
   extractActivityOutputText,
   readActivityOutput,
 } from "./activityOutputQuery.ts";
@@ -70,6 +72,51 @@ it("caps long output, keeping the head and the tail", () => {
   assert.deepEqual(capActivityOutput("short"), { output: "short", truncated: false });
 });
 
+it("extracts a tool result's image and describes oversized ones without their data", () => {
+  const readResult = (data: string) => ({
+    data: {
+      toolName: "Read",
+      input: { file_path: "/tmp/shot.png" },
+      result: {
+        type: "tool_result",
+        content: [{ type: "image", source: { type: "base64", media_type: "image/png", data } }],
+      },
+    },
+  });
+  // Claude's Read of an image has no text, so the text output stays null.
+  assert.equal(extractActivityOutputText(readResult("iVBORw0KGgo=")), null);
+  assert.deepEqual(extractActivityOutputImage(readResult("iVBORw0KGgo=")), {
+    mimeType: "image/png",
+    byteLength: 8,
+    data: "iVBORw0KGgo=",
+  });
+  // MCP image content.
+  assert.deepEqual(
+    extractActivityOutputImage({
+      data: { result: { content: [{ type: "image", mimeType: "image/jpeg", data: "/9j/" }] } },
+    }),
+    { mimeType: "image/jpeg", byteLength: 3, data: "/9j/" },
+  );
+  const oversized = "A".repeat(Math.ceil((ACTIVITY_OUTPUT_IMAGE_BYTE_CAP * 4) / 3) + 8);
+  assert.deepEqual(extractActivityOutputImage(readResult(oversized)), {
+    mimeType: "image/png",
+    byteLength: Math.floor((oversized.length * 3) / 4),
+    data: null,
+  });
+  assert.equal(
+    extractActivityOutputImage({ data: { result: { content: "text only" } } }),
+    undefined,
+  );
+  assert.equal(
+    extractActivityOutputImage({
+      data: {
+        result: { content: [{ type: "image", source: { media_type: "text/html", data: "x" } }] },
+      },
+    }),
+    undefined,
+  );
+});
+
 const layer = it.layer(
   ProjectionThreadActivityRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
 );
@@ -104,6 +151,59 @@ layer("readActivityOutput", (it) => {
       assert.deepEqual(result, {
         activityId,
         output: "Exit code 3\nboom",
+        truncated: false,
+      });
+
+      const imageActivityId = EventId.make("activity-read-image");
+      yield* repository.upsert({
+        activityId: imageActivityId,
+        threadId,
+        turnId: null,
+        tone: "tool",
+        kind: "tool.completed",
+        summary: "Read file",
+        payload: {
+          itemType: "dynamic_tool_call",
+          status: "completed",
+          data: {
+            toolName: "Read",
+            input: { file_path: "/tmp/shot.png" },
+            result: {
+              type: "tool_result",
+              content: [
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" },
+                },
+              ],
+            },
+          },
+        },
+        sequence: 2,
+        createdAt: "2026-09-29T00:00:01.000Z",
+      });
+      assert.deepEqual(yield* readActivityOutput({ threadId, activityId: imageActivityId }), {
+        activityId: imageActivityId,
+        output: null,
+        truncated: false,
+        image: { mimeType: "image/png", byteLength: 8, data: "iVBORw0KGgo=" },
+      });
+
+      const startedActivityId = EventId.make("activity-agent-started");
+      yield* repository.upsert({
+        activityId: startedActivityId,
+        threadId,
+        turnId: null,
+        tone: "info",
+        kind: "task.started",
+        summary: "Task started",
+        payload: { taskId: "agent-1", detail: "Audit auth", prompt: "Audit the auth module." },
+        sequence: 3,
+        createdAt: "2026-09-29T00:00:02.000Z",
+      });
+      assert.deepEqual(yield* readActivityOutput({ threadId, activityId: startedActivityId }), {
+        activityId: startedActivityId,
+        output: "Audit the auth module.",
         truncated: false,
       });
 

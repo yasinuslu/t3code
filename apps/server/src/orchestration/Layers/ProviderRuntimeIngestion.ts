@@ -696,6 +696,9 @@ export function runtimeEventToActivities(
             ...(event.payload.description
               ? { detail: truncateDetail(event.payload.description) }
               : {}),
+            ...(event.payload.prompt
+              ? { prompt: truncateDetail(event.payload.prompt, AGENT_MESSAGE_TEXT_LIMIT) }
+              : {}),
             ...taskLinkageActivityFields(event.payload as Record<string, unknown>),
           },
           turnId: toTurnId(event.turnId) ?? null,

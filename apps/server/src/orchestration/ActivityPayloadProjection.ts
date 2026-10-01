@@ -426,6 +426,11 @@ export function projectActivityPayload(
   activity: OrchestrationThreadActivity,
 ): OrchestrationThreadActivity {
   const payload = asRecord(activity.payload);
+  if (activity.kind === "task.started" && payload && "prompt" in payload) {
+    // The subagent's prompt is fetched on demand (orchestration.getActivityOutput).
+    const { prompt: _prompt, ...rest } = payload;
+    return { ...activity, payload: rest };
+  }
   const data = asRecord(payload?.data);
   if (!payload || !data) {
     return activity;
