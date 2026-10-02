@@ -200,10 +200,11 @@ describe("brainstorm model", () => {
     expect(otherBrainstormModel("opus")).toBe("sonnet");
   });
 
-  it("moves an Opus thread to Sonnet on the same instance, dropping Opus options", () => {
+  it("moves an Opus thread to Sonnet at low effort on the same instance, dropping Opus options", () => {
     expect(brainstormModelSelection(opus, brainstormModelChoice(undefined))).toEqual({
       instanceId: claude,
       model: "claude-sonnet-5-5",
+      options: [{ id: "effort", value: "low" }],
     });
   });
 

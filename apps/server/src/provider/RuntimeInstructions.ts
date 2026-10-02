@@ -26,3 +26,19 @@ export function buildRuntimeInstructions(runtime: {
 function toSingleLine(value: string): string {
   return value.replaceAll(/\s+/g, " ").trim();
 }
+
+const instructionsByThread = new Map<string, string>();
+
+/**
+ * Extra system instructions for one thread, set by the feature that owns the
+ * thread (the brainstorm chat). Adapters append them when a session starts;
+ * undefined clears them.
+ */
+export function setThreadInstructions(threadId: string, instructions: string | undefined): void {
+  if (instructions) instructionsByThread.set(threadId, instructions);
+  else instructionsByThread.delete(threadId);
+}
+
+export function readThreadInstructions(threadId: string): string | undefined {
+  return instructionsByThread.get(threadId);
+}

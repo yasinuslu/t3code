@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
+import {
+  buildRuntimeInstructions,
+  readThreadInstructions,
+  setThreadInstructions,
+} from "./RuntimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
   it("requires explicit registration of every PR and stack layer", () => {
@@ -33,5 +37,15 @@ describe("buildRuntimeInstructions", () => {
     const instructions = buildRuntimeInstructions({ harness: "Cursor", model });
     expect(instructions).toContain("through the Cursor harness.");
     expect(instructions).not.toContain("reasoning effort");
+  });
+});
+
+describe("thread instructions", () => {
+  it("keeps instructions per thread until cleared", () => {
+    setThreadInstructions("thread-a", "front desk");
+    expect(readThreadInstructions("thread-a")).toBe("front desk");
+    expect(readThreadInstructions("thread-b")).toBeUndefined();
+    setThreadInstructions("thread-a", undefined);
+    expect(readThreadInstructions("thread-a")).toBeUndefined();
   });
 });
