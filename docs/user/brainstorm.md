@@ -43,6 +43,12 @@ everything:
 Regular threads get the same tools and see every space. Their task tools default to the task list
 of the thread's own project space; pass `space` to use another.
 
+The orchestrator's own `t3_thread_*` and `t3_project_*` tools only reach threads of the calling
+thread's project. A brainstorm chat lives in the brain's project, so its thread tools above are the
+ones that reach the rest of its space. `start_thread` uses the same launch as `t3_thread_launch`:
+with `worktree`, the server creates the worktree, names its branch and runs the setup script before
+the first turn.
+
 ## Tasks
 
 Tasks are a plain markdown checklist in the brain repository, so they sync with it and can be edited

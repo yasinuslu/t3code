@@ -22,7 +22,6 @@ import { rpcInitialItems } from "./rpcInitialItems.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import { subscribeCodexAuthCallback } from "./provider/CodexAuthCallback.ts";
 import {
-  BrainstormError,
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   AcpRegistryOperationError,
   CommandId,
@@ -186,6 +185,7 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/Atta
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
+import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
@@ -1065,8 +1065,6 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
   },
 );
 
-const BRAINSTORM_NOT_PORTED = "Brainstorm is not ported to orchestrator V2 yet.";
-
 const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
@@ -1146,6 +1144,7 @@ const makeWsRpcLayer = (
       const review = yield* ReviewService.ReviewService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      const brainstorm = yield* BrainstormService.BrainstormService;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
       const portDiscovery = yield* PortScanner.PortDiscovery;
@@ -3198,27 +3197,20 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "vcs",
             },
           ),
-        // TODO(brainstorm-v2): BrainstormService still targets the V1 orchestration engine
-        // and is parked until it is ported to OrchestratorV2 / ThreadLaunchService. These
-        // stubs keep the RPC surface; restore the real handlers with the parked files.
-        [WS_METHODS.brainstormSyncSpaces]: () =>
-          observeRpcEffect(WS_METHODS.brainstormSyncSpaces, Effect.void, {
+        [WS_METHODS.brainstormSyncSpaces]: (input) =>
+          observeRpcEffect(WS_METHODS.brainstormSyncSpaces, brainstorm.syncSpaces(input), {
             "rpc.aggregate": "workspace",
           }),
-        [WS_METHODS.brainstormOpen]: () =>
-          observeRpcEffect(
-            WS_METHODS.brainstormOpen,
-            Effect.fail(new BrainstormError({ message: BRAINSTORM_NOT_PORTED })),
-            { "rpc.aggregate": "workspace" },
-          ),
-        [WS_METHODS.brainstormMutateTasks]: () =>
-          observeRpcEffect(
-            WS_METHODS.brainstormMutateTasks,
-            Effect.fail(new BrainstormError({ message: BRAINSTORM_NOT_PORTED })),
-            { "rpc.aggregate": "workspace" },
-          ),
+        [WS_METHODS.brainstormOpen]: (input) =>
+          observeRpcEffect(WS_METHODS.brainstormOpen, brainstorm.open(input.spaceId), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.brainstormMutateTasks]: (input) =>
+          observeRpcEffect(WS_METHODS.brainstormMutateTasks, brainstorm.mutateTasks(input), {
+            "rpc.aggregate": "workspace",
+          }),
         [WS_METHODS.subscribeBrainstorm]: () =>
-          observeRpcStream(WS_METHODS.subscribeBrainstorm, Stream.empty, {
+          observeRpcStream(WS_METHODS.subscribeBrainstorm, brainstorm.stateChanges, {
             "rpc.aggregate": "workspace",
           }),
         [WS_METHODS.subscribeWorktreeSetup]: (input) =>
@@ -3739,6 +3731,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const pullRequests = yield* PullRequestService.PullRequestService;
+    const brainstorm = yield* BrainstormService.BrainstormService;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
       "GET",
@@ -3798,6 +3791,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               // One server-lifetime service means clients share the same PR caches, and a WS
               // mutation invalidates the HTTP diff cache that every client reads from.
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
+              Layer.provide(Layer.succeed(BrainstormService.BrainstormService, brainstorm)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(
                   Layer.provide(
