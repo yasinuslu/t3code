@@ -334,6 +334,79 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
+  it.effect("reads a retired command as its replacement, without an issue", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* fs.writeFileString(
+        keybindingsConfigPath,
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        JSON.stringify([
+          { key: "ctrl+alt+a", command: "rightPanel.toggleAgents" },
+          { key: "mod+x", command: "invalid.command" },
+        ]),
+      );
+
+      const configState = yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        return yield* keybindings.loadConfigState;
+      });
+
+      assert.isFalse(
+        configState.keybindings.some(
+          (entry) => String(entry.command) === "rightPanel.toggleAgents",
+        ),
+      );
+      assert.isTrue(
+        configState.keybindings.some(
+          (entry) =>
+            entry.command === "threadPanel.toggle" &&
+            entry.shortcut.key === "a" &&
+            entry.shortcut.ctrlKey &&
+            entry.shortcut.altKey,
+        ),
+      );
+      // Only the truly unknown command is reported.
+      assert.deepEqual(
+        configState.issues.map((issue) =>
+          issue.kind === "keybindings.invalid-entry" ? issue.index : -1,
+        ),
+        [1],
+      );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("writes the replacement of a retired command back on startup", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* fs.writeFileString(
+        keybindingsConfigPath,
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        JSON.stringify([
+          { key: "mod+shift+r", command: "script.run-tests.run" },
+          { key: "ctrl+alt+a", command: "rightPanel.toggleAgents" },
+        ]),
+      );
+
+      yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+      });
+
+      const text = yield* fs.readFileString(keybindingsConfigPath);
+      assert.notInclude(text, "rightPanel.toggleAgents");
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.deepStrictEqual(
+        persisted.filter((entry) => entry.command === "threadPanel.toggle"),
+        [{ key: "ctrl+alt+a", command: "threadPanel.toggle" }],
+      );
+      // The file no longer has issues, so the other defaults are backfilled again.
+      assert.isTrue(persisted.some((entry) => entry.command === "script.run-tests.run"));
+      assert.isTrue(persisted.some((entry) => entry.command === "sidebar.toggle"));
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
   it.effect("leaves a user's own mod+alt+b rule alone", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;

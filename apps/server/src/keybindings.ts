@@ -141,6 +141,34 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{ from: KeybindingRule; to: Keybi
 ];
 
 /**
+ * Commands that were removed, by the command that took over their job. A
+ * config entry naming one is read as its replacement, and the startup sync
+ * writes the new name back. Without this one stale entry makes the whole file
+ * "have issues", which also stops new defaults from being backfilled.
+ */
+const RETIRED_COMMANDS: Readonly<Record<string, KeybindingRule["command"]>> = {
+  // Orchestrator V2 replaced the Agents surface with child threads and the
+  // thread details panel, which Ctrl+Alt+A toggles now.
+  "rightPanel.toggleAgents": "threadPanel.toggle",
+};
+
+/** A raw config entry with a retired command renamed, and the rename if one happened. */
+function renameRetiredCommand(entry: unknown): {
+  readonly entry: unknown;
+  readonly rename: { readonly from: string; readonly to: KeybindingRule["command"] } | null;
+} {
+  if (typeof entry !== "object" || entry === null || !("command" in entry)) {
+    return { entry, rename: null };
+  }
+  const command = entry.command;
+  if (typeof command !== "string" || !Object.hasOwn(RETIRED_COMMANDS, command)) {
+    return { entry, rename: null };
+  }
+  const to = RETIRED_COMMANDS[command]!;
+  return { entry: { ...entry, command: to }, rename: { from: command, to } };
+}
+
+/**
  * Rewrite retired default shortcuts that the user never touched. A rule is only
  * rewritten when it still matches the old default exactly and nothing else in
  * the config already claims the replacement shortcut, so a deliberate choice is
@@ -361,8 +389,9 @@ const make = Effect.gen(function* () {
       ),
     );
 
-    return yield* Effect.forEach(rawConfig, (entry) =>
+    return yield* Effect.forEach(rawConfig, (rawEntry) =>
       Effect.gen(function* () {
+        const { entry } = renameRetiredCommand(rawEntry);
         const decodedRule = decodeKeybindingRuleExit(entry);
         if (decodedRule._tag === "Failure") {
           yield* Effect.logWarning("ignoring invalid keybinding entry", {
@@ -390,11 +419,13 @@ const make = Effect.gen(function* () {
     {
       readonly keybindings: readonly KeybindingRule[];
       readonly issues: readonly ServerConfigIssue[];
+      /** Retired commands read as their replacements; the file still has the old names. */
+      readonly renames: ReadonlyArray<{ readonly from: string; readonly to: string }>;
     },
     KeybindingsConfigError
   > {
     if (!(yield* readConfigExists)) {
-      return { keybindings: [], issues: [] };
+      return { keybindings: [], issues: [], renames: [] };
     }
 
     const rawConfig = yield* readRawConfig;
@@ -404,12 +435,15 @@ const make = Effect.gen(function* () {
       return {
         keybindings: [],
         issues: [malformedConfigIssue(detail)],
+        renames: [],
       };
     }
 
     const keybindings: KeybindingRule[] = [];
     const issues: ServerConfigIssue[] = [];
-    for (const [index, entry] of decodedEntries.value.entries()) {
+    const renames: Array<{ readonly from: string; readonly to: string }> = [];
+    for (const [index, rawEntry] of decodedEntries.value.entries()) {
+      const { entry, rename } = renameRetiredCommand(rawEntry);
       const decodedRule = decodeKeybindingRuleExit(entry);
       if (decodedRule._tag === "Failure") {
         const detail = Cause.pretty(decodedRule.cause);
@@ -436,9 +470,10 @@ const make = Effect.gen(function* () {
         continue;
       }
       keybindings.push(decodedRule.value);
+      if (rename !== null) renames.push(rename);
     }
 
-    return { keybindings, issues };
+    return { keybindings, issues, renames };
   });
 
   const writeConfigAtomically = (rules: readonly KeybindingRule[]) => {
@@ -511,6 +546,13 @@ const make = Effect.gen(function* () {
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }
+      for (const rename of runtimeConfig.renames) {
+        yield* Effect.logInfo("renamed retired keybinding command", {
+          path: keybindingsConfigPath,
+          from: rename.from,
+          to: rename.to,
+        });
+      }
       const retired = rewriteRetiredDefaults(runtimeConfig.keybindings);
       const customConfig = retired.config;
       for (const rewrite of retired.rewrites) {
@@ -525,7 +567,7 @@ const make = Effect.gen(function* () {
       // backfill below finds nothing to append.
       const finish = (rules: ReadonlyArray<KeybindingRule>) =>
         Effect.gen(function* () {
-          if (rules !== runtimeConfig.keybindings) {
+          if (rules !== runtimeConfig.keybindings || runtimeConfig.renames.length > 0) {
             yield* writeConfigAtomically(rules);
           }
           yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
