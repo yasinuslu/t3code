@@ -293,7 +293,7 @@ const SetThreadSpaceTool = writeTool(
 
 const StartThreadTool = writeTool(
   Tool.make("start_thread", {
-    description: `Start a new thread in a project with a first prompt, for example to turn a task into a coding thread. With task, the task links to the new thread. The thread runs in the project's own checkout, or with worktree=true in a new git worktree on its own branch, like choosing "New worktree" in the new-thread composer (the worktree and the project's setup script are ready before the first turn starts). ${SCOPE}`,
+    description: `Start a new thread in a project with a first prompt, for example to turn a task into a coding thread. With task, the task links to the new thread. The thread runs in the project's own checkout, or with worktree=true in a new git worktree on its own branch, like choosing "New worktree" in the new-thread composer (the worktree and the project's setup script are ready before the first turn starts). The worktree is prepared after this returns, so branch and worktreePath are null until it is ready; list_threads shows the branch later. ${SCOPE}`,
     parameters: Schema.Struct({
       project: Schema.String.annotate({ description: "Project id or title (see list_projects)." }),
       prompt: Schema.String.annotate({ description: "The first message, sent as the user." }),
