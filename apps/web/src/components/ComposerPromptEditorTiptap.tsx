@@ -121,6 +121,11 @@ export interface ComposerPromptEditorProps {
   skills: ReadonlyArray<ServerProviderSkill>;
   disabled: boolean;
   placeholder: string;
+  ariaLabel?: string | undefined;
+  /** Identifies an editor with suggestions, even while its list is closed. */
+  suggestionListId?: string | undefined;
+  /** References the highlighted option only while its list is rendered. */
+  activeSuggestionId?: string | undefined;
   containerClassName?: string;
   className?: string;
   placeholderClassName?: string;
@@ -132,11 +137,7 @@ export interface ComposerPromptEditorProps {
     contextIds: string[],
   ) => void;
   onVisibleSelectionChange?: () => void;
-  onCommandKeyDown?: (
-    key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab" | "Escape",
-    event: KeyboardEvent,
-    isTaskItem?: boolean,
-  ) => boolean;
+  onCommandKeyDown?: (key: string, event: KeyboardEvent, isTaskItem?: boolean) => boolean;
   onPageScrollKeyDown?: (key: "PageUp" | "PageDown") => void;
   onPageScrollKeyUp?: (key: string) => void;
   onPageScrollRelease?: () => void;
@@ -592,6 +593,9 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
     skills,
     disabled,
     placeholder,
+    ariaLabel,
+    suggestionListId,
+    activeSuggestionId,
     containerClassName,
     className,
     placeholderClassName,
@@ -752,9 +756,25 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
       ),
       "data-testid": "composer-editor",
       "data-composer-rich-text": richText ? "true" : "false",
+      role: "textbox",
+      "aria-multiline": "true",
+      ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
+      ...(disabled ? { "aria-readonly": "true" } : {}),
+      ...(!disabled && suggestionListId
+        ? {
+            "aria-autocomplete": "list",
+            "aria-haspopup": "listbox",
+            ...(activeSuggestionId
+              ? {
+                  "aria-controls": suggestionListId,
+                  "aria-activedescendant": activeSuggestionId,
+                }
+              : {}),
+          }
+        : {}),
       "aria-placeholder": placeholder,
     }),
-    [className, placeholder, richText],
+    [activeSuggestionId, ariaLabel, className, disabled, placeholder, richText, suggestionListId],
   );
 
   const editor = useEditor(
@@ -949,18 +969,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
             });
           }
           if (!handler) return false;
-          const key =
-            event.key === "Tab"
-              ? ("Tab" as const)
-              : event.key === "ArrowDown"
-                ? ("ArrowDown" as const)
-                : event.key === "ArrowUp"
-                  ? ("ArrowUp" as const)
-                  : event.key === "Escape"
-                    ? ("Escape" as const)
-                    : null;
-          if (!key) return false;
-          const handled = handler(key, event);
+          const handled = handler(event.key, event);
           if (handled) {
             event.preventDefault();
             event.stopPropagation();

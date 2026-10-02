@@ -7,8 +7,8 @@ import * as PlatformError from "effect/PlatformError";
 
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
 
-import { ServerConfig } from "../config.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ServerConfig from "../config.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as ReviewService from "./ReviewService.ts";
@@ -33,8 +33,8 @@ function makeLayer(input: {
     ),
     Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
     Layer.provide(
-      Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
-        getProjectShells: () =>
+      Layer.mock(ProjectStore.ProjectStoreV2)({
+        listShells: () =>
           Effect.succeed(
             (input.projectRoots ?? []).map(
               (workspaceRoot) => ({ workspaceRoot }) as OrchestrationProjectShell,
