@@ -424,6 +424,12 @@ import { useRemoteOpenState } from "~/remoteOpen";
 import { shouldShowOpenInPicker } from "./chat/OpenInPicker.logic";
 import { useOpenFavoriteEditorShortcut } from "./chat/OpenInPickerShortcut";
 import {
+  deriveSessionConfigDirObservation,
+  resolveProviderConfigDirIndicator,
+  resolveProviderWorkspaceConfigDir,
+} from "@t3tools/client-runtime/state/provider-instance-display";
+import { type ThreadProviderConfigDir } from "./chat/ProviderConfigDirIndicator";
+import {
   PanelLayoutControls,
   type PanelLayoutControlsProps,
   RightPanelMaximizeControl,
@@ -3919,6 +3925,43 @@ export default function ChatView(props: ChatViewProps) {
         worktreePath: activeThread?.worktreePath ?? null,
       })
     : null;
+  // The provider profile the thread runs on: the session's reported config
+  // dir when its CLI has reported one, otherwise the dir resolved for the
+  // workspace (or the instance's).
+  const activeProviderSession = useMemo(() => {
+    if (!serverProjection) return null;
+    const activeProviderThread = serverProjection.providerThreads.find(
+      (thread) => thread.id === serverProjection.thread.activeProviderThreadId,
+    );
+    const sessionId = activeProviderThread?.providerSessionId ?? null;
+    return (
+      (sessionId === null
+        ? undefined
+        : serverProjection.providerSessions.find((session) => session.id === sessionId)) ??
+      serverProjection.providerSessions.findLast(
+        (session) => session.providerInstanceId === serverProjection.thread.providerInstanceId,
+      ) ??
+      null
+    );
+  }, [serverProjection]);
+  const providerConfigDir = useMemo((): ThreadProviderConfigDir | null => {
+    if (!selectedProviderEntry) return null;
+    const configDir = resolveProviderConfigDirIndicator({
+      ...resolveProviderWorkspaceConfigDir(selectedProviderEntry.snapshot, gitCwd),
+      observation:
+        activeProviderSession?.providerInstanceId === selectedProviderEntry.instanceId
+          ? deriveSessionConfigDirObservation(activeProviderSession)
+          : null,
+    });
+    return configDir
+      ? {
+          driverKind: selectedProviderEntry.driverKind,
+          displayName: selectedProviderEntry.displayName,
+          accentColor: selectedProviderEntry.accentColor,
+          configDir,
+        }
+      : null;
+  }, [activeProviderSession, gitCwd, selectedProviderEntry]);
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   const gitStatusQuery = useEnvironmentQuery(
     gitStatusCwd === null
@@ -6596,10 +6639,6 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().toggle(activeThreadRef, "files");
   }, [activeProject, activeThreadRef]);
-  const toggleAgentsSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().toggle(activeThreadRef, "agents");
-  }, [activeThreadRef]);
   const toggleTerminalSurface = useCallback(() => {
     if (!activeThreadRef) return;
     if (!useRightPanelStore.getState().revealOrHideSurfaceOfKind(activeThreadRef, "terminal")) {
@@ -7478,13 +7517,6 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
-      if (command === "rightPanel.toggleAgents") {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleAgentsSurface();
-        return;
-      }
-
       if (command === "terminal.split") {
         event.preventDefault();
         event.stopPropagation();
@@ -7656,7 +7688,6 @@ export default function ChatView(props: ChatViewProps) {
     toggleTerminalSurface,
     toggleFilesSurface,
     togglePullRequestSurface,
-    toggleAgentsSurface,
     composerRef,
   ]);
 
@@ -10620,6 +10651,7 @@ export default function ChatView(props: ChatViewProps) {
             activeThreadTitle={activeThread.title}
             activeProject={activeProject ?? null}
             rightPanelOpen={inlineRightPanelOwnsTitleBar}
+            providerConfigDir={providerConfigDir}
             onNewThreadInProject={handleNewThreadInActiveProject}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
@@ -10979,6 +11011,7 @@ export default function ChatView(props: ChatViewProps) {
                               keybindings={keybindings}
                               terminalOpen={Boolean(terminalUiState.terminalOpen)}
                               gitCwd={gitCwd}
+                              projectRoot={activeProject?.workspaceRoot ?? null}
                               pullRequestProjectId={
                                 supportsPullRequests ? (activeProject?.id ?? null) : null
                               }

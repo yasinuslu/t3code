@@ -1,13 +1,8 @@
-import {
-  EventId,
-  type OrchestrationThreadActivity,
-  ProviderDriverKind,
-  ProviderInstanceId,
-} from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  deriveLatestConfigDirObservation,
+  deriveSessionConfigDirObservation,
   normalizeProviderAccentColor,
   providerInstanceInitials,
   resolveProviderConfigDirIndicator,
@@ -152,35 +147,20 @@ const personalDir = {
   displayPath: "~/code/personal/home/claude",
 };
 
-function activity(id: string, kind: string, payload: unknown): OrchestrationThreadActivity {
-  return {
-    id: EventId.make(id),
-    tone: "info",
-    kind,
-    summary: kind,
-    payload,
-    turnId: null,
-    createdAt: "2026-01-01T00:00:00.000Z",
-  };
-}
-
-describe("deriveLatestConfigDirObservation", () => {
-  it("returns the newest well-formed observation", () => {
-    const older = { configured: workDir, effective: workDir };
-    const newer = { configured: workDir, effective: personalDir };
+describe("deriveSessionConfigDirObservation", () => {
+  it("returns the dir the session's CLI reported next to the launch dir", () => {
     expect(
-      deriveLatestConfigDirObservation([
-        activity("a", "provider.config-dir", older),
-        activity("b", "provider.config-dir", newer),
-        activity("c", "context-window.updated", { usedTokens: 1 }),
-        activity("d", "provider.config-dir", { configured: workDir }),
-      ]),
-    ).toEqual(newer);
+      deriveSessionConfigDirObservation({
+        configDir: { configured: workDir, effective: personalDir },
+      }),
+    ).toEqual({ configured: workDir, effective: personalDir });
   });
 
-  it("returns null when no session reported a config dir", () => {
-    expect(deriveLatestConfigDirObservation([])).toBeNull();
-    expect(deriveLatestConfigDirObservation([activity("a", "tool.completed", workDir)])).toBeNull();
+  it("returns null until the session's CLI reported a dir", () => {
+    expect(deriveSessionConfigDirObservation(undefined)).toBeNull();
+    expect(deriveSessionConfigDirObservation(null)).toBeNull();
+    expect(deriveSessionConfigDirObservation({})).toBeNull();
+    expect(deriveSessionConfigDirObservation({ configDir: { configured: workDir } })).toBeNull();
   });
 });
 

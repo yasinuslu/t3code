@@ -181,6 +181,35 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       });
 
       const scopedLimitNames = yield* makeClaudeScopedLimitNames;
+      const workspaceCatalog = yield* makeClaudeWorkspaceCatalog;
+      // A session's `/reload-skills` or `/reload-plugins` pushes the new command
+      // list; republish that workspace's `/` menu with freshly scanned skills.
+      const onCommandsChanged = (input: {
+        readonly cwd: string;
+        readonly commands: ReadonlyArray<ClaudeSlashCommand>;
+        readonly environment: NodeJS.ProcessEnv;
+        readonly projectConfigDir: string | undefined;
+      }) =>
+        Effect.gen(function* () {
+          const [existing, skills, checkedAt] = yield* Effect.all([
+            workspaceCatalog.get(input.cwd),
+            discoverClaudeSkills(effectiveConfig, input.cwd, input.environment),
+            Effect.map(DateTime.now, DateTime.formatIso),
+          ]);
+          const workspaceConfigDir = input.projectConfigDir
+            ? describeClaudeConfigDir(input.projectConfigDir)
+            : existing?.configDir;
+          yield* workspaceCatalog.upsert({
+            cwd: input.cwd,
+            checkedAt,
+            slashCommands: claudeSlashCommands(input.commands),
+            skills,
+            ...(workspaceConfigDir ? { configDir: workspaceConfigDir } : {}),
+          });
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        );
       const orchestrationAdapter = yield* createClaudeAdapterV2(
         {
           instanceId,
@@ -190,7 +219,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           enabled,
           config,
         },
-        { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
+        {
+          scopedLimitNames,
+          onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+          onCommandsChanged,
+          ...(configDirResolver ? { configDirResolver } : {}),
+        },
       ).pipe(
         Effect.mapError(
           (cause) =>
@@ -291,6 +325,53 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         ),
       );
 
+      const snapshot = workspaceCatalog.wrap(managedSnapshot);
+      const snapshotForCwd = (
+        cwd: string,
+        context?: { readonly projectRoot?: string | undefined },
+      ) =>
+        !effectiveConfig.enabled
+          ? snapshot.getSnapshot
+          : Effect.gen(function* () {
+              const projectConfigDir = configDirResolver
+                ? yield* configDirResolver.resolveForWorkspace(cwd, context?.projectRoot)
+                : undefined;
+              const [machineSnapshot, live, skills] = yield* Effect.all([
+                snapshot.getSnapshot,
+                workspaceCatalog.get(cwd),
+                discoverClaudeSkills(
+                  effectiveConfig,
+                  cwd,
+                  projectConfigDir
+                    ? { ...processEnv, CLAUDE_CONFIG_DIR: projectConfigDir }
+                    : processEnv,
+                ),
+              ]);
+              // Keep a list a live session reported over the instance probe's.
+              const slashCommands = live?.slashCommands ?? machineSnapshot.slashCommands;
+              const workspaceConfigDir = projectConfigDir
+                ? describeClaudeConfigDir(projectConfigDir)
+                : undefined;
+              yield* workspaceCatalog.upsert({
+                cwd,
+                checkedAt: machineSnapshot.checkedAt,
+                slashCommands,
+                skills,
+                ...(workspaceConfigDir ? { configDir: workspaceConfigDir } : {}),
+              });
+              if (!workspaceConfigDir) return { ...machineSnapshot, slashCommands, skills };
+              const { configDirInherited: _inherited, ...explicitSnapshot } = machineSnapshot;
+              return {
+                ...explicitSnapshot,
+                slashCommands,
+                skills,
+                configDir: workspaceConfigDir,
+              };
+            }).pipe(
+              Effect.provideService(FileSystem.FileSystem, fileSystem),
+              Effect.provideService(Path.Path, path),
+            );
+
       // Same rules as Codex: serialised on the config directory that holds the
       // login, one request id kept until Claude answers (a cooldown or rate
       // limit is an answer), then a re-probe.
@@ -364,18 +445,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         accentColor,
         enabled,
         snapshot,
-        invalidateCaches: Cache.invalidateAll(capabilitiesProbeCache),
-        snapshotForCwd: (cwd: string) =>
-          !effectiveConfig.enabled
-            ? snapshot.getSnapshot
-            : Effect.all([
-                snapshot.getSnapshot,
-                discoverClaudeSkills(effectiveConfig, cwd, processEnv),
-              ]).pipe(
-                Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })),
-                Effect.provideService(FileSystem.FileSystem, fileSystem),
-                Effect.provideService(Path.Path, path),
-              ),
+        invalidateCaches: Effect.andThen(
+          Cache.invalidateAll(capabilitiesProbeCache),
+          configDirResolver?.invalidate ?? Effect.void,
+        ),
+        snapshotForCwd,
         orchestrationAdapter,
         textGeneration,
         consumeResetCredit,

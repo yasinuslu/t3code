@@ -2004,6 +2004,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly close?: (sdkMessages: Queue.Queue<SDKMessage>) => Effect.Effect<void>;
     readonly interrupt?: Effect.Effect<void>;
     readonly environment?: NodeJS.ProcessEnv;
+    readonly configDirResolver?: ClaudeAdapterV2.ClaudeAdapterV2Options["configDirResolver"];
+    readonly onCommandsChanged?: ClaudeAdapterV2.ClaudeAdapterV2Options["onCommandsChanged"];
+    readonly runtimePolicy?: ProviderAdapterV2RuntimePolicy;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2034,6 +2037,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         fileSystem,
         path: yield* Path.Path,
         idAllocator,
+        ...(options?.configDirResolver ? { configDirResolver: options.configDirResolver } : {}),
+        ...(options?.onCommandsChanged ? { onCommandsChanged: options.onCommandsChanged } : {}),
         continuationRequests: {
           offer: (request) =>
             Effect.sync(() => {
@@ -2082,12 +2087,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         threadId,
         providerSessionId: ProviderSessionId.make("provider-session-claude-wake"),
         modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-        runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+        runtimePolicy: options?.runtimePolicy ?? CLAUDE_TEST_RUNTIME_POLICY,
       });
       const providerThread = yield* runtime.ensureThread({
         threadId,
         modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-        runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+        runtimePolicy: options?.runtimePolicy ?? CLAUDE_TEST_RUNTIME_POLICY,
       });
       const events: Array<ProviderAdapterV2Event> = [];
       yield* runtime.events.pipe(
@@ -2476,6 +2481,189 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       assert.include(terminal.failure.message, configDir);
       assert.include(terminal.failure.message, cwd);
       assert.notInclude(terminal.failure.message, "repeated API errors");
+    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+  );
+
+  // A per-project resolver (homePathCommand) picks each session's dir from its
+  // cwd: one per code profile, so two profiles' sessions never share a dir.
+  const profileResolver = (resolved: Array<string>) => ({
+    resolve: (projectRoot: string) => Effect.succeed(`${projectRoot}-profile`),
+    resolveForWorkspace: (cwd: string) =>
+      Effect.sync(() => {
+        resolved.push(cwd);
+        return cwd.startsWith("/code/sn/") ? "/profiles/sn/claude" : "/profiles/yu/claude";
+      }),
+    invalidate: Effect.void,
+  });
+
+  it.effect.each([
+    { cwd: "/code/sn/project", expected: "/profiles/sn/claude" },
+    { cwd: "/code/yu/project", expected: "/profiles/yu/claude" },
+  ])("launches a session in $cwd with CLAUDE_CONFIG_DIR $expected", ({ cwd, expected }) =>
+    Effect.gen(function* () {
+      const resolved: Array<string> = [];
+      const runtimePolicy = ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd,
+      });
+      const harness = yield* makeWakeHarnessWithOptions({
+        environment: { CLAUDE_CONFIG_DIR: "/instance/default", KEEP: "1" },
+        configDirResolver: profileResolver(resolved),
+        runtimePolicy,
+      });
+      assert.deepEqual(resolved, [cwd]);
+      assert.deepEqual(harness.runtime.providerSession.configDir, {
+        configured: { path: expected, displayPath: expected },
+      });
+      const now = yield* DateTime.now;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make(`attempt-claude-config-dir-${expected}`),
+          text: "Hi.",
+          attachments: [],
+          runtimePolicy,
+        }),
+      );
+      const env = harness.getOpenedOptions()?.env;
+      assert.equal(env?.CLAUDE_CONFIG_DIR, expected);
+      assert.equal(env?.KEEP, "1");
+    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+  );
+
+  it.effect("keeps the instance's dir when no resolver is configured", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({
+        environment: { CLAUDE_CONFIG_DIR: "/instance/claude" },
+      });
+      assert.deepEqual(harness.runtime.providerSession.configDir, {
+        configured: { path: "/instance/claude", displayPath: "/instance/claude" },
+      });
+      const now = yield* DateTime.now;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("attempt-claude-config-dir-instance"),
+          text: "Hi.",
+          attachments: [],
+        }),
+      );
+      assert.equal(harness.getOpenedOptions()?.env?.CLAUDE_CONFIG_DIR, "/instance/claude");
+    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+  );
+
+  it.effect("reports the dir the CLI wrote its transcript under", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({
+        environment: { CLAUDE_CONFIG_DIR: "/profiles/sn/claude" },
+      });
+      const now = yield* DateTime.now;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("attempt-claude-config-dir-hook"),
+          text: "Hi.",
+          attachments: [],
+        }),
+      );
+      const hook = harness.getOpenedOptions()?.hooks?.UserPromptSubmit?.[0]?.hooks[0];
+      assert.isDefined(hook);
+      if (hook === undefined) return;
+      const hookInput = {
+        hook_event_name: "UserPromptSubmit" as const,
+        session_id: "native-session",
+        // A wrapper binary sent the CLI to another profile's dir.
+        transcript_path: "/profiles/yu/claude/projects/-workspace/native-session.jsonl",
+        cwd: "/workspace",
+        prompt: "Hi.",
+      };
+      const signal = new AbortController().signal;
+      assert.deepEqual(yield* Effect.promise(() => hook(hookInput, undefined, { signal })), {
+        continue: true,
+      });
+      yield* awaitUntil(
+        () => harness.events.some((event) => event.type === "provider_session.updated"),
+        "provider_session.updated",
+      );
+      const updates = harness.events.filter(
+        (event): event is Extract<ProviderAdapterV2Event, { type: "provider_session.updated" }> =>
+          event.type === "provider_session.updated",
+      );
+      const expected = {
+        configured: { path: "/profiles/sn/claude", displayPath: "/profiles/sn/claude" },
+        effective: { path: "/profiles/yu/claude", displayPath: "/profiles/yu/claude" },
+      };
+      assert.deepEqual(updates.at(-1)?.providerSession.configDir, expected);
+      assert.deepEqual(harness.runtime.providerSession.configDir, expected);
+      // The same dir again is not a change.
+      yield* Effect.promise(() => hook(hookInput, undefined, { signal }));
+      assert.equal(
+        harness.events.filter((event) => event.type === "provider_session.updated").length,
+        updates.length,
+      );
+    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+  );
+
+  it.effect("hands a reloaded command list to the instance", () =>
+    Effect.gen(function* () {
+      const received: Array<{
+        readonly cwd: string;
+        readonly names: ReadonlyArray<string>;
+        readonly configDir: string | undefined;
+        readonly projectConfigDir: string | undefined;
+      }> = [];
+      const runtimePolicy = ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: "/code/yu/project",
+      });
+      const harness = yield* makeWakeHarnessWithOptions({
+        configDirResolver: profileResolver([]),
+        runtimePolicy,
+        onCommandsChanged: (input) =>
+          Effect.sync(() => {
+            received.push({
+              cwd: input.cwd,
+              names: input.commands.map((command) => command.name),
+              configDir: input.environment.CLAUDE_CONFIG_DIR,
+              projectConfigDir: input.projectConfigDir,
+            });
+          }),
+      });
+      const now = yield* DateTime.now;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("attempt-claude-commands-changed"),
+          text: "/reload-skills",
+          attachments: [],
+          runtimePolicy,
+        }),
+      );
+      yield* harness.offerAndWait({
+        type: "system",
+        subtype: "commands_changed",
+        commands: [{ name: "fresh-skill", description: "New.", argumentHint: "" }],
+        uuid: "00000000-0000-4000-8000-000000000901",
+        session_id: "native-session",
+      } as SDKMessage);
+      assert.deepEqual(received, [
+        {
+          cwd: "/code/yu/project",
+          names: ["fresh-skill"],
+          configDir: "/profiles/yu/claude",
+          projectConfigDir: "/profiles/yu/claude",
+        },
+      ]);
     }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
   );
 

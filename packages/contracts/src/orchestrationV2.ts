@@ -57,7 +57,7 @@ import {
   UserInputAttachmentAnswerPayload,
   RuntimeMode,
 } from "./providerPolicy.ts";
-import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
+import { ProviderConfigDir, ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { OrchestrationProjectShell } from "./orchestrationProject.ts";
 import {
   TurnTokenUsage,
@@ -673,6 +673,18 @@ export const OrchestrationV2CheckpointScope = Schema.Struct({
 });
 export type OrchestrationV2CheckpointScope = typeof OrchestrationV2CheckpointScope.Type;
 
+/**
+ * The provider config dir a session runs on (Claude's `CLAUDE_CONFIG_DIR`):
+ * the dir it was launched with and, once the CLI reported it, the dir it
+ * actually used. They differ when a wrapper binary rewrote the dir.
+ */
+export const OrchestrationV2ProviderSessionConfigDir = Schema.Struct({
+  configured: ProviderConfigDir,
+  effective: Schema.optional(ProviderConfigDir),
+});
+export type OrchestrationV2ProviderSessionConfigDir =
+  typeof OrchestrationV2ProviderSessionConfigDir.Type;
+
 export const OrchestrationV2ProviderSession = Schema.Struct({
   id: ProviderSessionId,
   driver: ProviderDriverKind,
@@ -684,6 +696,7 @@ export const OrchestrationV2ProviderSession = Schema.Struct({
   createdAt: Schema.DateTimeUtc,
   updatedAt: Schema.DateTimeUtc,
   lastError: Schema.NullOr(Schema.String),
+  configDir: Schema.optional(OrchestrationV2ProviderSessionConfigDir),
 });
 export type OrchestrationV2ProviderSession = typeof OrchestrationV2ProviderSession.Type;
 

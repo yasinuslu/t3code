@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
 import * as NodeOS from "node:os";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -129,6 +131,53 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
         expect(yield* resolver.resolve(second)).toBe(path.join(second, "claude"));
         expect(yield* runs()).toBe(5);
       }).pipe(Effect.scoped),
+    );
+
+    it.effect.skipIf(isWindows)(
+      "runs the command for a worktree in its main checkout, or in the given project root",
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const root = yield* fs.realPath(
+            yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-config-dir-" }),
+          );
+          const checkout = path.join(root, "code", "project");
+          const worktree = path.join(root, "worktrees", "project-feature");
+          const plain = path.join(root, "plain");
+          yield* fs.makeDirectory(checkout, { recursive: true });
+          yield* fs.makeDirectory(plain);
+          const git = (cwd: string, ...args: ReadonlyArray<string>) =>
+            Effect.sync(() =>
+              NodeChildProcess.execFileSync("git", [...args], { cwd, stdio: "ignore" }),
+            );
+          yield* git(checkout, "init", "-q");
+          yield* git(
+            checkout,
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=T",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+          );
+          yield* git(checkout, "worktree", "add", "-q", "-b", "feature", worktree);
+          const resolver = yield* makeClaudeConfigDirResolver({
+            homePath: "",
+            homePathCommand: `printf '%s/claude\\n' "$PWD"`,
+          });
+          if (!resolver) return expect.unreachable("resolver expected");
+
+          expect(yield* resolver.resolveForWorkspace(worktree)).toBe(path.join(checkout, "claude"));
+          expect(yield* resolver.resolveForWorkspace(checkout)).toBe(path.join(checkout, "claude"));
+          expect(yield* resolver.resolveForWorkspace(plain)).toBe(path.join(plain, "claude"));
+          expect(yield* resolver.resolveForWorkspace(worktree, plain)).toBe(
+            path.join(plain, "claude"),
+          );
+        }).pipe(Effect.scoped),
     );
   });
 });

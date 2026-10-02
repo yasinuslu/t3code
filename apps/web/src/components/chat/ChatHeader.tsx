@@ -24,6 +24,10 @@ import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
+import {
+  ProviderConfigDirIndicator,
+  type ThreadProviderConfigDir,
+} from "./ProviderConfigDirIndicator";
 import { ActiveSpaceLabel } from "../sidebar/SpaceSwitcher";
 import { ALL_SPACE_ID, useSpaceStore } from "~/spaceStore";
 import {
@@ -42,6 +46,8 @@ interface ChatHeaderProps {
   isServerThread: boolean;
   activeProject: EnvironmentProject | null;
   rightPanelOpen: boolean;
+  /** The provider profile the thread runs on, for drivers that report one. */
+  providerConfigDir?: ThreadProviderConfigDir | null;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
 }
@@ -74,6 +80,7 @@ export const ChatHeader = memo(function ChatHeader({
   isServerThread,
   activeProject,
   rightPanelOpen,
+  providerConfigDir = null,
   onNewThreadInProject,
   onOpenProjectSettings,
 }: ChatHeaderProps) {
@@ -345,6 +352,11 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {providerConfigDir ? (
+        <div className="flex min-w-0 max-w-80 shrink items-center">
+          <ProviderConfigDirIndicator value={providerConfigDir} compact={false} />
+        </div>
+      ) : null}
     </div>
   );
 });

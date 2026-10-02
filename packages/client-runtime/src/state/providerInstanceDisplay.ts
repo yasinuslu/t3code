@@ -7,14 +7,13 @@
  */
 import {
   defaultInstanceIdForDriver,
-  type OrchestrationThreadActivity,
+  type OrchestrationV2ProviderSessionConfigDir,
   PROVIDER_DISPLAY_NAMES,
   type ProviderConfigDir,
   type ProviderDriverKind,
   type ServerProvider,
-  SessionConfigDirObservation,
+  type SessionConfigDirObservation,
 } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
 
 /**
  * Title-case a slug: splits on `_` / `-` and camelCase boundaries, so
@@ -106,21 +105,20 @@ export function shouldShowInstanceBadge(
   return false;
 }
 
-const isSessionConfigDirObservation = Schema.is(SessionConfigDirObservation);
-
 /**
- * The newest config-dir observation a provider session reported for a thread
- * (the dir it was launched with next to the dir the CLI actually used).
+ * The config-dir observation of a thread's provider session: the dir it was
+ * launched with next to the dir the CLI reported using. `null` until the CLI
+ * reported one (it does on each prompt), or when there is no session.
  */
-export function deriveLatestConfigDirObservation(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
+export function deriveSessionConfigDirObservation(
+  session:
+    | { readonly configDir?: OrchestrationV2ProviderSessionConfigDir | undefined }
+    | null
+    | undefined,
 ): SessionConfigDirObservation | null {
-  for (let index = activities.length - 1; index >= 0; index -= 1) {
-    const activity = activities[index];
-    if (activity?.kind !== "provider.config-dir") continue;
-    if (isSessionConfigDirObservation(activity.payload)) return activity.payload;
-  }
-  return null;
+  const configDir = session?.configDir;
+  if (configDir?.effective === undefined) return null;
+  return { configured: configDir.configured, effective: configDir.effective };
 }
 
 export interface ProviderConfigDirIndicator {

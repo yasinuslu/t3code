@@ -10,6 +10,7 @@ import {
   type ForkSessionOptions,
   type ForkSessionResult,
   getSubagentMessages,
+  type HookCallback,
   query,
   type Options as ClaudeQueryOptions,
   type PermissionMode,
@@ -23,6 +24,7 @@ import {
   type SDKRateLimitInfo,
   type SDKResultMessage,
   type SDKUserMessage,
+  type SlashCommand as ClaudeSlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import type {
   AskUserQuestionInput,
@@ -88,9 +90,13 @@ import { compileClaudeModelSelection } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import {
+  claudeConfigDirFromTranscriptPath,
   claudeSignedOutMessage,
+  describeClaudeConfigDir,
   makeClaudeEnvironment,
+  resolveClaudeHomePath,
 } from "../../provider/Drivers/ClaudeHome.ts";
+import type { ClaudeConfigDirResolver } from "../../provider/Drivers/ClaudeConfigDirCommand.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeCatalogContextWindow,
@@ -783,6 +789,7 @@ export function makeClaudeQueryOptions(input: {
   readonly onUserDialog?: ClaudeQueryOptions["onUserDialog"];
   readonly supportedDialogKinds?: ClaudeQueryOptions["supportedDialogKinds"];
   readonly allowDangerouslySkipPermissions?: boolean;
+  readonly hooks?: ClaudeQueryOptions["hooks"];
 }): ClaudeAgentSdkQueryOptions {
   const compiledSelection = compileClaudeModelSelection(input.modelSelection);
   const {
@@ -861,6 +868,7 @@ export function makeClaudeQueryOptions(input: {
       ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
       : {}),
     ...(input.environment === undefined ? {} : { env: input.environment }),
+    ...(input.hooks === undefined ? {} : { hooks: input.hooks }),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
     systemPrompt: {
       type: "preset" as const,
@@ -2798,6 +2806,19 @@ export interface ClaudeAdapterV2Options {
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ServerProviderShape["applyUsageLimits"];
+  /** Resolves CLAUDE_CONFIG_DIR per project when the instance sets `homePathCommand`. */
+  readonly configDirResolver?: ClaudeConfigDirResolver;
+  /**
+   * Receives the full command list whenever a session reloads it
+   * (`/reload-skills`, `/reload-plugins`, skills found mid-session), so the
+   * instance can refresh the workspace's `/` menu.
+   */
+  readonly onCommandsChanged?: (input: {
+    readonly cwd: string;
+    readonly commands: ReadonlyArray<ClaudeSlashCommand>;
+    readonly environment: NodeJS.ProcessEnv;
+    readonly projectConfigDir: string | undefined;
+  }) => Effect.Effect<void>;
   /** Sink for wake-turn continuation requests; defaults to dropping them. */
   readonly continuationRequests?: {
     readonly offer: (
@@ -2818,12 +2839,8 @@ export function makeClaudeAdapterV2(
   // the scan is a few directory reads. A skill switched off via skillOverrides,
   // or reserved for the agent with `user-invocable: false`, is left as prose:
   // the CLI would answer `/name` with a notice instead of running it.
-  const userInvocableSkillNames = (cwd: string | null) =>
-    discoverClaudeSkills(
-      adapterOptions.settings,
-      cwd ?? undefined,
-      adapterOptions.environment,
-    ).pipe(
+  const userInvocableSkillNames = (cwd: string | null, environment: NodeJS.ProcessEnv) =>
+    discoverClaudeSkills(adapterOptions.settings, cwd ?? undefined, environment).pipe(
       Effect.map(
         (skills) =>
           new Set(
@@ -2845,13 +2862,36 @@ export function makeClaudeAdapterV2(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;
         const now = yield* DateTime.now;
-        const session = providerSession({
-          providerSessionId: input.providerSessionId,
-          providerInstanceId: adapterOptions.instanceId,
-          cwd: input.runtimePolicy.cwd,
-          model: input.modelSelection.model,
-          now,
-        });
+        // The instance may pick CLAUDE_CONFIG_DIR per project (`homePathCommand`).
+        // It is resolved once per session from the session's cwd, so every CLI
+        // process, skill scan and sign-in hint of the session uses one dir.
+        const projectConfigDir =
+          adapterOptions.configDirResolver !== undefined && input.runtimePolicy.cwd !== null
+            ? yield* adapterOptions.configDirResolver.resolveForWorkspace(input.runtimePolicy.cwd)
+            : undefined;
+        const sessionEnvironment: NodeJS.ProcessEnv =
+          projectConfigDir === undefined
+            ? adapterOptions.environment
+            : { ...adapterOptions.environment, CLAUDE_CONFIG_DIR: projectConfigDir };
+        const configuredConfigDir = describeClaudeConfigDir(
+          yield* resolveClaudeHomePath({ homePath: "" }, sessionEnvironment).pipe(
+            Effect.provideService(Path.Path, path),
+          ),
+        );
+        // Holds the latest session record: the CLI reports the dir it actually
+        // used after the launch, and later attaches and releases build on it.
+        const sessionState: { current: OrchestrationV2ProviderSession } = {
+          current: {
+            ...providerSession({
+              providerSessionId: input.providerSessionId,
+              providerInstanceId: adapterOptions.instanceId,
+              cwd: input.runtimePolicy.cwd,
+              model: input.modelSelection.model,
+              now,
+            }),
+            configDir: { configured: configuredConfigDir },
+          } satisfies OrchestrationV2ProviderSession,
+        };
         const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
         const activeTurn = yield* Ref.make<ActiveClaudeTurnContext | null>(null);
         const interruptedTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
@@ -3097,6 +3137,41 @@ export function makeClaudeAdapterV2(
         const emitProviderEvent = (event: ProviderAdapter.ProviderAdapterV2Event) =>
           Queue.offer(events, event).pipe(Effect.asVoid);
 
+        // The binary may be a wrapper that rewrites CLAUDE_CONFIG_DIR before
+        // starting the CLI. Hook inputs carry the transcript path the CLI
+        // writes under the dir it actually used, so each prompt reports that
+        // dir; the session record changes only when it differs.
+        const reportEffectiveConfigDir = Effect.fn("ClaudeAdapterV2.reportEffectiveConfigDir")(
+          function* (transcriptPath: string) {
+            const effectivePath = claudeConfigDirFromTranscriptPath(transcriptPath);
+            if (effectivePath === undefined) return;
+            const effective = describeClaudeConfigDir(effectivePath);
+            const current = sessionState.current;
+            if (current.configDir?.effective?.path === effective.path) return;
+            sessionState.current = {
+              ...current,
+              configDir: { configured: configuredConfigDir, effective },
+              updatedAt: yield* DateTime.now,
+            };
+            yield* emitProviderEvent({
+              type: "provider_session.updated",
+              driver: CLAUDE_PROVIDER,
+              providerSession: sessionState.current,
+            });
+          },
+        );
+        const onUserPromptSubmit: HookCallback = (hookInput) =>
+          runPromise(
+            reportEffectiveConfigDir(hookInput.transcript_path).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Failed to report the Claude config dir", {
+                  cause: Cause.pretty(cause),
+                }),
+              ),
+              Effect.as({ continue: true }),
+            ),
+          );
+
         // Claude emits retry progress but no recovered frame; the next
         // assistant message is the first reliable evidence of recovery.
         const completeProviderRetry = Effect.fn("ClaudeAdapterV2.completeProviderRetry")(function* (
@@ -3306,7 +3381,7 @@ export function makeClaudeAdapterV2(
           const now = yield* DateTime.now;
           const providerThread: OrchestrationV2ProviderThread = {
             ...input.providerThread,
-            providerSessionId: session.id,
+            providerSessionId: sessionState.current.id,
             ...(input.status === undefined ? {} : { status: input.status }),
             pendingBackgroundTasks: claudePendingBackgroundTasksFromRoster(roster),
             updatedAt: now,
@@ -4766,7 +4841,7 @@ export function makeClaudeAdapterV2(
                   input.context.input.providerThread.nativeConversationHeadRef !== null;
                 const providerThread: OrchestrationV2ProviderThread = {
                   ...input.context.input.providerThread,
-                  providerSessionId: session.id,
+                  providerSessionId: sessionState.current.id,
                   ...(clearConversationHead ? { nativeConversationHeadRef: null } : {}),
                   firstRunOrdinal:
                     input.context.input.providerThread.firstRunOrdinal ??
@@ -5205,6 +5280,19 @@ export function makeClaudeAdapterV2(
           }
 
           const message = input.message;
+          if (message.type === "system" && message.subtype === "commands_changed") {
+            // The CLI pushes the full list after `/reload-skills`,
+            // `/reload-plugins`, or skills it discovers mid-session.
+            if (adapterOptions.onCommandsChanged !== undefined) {
+              yield* adapterOptions.onCommandsChanged({
+                cwd: sessionState.current.cwd,
+                commands: message.commands,
+                environment: sessionEnvironment,
+                projectConfigDir,
+              });
+            }
+            return;
+          }
           // Before any routing: a Monitor started during an idle wake turn
           // reports its task before the drain replays the tool call.
           yield* trackClaudeMonitorCalls(message);
@@ -5414,7 +5502,7 @@ export function makeClaudeAdapterV2(
               context.latestAssistantRateLimited = message.error === "rate_limit";
               if (message.error === "authentication_failed") {
                 context.authenticationFailureMessage = claudeSignedOutMessage({
-                  configDir: adapterOptions.environment.CLAUDE_CONFIG_DIR,
+                  configDir: sessionEnvironment.CLAUDE_CONFIG_DIR,
                   cwd: path.resolve(context.input.runtimePolicy.cwd ?? "."),
                 });
               }
@@ -6705,7 +6793,8 @@ export function makeClaudeAdapterV2(
                 cwd: turnInput.runtimePolicy.cwd,
                 attachmentsDir,
                 settings: adapterOptions.settings,
-                environment: adapterOptions.environment,
+                environment: sessionEnvironment,
+                hooks: { UserPromptSubmit: [{ hooks: [onUserPromptSubmit] }] },
                 tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
                 ...mcpOverrides,
                 permissionMode: queryPolicy.permissionMode,
@@ -6878,7 +6967,10 @@ export function makeClaudeAdapterV2(
                   attachments: turnInput.message.attachments,
                   attachmentsDir,
                   fileSystem,
-                  skillNames: yield* userInvocableSkillNames(turnInput.runtimePolicy.cwd),
+                  skillNames: yield* userInvocableSkillNames(
+                    turnInput.runtimePolicy.cwd,
+                    sessionEnvironment,
+                  ),
                   uuid: claudePromptUuid(turnInput.attemptId),
                 });
             const querySession = yield* openQuery(turnInput, nativeThreadId);
@@ -7083,7 +7175,10 @@ export function makeClaudeAdapterV2(
               priority: "now",
               attachmentsDir,
               fileSystem,
-              skillNames: yield* userInvocableSkillNames(currentTurn.input.runtimePolicy.cwd),
+              skillNames: yield* userInvocableSkillNames(
+                currentTurn.input.runtimePolicy.cwd,
+                sessionEnvironment,
+              ),
             });
             yield* Ref.update(steeredTurns, (current) => {
               const next = new Set(current);
@@ -7151,7 +7246,9 @@ export function makeClaudeAdapterV2(
           instanceId: adapterOptions.instanceId,
           driver: CLAUDE_PROVIDER,
           providerSessionId: input.providerSessionId,
-          providerSession: session,
+          get providerSession() {
+            return sessionState.current;
+          },
           getModelContextWindow: (selection) =>
             resolveClaudeCatalogContextWindowTokens(BUNDLED_CLAUDE_MODEL_CATALOG, selection),
           events: Stream.fromEffectRepeat(Queue.take(events)),
@@ -7466,7 +7563,10 @@ export type ClaudeAdapterV2DriverEnv =
 export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
   function* (
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
-    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits"> = {},
+    hooks: Pick<
+      ClaudeAdapterV2Options,
+      "scopedLimitNames" | "onUsageLimits" | "configDirResolver" | "onCommandsChanged"
+    > = {},
   ) {
     const { instanceId, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;

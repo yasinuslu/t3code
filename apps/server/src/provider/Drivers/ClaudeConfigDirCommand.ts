@@ -82,9 +82,45 @@ export const runClaudeConfigDirCommand = Effect.fn("runClaudeConfigDirCommand")(
   return path.resolve(printed);
 });
 
+/**
+ * The main checkout of the repository `cwd` belongs to, when `cwd` is inside a
+ * linked worktree or the main checkout itself. Worktrees usually live outside
+ * the project (`~/.t3/worktrees/...`), so a command that picks the dir from
+ * the path must run in the main checkout to see the project's location.
+ * `undefined` for anything else (no repository, a submodule, git missing).
+ */
+export const resolveMainCheckoutRoot = Effect.fn("resolveMainCheckoutRoot")(function* (
+  cwd: string,
+): Effect.fn.Return<
+  string | undefined,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner | Path.Path
+> {
+  const path = yield* Path.Path;
+  const result = yield* spawnAndCollect(
+    "git",
+    ChildProcess.make("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd }),
+  ).pipe(
+    Effect.timeoutOrElse({ duration: DEFAULT_TIMEOUT, orElse: () => Effect.succeed(undefined) }),
+    Effect.orElseSucceed(() => undefined),
+  );
+  if (result === undefined || result.code !== 0) return undefined;
+  const commonDir = result.stdout.trim();
+  return /[\\/]\.git$/u.test(commonDir) ? path.dirname(commonDir) : undefined;
+});
+
 export interface ClaudeConfigDirResolver {
   /** The dir for a project root, or `undefined` when the command failed. */
   readonly resolve: (projectRoot: string) => Effect.Effect<string | undefined>;
+  /**
+   * The dir for a session or workspace in `cwd`: runs the command in
+   * `projectRoot` when given, otherwise in the main checkout of the repository
+   * `cwd` is in (so a worktree resolves like its project), otherwise in `cwd`.
+   */
+  readonly resolveForWorkspace: (
+    cwd: string,
+    projectRoot?: string | undefined,
+  ) => Effect.Effect<string | undefined>;
   readonly invalidate: Effect.Effect<void>;
 }
 
@@ -123,15 +159,25 @@ export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolve
       timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
     },
   );
-  return {
-    resolve: (projectRoot) =>
-      Cache.get(cache, projectRoot).pipe(
-        Effect.catch((error: ClaudeConfigDirCommandError) =>
-          Effect.logWarning("Claude config dir command failed; using the default dir", {
-            error: error.message,
-          }).pipe(Effect.as(undefined)),
-        ),
+  const resolve = (projectRoot: string) =>
+    Cache.get(cache, projectRoot).pipe(
+      Effect.catch((error: ClaudeConfigDirCommandError) =>
+        Effect.logWarning("Claude config dir command failed; using the default dir", {
+          error: error.message,
+        }).pipe(Effect.as(undefined)),
       ),
+    );
+  return {
+    resolve,
+    resolveForWorkspace: (cwd, projectRoot) =>
+      Effect.gen(function* () {
+        if (projectRoot !== undefined) return yield* resolve(projectRoot);
+        const mainCheckout = yield* resolveMainCheckoutRoot(cwd).pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(Path.Path, path),
+        );
+        return yield* resolve(mainCheckout ?? cwd);
+      }),
     invalidate: Cache.invalidateAll(cache),
   };
 });
