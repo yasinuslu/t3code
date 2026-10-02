@@ -183,6 +183,72 @@ describe("ElectronProtocol", () => {
     }).pipe(Effect.provide(protocolLayer)),
   );
 
+  it.effect("waits out net::ERR_INSUFFICIENT_RESOURCES with a longer backoff", () =>
+    Effect.gen(function* () {
+      let handler: ((request: Request) => Promise<Response>) | undefined;
+      handleMock.mockImplementation((_scheme, nextHandler) => {
+        handler = nextHandler;
+      });
+      const exhausted = () => new Error("net::ERR_INSUFFICIENT_RESOURCES");
+      netFetchMock
+        .mockRejectedValueOnce(exhausted())
+        .mockRejectedValueOnce(exhausted())
+        .mockRejectedValueOnce(exhausted())
+        .mockRejectedValueOnce(exhausted())
+        .mockResolvedValueOnce(new Response("module"));
+
+      const response = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const protocol = yield* ElectronProtocol.ElectronProtocol;
+          yield* protocol.registerDesktopProtocol({
+            scheme: "t3code-dev",
+            targetOrigin: new URL("http://127.0.0.1:5733/"),
+            clerkFrontendApiHostname: undefined,
+          });
+          return yield* Effect.promise(() =>
+            handler!(new Request("t3code-dev://app/src/main.tsx")),
+          );
+        }),
+      );
+
+      // Four failures outlast the three-attempt transient budget.
+      assert.equal(yield* Effect.promise(() => response.text()), "module");
+      assert.equal(netFetchMock.mock.calls.length, 5);
+    }).pipe(Effect.provide(protocolLayer)),
+  );
+
+  it("never runs more tasks at once than the limit, in arrival order", async () => {
+    const limit = ElectronProtocol.makeConcurrencyLimiter(2);
+    let running = 0;
+    let peak = 0;
+    const started: Array<number> = [];
+    const releases: Array<() => void> = [];
+    const tasks = [0, 1, 2, 3, 4].map((index) =>
+      limit(async () => {
+        started.push(index);
+        running += 1;
+        peak = Math.max(peak, running);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        running -= 1;
+        if (index === 3) throw new Error("task failed");
+        return index;
+      }),
+    );
+    const settled = Promise.allSettled(tasks);
+    for (let released = 0; released < 5; released += 1) {
+      await vi.waitFor(() => assert.isAtLeast(releases.length, released + 1));
+      releases[released]!();
+    }
+    const results = await settled;
+    assert.equal(peak, 2);
+    assert.deepEqual(started, [0, 1, 2, 3, 4]);
+    // A failed task frees its slot too.
+    assert.deepEqual(
+      results.map((result) => result.status),
+      ["fulfilled", "fulfilled", "fulfilled", "rejected", "fulfilled"],
+    );
+  });
+
   it.effect("preserves protocol registration failures", () =>
     Effect.gen(function* () {
       const cause = new Error("protocol registration failed");
