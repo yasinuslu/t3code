@@ -114,44 +114,58 @@ export interface ToolStep {
   readonly at: string;
 }
 
+const TOOL_ITEM_TYPES = new Set([
+  "dynamic_tool",
+  "command_execution",
+  "file_change",
+  "file_search",
+  "web_search",
+]);
+const FINISHED_ITEM_STATUSES = new Set(["completed", "failed", "cancelled", "interrupted"]);
+
+/** A short, single-line view of a tool's input for its step label. */
+function toolInputSummary(input: unknown): string {
+  if (input === undefined || input === null) return "";
+  if (typeof input === "string") return input;
+  try {
+    const json = JSON.stringify(input);
+    return json === undefined || json === "{}" ? "" : json;
+  } catch {
+    return "";
+  }
+}
+
+/** The fields of a V2 turn item a step label reads. */
+export interface ToolTurnItem {
+  readonly id: string;
+  readonly type: string;
+  readonly status: string;
+  readonly title: string | null;
+  readonly toolName?: string | null;
+  readonly input?: unknown;
+  readonly at: string;
+}
+
 /**
- * One line per tool call, from the thread's tool activities: the last update
- * of each call wins, labelled with the tool's name (MCP prefixes dropped).
+ * One line per tool call, from the thread's tool turn items, labelled with
+ * the tool's name (MCP prefixes dropped) and a short view of its input.
  */
-export function toolStepsOf(
-  activities: ReadonlyArray<{
-    readonly id: string;
-    readonly tone: string;
-    readonly kind: string;
-    readonly summary: string;
-    readonly payload: unknown;
-    readonly createdAt: string;
-  }>,
-): ReadonlyArray<ToolStep> {
-  const steps = new Map<string, ToolStep>();
-  for (const activity of activities) {
-    if (activity.tone !== "tool") continue;
-    const payload = (activity.payload ?? {}) as {
-      readonly toolCallId?: unknown;
-      readonly detail?: unknown;
-      readonly data?: { readonly toolName?: unknown };
-    };
-    const callId = typeof payload.toolCallId === "string" ? payload.toolCallId : activity.id;
-    const rawName =
-      typeof payload.data?.toolName === "string" ? payload.data.toolName : activity.summary;
+export function toolStepsOf(items: ReadonlyArray<ToolTurnItem>): ReadonlyArray<ToolStep> {
+  const steps: ToolStep[] = [];
+  for (const item of items) {
+    if (!TOOL_ITEM_TYPES.has(item.type)) continue;
+    const rawName = item.toolName ?? item.title ?? item.type.replaceAll("_", " ");
     const name = rawName.replace(/^mcp__[^_]+(?:-[^_]+)*__/, "");
-    const detail =
-      typeof payload.detail === "string" ? payload.detail.replace(/^[^:]*:\s*/, "") : "";
-    const label = detail && detail !== "{}" ? `${name} ${detail}` : name;
-    const first = steps.get(callId);
-    steps.set(callId, {
-      id: callId,
+    const detail = toolInputSummary(item.input).replace(/\s+/g, " ").trim();
+    const label = detail ? `${name} ${detail}` : name;
+    steps.push({
+      id: item.id,
       label: label.length > 140 ? `${label.slice(0, 139)}…` : label,
-      done: activity.kind === "tool.completed",
-      at: first?.at ?? activity.createdAt,
+      done: FINISHED_ITEM_STATUSES.has(item.status),
+      at: item.at,
     });
   }
-  return [...steps.values()];
+  return steps;
 }
 
 export type BrainstormActivity =
@@ -166,9 +180,9 @@ export type BrainstormActivity =
  * prompt waiting on the user, or a failure.
  */
 export function brainstormActivity(input: {
-  readonly sessionStatus: string | null;
-  readonly sessionError: string | null;
-  readonly latestTurnState: string | null;
+  /** The thread's latest run status ("idle" before the first run). */
+  readonly runStatus: string | null;
+  readonly lastError: string | null;
   readonly hasPendingApprovals: boolean;
   readonly hasPendingUserInput: boolean;
   /** When the popup sent a message it has not seen answered yet. */
@@ -178,12 +192,17 @@ export function brainstormActivity(input: {
 }): BrainstormActivity {
   if (input.hasPendingApprovals) return { kind: "needs-input", what: "approval" };
   if (input.hasPendingUserInput) return { kind: "needs-input", what: "answer" };
-  if (input.sessionStatus === "running" || input.sessionStatus === "starting") {
+  if (
+    input.runStatus === "preparing" ||
+    input.runStatus === "queued" ||
+    input.runStatus === "starting" ||
+    input.runStatus === "running" ||
+    input.runStatus === "waiting"
+  ) {
     return { kind: "thinking" };
   }
-  if (input.latestTurnState === "running") return { kind: "thinking" };
-  if (input.sessionStatus === "error" || input.latestTurnState === "error") {
-    return { kind: "error", message: input.sessionError ?? "The last turn failed." };
+  if (input.runStatus === "failed") {
+    return { kind: "error", message: input.lastError ?? "The last turn failed." };
   }
   if (
     input.awaitingSince !== null &&

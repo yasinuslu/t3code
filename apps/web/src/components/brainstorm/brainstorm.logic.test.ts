@@ -114,40 +114,77 @@ describe("shortcutToAccelerator", () => {
 });
 
 describe("toolStepsOf", () => {
-  it("collapses each call to its latest state and names the tool", () => {
-    const activity = (id: string, kind: string, callId: string, detail: string, at: string) => ({
-      id,
-      tone: "tool",
-      kind,
-      summary: "MCP tool call",
-      payload: { toolCallId: callId, detail, data: { toolName: "mcp__t3-code__add_task" } },
-      createdAt: at,
-    });
+  it("lists each tool call with its name and input, and skips other items", () => {
     const steps = toolStepsOf([
-      activity("a1", "tool.started", "c1", "mcp__t3-code__add_task: {}", "2026-09-28T00:00:01Z"),
-      activity(
-        "a2",
-        "tool.completed",
-        "c1",
-        'mcp__t3-code__add_task: {"title":"X"}',
-        "2026-09-28T00:00:02Z",
-      ),
       {
-        ...activity("a3", "context-window.updated", "c2", "", "2026-09-28T00:00:03Z"),
-        tone: "info",
+        id: "i1",
+        type: "user_message",
+        status: "completed",
+        title: null,
+        at: "2026-09-28T00:00:00Z",
+      },
+      {
+        id: "i2",
+        type: "dynamic_tool",
+        status: "completed",
+        title: "MCP tool call",
+        toolName: "mcp__t3-code__add_task",
+        input: { title: "X" },
+        at: "2026-09-28T00:00:01Z",
+      },
+      {
+        id: "i3",
+        type: "dynamic_tool",
+        status: "running",
+        title: null,
+        toolName: "mcp__t3-code__list_tasks",
+        input: {},
+        at: "2026-09-28T00:00:02Z",
+      },
+      {
+        id: "i4",
+        type: "command_execution",
+        status: "failed",
+        title: "Run command",
+        input: "git   status\n--short",
+        at: "2026-09-28T00:00:03Z",
+      },
+      {
+        id: "i5",
+        type: "assistant_message",
+        status: "completed",
+        title: null,
+        at: "2026-09-28T00:00:04Z",
       },
     ]);
     expect(steps).toEqual([
-      { id: "c1", label: 'add_task {"title":"X"}', done: true, at: "2026-09-28T00:00:01Z" },
+      { id: "i2", label: 'add_task {"title":"X"}', done: true, at: "2026-09-28T00:00:01Z" },
+      { id: "i3", label: "list_tasks", done: false, at: "2026-09-28T00:00:02Z" },
+      { id: "i4", label: "Run command git status --short", done: true, at: "2026-09-28T00:00:03Z" },
     ]);
+  });
+
+  it("shortens long labels", () => {
+    const [step] = toolStepsOf([
+      {
+        id: "i1",
+        type: "dynamic_tool",
+        status: "completed",
+        title: null,
+        toolName: "mcp__t3-code__add_task",
+        input: { title: "x".repeat(400) },
+        at: "2026-09-28T00:00:01Z",
+      },
+    ]);
+    expect(step!.label).toHaveLength(140);
+    expect(step!.label.endsWith("…")).toBe(true);
   });
 });
 
 describe("brainstormActivity", () => {
   const base = {
-    sessionStatus: "ready",
-    sessionError: null,
-    latestTurnState: "completed",
+    runStatus: "completed",
+    lastError: null,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
     awaitingSince: null,
@@ -160,12 +197,16 @@ describe("brainstormActivity", () => {
     expect(brainstormActivity({ ...sent, lastAnswerAt: "2026-09-28T11:00:30Z" })).toEqual({
       kind: "idle",
     });
-    expect(brainstormActivity({ ...base, sessionStatus: "running" })).toEqual({ kind: "thinking" });
+    for (const runStatus of ["preparing", "queued", "starting", "running", "waiting"]) {
+      expect(brainstormActivity({ ...base, runStatus })).toEqual({ kind: "thinking" });
+    }
+    expect(brainstormActivity({ ...base, runStatus: "idle" })).toEqual({ kind: "idle" });
+    expect(brainstormActivity({ ...base, runStatus: "interrupted" })).toEqual({ kind: "idle" });
   });
 
   it("puts prompts and failures ahead of silence", () => {
     expect(
-      brainstormActivity({ ...base, hasPendingApprovals: true, sessionStatus: "running" }),
+      brainstormActivity({ ...base, hasPendingApprovals: true, runStatus: "running" }),
     ).toEqual({
       kind: "needs-input",
       what: "approval",
@@ -175,9 +216,9 @@ describe("brainstormActivity", () => {
       what: "answer",
     });
     expect(
-      brainstormActivity({ ...base, sessionStatus: "error", sessionError: "Not logged in" }),
+      brainstormActivity({ ...base, runStatus: "failed", lastError: "Not logged in" }),
     ).toEqual({ kind: "error", message: "Not logged in" });
-    expect(brainstormActivity({ ...base, latestTurnState: "error" })).toEqual({
+    expect(brainstormActivity({ ...base, runStatus: "failed" })).toEqual({
       kind: "error",
       message: "The last turn failed.",
     });

@@ -31,6 +31,7 @@ import {
   usePanelAnimationSettings,
   usePanelNavigationSuppression,
 } from "../panelAnimations";
+import { BrainstormHost } from "./brainstorm/BrainstormHost";
 import LegacyThreadSidebar from "./LegacySidebar";
 import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
@@ -303,8 +304,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         style={sidebarProviderStyle}
       >
         <ProjectProjectionRetention />
-        {/* TODO(brainstorm-v2): mount BrainstormHost again once the popup and BrainstormService
-            are ported to orchestrator V2 (parked in the yu-v2 branch). */}
+        <BrainstormHost />
         <Sidebar
           side="left"
           collapsible="offcanvas"
