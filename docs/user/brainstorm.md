@@ -26,6 +26,13 @@ example to answer an approval.
 | A custom space  | the default profile's brain        |
 | Other, All      | the default profile's brain        |
 
+The chat is a fast front desk. It runs Claude Sonnet at low effort when a Claude provider offers
+it (otherwise the project's default model); set `brainstormModelSelection` in the server settings
+to pick another. In the popup, `Cmd+/` (`Ctrl+/` elsewhere) flips between Sonnet and Opus. On
+Claude, the agent is told to answer in a few lines, hand research and sweeps to a background
+subagent and relay its result in two lines when it finishes, and turn code changes into a thread
+with `start_thread`, so the chat stays free while deep work runs.
+
 The default profile is the one picked in the popup's brain menu, shown for spaces that are not
 profile spaces. Until you pick one, it is the profile that a symlink directly under `~/code` points
 into (a shared checkout linked out of its profile), or else the first profile by name.

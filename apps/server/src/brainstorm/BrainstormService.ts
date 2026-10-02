@@ -37,7 +37,9 @@ import {
   type OrchestrationProjectShell,
   type OrchestrationV2ThreadShell,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
+  type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -57,6 +59,8 @@ import * as ServerConfig from "../config.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import { setThreadInstructions } from "../provider/RuntimeInstructions.ts";
+import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveCodeProfiles, resolveDefaultCodeProfile } from "../workspace/CodeProfiles.ts";
 import {
@@ -85,6 +89,49 @@ function allBrainstormThreadIds(state: {
   ]);
 }
 export const OTHER_SPACE_ID = "other";
+
+/**
+ * System instructions for brainstorm threads: a fast front desk that hands
+ * heavy work to background agents and stays free for the next message.
+ */
+export const BRAINSTORM_INSTRUCTIONS = `<brainstorm_front_desk>
+This thread is a brainstorm chat, the user's front desk. Keep it fast and free.
+- Reply in a few short lines. Do a lookup yourself only when it takes a few seconds (a file read, one t3-code tool call).
+- Hand anything heavier (research, reading many files, sweeps over threads or repositories) to a background subagent: call the Agent tool with run_in_background set to true, say in one line what you sent, and end your turn. Never wait for it in the foreground.
+- Do not make code changes here. Start a thread for them with the t3-code start_thread tool (with task when one fits), name the thread you started, and end your turn.
+- When a background agent finishes, relay its result in two lines. Give more only when asked.
+- If a manager skill is available, use it for "what's open", "what needs me" and "is X done" questions.
+</brainstorm_front_desk>`;
+
+const CLAUDE_DRIVER = ProviderDriverKind.make("claudeAgent");
+/** Fast Claude models for the brainstorm chat, best first. */
+const FAST_BRAINSTORM_MODELS = ["claude-sonnet-5-5", "claude-sonnet-5"] as const;
+
+/**
+ * Claude Sonnet at low effort on an enabled Claude instance, preferring the
+ * one `preferred` uses; null when no Claude instance offers it.
+ */
+export function fastBrainstormModelSelection(
+  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "driver" | "enabled" | "models">>,
+  preferred: ModelSelection,
+): ModelSelection | null {
+  const claude = providers.filter(
+    (provider) => provider.driver === CLAUDE_DRIVER && provider.enabled,
+  );
+  const ordered = [
+    ...claude.filter((provider) => provider.instanceId === preferred.instanceId),
+    ...claude.filter((provider) => provider.instanceId !== preferred.instanceId),
+  ];
+  for (const provider of ordered) {
+    const model = FAST_BRAINSTORM_MODELS.find((slug) =>
+      provider.models.some((candidate) => candidate.slug === slug),
+    );
+    if (model) {
+      return { instanceId: provider.instanceId, model, options: [{ id: "effort", value: "low" }] };
+    }
+  }
+  return null;
+}
 
 const PersistedBrainstorm = Schema.Struct({
   spaces: Schema.Array(BrainstormSpace),
@@ -255,6 +302,7 @@ export const make = Effect.gen(function* () {
   const projectService = yield* ProjectService.ProjectService;
   const launches = yield* ThreadLaunchService.ThreadLaunchService;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const providerRegistry = yield* Effect.serviceOption(ProviderRegistry);
   const crypto = yield* Crypto.Crypto;
   const statePath = NodePath.join(config.stateDir, "brainstorm.json");
 
@@ -264,12 +312,20 @@ export const make = Effect.gen(function* () {
     onSome: (value) => (value.spaces.length > 0 ? value : { ...value, spaces: EMPTY.spaces }),
   });
   const stateRef = yield* Ref.make(persisted);
+  // Every brainstorm thread, current or not, starts its sessions as a front desk.
+  const registerInstructions = (state: PersistedBrainstorm) => {
+    for (const threadId of allBrainstormThreadIds(state)) {
+      setThreadInstructions(threadId, BRAINSTORM_INSTRUCTIONS);
+    }
+  };
+  registerInstructions(persisted);
   const membershipRevision = yield* Ref.make(0);
   const writeLock = yield* Semaphore.make(1);
   const openLock = yield* Semaphore.make(1);
   const changes = yield* PubSub.sliding<void>(16);
 
   const save = Ref.get(stateRef).pipe(
+    Effect.tap((state) => Effect.sync(() => registerInstructions(state))),
     Effect.flatMap((state) =>
       Effect.promise(async () => {
         await NodeFSP.mkdir(NodePath.dirname(statePath), { recursive: true });
@@ -545,14 +601,19 @@ export const make = Effect.gen(function* () {
           (left, right) =>
             DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
         )[0];
-      const modelSelection: ModelSelection = resolveProjectSettings(settings, project.id, project)
+      const projectDefault: ModelSelection = resolveProjectSettings(settings, project.id, project)
         .settings.defaultModelSelection ??
         settings.defaultModelSelection ??
         recent?.modelSelection ?? {
           instanceId: ProviderInstanceId.make("codex"),
           model: DEFAULT_MODEL,
         };
-      return modelSelection;
+      if (settings.brainstormModelSelection) return settings.brainstormModelSelection;
+      // The chat should answer in seconds, so it does not inherit a coding model.
+      const providers = Option.isSome(providerRegistry)
+        ? yield* providerRegistry.value.getProviders
+        : [];
+      return fastBrainstormModelSelection(providers, projectDefault) ?? projectDefault;
     });
 
   const realPath = (path: string) => Effect.promise(() => NodeFSP.realpath(path).catch(() => path));

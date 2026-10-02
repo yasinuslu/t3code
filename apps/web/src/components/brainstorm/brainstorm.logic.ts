@@ -213,11 +213,27 @@ export function brainstormActivity(input: {
   return { kind: "idle" };
 }
 
-/** The two models the brainstorm chat switches between; it is meant to be quick. */
-export const BRAINSTORM_MODELS = {
-  sonnet: { model: "claude-sonnet-5-5", label: "Sonnet 5.5" },
+/**
+ * The two models the brainstorm chat switches between; it is meant to be
+ * quick, so Sonnet runs at low effort.
+ */
+export const BRAINSTORM_MODELS: Readonly<
+  Record<
+    "sonnet" | "opus",
+    {
+      readonly model: string;
+      readonly label: string;
+      readonly options?: ModelSelection["options"];
+    }
+  >
+> = {
+  sonnet: {
+    model: "claude-sonnet-5-5",
+    label: "Sonnet 5.5",
+    options: [{ id: "effort", value: "low" }],
+  },
   opus: { model: "claude-opus-5-5", label: "Opus 5.5" },
-} as const;
+};
 
 export type BrainstormModelChoice = keyof typeof BRAINSTORM_MODELS;
 
@@ -254,8 +270,9 @@ export function brainstormModelSelection(
   current: ModelSelection,
   choice: BrainstormModelChoice,
 ): ModelSelection {
-  const model = BRAINSTORM_MODELS[choice].model;
-  return current.model === model ? current : { instanceId: current.instanceId, model };
+  const { model, options } = BRAINSTORM_MODELS[choice];
+  if (current.model === model) return current;
+  return { instanceId: current.instanceId, model, ...(options ? { options } : {}) };
 }
 
 /** Cmd+/ (Ctrl+/ elsewhere) flips the model while the popup is open. */

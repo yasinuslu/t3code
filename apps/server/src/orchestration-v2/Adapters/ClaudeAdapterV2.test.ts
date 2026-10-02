@@ -165,6 +165,18 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.include(options.settings, { showThinkingSummaries: true });
   });
 
+  it("appends the thread's own instructions to the system prompt", () => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      nativeThreadId: "front-desk-thread",
+      resume: false,
+      cwd: "/workspace",
+      threadInstructions: "<front_desk>Reply briefly.</front_desk>",
+    });
+    const systemPrompt = options.systemPrompt as { readonly append: string };
+    assert.isTrue(systemPrompt.append.endsWith("\n\n<front_desk>Reply briefly.</front_desk>"));
+  });
+
   it("preserves an explicit omitted thinking display", () => {
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
       modelSelection: CLAUDE_TEST_MODEL_SELECTION,
