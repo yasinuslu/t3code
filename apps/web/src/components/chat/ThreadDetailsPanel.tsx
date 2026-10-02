@@ -196,6 +196,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     displayMode="panel"
                     compact={density !== "full"}
                     gitCwd={props.gitCwd}
+                    rootRepoLabel={props.activeProjectName}
                     activeThreadRef={{
                       environmentId: props.environmentId,
                       threadId: props.threadId,

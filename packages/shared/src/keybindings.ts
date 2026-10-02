@@ -35,7 +35,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+alt+f", command: "rightPanel.toggleFiles" },
   { key: "ctrl+alt+d", command: "diff.toggle" },
   { key: "ctrl+alt+p", command: "rightPanel.togglePullRequest" },
-  { key: "ctrl+alt+a", command: "rightPanel.toggleAgents" },
+  // Orchestrator V2 has no Agents surface; subagents live in the thread details panel.
+  { key: "ctrl+alt+a", command: "threadPanel.toggle" },
   { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
   { key: "mod+shift+d", command: "terminal.splitVertical", when: "terminalFocus" },
   { key: "mod+n", command: "terminal.new", when: "terminalFocus" },

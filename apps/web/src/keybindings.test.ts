@@ -102,7 +102,7 @@ const DEFAULT_BINDINGS = compile([
   { shortcut: surfaceShortcut("f"), command: "rightPanel.toggleFiles" },
   { shortcut: surfaceShortcut("d"), command: "diff.toggle" },
   { shortcut: surfaceShortcut("p"), command: "rightPanel.togglePullRequest" },
-  { shortcut: surfaceShortcut("a"), command: "rightPanel.toggleAgents" },
+  { shortcut: surfaceShortcut("a"), command: "threadPanel.toggle" },
   {
     shortcut: modShortcut("d"),
     command: "terminal.split",

@@ -149,7 +149,7 @@ Hiding keeps browser tabs and running shells.
 | Files        | `Ctrl+Alt+F` | `rightPanel.toggleFiles`       |
 | Diff         | `Ctrl+Alt+D` | `diff.toggle`                  |
 | Pull request | `Ctrl+Alt+P` | `rightPanel.togglePullRequest` |
-| Agents       | `Ctrl+Alt+A` | `rightPanel.toggleAgents`      |
+| Thread panel | `Ctrl+Alt+A` | `threadPanel.toggle`           |
 
 These are literal `Ctrl+Alt` on every platform, not `mod`. `rightPanel.toggle`
 now defaults to `mod+alt+\`; an untouched `mod+alt+b` default moves there on the

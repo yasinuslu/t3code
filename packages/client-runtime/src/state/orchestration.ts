@@ -44,13 +44,6 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       staleTimeMs: 300_000,
       idleTtlMs: 300_000,
     }),
-    activityOutput: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:orchestration:activity-output",
-      tag: ORCHESTRATION_WS_METHODS.getActivityOutput,
-      // A tool activity's persisted output never changes once written.
-      staleTimeMs: 300_000,
-      idleTtlMs: 120_000,
-    }),
     fullThreadDiff: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:orchestration:full-thread-diff",
       tag: ORCHESTRATION_V2_WS_METHODS.getFullThreadDiff,
