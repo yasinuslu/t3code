@@ -45,6 +45,7 @@ import {
   makeClaudeWorkspaceCatalog,
   makePendingClaudeProvider,
   probeClaudeCapabilities,
+  probeClaudeWorkspaceSnapshot,
 } from "../Layers/ClaudeProvider.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -336,34 +337,45 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               const projectConfigDir = configDirResolver
                 ? yield* configDirResolver.resolveForWorkspace(cwd, context?.projectRoot)
                 : undefined;
-              const [machineSnapshot, live, skills] = yield* Effect.all([
+              const [machineSnapshot, live] = yield* Effect.all([
                 snapshot.getSnapshot,
                 workspaceCatalog.get(cwd),
-                discoverClaudeSkills(
-                  effectiveConfig,
-                  cwd,
-                  projectConfigDir
-                    ? { ...processEnv, CLAUDE_CONFIG_DIR: projectConfigDir }
-                    : processEnv,
-                ),
               ]);
-              // Keep a list a live session reported over the instance probe's.
-              const slashCommands = live?.slashCommands ?? machineSnapshot.slashCommands;
+              // Probe with the workspace's own config dir, so its commands and
+              // skills come from the profile that the session will run with.
+              const probed = yield* probeClaudeWorkspaceSnapshot(
+                effectiveConfig,
+                machineSnapshot,
+                cwd,
+                projectConfigDir
+                  ? { ...processEnv, CLAUDE_CONFIG_DIR: projectConfigDir }
+                  : processEnv,
+              );
+              const { skills } = probed;
+              // A probe that could not finish keeps the list a live session reported.
+              const slashCommands =
+                probed.slashCommandsPending && live ? live.slashCommands : probed.slashCommands;
+              const slashCommandsPending = probed.slashCommandsPending && !live;
               const workspaceConfigDir = projectConfigDir
                 ? describeClaudeConfigDir(projectConfigDir)
                 : undefined;
-              yield* workspaceCatalog.upsert({
-                cwd,
-                checkedAt: machineSnapshot.checkedAt,
-                slashCommands,
-                skills,
-                ...(workspaceConfigDir ? { configDir: workspaceConfigDir } : {}),
-              });
-              if (!workspaceConfigDir) return { ...machineSnapshot, slashCommands, skills };
+              if (!slashCommandsPending) {
+                yield* workspaceCatalog.upsert({
+                  cwd,
+                  checkedAt: machineSnapshot.checkedAt,
+                  slashCommands,
+                  skills,
+                  ...(workspaceConfigDir ? { configDir: workspaceConfigDir } : {}),
+                });
+              }
+              if (!workspaceConfigDir) {
+                return { ...machineSnapshot, slashCommands, slashCommandsPending, skills };
+              }
               const { configDirInherited: _inherited, ...explicitSnapshot } = machineSnapshot;
               return {
                 ...explicitSnapshot,
                 slashCommands,
+                slashCommandsPending,
                 skills,
                 configDir: workspaceConfigDir,
               };

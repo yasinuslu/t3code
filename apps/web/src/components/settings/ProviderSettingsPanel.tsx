@@ -62,6 +62,7 @@ import {
   isProviderUpdateActive,
   type ProviderSettingsUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { ProviderUpdatesAction } from "../ProviderUpdatesAction";
 import { Button } from "../ui/button";
 import {
   Empty,
@@ -1163,7 +1164,7 @@ export function EnvironmentProviderSettings({
           })
         }
         onInstallRecommended={
-          mode === "editor" &&
+          !readOnly &&
           liveProvider?.compatibilityAdvisory?.message &&
           liveProvider.compatibilityAdvisory.recommendedVersion &&
           liveProvider.versionAdvisory?.canInstallVersion
@@ -1176,13 +1177,13 @@ export function EnvironmentProviderSettings({
             : undefined
         }
         onRunUpdate={
-          mode === "editor" && showInlineUpdateButton && updateCandidate
+          !readOnly && showInlineUpdateButton && updateCandidate
             ? () => {
                 if (canRunInlineUpdate) void runProviderUpdate(updateCandidate);
               }
             : undefined
         }
-        isUpdating={mode === "editor" ? isInstanceUpdateRunning : undefined}
+        isUpdating={isInstanceUpdateRunning}
       />
     );
   };
@@ -1194,6 +1195,7 @@ export function EnvironmentProviderSettings({
         variant="plain"
         headerAction={
           <div className="flex min-w-0 items-center gap-2">
+            <ProviderUpdatesAction />
             {readOnly ? (
               <span className="min-w-0 truncate text-xs text-muted-foreground">
                 <ProviderLastChecked lastCheckedAt={lastCheckedAt} />

@@ -125,6 +125,8 @@ export const ServerProviderWorkspaceSnapshot = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   checkedAt: IsoDateTime,
   slashCommands: Schema.Array(ServerProviderSlashCommand),
+  /** Skills are available, but command discovery still needs a retry. */
+  slashCommandsPending: Schema.optional(Schema.Boolean),
   skills: Schema.Array(ServerProviderSkill),
   // The config dir sessions in this workspace are launched with, when the
   // instance resolves it per project rather than using one for every project.

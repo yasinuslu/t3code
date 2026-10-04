@@ -237,8 +237,9 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
 });
 
 describe("OpenCodeAdapterV2", () => {
-  for (const ending of ["completed", "failed", "unresolved", "unavailable", "reconnect"] as const) {
-    it.effect(`normalizes OpenCode step usage for ${ending} turns`, () =>
+  it.effect.each(["completed", "failed", "unresolved", "unavailable", "reconnect"] as const)(
+    "normalizes OpenCode step usage for %s turns",
+    (ending) =>
       Effect.gen(function* () {
         const nativeEvents = asyncEventStream();
         let promptId = "";
@@ -375,11 +376,11 @@ describe("OpenCodeAdapterV2", () => {
               },
         );
       }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
-    );
-  }
+  );
 
-  for (const kind of ["permission", "question"] as const) {
-    it.effect(`cancels an undelivered ${kind} reply at its deadline`, () =>
+  it.effect.each(["permission", "question"] as const)(
+    "cancels an undelivered %s reply at its deadline",
+    (kind) =>
       Effect.gen(function* () {
         const nativeEvents = asyncEventStream();
         const called = promiseGate<void>();
@@ -453,8 +454,7 @@ describe("OpenCodeAdapterV2", () => {
         // Failed delivery leaves the request available for an explicit retry.
         yield* harness.runtime.respondToRuntimeRequest(response);
       }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
-    );
-  }
+  );
 
   it.effect("aborts external root and descendants before closing the event stream", () =>
     Effect.gen(function* () {
@@ -494,8 +494,9 @@ describe("OpenCodeAdapterV2", () => {
     }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
   );
 
-  for (const failure of ["enumeration", "abort", "not-found", "timeout"] as const) {
-    it.effect(`reports descendant cleanup ${failure}`, () =>
+  it.effect.each(["enumeration", "abort", "not-found", "timeout"] as const)(
+    "reports descendant cleanup %s",
+    (failure) =>
       Effect.gen(function* () {
         const nativeEvents = asyncEventStream();
         const called = promiseGate<void>();
@@ -545,8 +546,7 @@ describe("OpenCodeAdapterV2", () => {
         assert.equal(Exit.isSuccess(result), failure === "not-found");
         if (failure === "timeout") assert.isTrue(childSignal?.aborted);
       }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
-    );
-  }
+  );
 
   it.effect(
     "preserves tool lifecycle, approval kinds, and late assistant text without cached tool payloads",
@@ -833,10 +833,12 @@ describe("OpenCodeAdapterV2", () => {
         Stream.runCollect,
         Effect.forkScoped,
       );
-      for (const [tool, input] of [
-        ["read", { filePath: "src/env.ts" }],
-        ["grep", { pattern: "TODO", path: "apps/web" }],
-        ["websearch", { query: "OpenCode documentation" }],
+      for (const [tool, input, output] of [
+        ["read", { filePath: "src/env.ts" }, "---\nfile body"],
+        ["grep", { pattern: "TODO", path: "apps/web" }, "---\nfile body"],
+        ["websearch", { query: "OpenCode documentation" }, "---\nfile body"],
+        ["glob", { pattern: "missing", path: "apps/web" }, ""],
+        ["codesearch", {}, " \n\t"],
       ] as const) {
         yield* Effect.promise(() =>
           nativeEvents.push({
@@ -853,7 +855,7 @@ describe("OpenCodeAdapterV2", () => {
                 state: {
                   status: "completed",
                   input,
-                  output: "---\nfile body",
+                  output,
                   title: tool,
                   metadata: {},
                   time: { start: 1, end: 2 },
@@ -877,10 +879,26 @@ describe("OpenCodeAdapterV2", () => {
       const grep = items.find((item) => item.type === "file_search");
       assert.equal(grep?.title, "Searched TODO in web");
       assert.equal(grep?.type === "file_search" ? grep.pattern : null, "TODO");
+      assert.deepEqual(grep?.type === "file_search" ? grep.results : null, [
+        { fileName: "apps/web", preview: "---\nfile body" },
+      ]);
       const webSearch = items.find((item) => item.type === "web_search");
       assert.deepEqual(webSearch?.type === "web_search" ? webSearch.patterns : null, [
         "OpenCode documentation",
       ]);
+      assert.deepEqual(webSearch?.type === "web_search" ? webSearch.results : null, [
+        { snippet: "---\nfile body" },
+      ]);
+      const emptyFileSearch = items.find(
+        (item) => item.type === "file_search" && item.pattern === "missing",
+      );
+      assert.ok(emptyFileSearch?.type === "file_search");
+      assert.equal(emptyFileSearch.results, undefined);
+      const emptyWebSearch = items.find(
+        (item) => item.type === "web_search" && item.patterns === undefined,
+      );
+      assert.ok(emptyWebSearch?.type === "web_search");
+      assert.equal(emptyWebSearch.results, undefined);
     }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
   );
 

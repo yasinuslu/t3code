@@ -52,7 +52,7 @@ import {
   decodePullRequestActivityJson,
   decodePullRequestDetailJson,
   decodePullRequestCoreJson,
-  PULL_REQUEST_CORE_GRAPHQL_QUERY,
+  pullRequestCoreGraphQlQuery,
   type GitHubPullRequestCore,
   type GitHubPullRequestSummary,
   decodePullRequestPreviewJson,
@@ -1595,7 +1595,7 @@ export const make = Effect.gen(function* () {
             ["-F", `number=${input.number}`],
             ["-f", `headRef=refs/pull/${input.number}/head`],
           ],
-          query: PULL_REQUEST_CORE_GRAPHQL_QUERY,
+          query: pullRequestCoreGraphQlQuery(input.host),
           decode: decodePullRequestCoreJson,
         }),
       ),
@@ -1825,7 +1825,12 @@ export const make = Effect.gen(function* () {
       const batchable = entries.filter(
         (entry) => buildPullRequestSummariesGraphQlQuery([entry.request]) !== null,
       );
-      const query = buildPullRequestSummariesGraphQlQuery(batchable.map((entry) => entry.request));
+      // Stack membership rides along where GitHub serves stacks, so the background sync can skip
+      // the REST stack read for pull requests that are in none.
+      const query = buildPullRequestSummariesGraphQlQuery(
+        batchable.map((entry) => entry.request),
+        first.request.host === "github.com",
+      );
       const batched =
         query === null
           ? Effect.succeed(new Map<number, GitHubPullRequestSummary>())
@@ -2404,6 +2409,7 @@ export const make = Effect.gen(function* () {
           // where a bound kept some of the words on GitHub.
           commentCount: entries.reduce((total, entry) => total + entry.commentCount, 0),
           truncated: cursor !== null || entries.some((entry) => entry.nextCommentCursor !== null),
+          reviewThreadsTruncated: cursor !== null,
           reactions,
           reactionsById,
           reviewers,

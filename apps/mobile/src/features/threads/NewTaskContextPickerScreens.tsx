@@ -52,6 +52,7 @@ function SelectionRow(props: {
   if (Platform.OS === "android") {
     return (
       <MaterialListRow
+        className="bg-grouped-card"
         title={props.title}
         subtitle={props.subtitle}
         leading={
@@ -83,7 +84,7 @@ function SelectionRow(props: {
       accessibilityRole="radio"
       accessibilityState={{ checked: props.selected }}
       className={cn(
-        "min-h-14 flex-row items-center gap-3 bg-card px-4 py-3 active:bg-subtle",
+        "min-h-14 flex-row items-center gap-3 bg-grouped-card px-4 py-3 active:bg-subtle",
         !props.isLast && "border-b border-border-subtle",
       )}
       disabled={props.disabled}
@@ -129,7 +130,7 @@ function ToggleRow(props: {
   readonly onValueChange: (value: boolean) => void;
 }) {
   return (
-    <View className="min-h-14 flex-row items-center gap-3 bg-card px-4 py-3">
+    <View className="min-h-14 flex-row items-center gap-3 bg-grouped-card px-4 py-3">
       <Text
         className={cn(
           "min-w-0 flex-1 text-base text-foreground",
@@ -190,8 +191,8 @@ function PickerSurface(props: { readonly children: ReactNode }) {
     <View
       className={
         Platform.OS === "android"
-          ? "overflow-hidden rounded-[28px] bg-card"
-          : "overflow-hidden rounded-2xl bg-card"
+          ? "overflow-hidden rounded-[28px] bg-grouped-card"
+          : "overflow-hidden rounded-2xl bg-grouped-card"
       }
     >
       {props.children}
@@ -204,7 +205,6 @@ export function NewTaskEnvironmentPickerRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const serverConfigs = useServerConfigs();
-
   return (
     <View className="flex-1 bg-sheet" collapsable={false}>
       <NativeStackScreenOptions
@@ -244,10 +244,12 @@ export function NewTaskEnvironmentPickerRouteScreen() {
                   />
                 }
                 isLast={index === flow.environments.length - 1}
+                disabled={flow.switchingToEnvironmentId !== null}
                 onPress={() => {
                   void Haptics.selectionAsync();
-                  flow.selectEnvironment(environment.environmentId);
-                  navigation.goBack();
+                  void flow.switchEnvironment(environment.environmentId).then((switched) => {
+                    if (switched) navigation.goBack();
+                  });
                 }}
                 selected={flow.selectedEnvironmentId === environment.environmentId}
                 title={environment.environmentLabel}
