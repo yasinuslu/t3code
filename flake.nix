@@ -1,4 +1,4 @@
-# Nix packaging for Yasin's T3 Code fork. Lives on the `yu-flavor` branch only; `main` stays
+# Nix packaging for Yasin's T3 Code fork. Lives on the `yu-v2` branch only; `main` stays
 # a clean mirror of pingdotgg/t3code so upstream can always be fast-forwarded.
 #
 # This flake exists so that the ~/code/nepjua machine config can install THIS tree with a
