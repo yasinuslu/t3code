@@ -14,6 +14,7 @@ import {
   ProjectUpdatePayload,
   ProjectId,
   OrchestratorMcpFailure,
+  OrchestratorMcpThreadLink,
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
 } from "@t3tools/contracts";
@@ -131,6 +132,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   }),
   success: Schema.Struct({
     threadId: ThreadId,
+    link: OrchestratorMcpThreadLink,
     projectId: ProjectId,
     modelSelection: ModelSelection,
     runId: Schema.NullOr(RunId),

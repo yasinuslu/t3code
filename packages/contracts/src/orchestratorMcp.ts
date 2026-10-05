@@ -189,9 +189,16 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
 });
 export type OrchestratorMcpDelegateTaskInput = typeof OrchestratorMcpDelegateTaskInput.Type;
 
+/** Markdown link to a thread; T3 clients render it as a clickable thread chip. */
+export const OrchestratorMcpThreadLink = Schema.String.annotate({
+  description:
+    "Markdown link to this thread. Paste it as-is when mentioning the thread to the user; T3 renders it as a clickable thread chip.",
+});
+
 export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   taskId: NodeId,
   childThreadId: ThreadId,
+  link: OrchestratorMcpThreadLink,
   childRunId: Schema.NullOr(RunId),
   childNodeId: NodeId,
   status: OrchestratorMcpDelegatedTaskStatus,
@@ -259,6 +266,7 @@ export type OrchestratorMcpCreatedThreadStatus = typeof OrchestratorMcpCreatedTh
 
 export const OrchestratorMcpCreatedThread = Schema.Struct({
   threadId: ThreadId,
+  link: OrchestratorMcpThreadLink,
   runId: Schema.NullOr(RunId),
   status: OrchestratorMcpCreatedThreadStatus,
   title: Schema.String,
@@ -295,6 +303,7 @@ export type OrchestratorMcpThreadListInput = typeof OrchestratorMcpThreadListInp
 export const OrchestratorMcpThreadListItem = Schema.Struct({
   threadId: ThreadId,
   title: Schema.String,
+  link: OrchestratorMcpThreadLink,
   createdBy: OrchestrationV2Actor,
   creationSource: OrchestrationV2CreationSource,
   status: OrchestratorMcpThreadStatus,
@@ -341,6 +350,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
   title: Schema.String,
+  link: OrchestratorMcpThreadLink,
   createdBy: OrchestrationV2Actor,
   creationSource: OrchestrationV2CreationSource,
   status: OrchestratorMcpThreadStatus,

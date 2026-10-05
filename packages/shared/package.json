@@ -39,6 +39,10 @@
       "types": "./src/advertisedEndpoint.ts",
       "import": "./src/advertisedEndpoint.ts"
     },
+    "./threadLinks": {
+      "types": "./src/threadLinks.ts",
+      "import": "./src/threadLinks.ts"
+    },
     "./agentAwareness": {
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"

@@ -26,6 +26,13 @@ describe("T3 orchestration provider instructions", () => {
     assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "bindToCurrentThread=false");
   });
 
+  it("tells agents to mention threads with their markdown link", () => {
+    assert.include(
+      T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+      "t3code://threads/<environmentId>/<threadId>",
+    );
+  });
+
   it("injects prompt fallback only for an MCP-enabled first run", () => {
     const prompt = "Inspect the repository.";
     const injected = t3OrchestrationPromptForFirstRun({

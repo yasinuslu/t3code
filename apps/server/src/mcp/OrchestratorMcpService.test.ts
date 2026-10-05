@@ -53,7 +53,7 @@ describe("OrchestratorMcpService", () => {
         ],
       } as unknown as OrchestrationV2ThreadProjection;
       const childProjection = {
-        thread: { id: childThreadId },
+        thread: { id: childThreadId, title: "Review [draft]" },
         runs: [
           {
             id: childRunId,
@@ -133,6 +133,10 @@ describe("OrchestratorMcpService", () => {
         const service = yield* OrchestratorMcpService.OrchestratorMcpService;
         const pending = yield* service.taskStatus(scope, taskId);
         assert.equal(pending.status, "running");
+        assert.equal(
+          pending.link,
+          "[Review \\[draft\\]](t3code://threads/environment%3Amcp-ack/thread%3Amcp-ack-child)",
+        );
         assert.equal(pending.workState, "waiting_for_children");
         assert.isNull(pending.summary);
         assert.equal(yield* Ref.get(acknowledgementAttempts), 0);
@@ -179,7 +183,7 @@ describe("OrchestratorMcpService", () => {
         ],
       } as unknown as OrchestrationV2ThreadProjection;
       const childProjection = {
-        thread: { id: childThreadId },
+        thread: { id: childThreadId, title: "Child" },
         runs: [{ id: RunId.make("run:mcp-restart-child"), ordinal: 1, status: "cancelled" }],
         contextTransfers: [],
         messages: [],
@@ -257,7 +261,7 @@ describe("OrchestratorMcpService", () => {
         ],
       } as unknown as OrchestrationV2ThreadProjection;
       const childProjection = {
-        thread: { id: childThreadId },
+        thread: { id: childThreadId, title: "Child" },
         runs: [],
         contextTransfers: [],
         messages: [],
@@ -325,7 +329,7 @@ describe("OrchestratorMcpService", () => {
         ],
       } as unknown as OrchestrationV2ThreadProjection;
       const childProjection = {
-        thread: { id: childThreadId },
+        thread: { id: childThreadId, title: "Child" },
         runs: [{ id: childRunId, status: "running" }],
         contextTransfers: [],
         messages: [],
@@ -396,7 +400,7 @@ describe("OrchestratorMcpService", () => {
         ],
       } as unknown as OrchestrationV2ThreadProjection;
       const childProjection = {
-        thread: { id: childThreadId },
+        thread: { id: childThreadId, title: "Child" },
         runs: [{ id: childRunId, status: "running" }],
         contextTransfers: [],
         messages: [],
@@ -537,7 +541,7 @@ describe("OrchestratorMcpService provider resolution", () => {
     }) as unknown as OrchestrationV2ThreadProjection;
 
   const childProjection = {
-    thread: { id: childThreadId },
+    thread: { id: childThreadId, title: "Child" },
     runs: [],
     contextTransfers: [],
     messages: [],

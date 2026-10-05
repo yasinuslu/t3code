@@ -86,6 +86,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
 import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
+import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import remarkGfm from "remark-gfm";
 import type { Processor } from "unified";
@@ -122,6 +123,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { ContextChip } from "./ContextChip";
+import { ThreadContextChip } from "./ThreadContextChip";
+import { remarkThreadLinks, threadLinkLabel } from "./chat/threadLinkMarkdown";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/collapsible";
 import { ScrollArea } from "./ui/scroll-area";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
@@ -487,7 +490,14 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   },
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation", "t3-context"],
+    href: [
+      ...(defaultSchema.protocols?.href ?? []),
+      "file",
+      "t3-citation",
+      "t3-context",
+      "t3code",
+      "t3",
+    ],
     src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
@@ -500,6 +510,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkCodexDirectives,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
+  remarkThreadLinks,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
@@ -511,6 +522,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkBreaks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
+  remarkThreadLinks,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const CHAT_MARKDOWN_REHYPE_PLUGINS = [
@@ -2579,6 +2591,7 @@ function useChatMarkdownState({
   const markdownUrlTransform = useCallback((href: string) => {
     if (parseAssistantCitationHref(href)) return href;
     if (parseComposerContextHref(href)) return href;
+    if (parseThreadLinkHref(href)) return href;
     if (isWindowsDrivePathHref(href)) return href;
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
   }, []);
@@ -3034,6 +3047,17 @@ const CHAT_MARKDOWN_COMPONENTS = {
         renderContextReference({ ...contextReference, label })
       ) : (
         <span>{label}</span>
+      );
+    }
+    const threadLink = href ? parseThreadLinkHref(href) : null;
+    if (threadLink && href) {
+      const label = threadLinkLabel(hastPlainTextDeep(node), href);
+      return (
+        <ThreadContextChip
+          record={{ ...threadLink, title: label }}
+          currentEnvironmentId={environmentId}
+          copyMarkdown={`[${label}](${href})`}
+        />
       );
     }
     const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";

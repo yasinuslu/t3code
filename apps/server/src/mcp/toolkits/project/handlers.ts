@@ -1,4 +1,5 @@
 import { MessageId, ThreadId, OrchestratorMcpFailure, ProjectId } from "@t3tools/contracts";
+import { formatThreadMarkdownLink } from "@t3tools/shared/threadLinks";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
@@ -109,6 +110,11 @@ export const ProjectHandlersLive = ProjectToolkit.toLayer({
       const run = result.projection.runs.find((run) => run.userMessageId === messageId);
       return {
         threadId: thread.id,
+        link: formatThreadMarkdownLink({
+          environmentId: scope.environmentId,
+          threadId: thread.id,
+          title: thread.title,
+        }),
         projectId: thread.projectId,
         modelSelection: thread.modelSelection,
         runId: run?.id ?? null,
