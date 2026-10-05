@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as OrchestrationMcp from "./OrchestratorMcpService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
+import * as ManagerScope from "./ManagerScope.ts";
 
 export const unavailable = () =>
   new OrchestratorMcpFailure({
@@ -34,7 +35,9 @@ export const readCaller = Effect.fn("mcp.readCaller")(function* () {
       message: "The calling thread was not found.",
     });
   }
-  return { scope, threads, caller };
+  const managers = yield* ManagerScope.ManagerScope;
+  const manager = yield* managers.isManagerThread(caller.id);
+  return { scope, threads, caller, manager };
 });
 
 function assertLiveCaller({
@@ -61,17 +64,23 @@ export const readMutationCaller = Effect.fn("mcp.readMutationCaller")(function* 
   return context;
 });
 
-/** Resolve the credential's project before looking up a caller-supplied thread. */
+/**
+ * Resolve the credential's project before looking up a caller-supplied thread.
+ * The manager thread reaches a thread in any project.
+ */
 export const readThread = Effect.fn("mcp.readThread")(function* <
   K extends ProjectionRecordField = never,
 >(threadId?: ThreadId, fields: ReadonlyArray<K> = []) {
-  const { scope, threads, caller } = yield* readCaller();
+  const { scope, threads, caller, manager } = yield* readCaller();
+  const projectId =
+    manager && threadId !== undefined && threadId !== caller.id
+      ? ((yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))
+          ?.projectId ?? caller.projectId)
+      : caller.projectId;
   const projection = yield* threads
-    .getProjectThreadRecords(
-      { projectId: caller.projectId, threadId: threadId ?? caller.id },
-      fields,
-      { turnItemTypes: ["user_input_request"] },
-    )
+    .getProjectThreadRecords({ projectId, threadId: threadId ?? caller.id }, fields, {
+      turnItemTypes: ["user_input_request"],
+    })
     .pipe(
       Effect.mapError((error) =>
         error._tag === "ThreadManagementThreadNotFoundError"
@@ -82,7 +91,7 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
           : unavailable(),
       ),
     );
-  return { scope, threads, caller, projection };
+  return { scope, threads, caller, manager, projection };
 });
 
 export const readWritableThread = Effect.fn("mcp.readWritableThread")(function* <

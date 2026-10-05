@@ -16,6 +16,7 @@ import * as Layer from "effect/Layer";
 
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
+import * as ManagerScope from "./ManagerScope.ts";
 
 export class ThreadMetadataMcpService extends Context.Service<
   ThreadMetadataMcpService,
@@ -134,6 +135,7 @@ function resultFromThread(input: {
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+  const managers = yield* ManagerScope.ManagerScope;
 
   const update = Effect.fn("ThreadMetadataMcpService.update")(function* (
     scope: McpInvocationScope,
@@ -170,11 +172,17 @@ const make = Effect.gen(function* () {
         ),
       );
     const threadId = input.threadId ?? scope.threadId;
+    // The manager thread reaches threads in every project.
+    const projectId =
+      threadId !== scope.threadId && (yield* managers.isManagerThread(scope.threadId))
+        ? ((yield* threadManagement.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))
+            ?.projectId ?? parent.thread.projectId)
+        : parent.thread.projectId;
     const target =
       threadId === scope.threadId
         ? parent
         : yield* threadManagement
-            .getProjectThreadRecords({ projectId: parent.thread.projectId, threadId }, [])
+            .getProjectThreadRecords({ projectId, threadId }, [])
             .pipe(Effect.mapError(threadLookupFailure));
     const requestKey =
       input.clientRequestId === undefined

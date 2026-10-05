@@ -3,11 +3,12 @@ import * as Schema from "effect/Schema";
 import { ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
- * Brainstorm: one agent chat per space, working in the space's knowledge base
- * ("brain") repository, plus a markdown task list kept in that repository.
+ * Brainstorm: the manager chat (the All space's chat, working in the default
+ * profile's knowledge base, "brain") and the goal and task lists kept as
+ * markdown in each brain repository.
  *
  * Spaces themselves live in the client; it mirrors them to the server so the
- * brainstorm agent's tools can be scoped to its space.
+ * agent's tools can be scoped to a space.
  */
 
 export const BrainstormSpaceKind = Schema.Literals(["all", "other", "profile", "custom"]);
@@ -56,14 +57,28 @@ export const BrainstormTask = Schema.Struct({
   done: Schema.Boolean,
   notes: Schema.Array(Schema.String),
   threadIds: Schema.Array(Schema.String),
+  /** Title of the goal the task is under ("Inbox" for loose tasks). */
+  goal: Schema.String,
 });
 export type BrainstormTask = typeof BrainstormTask.Type;
+
+export const BrainstormGoal = Schema.Struct({
+  /** 1-based position in its file. */
+  number: Schema.Int,
+  title: Schema.String,
+  done: Schema.Boolean,
+  notes: Schema.Array(Schema.String),
+});
+export type BrainstormGoal = typeof BrainstormGoal.Type;
 
 export const BrainstormTaskList = Schema.Struct({
   spaceId: Schema.String,
   spaceName: Schema.String,
   /** Absolute path of the markdown file; null when the space has no brain to keep it in. */
   path: Schema.NullOr(Schema.String),
+  /** Code profile whose brain keeps the file; null for lists of custom spaces and Other. */
+  profile: Schema.NullOr(Schema.String),
+  goals: Schema.Array(BrainstormGoal),
   tasks: Schema.Array(BrainstormTask),
 });
 export type BrainstormTaskList = typeof BrainstormTaskList.Type;
@@ -88,6 +103,8 @@ export const BrainstormTaskMutation = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("add"),
     title: TrimmedNonEmptyString,
+    /** Goal title; the Inbox when unset. */
+    goal: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
     type: Schema.Literal("set-done"),
@@ -100,6 +117,11 @@ export const BrainstormTaskMutation = Schema.Union([
     type: Schema.Literal("delete"),
     number: Schema.Int,
     title: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("set-goal-done"),
+    goal: TrimmedNonEmptyString,
+    done: Schema.Boolean,
   }),
 ]);
 export type BrainstormTaskMutation = typeof BrainstormTaskMutation.Type;
