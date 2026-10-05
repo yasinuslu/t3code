@@ -58,6 +58,11 @@ vi.mock("~/lib/openPullRequestLink", () => ({
   resolvePullRequestPreviewTarget: () => null,
   useOpenChangeRequestLink: () => vi.fn(),
 }));
+vi.mock("./ThreadContextChip", () => ({
+  ThreadContextChip: (props: { record: object; currentEnvironmentId?: string }) => (
+    <button data-environment={props.currentEnvironmentId}>{JSON.stringify(props.record)}</button>
+  ),
+}));
 
 import ChatMarkdown, {
   canUseMarkdownFileShellActions,
@@ -132,6 +137,39 @@ describe("ChatMarkdown context references", () => {
         );
       });
       expect(seen).toEqual(["terminal: Bold code"]);
+    } finally {
+      await act(async () => {
+        renderer?.unmount();
+      });
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("ChatMarkdown thread links", () => {
+  it("renders authored and bare thread links as thread chips", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    let renderer: ReactTestRenderer | undefined;
+    const text = [
+      "Open [Fix parser](t3code://threads/env-2/mcp%3Ac1097b24) or t3://thread/env-2/t-2.",
+      "Not `t3://thread/env-2/t-3`.",
+    ].join("\n\n");
+    try {
+      await act(async () => {
+        renderer = create(
+          <ChatMarkdown cwd={undefined} environmentId={EnvironmentId.make("env-1")} text={text} />,
+        );
+      });
+      const chips = renderer!.root.findAllByType("button");
+      expect(chips.map((chip) => JSON.parse(chip.children.join("")))).toEqual([
+        { environmentId: "env-2", threadId: "mcp:c1097b24", title: "Fix parser" },
+        { environmentId: "env-2", threadId: "t-2", title: "Thread" },
+      ]);
+      expect(chips[0]!.props["data-environment"]).toBe("env-1");
+      expect(renderer!.root.findAllByType("a")).toHaveLength(0);
+      expect(renderer!.root.findAllByType("code").map((code) => code.children.join(""))).toEqual([
+        "t3://thread/env-2/t-3",
+      ]);
     } finally {
       await act(async () => {
         renderer?.unmount();
