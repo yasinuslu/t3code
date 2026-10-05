@@ -79,6 +79,56 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
   });
 
   describe("makeClaudeConfigDirResolver", () => {
+    it.effect.skipIf(isWindows)(
+      "prefers homePath, then the code profile's dir, then the command",
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const root = yield* fs.realPath(
+            yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-config-dir-" }),
+          );
+          const [work, bare, plain] = ["work", "bare", "plain"].map((name) =>
+            path.join(root, name),
+          );
+          for (const dir of [work!, bare!, plain!]) yield* fs.makeDirectory(dir);
+          const profiles = new Map([
+            [work!, { name: "work", claudeConfigDir: "/profiles/work" }],
+            [bare!, { name: "bare", claudeConfigDir: undefined }],
+          ]);
+          const codeProfiles = {
+            resolve: (folder: string) => Effect.succeed(profiles.get(folder)),
+            claudeConfigDirs: Effect.succeed([]),
+          };
+          const resolverFor = (config: { homePath: string; homePathCommand: string }) =>
+            makeClaudeConfigDirResolver(config, {}, { codeProfiles }).pipe(
+              Effect.map((resolver) => {
+                if (!resolver) throw new Error("resolver expected");
+                return (dir: string) => resolver.resolveForWorkspace(dir, dir);
+              }),
+            );
+
+          const withHome = yield* resolverFor({
+            homePath: "/explicit",
+            homePathCommand: "echo /from-command",
+          });
+          expect(yield* withHome(work!)).toEqual({ path: "/explicit", profile: "work" });
+          expect(yield* withHome(plain!)).toBe(undefined);
+
+          const withCommand = yield* resolverFor({
+            homePath: "",
+            homePathCommand: "echo /from-command",
+          });
+          expect(yield* withCommand(work!)).toEqual({ path: "/profiles/work", profile: "work" });
+          expect(yield* withCommand(bare!)).toEqual({ path: "/from-command", profile: "bare" });
+          expect(yield* withCommand(plain!)).toEqual({ path: "/from-command" });
+
+          const profilesOnly = yield* resolverFor({ homePath: "", homePathCommand: "" });
+          expect(yield* profilesOnly(work!)).toEqual({ path: "/profiles/work", profile: "work" });
+          expect(yield* profilesOnly(plain!)).toBe(undefined);
+        }).pipe(Effect.scoped),
+    );
+
     it.effect("is absent without a command or when homePath is set", () =>
       Effect.gen(function* () {
         expect(yield* makeClaudeConfigDirResolver({ homePath: "", homePathCommand: "" })).toBe(
@@ -115,20 +165,24 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
         if (!resolver) return expect.unreachable("resolver expected");
         const runs = () =>
           fs.readFileString(counter).pipe(Effect.map((text) => text.trim().split("\n").length));
+        const resolve = (projectRoot: string) =>
+          resolver
+            .resolveForWorkspace(projectRoot, projectRoot)
+            .pipe(Effect.map((resolved) => resolved?.path));
 
-        expect(yield* resolver.resolve(first)).toBe(path.join(first, "claude"));
-        expect(yield* resolver.resolve(first)).toBe(path.join(first, "claude"));
-        expect(yield* resolver.resolve(second)).toBe(path.join(second, "claude"));
+        expect(yield* resolve(first)).toBe(path.join(first, "claude"));
+        expect(yield* resolve(first)).toBe(path.join(first, "claude"));
+        expect(yield* resolve(second)).toBe(path.join(second, "claude"));
         expect(yield* runs()).toBe(2);
 
         yield* fs.writeFileString(path.join(second, "fail"), "");
         yield* resolver.invalidate;
-        expect(yield* resolver.resolve(second)).toBe(undefined);
-        expect(yield* resolver.resolve(second)).toBe(undefined);
+        expect(yield* resolve(second)).toBe(undefined);
+        expect(yield* resolve(second)).toBe(undefined);
         expect(yield* runs()).toBe(4);
 
         yield* fs.remove(path.join(second, "fail"));
-        expect(yield* resolver.resolve(second)).toBe(path.join(second, "claude"));
+        expect(yield* resolve(second)).toBe(path.join(second, "claude"));
         expect(yield* runs()).toBe(5);
       }).pipe(Effect.scoped),
     );
@@ -171,12 +225,18 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
           });
           if (!resolver) return expect.unreachable("resolver expected");
 
-          expect(yield* resolver.resolveForWorkspace(worktree)).toBe(path.join(checkout, "claude"));
-          expect(yield* resolver.resolveForWorkspace(checkout)).toBe(path.join(checkout, "claude"));
-          expect(yield* resolver.resolveForWorkspace(plain)).toBe(path.join(plain, "claude"));
-          expect(yield* resolver.resolveForWorkspace(worktree, plain)).toBe(
-            path.join(plain, "claude"),
-          );
+          expect(yield* resolver.resolveForWorkspace(worktree)).toEqual({
+            path: path.join(checkout, "claude"),
+          });
+          expect(yield* resolver.resolveForWorkspace(checkout)).toEqual({
+            path: path.join(checkout, "claude"),
+          });
+          expect(yield* resolver.resolveForWorkspace(plain)).toEqual({
+            path: path.join(plain, "claude"),
+          });
+          expect(yield* resolver.resolveForWorkspace(worktree, plain)).toEqual({
+            path: path.join(plain, "claude"),
+          });
         }).pipe(Effect.scoped),
     );
   });

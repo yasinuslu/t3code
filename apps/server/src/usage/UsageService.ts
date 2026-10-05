@@ -47,6 +47,7 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { CodeProfiles } from "../provider/CodeProfiles.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { resolveAntigravityInstanceDirectories } from "../provider/antigravityAuthSupport.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
@@ -189,6 +190,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const config = yield* ServerConfig.ServerConfig;
   const settingsService = yield* ServerSettings.ServerSettingsService;
+  const codeProfiles = Option.getOrUndefined(yield* Effect.serviceOption(CodeProfiles));
   const httpClient = yield* HttpClient.HttpClient;
   const hostEnvironment = yield* HostProcessEnvironment;
   const platform = yield* HostProcessPlatform;
@@ -316,6 +318,15 @@ export const make = Effect.gen(function* () {
           config: settings.providers[driver],
           instanceId: ProviderInstanceId.make(driver),
         });
+      }
+      // Each code profile's Claude dirs hold history like an explicit home.
+      if (driver === "claudeAgent" && codeProfiles !== undefined) {
+        for (const { profile, dir } of yield* codeProfiles.claudeConfigDirs) {
+          instances.push({
+            config: { homePath: dir },
+            instanceId: ProviderInstanceId.make(`${driver}:${profile}`),
+          });
+        }
       }
       for (const instance of instances) {
         const environment = mergeProviderInstanceEnvironment(instance.environment, hostEnvironment);

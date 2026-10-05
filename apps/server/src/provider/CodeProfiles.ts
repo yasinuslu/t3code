@@ -92,15 +92,16 @@ const make = Effect.gen(function* () {
     entries: ReadonlyArray<readonly [string, CodeProfile]>,
     folder: string,
   ) {
-    let best: { readonly name: string; readonly profile: CodeProfile; readonly root: string } =
-      undefined!;
+    let best:
+      | { readonly name: string; readonly profile: CodeProfile; readonly root: string }
+      | undefined;
     for (const [name, profile] of entries) {
       const root = yield* physical(profile.root);
       if (isWithin(folder, root) && (best === undefined || root.length > best.root.length)) {
         best = { name, profile, root };
       }
     }
-    return best as typeof best | undefined;
+    return best;
   });
 
   const claudeDirs = (profile: CodeProfile) =>

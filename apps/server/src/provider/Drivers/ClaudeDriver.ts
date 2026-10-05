@@ -19,6 +19,7 @@ import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -77,7 +78,11 @@ import {
   resolveClaudeHomePath,
 } from "./ClaudeHome.ts";
 import { discoverClaudeSkills } from "./ClaudeSkills.ts";
-import { makeClaudeConfigDirResolver } from "./ClaudeConfigDirCommand.ts";
+import {
+  makeClaudeConfigDirResolver,
+  type ResolvedClaudeConfigDir,
+} from "./ClaudeConfigDirCommand.ts";
+import { CodeProfiles } from "../CodeProfiles.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
@@ -164,10 +169,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           ? configDir
           : undefined,
       );
-      const configDirResolver = yield* makeClaudeConfigDirResolver(
-        effectiveConfig,
-        processEnv,
-      ).pipe(
+      const codeProfiles = yield* Effect.serviceOption(CodeProfiles);
+      const configDirResolver = yield* makeClaudeConfigDirResolver(effectiveConfig, processEnv, {
+        codeProfiles: Option.getOrUndefined(codeProfiles),
+      }).pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(Path.Path, path),
       );
@@ -189,7 +194,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         readonly cwd: string;
         readonly commands: ReadonlyArray<ClaudeSlashCommand>;
         readonly environment: NodeJS.ProcessEnv;
-        readonly projectConfigDir: string | undefined;
+        readonly projectConfigDir: ResolvedClaudeConfigDir | undefined;
       }) =>
         Effect.gen(function* () {
           const [existing, skills, checkedAt] = yield* Effect.all([
@@ -198,7 +203,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             Effect.map(DateTime.now, DateTime.formatIso),
           ]);
           const workspaceConfigDir = input.projectConfigDir
-            ? describeClaudeConfigDir(input.projectConfigDir)
+            ? describeClaudeConfigDir(input.projectConfigDir.path, input.projectConfigDir.profile)
             : existing?.configDir;
           yield* workspaceCatalog.upsert({
             cwd: input.cwd,
@@ -241,6 +246,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         effectiveConfig,
         processEnv,
         modelCatalog,
+        configDirResolver,
       );
 
       // Per-instance capabilities cache: keyed on binary + resolved HOME so
@@ -348,7 +354,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
                 machineSnapshot,
                 cwd,
                 projectConfigDir
-                  ? { ...processEnv, CLAUDE_CONFIG_DIR: projectConfigDir }
+                  ? { ...processEnv, CLAUDE_CONFIG_DIR: projectConfigDir.path }
                   : processEnv,
               );
               const { skills } = probed;
@@ -357,7 +363,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
                 probed.slashCommandsPending && live ? live.slashCommands : probed.slashCommands;
               const slashCommandsPending = probed.slashCommandsPending && !live;
               const workspaceConfigDir = projectConfigDir
-                ? describeClaudeConfigDir(projectConfigDir)
+                ? describeClaudeConfigDir(projectConfigDir.path, projectConfigDir.profile)
                 : undefined;
               if (!slashCommandsPending) {
                 yield* workspaceCatalog.upsert({

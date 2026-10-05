@@ -41,10 +41,17 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
 export const isClaudeConfigDirInherited = (config: Pick<ClaudeSettings, "homePath">): boolean =>
   config.homePath.trim().length === 0;
 
-/** Pair an absolute Claude config dir with its `~`-abbreviated display form. */
-export const describeClaudeConfigDir = (configDir: string): ProviderConfigDir => ({
+/**
+ * Pair an absolute Claude config dir with its `~`-abbreviated display form and
+ * the code profile it was picked for, if any.
+ */
+export const describeClaudeConfigDir = (
+  configDir: string,
+  profile?: string | undefined,
+): ProviderConfigDir => ({
   path: configDir,
   displayPath: abbreviateHomePath(configDir),
+  ...(profile ? { profile } : {}),
 });
 
 /**

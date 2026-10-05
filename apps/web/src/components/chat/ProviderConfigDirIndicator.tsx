@@ -5,6 +5,7 @@ import { CircleAlertIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Badge } from "../ui/badge";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 
 export interface ThreadProviderConfigDir {
@@ -15,8 +16,8 @@ export interface ThreadProviderConfigDir {
 }
 
 /**
- * Which provider profile a thread runs on: the instance badge, its name, and
- * the config dir its CLI uses. Shows "auto" while an instance that sets no dir
+ * Which provider profile a thread runs on: the instance badge, its name, the
+ * code profile its folder belongs to, and the config dir its CLI uses. Shows "auto" while an instance that sets no dir
  * has not reported one yet, and turns into a warning when a launcher sent the
  * CLI to a different dir than the instance is configured with.
  */
@@ -28,6 +29,7 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
   const { driverKind, displayName, accentColor, configDir } = props.value;
   const { current, configured, redirected } = configDir;
   const currentLabel = current?.displayPath ?? "auto";
+  const codeProfile = current?.profile ?? configured.profile;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -57,8 +59,15 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
           badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs"
         />
         {props.compact ? null : (
+          <span className="shrink-0 font-medium text-foreground">{displayName}</span>
+        )}
+        {codeProfile ? (
+          <Badge variant="outline" size="sm" className="shrink-0" data-code-profile>
+            {codeProfile}
+          </Badge>
+        ) : null}
+        {props.compact ? null : (
           <>
-            <span className="shrink-0 font-medium text-foreground">{displayName}</span>
             {redirected ? <CircleAlertIcon aria-hidden className="size-3 shrink-0" /> : null}
             <span className={cn("min-w-0 truncate", current ? "font-mono" : "italic")}>
               {redirected ? `redirected to ${currentLabel}` : currentLabel}
@@ -72,6 +81,7 @@ export const ProviderConfigDirIndicator = memo(function ProviderConfigDirIndicat
       <TooltipPopup side="bottom">
         <div className="flex max-w-96 flex-col gap-0.5">
           <span className="font-medium">{displayName}</span>
+          {codeProfile ? <span>Code profile {codeProfile}</span> : null}
           {redirected ? (
             <>
               <span className="break-all">Running on {current?.path}</span>
