@@ -1,10 +1,12 @@
 /**
- * The brainstorm popup: a Spotlight-style chat with the active space's
- * brainstorm agent, next to that space's task list.
+ * The manager screen: a board of goals, their tasks and the worker threads on
+ * them, next to the manager chat that runs the work.
  *
- * The chat is a real thread (hidden from the thread lists) working in the
- * space's brain repository; this view shows only its messages and tool
- * steps, and "Open as thread" leads to the full thread view.
+ * The board is drawn from durable state only: the goal and task files in each
+ * profile's brain (the brainstorm state stream) and the live thread shells.
+ * The manager is a real thread (All's brainstorm, hidden from the thread
+ * lists) working in the default profile's brain; this view shows only its
+ * messages and tool steps, and "Open as thread" leads to the full thread view.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -13,7 +15,6 @@ import {
 } from "@t3tools/client-runtime/state/models";
 import type {
   BrainstormOpenResult,
-  BrainstormState,
   BrainstormTask,
   BrainstormTaskList,
   EnvironmentId,
@@ -33,31 +34,38 @@ import {
   useState,
 } from "react";
 
-import { useBrainstormStore } from "../../brainstormStore";
+import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../../brainstormStore";
+import { isElectron } from "../../env";
 import { cn, isMacPlatform, newMessageId } from "../../lib/utils";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment } from "../../state/brainstorm";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import {
   useServerConfigs,
   useThreadShell,
   useThreadShells,
   useThreadVisibleTurnItems,
 } from "../../state/entities";
-import { formatEnvironmentQueryError } from "../../state/query";
+import { formatEnvironmentQueryError, useEnvironmentQuery } from "../../state/query";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import ChatMarkdown from "../ChatMarkdown";
 import { resolveThreadMetadataUpdateForNextTurn } from "../ChatView.logic";
-import { SpaceIcon } from "../sidebar/SpaceSwitcher";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { Dialog, DialogPopup } from "../ui/dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { SidebarInset } from "../ui/sidebar";
 import { Spinner } from "../ui/spinner";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import {
   BRAINSTORM_MODELS,
+  type BoardGoal,
+  type BoardThreadStatus,
+  INBOX_GOAL,
+  boardGoals,
+  boardThreadStatus,
   brainstormActivity,
   brainstormModelChoice,
   brainstormModelSelection,
@@ -65,6 +73,7 @@ import {
   brainstormSpacesInput,
   isBrainstormModelChoice,
   isBrainstormModelShortcut,
+  needsYou,
   otherBrainstormModel,
   toolStepsOf,
 } from "./brainstorm.logic";
@@ -101,67 +110,44 @@ function usePersistModelSelection(environmentId: EnvironmentId) {
   );
 }
 
-export function BrainstormPopup(props: {
-  readonly environmentId: EnvironmentId;
-  readonly state: BrainstormState | null;
-}) {
-  const open = useBrainstormStore((store) => store.open);
-  const spaceId = useBrainstormStore((store) => store.spaceId);
-  const close = useBrainstormStore((store) => store.close);
+export function ManagerScreen() {
+  const environmentId = usePrimaryEnvironmentId();
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) close();
-      }}
-    >
-      <DialogPopup
-        aria-label="Brainstorm"
-        bottomStickOnMobile={false}
-        className="h-[min(44rem,calc(100dvh-4rem))] w-[min(62rem,calc(100vw-2rem))] max-w-none overflow-hidden"
-        data-brainstorm-popup="true"
-        showCloseButton={false}
-      >
-        {spaceId !== null ? (
-          <BrainstormContent
-            key={spaceId}
-            environmentId={props.environmentId}
-            spaceId={spaceId}
-            state={props.state}
-            onClose={close}
-          />
-        ) : null}
-      </DialogPopup>
-    </Dialog>
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+      {environmentId === null ? (
+        <div className="flex flex-1 items-center justify-center text-muted-foreground">
+          <Spinner />
+        </div>
+      ) : (
+        <ManagerContent environmentId={environmentId} />
+      )}
+    </SidebarInset>
   );
 }
 
-function BrainstormContent(props: {
-  readonly environmentId: EnvironmentId;
-  readonly spaceId: string;
-  readonly state: BrainstormState | null;
-  readonly onClose: () => void;
-}) {
-  const { environmentId, spaceId } = props;
-  const space = useSpaceStore((store) => store.spaces.find((entry) => entry.id === spaceId));
+function ManagerContent(props: { readonly environmentId: EnvironmentId }) {
+  const { environmentId } = props;
   const navigate = useNavigate();
+  const state = useEnvironmentQuery(brainstormEnvironment.state({ environmentId, input: {} })).data;
   const syncSpaces = useAtomCommand(brainstormEnvironment.syncSpaces, { reportFailure: false });
-  const openBrainstorm = useAtomCommand(brainstormEnvironment.open, { reportFailure: false });
+  const openManager = useAtomCommand(brainstormEnvironment.open, { reportFailure: false });
   const [target, setTarget] = useState<BrainstormOpenResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const defaultProfile = useBrainstormStore((store) => store.defaultProfile);
   const setDefaultProfile = useBrainstormStore((store) => store.setDefaultProfile);
-  const usesDefaultBrain = space !== undefined && space.profile === null;
+  const spaces = useSpaceStore((store) => store.spaces);
+  const [spaceFilter, setSpaceFilter] = useState(ALL_SPACE_ID);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      // The server scopes by the spaces it knows; make sure it has this one.
+      // The server scopes by the spaces it knows; make sure it has them.
       await syncSpaces({
         environmentId,
         input: brainstormSpacesInput(useSpaceStore.getState(), environmentId, defaultProfile),
       });
-      const result = await openBrainstorm({ environmentId, input: { spaceId } });
+      // The manager is All's chat.
+      const result = await openManager({ environmentId, input: { spaceId: ALL_SPACE_ID } });
       if (cancelled) return;
       if (result._tag === "Success") setTarget(result.value);
       else setError(formatEnvironmentQueryError(result.cause));
@@ -169,22 +155,7 @@ function BrainstormContent(props: {
     return () => {
       cancelled = true;
     };
-  }, [defaultProfile, environmentId, openBrainstorm, spaceId, syncSpaces]);
-
-  // Esc always dismisses, even when a focused field or a global handler
-  // claims the key before the dialog sees it.
-  const { onClose } = props;
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
-      if (document.querySelector("[data-slot='select-popup']")) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose]);
+  }, [defaultProfile, environmentId, openManager, syncSpaces]);
 
   const threadRef = useMemo(
     () => (target ? scopeThreadRef(environmentId, target.threadId) : null),
@@ -215,8 +186,8 @@ function BrainstormContent(props: {
   );
   const persistModelSelection = usePersistModelSelection(environmentId);
   const threadBusy = threadRuntimeIsActive(shell?.runtime);
-  // Opening or toggling moves an idle thread right away, so "Open as thread"
-  // shows the model the next turn will use.
+  // Toggling moves an idle thread right away, so "Open as thread" shows the
+  // model the next turn will use.
   const persistedModelRef = useRef<string | null>(null);
   useEffect(() => {
     if (shell === null || modelSelection === null || threadBusy) return;
@@ -242,32 +213,47 @@ function BrainstormContent(props: {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [flipModel]);
 
-  const openAsThread = () => {
-    if (!target) return;
-    props.onClose();
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: { environmentId, threadId: target.threadId },
-    });
-  };
+  const openThread = useCallback(
+    (threadId: string) =>
+      void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } }),
+    [environmentId, navigate],
+  );
 
   return (
-    <>
-      <header className="flex items-center gap-2 border-b px-4 py-2.5">
-        {space ? <SpaceIcon icon={space.icon} className="size-4" /> : null}
-        <h2 className="font-medium text-sm">Brainstorm · {space?.name ?? "Space"}</h2>
-        {usesDefaultBrain && (props.state?.profiles.length ?? 0) > 1 ? (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
+      <WorkspacePageHeader electron={isElectron} className="border-b border-border">
+        <h1 className="font-medium text-sm">Manager</h1>
+        <Select
+          value={spaceFilter}
+          onValueChange={(value) => {
+            if (typeof value === "string" && value) setSpaceFilter(value);
+          }}
+        >
+          <SelectTrigger size="xs" className="w-auto" aria-label="Space">
+            <SelectValue>
+              {spaces.find((space) => space.id === spaceFilter)?.name ?? "All"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="start" alignItemWithTrigger={false}>
+            {spaces.map((space) => (
+              <SelectItem key={space.id} hideIndicator value={space.id}>
+                {space.name}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+        {(state?.profiles.length ?? 0) > 1 ? (
           <Select
-            value={props.state?.defaultProfile ?? ""}
+            value={state?.defaultProfile ?? ""}
             onValueChange={(value) => {
               if (typeof value === "string" && value) setDefaultProfile(value);
             }}
           >
-            <SelectTrigger size="xs" className="w-auto" aria-label="Brain for this space">
-              <SelectValue>{`${props.state?.defaultProfile ?? "?"}-brain`}</SelectValue>
+            <SelectTrigger size="xs" className="w-auto" aria-label="Manager's brain">
+              <SelectValue>{`${state?.defaultProfile ?? "?"}-brain`}</SelectValue>
             </SelectTrigger>
             <SelectPopup align="start" alignItemWithTrigger={false}>
-              {(props.state?.profiles ?? []).map((profile) => (
+              {(state?.profiles ?? []).map((profile) => (
                 <SelectItem key={profile} hideIndicator value={profile}>
                   {`${profile}-brain`}
                 </SelectItem>
@@ -275,17 +261,13 @@ function BrainstormContent(props: {
             </SelectPopup>
           </Select>
         ) : null}
-        {target ? (
-          <span className="truncate text-muted-foreground text-xs">{target.brainPath}</span>
-        ) : null}
         <div className="ms-auto flex items-center gap-1">
           {modelsOffered && threadKey !== null ? (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <ToggleGroup
-                    aria-label="Brainstorm model"
-                    data-brainstorm-model={modelChoice}
+                    aria-label="Manager model"
                     value={[modelChoice]}
                     onValueChange={(value) => {
                       const next = value[0];
@@ -305,17 +287,28 @@ function BrainstormContent(props: {
               </TooltipPopup>
             </Tooltip>
           ) : null}
-          <Button size="compact" variant="ghost-muted" disabled={!target} onClick={openAsThread}>
+          <Button
+            size="compact"
+            variant="ghost-muted"
+            disabled={!target}
+            onClick={() => target && openThread(target.threadId)}
+          >
             <ExternalLinkIcon />
             Open as thread
           </Button>
-          <Button size="icon-sm" variant="ghost" aria-label="Close" onClick={props.onClose}>
-            <XIcon />
-          </Button>
         </div>
-      </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_17rem] max-sm:grid-cols-1">
-        <section className="flex min-h-0 flex-col" aria-label="Chat">
+      </WorkspacePageHeader>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)] max-md:grid-cols-1 max-md:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
+        <ManagerBoard
+          environmentId={environmentId}
+          spaceId={spaceFilter}
+          lists={state?.taskLists ?? []}
+          onOpenThread={openThread}
+        />
+        <section
+          className="flex min-h-0 flex-col border-s max-md:border-s-0 max-md:border-t"
+          aria-label="Manager chat"
+        >
           {error ? (
             <div className="m-4 rounded-md border border-destructive/30 p-3 text-destructive-foreground text-sm">
               {error}
@@ -325,26 +318,17 @@ function BrainstormContent(props: {
               <Spinner />
             </div>
           ) : (
-            <BrainstormChat
+            <ManagerChat
               environmentId={environmentId}
               threadId={threadRef.threadId}
               modelSelection={modelSelection}
               cwd={target?.brainPath}
-              onOpenAsThread={openAsThread}
+              onOpenAsThread={() => target && openThread(target.threadId)}
             />
           )}
         </section>
-        <BrainstormTasks
-          environmentId={environmentId}
-          spaceId={spaceId}
-          lists={props.state?.taskLists ?? []}
-          onOpenThread={(threadId) => {
-            props.onClose();
-            void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
-          }}
-        />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -359,7 +343,7 @@ type TimelineEntry =
     }
   | { readonly kind: "step"; readonly id: string; readonly text: string; readonly at: string };
 
-function BrainstormChat(props: {
+function ManagerChat(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: EnvironmentThreadShell["id"];
   readonly modelSelection: ModelSelection | null;
@@ -466,7 +450,8 @@ function BrainstormChat(props: {
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {timeline.length === 0 ? (
           <p className="mt-10 text-center text-muted-foreground text-sm">
-            Ask what is going on, add a task, or start a thread from one.
+            Tell the manager what you want done. It plans the tasks, starts worker threads and asks
+            you only for real decisions.
           </p>
         ) : (
           <ol className="flex flex-col gap-3">
@@ -528,9 +513,9 @@ function BrainstormChat(props: {
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
-            aria-label="Message the brainstorm"
+            aria-label="Message the manager"
             className="max-h-40 min-h-9 flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="Brainstorm… (Enter to send, Esc to close)"
+            placeholder="Message the manager… (Enter to send)"
             rows={1}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -557,7 +542,7 @@ function BrainstormChat(props: {
   );
 }
 
-/** The popup's chat: user and assistant messages, with one line per tool call. */
+/** The manager chat: user and assistant messages, with one line per tool call. */
 function timelineOf(
   items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
   running: boolean,
@@ -599,26 +584,19 @@ function timelineOf(
   return entries.toSorted((left, right) => left.at.localeCompare(right.at));
 }
 
-function linkedThreadStatus(thread: EnvironmentThreadShell | undefined): {
-  readonly label: string;
-  readonly className: string;
-} {
-  if (!thread) return { label: "gone", className: "bg-muted-foreground/40" };
-  if (thread.hasPendingApprovals || thread.hasPendingUserInput) {
-    return { label: "waiting on you", className: "bg-amber-500" };
-  }
-  if (threadRuntimeIsActive(thread.runtime)) {
-    return { label: "working", className: "bg-sky-500" };
-  }
-  if (thread.settledOverride === "settled")
-    return { label: "settled", className: "bg-emerald-500" };
-  const status = thread.runtime?.status ?? thread.latestRun?.status;
-  if (status === "completed") return { label: "finished", className: "bg-emerald-500/60" };
-  if (status === "failed") return { label: "failed", className: "bg-destructive" };
-  return { label: "idle", className: "bg-muted-foreground/60" };
-}
+const STATUS_LOOK: Readonly<Record<BoardThreadStatus, { label: string; dot: string }>> = {
+  "needs-approval": { label: "needs approval", dot: "bg-amber-500" },
+  "needs-input": { label: "needs input", dot: "bg-amber-500" },
+  failed: { label: "failed", dot: "bg-destructive" },
+  working: { label: "working", dot: "bg-sky-500" },
+  finished: { label: "finished", dot: "bg-emerald-500/60" },
+  settled: { label: "settled", dot: "bg-emerald-500" },
+  archived: { label: "archived", dot: "bg-muted-foreground/40" },
+  idle: { label: "idle", dot: "bg-muted-foreground/60" },
+  gone: { label: "gone", dot: "bg-muted-foreground/40" },
+};
 
-function BrainstormTasks(props: {
+function ManagerBoard(props: {
   readonly environmentId: EnvironmentId;
   readonly spaceId: string;
   readonly lists: ReadonlyArray<BrainstormTaskList>;
@@ -626,12 +604,19 @@ function BrainstormTasks(props: {
 }) {
   const mutate = useAtomCommand(brainstormEnvironment.mutateTasks, "Update task");
   const [draft, setDraft] = useState("");
-  const threads = useThreadShells();
-  const isAll = props.spaceId === ALL_SPACE_ID;
-  const lists = isAll
-    ? props.lists.filter((list) => list.tasks.length > 0)
-    : props.lists.filter((list) => list.spaceId === props.spaceId);
-  const ownPath = isAll ? null : (lists[0]?.path ?? null);
+  const [showDone, setShowDone] = useState(false);
+  // Linked threads stay findable when they are archived or settled.
+  const allThreads = useThreadShells();
+  const workThreads = useThreadShellsWithoutBrainstorms();
+  // Everything waiting on the user, whatever the space filter.
+  const waiting = useMemo(
+    () => needsYou(workThreads.filter((thread) => thread.environmentId === props.environmentId)),
+    [props.environmentId, workThreads],
+  );
+  const goals = useMemo(
+    () => boardGoals(props.lists, props.spaceId, showDone),
+    [props.lists, props.spaceId, showDone],
+  );
 
   const run = (spaceId: string, mutation: Parameters<typeof mutate>[0]["input"]["mutation"]) =>
     void mutate({ environmentId: props.environmentId, input: { spaceId, mutation } });
@@ -644,76 +629,143 @@ function BrainstormTasks(props: {
   };
 
   return (
-    <aside
-      className="flex min-h-0 flex-col border-s max-sm:border-s-0 max-sm:border-t"
-      aria-label="Tasks"
-    >
-      <div className="flex items-baseline justify-between px-3 pt-3 pb-2">
-        <h3 className="font-medium text-sm">Tasks</h3>
-        {ownPath ? (
-          <span className="truncate ps-2 text-muted-foreground text-xs">
-            {ownPath.split("/").slice(-2).join("/")}
-          </span>
-        ) : null}
-      </div>
-      <form
-        className="flex items-center gap-1 px-3 pb-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          add();
-        }}
-      >
-        <input
-          aria-label="New task"
-          className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder={isAll ? "Add a task (default space)…" : "Add a task…"}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        <Button size="icon-sm" variant="ghost" type="submit" aria-label="Add task">
-          <PlusIcon />
-        </Button>
-      </form>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        {lists.every((list) => list.tasks.length === 0) ? (
-          <p className="px-1 py-4 text-center text-muted-foreground text-xs">No tasks yet.</p>
+    <div className="min-h-0 overflow-y-auto px-4 py-3" aria-label="Board">
+      <section aria-label="Needs you" className="mb-4">
+        <h2 className="mb-1.5 font-medium text-muted-foreground text-xs">
+          Needs you{waiting.length > 0 ? ` · ${waiting.length}` : ""}
+        </h2>
+        {waiting.length === 0 ? (
+          <p className="text-muted-foreground text-xs">Nothing is waiting on you.</p>
         ) : (
-          lists.map((list) => (
-            <section key={list.spaceId} className="mb-2">
-              {isAll ? (
-                <h4 className="px-1 pt-1 pb-0.5 font-medium text-muted-foreground text-xs">
-                  {list.spaceName}
-                </h4>
-              ) : null}
-              <ul>
-                {[
-                  ...list.tasks.filter((task) => !task.done),
-                  ...list.tasks.filter((task) => task.done),
-                ].map((task) => (
-                  <TaskRow
-                    key={`${task.number}:${task.title}`}
-                    task={task}
-                    threads={threads}
-                    onToggle={(done) =>
-                      run(list.spaceId, {
-                        type: "set-done",
-                        number: task.number,
-                        title: task.title,
-                        done,
-                      })
-                    }
-                    onDelete={() =>
-                      run(list.spaceId, { type: "delete", number: task.number, title: task.title })
-                    }
-                    onOpenThread={props.onOpenThread}
-                  />
-                ))}
-              </ul>
-            </section>
-          ))
+          <ul className="flex flex-col gap-1">
+            {waiting.map((thread) => (
+              <li key={thread.id}>
+                <ThreadChip thread={thread} onOpen={() => props.onOpenThread(thread.id)} wide />
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
-    </aside>
+      </section>
+      <section aria-label="Goals">
+        <div className="mb-1.5 flex items-center gap-2">
+          <h2 className="font-medium text-muted-foreground text-xs">Goals</h2>
+          <label className="ms-auto flex items-center gap-1.5 text-muted-foreground text-xs">
+            <Checkbox
+              checked={showDone}
+              onCheckedChange={(checked) => setShowDone(checked === true)}
+            />
+            Show done
+          </label>
+        </div>
+        <form
+          className="mb-3 flex items-center gap-1"
+          onSubmit={(event) => {
+            event.preventDefault();
+            add();
+          }}
+        >
+          <input
+            aria-label="New task"
+            className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="Add a task to the Inbox… (ask the manager for a new goal)"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <Button size="icon-sm" variant="ghost" type="submit" aria-label="Add task">
+            <PlusIcon />
+          </Button>
+        </form>
+        {goals.length === 0 ? (
+          <p className="py-6 text-center text-muted-foreground text-xs">
+            No goals yet. Tell the manager what you want done.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {goals.map((goal) => (
+              <GoalCard
+                key={goal.key}
+                goal={goal}
+                showSpace={props.spaceId === ALL_SPACE_ID}
+                threads={allThreads}
+                onToggleGoal={(done) =>
+                  run(goal.spaceId, { type: "set-goal-done", goal: goal.title, done })
+                }
+                onToggleTask={(task, done) =>
+                  run(goal.spaceId, {
+                    type: "set-done",
+                    number: task.number,
+                    title: task.title,
+                    done,
+                  })
+                }
+                onDeleteTask={(task) =>
+                  run(goal.spaceId, { type: "delete", number: task.number, title: task.title })
+                }
+                onOpenThread={props.onOpenThread}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function GoalCard(props: {
+  readonly goal: BoardGoal;
+  readonly showSpace: boolean;
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  readonly onToggleGoal: (done: boolean) => void;
+  readonly onToggleTask: (task: BrainstormTask, done: boolean) => void;
+  readonly onDeleteTask: (task: BrainstormTask) => void;
+  readonly onOpenThread: (threadId: string) => void;
+}) {
+  const { goal } = props;
+  const isInbox = goal.title === INBOX_GOAL;
+  const doneCount = goal.tasks.filter((task) => task.done).length;
+  return (
+    <article className="rounded-lg border px-3 py-2" data-goal={goal.title}>
+      <header className="flex items-center gap-2">
+        {isInbox ? null : (
+          <Checkbox
+            checked={goal.done}
+            onCheckedChange={(checked) => props.onToggleGoal(checked === true)}
+            aria-label={goal.done ? `Reopen goal ${goal.title}` : `Complete goal ${goal.title}`}
+          />
+        )}
+        <h3
+          className={cn(
+            "min-w-0 flex-1 truncate font-medium text-sm",
+            goal.done && "text-muted-foreground line-through",
+          )}
+        >
+          {goal.title}
+        </h3>
+        {props.showSpace ? (
+          <span className="shrink-0 text-muted-foreground text-xs">{goal.spaceName}</span>
+        ) : null}
+        <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+          {doneCount}/{goal.tasks.length}
+        </span>
+      </header>
+      {goal.notes.length > 0 ? (
+        <p className="mt-0.5 line-clamp-2 text-muted-foreground text-xs">{goal.notes.join(" ")}</p>
+      ) : null}
+      {goal.tasks.length > 0 ? (
+        <ul className="mt-1.5">
+          {goal.tasks.map((task) => (
+            <TaskRow
+              key={`${task.number}:${task.title}`}
+              task={task}
+              threads={props.threads}
+              onToggle={(done) => props.onToggleTask(task, done)}
+              onDelete={() => props.onDeleteTask(task)}
+              onOpenThread={props.onOpenThread}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </article>
   );
 }
 
@@ -735,27 +787,17 @@ function TaskRow(props: {
       />
       <div className="min-w-0 flex-1">
         <p className={cn("text-xs leading-5", task.done && "text-muted-foreground line-through")}>
-          <span className="text-muted-foreground">{task.number}. </span>
           {task.title}
         </p>
         {task.threadIds.length > 0 ? (
           <div className="mt-0.5 flex flex-wrap gap-1">
-            {task.threadIds.map((threadId) => {
-              const thread = props.threads.find((candidate) => candidate.id === threadId);
-              const status = linkedThreadStatus(thread);
-              return (
-                <button
-                  key={threadId}
-                  type="button"
-                  className="inline-flex max-w-full items-center gap-1 rounded border px-1 text-2xs text-muted-foreground hover:text-foreground"
-                  onClick={() => props.onOpenThread(threadId)}
-                >
-                  <span className={cn("size-1.5 shrink-0 rounded-full", status.className)} />
-                  <span className="truncate">{thread?.title ?? "thread"}</span>
-                  <span>· {status.label}</span>
-                </button>
-              );
-            })}
+            {task.threadIds.map((threadId) => (
+              <ThreadChip
+                key={threadId}
+                thread={props.threads.find((candidate) => candidate.id === threadId)}
+                onOpen={() => props.onOpenThread(threadId)}
+              />
+            ))}
           </div>
         ) : null}
       </div>
@@ -770,5 +812,45 @@ function TaskRow(props: {
         </Button>
       </span>
     </li>
+  );
+}
+
+/** A worker thread with its live status and the pull requests it links. */
+function ThreadChip(props: {
+  readonly thread: EnvironmentThreadShell | undefined;
+  readonly onOpen: () => void;
+  readonly wide?: boolean;
+}) {
+  const { thread } = props;
+  const status = STATUS_LOOK[boardThreadStatus(thread)];
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center gap-1 rounded border px-1 text-2xs text-muted-foreground",
+        props.wide && "flex w-full py-0.5 text-xs",
+      )}
+    >
+      <button
+        type="button"
+        className="inline-flex min-w-0 items-center gap-1 hover:text-foreground"
+        onClick={props.onOpen}
+      >
+        <span className={cn("size-1.5 shrink-0 rounded-full", status.dot)} />
+        <span className="truncate">{thread?.title ?? "thread"}</span>
+        <span className="shrink-0">· {status.label}</span>
+      </button>
+      {(thread?.pullRequests ?? []).map((pullRequest) => (
+        <a
+          key={`${pullRequest.repository}#${pullRequest.number}`}
+          className="shrink-0 hover:text-foreground"
+          href={pullRequest.url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          #{pullRequest.number}
+          {pullRequest.snapshot ? ` ${pullRequest.snapshot.state}` : ""}
+        </a>
+      ))}
+    </span>
   );
 }

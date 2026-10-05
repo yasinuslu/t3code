@@ -53,6 +53,7 @@ import {
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
+  LayoutDashboardIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -2247,6 +2248,17 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:manager",
+    searchTerms: ["manager", "goals", "tasks", "board", "brainstorm", "todo", "plan"],
+    title: "Open manager",
+    icon: <LayoutDashboardIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/manager" });
+    },
+  });
 
   actionItems.push({
     kind: "action",

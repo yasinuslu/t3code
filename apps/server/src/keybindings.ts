@@ -157,12 +157,6 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{ from: KeybindingRule; to: Keybi
     from: { key: "mod+alt+b", command: "rightPanel.toggle" },
     to: { key: "mod+alt+\\", command: "rightPanel.toggle" },
   },
-  // `brainstorm.toggle` first shipped on `mod+shift+space`, which is also
-  // registered system-wide and collides with 1Password's Quick Access.
-  {
-    from: { key: "mod+shift+space", command: "brainstorm.toggle" },
-    to: { key: "ctrl+alt+space", command: "brainstorm.toggle" },
-  },
 ];
 
 /**
@@ -176,6 +170,22 @@ const RETIRED_COMMANDS: Readonly<Record<string, KeybindingRule["command"]>> = {
   // thread details panel, which Ctrl+Alt+A toggles now.
   "rightPanel.toggleAgents": "threadPanel.toggle",
 };
+
+/**
+ * Commands that were removed with nothing taking over their job. Config entries
+ * naming one are dropped, and the startup sync writes the file without them.
+ */
+const REMOVED_COMMANDS: ReadonlySet<string> = new Set([
+  // The brainstorm popup became the manager screen, which has no shortcut.
+  "brainstorm.toggle",
+]);
+
+function removedCommandOf(entry: unknown): string | null {
+  if (typeof entry !== "object" || entry === null || !("command" in entry)) return null;
+  return typeof entry.command === "string" && REMOVED_COMMANDS.has(entry.command)
+    ? entry.command
+    : null;
+}
 
 /** A raw config entry with a retired command renamed, and the rename if one happened. */
 function renameRetiredCommand(entry: unknown): {
@@ -416,6 +426,7 @@ const make = Effect.gen(function* () {
 
     return yield* Effect.forEach(rawConfig, (rawEntry) =>
       Effect.gen(function* () {
+        if (removedCommandOf(rawEntry) !== null) return null;
         const { entry } = renameRetiredCommand(rawEntry);
         const decodedRule = decodeKeybindingRuleExit(entry);
         if (decodedRule._tag === "Failure") {
@@ -468,6 +479,11 @@ const make = Effect.gen(function* () {
     const issues: ServerConfigIssue[] = [];
     const renames: Array<{ readonly from: string; readonly to: string }> = [];
     for (const [index, rawEntry] of decodedEntries.value.entries()) {
+      const removed = removedCommandOf(rawEntry);
+      if (removed !== null) {
+        renames.push({ from: removed, to: "(removed)" });
+        continue;
+      }
       const { entry, rename } = renameRetiredCommand(rawEntry);
       const decodedRule = decodeKeybindingRuleExit(entry);
       if (decodedRule._tag === "Failure") {

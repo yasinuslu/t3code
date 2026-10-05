@@ -1,6 +1,6 @@
 /**
- * Brainstorm popup state: whether it is open and for which space, and which
- * threads are brainstorm chats (kept out of the normal thread lists).
+ * Manager screen state: which threads are brainstorm and manager chats (kept
+ * out of the normal thread lists), the manager's brain and model choices.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useMemo } from "react";
@@ -15,16 +15,12 @@ import { resolveStorage } from "./lib/storage";
 import { useThreadShells } from "./state/entities";
 
 interface BrainstormStore {
-  readonly open: boolean;
-  readonly spaceId: string | null;
   /** `${environmentId}:${threadId}` of every brainstorm chat. */
   readonly hiddenThreadKeys: ReadonlySet<string>;
   /** Profile whose brain custom spaces, Other and All use; null: the server picks. */
   readonly defaultProfile: string | null;
-  /** `${environmentId}:${threadId}` → the model toggled in the popup. */
+  /** `${environmentId}:${threadId}` → the model toggled in the manager screen. */
   readonly modelChoiceByThreadKey: Readonly<Record<string, BrainstormModelChoice>>;
-  readonly toggle: (spaceId: string) => void;
-  readonly close: () => void;
   readonly setHiddenThreadKeys: (keys: ReadonlySet<string>) => void;
   readonly setDefaultProfile: (profile: string | null) => void;
   readonly setModelChoice: (threadKey: string, choice: BrainstormModelChoice) => void;
@@ -33,13 +29,9 @@ interface BrainstormStore {
 export const useBrainstormStore = create<BrainstormStore>()(
   persist(
     (set) => ({
-      open: false,
-      spaceId: null,
       hiddenThreadKeys: new Set(),
       defaultProfile: null,
       modelChoiceByThreadKey: {},
-      toggle: (spaceId) => set((state) => (state.open ? { open: false } : { open: true, spaceId })),
-      close: () => set({ open: false }),
       setHiddenThreadKeys: (keys) =>
         set((state) =>
           state.hiddenThreadKeys.size === keys.size &&

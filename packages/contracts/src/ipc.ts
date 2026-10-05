@@ -1230,12 +1230,6 @@ export interface DesktopBridge {
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   /** Present when the desktop shell can perform an ordered plain-text paste. */
   pasteAsText?: () => Promise<void>;
-  /**
-   * Registers the brainstorm shortcut system-wide (an Electron accelerator),
-   * or releases it with null. Resolves to whether it is registered. Optional:
-   * older desktop builds lack it and the shortcut then only works in the app.
-   */
-  setBrainstormShortcut?: (accelerator: string | null) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   onSnapShotEvent?: (listener: (event: DesktopSnapShotEvent) => void) => () => void;
   /**

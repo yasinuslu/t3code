@@ -1,14 +1,15 @@
 import type {
   BrainstormSpace,
   BrainstormSyncSpacesInput,
-  KeybindingShortcut,
+  BrainstormTask,
+  BrainstormTaskList,
   ModelSelection,
-  ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 
 import { ALL_SPACE_ID, OTHER_SPACE_ID, type Space, type SpaceState } from "../../spaceStore";
 
-export const BRAINSTORM_TOGGLE_COMMAND = "brainstorm.toggle";
+/** Tasks above every goal heading, and tasks under a written `## Inbox`. */
+export const INBOX_GOAL = "Inbox";
 
 /** The client's spaces as the server mirrors them for the brainstorm tools. */
 export function brainstormSpacesInput(
@@ -64,47 +65,6 @@ export function membershipChangesToAdopt(
     for (const spaceId of client) if (!server.has(spaceId)) changes.push([key, spaceId, false]);
   }
   return changes;
-}
-
-const ACCELERATOR_KEYS: Readonly<Record<string, string>> = {
-  " ": "Space",
-  arrowup: "Up",
-  arrowdown: "Down",
-  arrowleft: "Left",
-  arrowright: "Right",
-  escape: "Escape",
-  enter: "Enter",
-  tab: "Tab",
-  backspace: "Backspace",
-  delete: "Delete",
-  "+": "Plus",
-};
-
-/**
- * An Electron accelerator for a shortcut, or null when it has no modifier
- * (a bare key must never be taken from every other app).
- */
-export function shortcutToAccelerator(shortcut: KeybindingShortcut): string | null {
-  const modifiers: string[] = [];
-  if (shortcut.modKey) modifiers.push("CommandOrControl");
-  if (shortcut.metaKey) modifiers.push("Super");
-  if (shortcut.ctrlKey) modifiers.push("Control");
-  if (shortcut.altKey) modifiers.push("Alt");
-  if (shortcut.shiftKey) modifiers.push("Shift");
-  if (modifiers.length === 0) return null;
-  const key =
-    ACCELERATOR_KEYS[shortcut.key] ??
-    (/^f\d{1,2}$/.test(shortcut.key) ? shortcut.key.toUpperCase() : null) ??
-    (shortcut.key.length === 1 ? shortcut.key.toUpperCase() : null);
-  return key === null ? null : [...modifiers, key].join("+");
-}
-
-/** The accelerator of the command's effective (last, unconditional) binding. */
-export function brainstormAccelerator(keybindings: ResolvedKeybindingsConfig): string | null {
-  const rule = keybindings.findLast(
-    (entry) => entry.command === BRAINSTORM_TOGGLE_COMMAND && entry.whenAst === undefined,
-  );
-  return rule ? shortcutToAccelerator(rule.shortcut) : null;
 }
 
 export interface ToolStep {
@@ -265,4 +225,95 @@ export function isBrainstormModelShortcut(
 ): boolean {
   if (event.key !== "/" || event.altKey || event.shiftKey) return false;
   return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
+
+/** Where a worker thread stands, as the board shows it. */
+export type BoardThreadStatus =
+  | "needs-approval"
+  | "needs-input"
+  | "failed"
+  | "working"
+  | "finished"
+  | "settled"
+  | "archived"
+  | "idle"
+  | "gone";
+
+interface BoardThreadInput {
+  readonly hasPendingApprovals: boolean;
+  readonly hasPendingUserInput: boolean;
+  readonly archivedAt: string | null;
+  readonly settledOverride: "settled" | "active" | null;
+  readonly runtime: { readonly status: string } | null;
+  readonly latestRun: { readonly status: string } | null;
+}
+
+const ACTIVE_RUN_STATUSES = new Set(["preparing", "queued", "starting", "running"]);
+
+/** What needs the user comes first, then activity, then how the last run ended. */
+export function boardThreadStatus(thread: BoardThreadInput | undefined): BoardThreadStatus {
+  if (!thread) return "gone";
+  if (thread.archivedAt !== null) return "archived";
+  if (thread.hasPendingApprovals) return "needs-approval";
+  if (thread.hasPendingUserInput) return "needs-input";
+  if (thread.runtime !== null && ACTIVE_RUN_STATUSES.has(thread.runtime.status)) return "working";
+  if (thread.settledOverride === "settled") return "settled";
+  const status = thread.runtime?.status ?? thread.latestRun?.status;
+  if (status === "failed") return "failed";
+  if (status === "completed") return "finished";
+  return "idle";
+}
+
+/** The board's "Needs you" strip: threads waiting on an approval or an answer, or that failed. */
+export function needsYou<T extends BoardThreadInput>(threads: ReadonlyArray<T>): T[] {
+  return threads.filter((thread) => {
+    const status = boardThreadStatus(thread);
+    return status === "needs-approval" || status === "needs-input" || status === "failed";
+  });
+}
+
+export interface BoardGoal {
+  readonly key: string;
+  readonly spaceId: string;
+  readonly spaceName: string;
+  readonly title: string;
+  readonly done: boolean;
+  readonly notes: ReadonlyArray<string>;
+  readonly tasks: ReadonlyArray<BrainstormTask>;
+}
+
+/**
+ * The board's goals: every list's goals for All, else the filtered space's,
+ * each with its tasks (open first). Done goals stay out unless asked for, and
+ * each list's Inbox comes after its goals.
+ */
+export function boardGoals(
+  lists: ReadonlyArray<BrainstormTaskList>,
+  spaceId: string,
+  includeDone = false,
+): BoardGoal[] {
+  const goals: BoardGoal[] = [];
+  const inboxes: BoardGoal[] = [];
+  for (const list of lists) {
+    if (spaceId !== ALL_SPACE_ID && list.spaceId !== spaceId) continue;
+    for (const goal of list.goals) {
+      if (goal.done && !includeDone) continue;
+      const tasks = list.tasks.filter((task) => task.goal === goal.title);
+      const entry: BoardGoal = {
+        key: `${list.spaceId}:${goal.number}:${goal.title}`,
+        spaceId: list.spaceId,
+        spaceName: list.spaceName,
+        title: goal.title,
+        done: goal.done,
+        notes: goal.notes,
+        tasks: [...tasks.filter((task) => !task.done), ...tasks.filter((task) => task.done)],
+      };
+      if (goal.title === INBOX_GOAL) {
+        if (tasks.some((task) => !task.done) || includeDone) inboxes.push(entry);
+      } else {
+        goals.push(entry);
+      }
+    }
+  }
+  return [...goals, ...inboxes];
 }

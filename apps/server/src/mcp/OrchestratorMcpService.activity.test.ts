@@ -19,6 +19,7 @@ import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import type * as McpInvocationContext from "./McpInvocationContext.ts";
+import * as ManagerScope from "./ManagerScope.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 
 const environmentId = EnvironmentId.make("environment-mcp-orchestrator-detail");
@@ -455,4 +456,83 @@ it("readThread reaches a thread the user attached as context, but not one an age
       .pipe(Effect.flip);
     expect(write.code).toBe("thread_not_found");
   }).pipe(Effect.provide(layer), Effect.runPromise);
+});
+
+it("only the manager thread acts on threads in other projects", async () => {
+  const foreignProjectId = ProjectId.make("project-mcp-orchestrator-other");
+  const foreignThreadId = ThreadId.make("thread-mcp-orchestrator-other");
+  const projection = (threadId: ThreadId, project: ProjectId) =>
+    ({
+      thread: {
+        ...baseThread({ threadId, title: "T", instanceId: parentInstanceId, model: "gpt-5.4" }),
+        projectId: project,
+      },
+      runs: [],
+      visibleTurnItems: [],
+      runtimeRequests: [],
+      messages: [],
+      contextTransfers: [],
+      subagents: [],
+      updatedAt: now,
+    }) as unknown as OrchestrationV2ThreadProjection;
+  const interrupted: Array<ProjectId> = [];
+  const services = (managerThreadId: ThreadId | null) =>
+    OrchestratorMcpService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadRecords: (threadId) =>
+              threadId === parentThreadId
+                ? Effect.succeed(projection(parentThreadId, projectId))
+                : Effect.die(`unexpected thread ${threadId}`),
+            getThreadShell: (threadId) =>
+              Effect.succeed(
+                threadId === foreignThreadId
+                  ? projection(foreignThreadId, foreignProjectId).thread
+                  : null,
+              ) as never,
+            getProjectThreadRecords: (input) =>
+              input.projectId === foreignProjectId && input.threadId === foreignThreadId
+                ? Effect.succeed(projection(foreignThreadId, foreignProjectId))
+                : Effect.fail(
+                    new ThreadManagementService.ThreadManagementThreadNotFoundError({
+                      projectId: input.projectId,
+                      threadId: input.threadId,
+                    }),
+                  ),
+            interruptThread: (input) =>
+              Effect.sync(() => {
+                interrupted.push(input.projectId);
+                return { type: "no_active_run" } as never;
+              }),
+          } satisfies Partial<ThreadManagementService.ThreadManagementService["Service"]>),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({
+            list: () => Effect.succeed({ tasks: [] }),
+          }),
+          Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+            list: () => Effect.succeed([]),
+          }),
+          Layer.succeed(ManagerScope.ManagerScope, {
+            isManagerThread: (threadId) => Effect.succeed(threadId === managerThreadId),
+          }),
+          NodeCrypto.layer,
+        ),
+      ),
+    );
+  const interrupt = Effect.gen(function* () {
+    const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+    return yield* service.interruptThread(makeScope(), { threadId: foreignThreadId });
+  });
+
+  const denied = await interrupt.pipe(
+    Effect.flip,
+    Effect.provide(services(null)),
+    Effect.runPromise,
+  );
+  expect(denied.code).toBe("thread_not_found");
+  expect(interrupted).toEqual([]);
+
+  await interrupt.pipe(Effect.provide(services(parentThreadId)), Effect.runPromise);
+  expect(interrupted).toEqual([foreignProjectId]);
 });

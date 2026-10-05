@@ -1,7 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Brainstorm: one agent chat per space, working in the space's knowledge base
- * ("brain") repository, with a markdown task list kept in that repository.
+ * Brainstorm: the manager chat and the goal and task lists it runs. The
+ * manager is the All space's chat; it works in the default profile's
+ * knowledge base ("brain") repository and reaches every project's threads.
+ * Each space keeps its goals and tasks as markdown in a brain repository.
  *
  * Where things live:
  * - A profile space `p` works in `~/code/p/p-brain` and keeps its tasks in
@@ -59,12 +61,13 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveCodeProfiles, resolveDefaultCodeProfile } from "../workspace/CodeProfiles.ts";
+import * as ManagerScope from "../mcp/ManagerScope.ts";
 import {
   addTask,
   deleteTask,
+  migrateToGoals,
   parseTaskMarkdown,
-  TaskAmbiguousError,
-  TaskNotFoundError,
+  updateGoal,
   updateTask,
 } from "./taskMarkdown.ts";
 import {
@@ -205,11 +208,7 @@ export function findSpace(
 }
 
 const describeTaskError = (cause: unknown): string =>
-  cause instanceof TaskNotFoundError || cause instanceof TaskAmbiguousError
-    ? cause.message
-    : cause instanceof Error
-      ? cause.message
-      : String(cause);
+  cause instanceof Error ? cause.message : String(cause);
 
 export class BrainstormService extends Context.Service<
   BrainstormService,
@@ -327,16 +326,20 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const path = taskPathOf(ctx, space);
       const text = path === null ? "" : yield* readTextOrEmpty(path);
+      const file = parseTaskMarkdown(text);
       return {
         spaceId: space.id,
         spaceName: space.name,
         path,
-        tasks: parseTaskMarkdown(text).tasks.map(({ number, title, done, notes, threadIds }) => ({
+        profile: space.kind === "profile" ? space.profile : null,
+        goals: file.goals.map(({ number, title, done, notes }) => ({ number, title, done, notes })),
+        tasks: file.tasks.map(({ number, title, done, notes, threadIds, goal }) => ({
           number,
           title,
           done,
           notes,
           threadIds,
+          goal,
         })),
       };
     });
@@ -448,7 +451,18 @@ export const make = Effect.gen(function* () {
       yield* editTasks(ctx, space, (text) => {
         switch (mutation.type) {
           case "add":
-            return { text: addTask(text, { title: mutation.title }).text, result: undefined };
+            return {
+              text: addTask(text, {
+                title: mutation.title,
+                ...(mutation.goal === undefined ? {} : { goal: mutation.goal }),
+              }).text,
+              result: undefined,
+            };
+          case "set-goal-done":
+            return {
+              text: updateGoal(text, mutation.goal, { done: mutation.done }).text,
+              result: undefined,
+            };
           case "set-done":
             return {
               text: updateTask(text, guard(text, mutation.number, mutation.title), {
@@ -644,13 +658,13 @@ export const make = Effect.gen(function* () {
         const snapshot = yield* orchestrator
           .getShellSnapshot({ location: "active" })
           .pipe(Effect.mapError(failWith("Could not read the threads.")));
-        // An idle thread in the brain's own checkout; the popup sends the first message.
+        // An idle thread in the brain's own checkout; the user sends the first message.
         yield* launches
           .launch({
             commandId: CommandId.make(`server:brainstorm-thread:${yield* uuid}`),
             threadId,
             projectId: project.id,
-            title: `Brainstorm · ${space.name}`,
+            title: space.kind === "all" ? "Manager" : `Brainstorm · ${space.name}`,
             modelSelection: yield* modelSelectionFor(project, snapshot.threads),
             runtimeMode: resolveProjectSettings(settings, project.id).settings.defaultRuntimeMode,
             interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -718,6 +732,19 @@ export const make = Effect.gen(function* () {
     }),
   );
 
+  // Task lists from before goals get an Inbox heading over their loose tasks,
+  // once per file; the edit only adds that heading.
+  const migrated = new Set<string>();
+  const migrate = (ctx: BrainstormContext, space: BrainstormSpace, path: string) =>
+    migrated.has(path)
+      ? Effect.void
+      : editTasks(ctx, space, (text) => ({ text: migrateToGoals(text), result: undefined })).pipe(
+          Effect.tap(() => Effect.sync(() => migrated.add(path))),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("could not move tasks under an Inbox goal", { path, cause }),
+          ),
+        );
+
   const currentState = Effect.gen(function* () {
     const ctx = yield* context;
     const lists: BrainstormTaskList[] = [];
@@ -729,6 +756,7 @@ export const make = Effect.gen(function* () {
         directories.add(NodePath.dirname(path));
         // Watch the brain itself too, so a first `tasks/` folder is noticed.
         directories.add(NodePath.dirname(NodePath.dirname(path)));
+        yield* migrate(ctx, space, path);
       }
       lists.push(yield* readTaskList(ctx, space));
     }
@@ -774,3 +802,18 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(BrainstormService, make);
+
+/** The All space's chat is the manager; its thread tools reach every project. */
+export const managerScopeLayer = Layer.effect(
+  ManagerScope.ManagerScope,
+  Effect.gen(function* () {
+    const brainstorm = yield* BrainstormService;
+    return {
+      isManagerThread: (threadId: ThreadId) =>
+        brainstorm.spaceOfThread(threadId).pipe(Effect.map((space) => space?.kind === "all")),
+    };
+  }),
+);
+
+/** The service together with the manager scope it decides. */
+export const layerWithManagerScope = managerScopeLayer.pipe(Layer.provideMerge(layer));

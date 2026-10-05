@@ -31,14 +31,9 @@ export function onOpenCommandPalette(
   return () => window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, handler);
 }
 
-/**
- * Read at event time so consumers do not subscribe to transient dialog state.
- * The brainstorm popup counts too: like the palette, it floats over the chat
- * and owns the keyboard while open.
- */
+/** Read at event time so consumers do not subscribe to transient dialog state. */
 export function isCommandPaletteOpen(): boolean {
   return (
-    typeof document !== "undefined" &&
-    document.querySelector("[data-command-palette], [data-brainstorm-popup][data-open]") !== null
+    typeof document !== "undefined" && document.querySelector("[data-command-palette]") !== null
   );
 }

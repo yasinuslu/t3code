@@ -312,12 +312,20 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
-  it.effect("moves the first brainstorm.toggle default off mod+shift+space on startup", () =>
+  it.effect("drops entries for the removed brainstorm.toggle command on startup", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
-      yield* writeKeybindingsConfig(keybindingsConfigPath, [
-        { key: "mod+shift+space", command: "brainstorm.toggle" },
-      ]);
+      // Written raw: the removed command no longer encodes.
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      yield* fileSystem.makeDirectory(path.dirname(keybindingsConfigPath), { recursive: true });
+      yield* fileSystem.writeFileString(
+        keybindingsConfigPath,
+        JSON.stringify([
+          { key: "ctrl+alt+space", command: "brainstorm.toggle" },
+          { key: "mod+alt+u", command: "usage.open" },
+        ]),
+      );
 
       yield* Effect.gen(function* () {
         const keybindings = yield* Keybindings.Keybindings;
@@ -325,11 +333,9 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       });
 
       const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
-      assert.deepStrictEqual(
-        persisted
-          .filter((entry) => entry.command === "brainstorm.toggle")
-          .map((entry) => entry.key),
-        ["ctrl+alt+space"],
+      assert.isFalse(persisted.some((entry) => String(entry.command) === "brainstorm.toggle"));
+      assert.isTrue(
+        persisted.some((entry) => entry.command === "usage.open" && entry.key === "mod+alt+u"),
       );
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
