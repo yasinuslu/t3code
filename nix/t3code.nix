@@ -118,6 +118,16 @@ let
       + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
         install -D --mode=555 native/browser-secret/build/*/t3-browser-secret \
           "$out"/libexec/t3code/apps/desktop/prod-resources/browser-secret/t3-browser-secret
+
+        # node-pty 1.2.0-beta ships prebuilds, so nixpkgs' `pnpm rebuild` no longer compiles a
+        # build/Release/pty.node and the server loads prebuilds/linux-*/pty.node instead. That
+        # blob links libstdc++.so.6, which NixOS has no global copy of, and dontPatchELF leaves
+        # it unpatched: every server start died with NodePtyModuleLoadError. Patch only the
+        # host prebuild, leaving the other vendored blobs alone.
+        find "$out"/libexec/t3code \
+          -path '*/node-pty/prebuilds/linux-${pkgs.stdenv.hostPlatform.node.arch}/pty.node' \
+          -exec chmod u+w {} + \
+          -exec ${lib.getExe pkgs.patchelf} --add-rpath ${lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]} {} +
       '';
 
     pnpmDeps = pkgs.fetchPnpmDeps {
