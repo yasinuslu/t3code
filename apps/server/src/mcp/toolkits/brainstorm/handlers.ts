@@ -3,6 +3,7 @@ import {
   type BrainstormSpace,
   CommandId,
   DEFAULT_MODEL,
+  type EnvironmentId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   MessageId,
   type ModelSelection,
@@ -13,6 +14,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { formatThreadMarkdownLink } from "@t3tools/shared/threadLinks";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -85,11 +87,16 @@ export function lastActivityOf(thread: ThreadShell): string {
 const isTopLevel = (thread: ThreadShell) =>
   thread.deletedAt === null && thread.lineage.relationshipToParent !== "subagent";
 
-export function describeThread(context: BrainstormContext, thread: ThreadShell): ThreadEntry {
+export function describeThread(
+  context: BrainstormContext,
+  thread: ThreadShell,
+  environmentId: EnvironmentId,
+): ThreadEntry {
   const project = context.projects.find((candidate) => candidate.id === thread.projectId);
   return {
     threadId: thread.id,
     title: thread.title,
+    link: formatThreadMarkdownLink({ environmentId, threadId: thread.id, title: thread.title }),
     status: threadStatusOf(thread),
     project: project?.title ?? thread.projectId,
     projectId: thread.projectId,
@@ -138,7 +145,8 @@ const make = Effect.gen(function* () {
     const context = yield* brainstorm.context;
     const brainstormSpace = yield* brainstorm.spaceOfThread(invocation.threadId);
     if (brainstormSpace !== null) {
-      return { space: brainstormSpace, taskHome: null, context, threadId: invocation.threadId };
+      const { environmentId, threadId } = invocation;
+      return { space: brainstormSpace, taskHome: null, context, threadId, environmentId };
     }
     const all = context.spaces.find((candidate) => candidate.id === ALL_SPACE_ID);
     if (!all) return yield* fail("The All space is missing.");
@@ -147,7 +155,13 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orElseSucceed(() => null));
     const homeId = own === null ? null : homeSpaceIdOf(context, own.projectId);
     const taskHome = context.spaces.find((candidate) => candidate.id === homeId) ?? null;
-    return { space: all, taskHome, context, threadId: invocation.threadId };
+    return {
+      space: all,
+      taskHome,
+      context,
+      threadId: invocation.threadId,
+      environmentId: invocation.environmentId,
+    };
   });
 
   /** Active and (optionally) archived thread shells, without subagent children. */
@@ -213,12 +227,12 @@ const make = Effect.gen(function* () {
 
   const refreshed = (threadId: string) =>
     Effect.gen(function* () {
-      const { context } = yield* scope;
+      const { context, environmentId } = yield* scope;
       const shell = yield* orchestrator
         .getThreadShell(ThreadId.make(threadId))
         .pipe(Effect.mapError(() => fail("Could not read the thread.")));
       if (shell === null) return yield* fail(`Thread ${threadId} is gone.`);
-      return describeThread(context, shell);
+      return describeThread(context, shell, environmentId);
     });
 
   const couldNot = (what: string) => (cause: unknown) =>
@@ -357,7 +371,7 @@ const make = Effect.gen(function* () {
 
     list_threads: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
+        const { space, context, environmentId } = yield* scope;
         let filterSpace = space;
         if (input.space !== undefined) {
           const requested = findSpace(context, input.space);
@@ -377,7 +391,7 @@ const make = Effect.gen(function* () {
           .filter((thread) => inScope(context, filterSpace, thread.projectId))
           .filter((thread) => project === null || thread.projectId === project.id)
           .filter((thread) => input.includeSettled === true || thread.settledOverride !== "settled")
-          .map((thread) => describeThread(context, thread))
+          .map((thread) => describeThread(context, thread, environmentId))
           .toSorted((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
         const limit = Math.max(1, Math.min(input.limit ?? 40, 200));
         return { threads: threads.slice(0, limit), total: threads.length };
@@ -385,7 +399,7 @@ const make = Effect.gen(function* () {
 
     read_thread: (input) =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
+        const { space, context, environmentId } = yield* scope;
         const thread = yield* requireThread(context, space, input.threadId);
         const turns = Math.max(1, Math.min(input.turns ?? 3, 20));
         const records = yield* orchestrator
@@ -411,7 +425,7 @@ const make = Effect.gen(function* () {
             text: cut(message.text, MESSAGE_TEXT_LIMIT),
             createdAt: DateTime.formatIso(message.createdAt),
           }));
-        return { thread: describeThread(context, thread), messages };
+        return { thread: describeThread(context, thread, environmentId), messages };
       }),
 
     list_projects: (input) =>
@@ -521,7 +535,7 @@ const make = Effect.gen(function* () {
 
     start_thread: (input) =>
       Effect.gen(function* () {
-        const { space, taskHome, context } = yield* scope;
+        const { space, taskHome, context, environmentId } = yield* scope;
         const project = yield* findProject(context, space, input.project);
         const prompt = input.prompt.trim();
         if (prompt.length === 0) return yield* fail("The first prompt cannot be empty.");
@@ -616,6 +630,7 @@ const make = Effect.gen(function* () {
         return {
           threadId,
           title,
+          link: formatThreadMarkdownLink({ environmentId, threadId, title }),
           project: project.title,
           branch: shell?.branch ?? launched.projection.thread.branch ?? null,
           worktreePath: shell?.worktreePath ?? launched.projection.thread.worktreePath ?? null,

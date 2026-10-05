@@ -53,6 +53,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
+import { formatThreadMarkdownLink } from "@t3tools/shared/threadLinks";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -569,10 +570,18 @@ function threadSettlement(
   };
 }
 
-function listItemFromShell(shell: OrchestrationV2ThreadShell): OrchestratorMcpThreadListItem {
+function listItemFromShell(
+  scope: McpInvocationScope,
+  shell: OrchestrationV2ThreadShell,
+): OrchestratorMcpThreadListItem {
   return {
     threadId: shell.id,
     title: shell.title,
+    link: formatThreadMarkdownLink({
+      environmentId: scope.environmentId,
+      threadId: shell.id,
+      title: shell.title,
+    }),
     createdBy: shell.createdBy,
     creationSource: shell.creationSource,
     status: shell.activityRunStatus ?? shell.status,
@@ -592,6 +601,7 @@ function listItemFromShell(shell: OrchestrationV2ThreadShell): OrchestratorMcpTh
 }
 
 function threadDetail(
+  scope: McpInvocationScope,
   projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "runtimeRequests">,
   itemCount: number,
 ): OrchestratorMcpThreadDetail {
@@ -601,6 +611,11 @@ function threadDetail(
     threadId: projection.thread.id,
     projectId: projection.thread.projectId,
     title: projection.thread.title,
+    link: formatThreadMarkdownLink({
+      environmentId: scope.environmentId,
+      threadId: projection.thread.id,
+      title: projection.thread.title,
+    }),
     createdBy: projection.thread.createdBy,
     creationSource: projection.thread.creationSource,
     status: active?.status ?? latest?.status ?? "idle",
@@ -1109,6 +1124,11 @@ const make = Effect.gen(function* () {
       const response = {
         taskId: task.id,
         childThreadId: task.childThreadId,
+        link: formatThreadMarkdownLink({
+          environmentId: scope.environmentId,
+          threadId: task.childThreadId,
+          title: childControls.thread.title,
+        }),
         childRunId: childRun?.id ?? null,
         childNodeId: task.id,
         status,
@@ -1707,6 +1727,11 @@ const make = Effect.gen(function* () {
                 );
               return {
                 threadId,
+                link: formatThreadMarkdownLink({
+                  environmentId: scope.environmentId,
+                  threadId,
+                  title: projection.thread.title,
+                }),
                 runId: run?.id ?? null,
                 status: run?.status ?? "idle",
                 title: projection.thread.title,
@@ -1757,7 +1782,7 @@ const make = Effect.gen(function* () {
         return {
           projectId: parent.thread.projectId,
           currentThreadId: scope.threadId,
-          threads: page.map(listItemFromShell),
+          threads: page.map((thread) => listItemFromShell(scope, thread)),
           nextCursor,
           total: filtered.length,
         } satisfies OrchestratorMcpThreadListResult;
@@ -1826,7 +1851,7 @@ const make = Effect.gen(function* () {
           }
         }
         return {
-          thread: threadDetail(target, timeline.totalItems),
+          thread: threadDetail(scope, target, timeline.totalItems),
           recentRuns: target.runs
             .toSorted((left, right) => right.ordinal - left.ordinal)
             .slice(0, input.runLimit ?? DEFAULT_THREAD_RUN_LIMIT)

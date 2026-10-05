@@ -1,4 +1,4 @@
-import { BrainstormError } from "@t3tools/contracts";
+import { BrainstormError, OrchestratorMcpThreadLink } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Tool from "effect/unstable/ai/Tool";
 import * as Toolkit from "effect/unstable/ai/Toolkit";
@@ -70,6 +70,7 @@ const TaskListEntry = Schema.Struct({
 const ThreadEntry = Schema.Struct({
   threadId: Schema.String,
   title: Schema.String,
+  link: OrchestratorMcpThreadLink,
   status: ThreadStatus,
   project: Schema.String,
   projectId: Schema.String,
@@ -315,6 +316,7 @@ const StartThreadTool = writeTool(
     success: Schema.Struct({
       threadId: Schema.String,
       title: Schema.String,
+      link: OrchestratorMcpThreadLink,
       project: Schema.String,
       branch: Schema.NullOr(Schema.String),
       worktreePath: Schema.NullOr(Schema.String),
