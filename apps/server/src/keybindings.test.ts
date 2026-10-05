@@ -321,6 +321,7 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       yield* fileSystem.makeDirectory(path.dirname(keybindingsConfigPath), { recursive: true });
       yield* fileSystem.writeFileString(
         keybindingsConfigPath,
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
         JSON.stringify([
           { key: "ctrl+alt+space", command: "brainstorm.toggle" },
           { key: "mod+alt+u", command: "usage.open" },
