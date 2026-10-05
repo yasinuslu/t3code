@@ -2538,19 +2538,19 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   // A per-project resolver (homePathCommand) picks each session's dir from its
   // cwd: one per code profile, so two profiles' sessions never share a dir.
   const profileResolver = (resolved: Array<string>) => ({
-    resolve: (projectRoot: string) => Effect.succeed(`${projectRoot}-profile`),
     resolveForWorkspace: (cwd: string) =>
       Effect.sync(() => {
         resolved.push(cwd);
-        return cwd.startsWith("/code/sn/") ? "/profiles/sn/claude" : "/profiles/yu/claude";
+        const profile = cwd.startsWith("/code/sn/") ? "sn" : "yu";
+        return { path: `/profiles/${profile}/claude`, profile };
       }),
     invalidate: Effect.void,
   });
 
   it.effect.each([
-    { cwd: "/code/sn/project", expected: "/profiles/sn/claude" },
-    { cwd: "/code/yu/project", expected: "/profiles/yu/claude" },
-  ])("launches a session in $cwd with CLAUDE_CONFIG_DIR $expected", ({ cwd, expected }) =>
+    { cwd: "/code/sn/project", expected: "/profiles/sn/claude", profile: "sn" },
+    { cwd: "/code/yu/project", expected: "/profiles/yu/claude", profile: "yu" },
+  ])("launches a session in $cwd with CLAUDE_CONFIG_DIR $expected", ({ cwd, expected, profile }) =>
     Effect.gen(function* () {
       const resolved: Array<string> = [];
       const runtimePolicy = ProviderAdapterV2RuntimePolicy.make({
@@ -2565,7 +2565,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       });
       assert.deepEqual(resolved, [cwd]);
       assert.deepEqual(harness.runtime.providerSession.configDir, {
-        configured: { path: expected, displayPath: expected },
+        configured: { path: expected, displayPath: expected, profile },
       });
       const now = yield* DateTime.now;
       yield* harness.runtime.startTurn(
@@ -2668,7 +2668,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         readonly cwd: string;
         readonly names: ReadonlyArray<string>;
         readonly configDir: string | undefined;
-        readonly projectConfigDir: string | undefined;
+        readonly projectConfigDir: { readonly path: string; readonly profile?: string } | undefined;
       }> = [];
       const runtimePolicy = ProviderAdapterV2RuntimePolicy.make({
         runtimeMode: "full-access",
@@ -2712,7 +2712,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           cwd: "/code/yu/project",
           names: ["fresh-skill"],
           configDir: "/profiles/yu/claude",
-          projectConfigDir: "/profiles/yu/claude",
+          projectConfigDir: { path: "/profiles/yu/claude", profile: "yu" },
         },
       ]);
     }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),

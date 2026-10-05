@@ -1205,6 +1205,31 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+/**
+ * A code profile's Claude config: sessions in the profile's folders use
+ * `configDir`, unless an inherited CLAUDE_CONFIG_DIR is already the default
+ * or one of `extraConfigDirs` (a second login of the same profile).
+ */
+export const CodeProfileClaudeSettings = Schema.Struct({
+  configDir: TrimmedNonEmptyString,
+  extraConfigDirs: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+export type CodeProfileClaudeSettings = typeof CodeProfileClaudeSettings.Type;
+
+/**
+ * A folder tree, such as `~/code/work`, whose repositories share provider
+ * config. A git worktree outside `root` belongs to the profile of its main
+ * checkout. Each provider's config is optional, so a profile can name only
+ * the providers it changes.
+ */
+export const CodeProfile = Schema.Struct({
+  root: TrimmedNonEmptyString,
+  claude: Schema.optionalKey(CodeProfileClaudeSettings),
+});
+export type CodeProfile = typeof CodeProfile.Type;
+
 export const ServerSettings = Schema.Struct({
   worktreeCleanup: WorktreeCleanup.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   storageCleanup: StorageCleanupSettings.pipe(
@@ -1421,6 +1446,13 @@ export const ServerSettings = Schema.Struct({
    * its released name. The mapped model is priced and reported as its target.
    */
   usageModelAliases: Schema.Record(TrimmedNonEmptyString, TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  /**
+   * Code profiles keyed by name. Edited in settings.json only, so absent from
+   * ServerSettingsPatch.
+   */
+  codeProfiles: Schema.Record(TrimmedNonEmptyString, CodeProfile).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
 });

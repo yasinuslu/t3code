@@ -68,6 +68,8 @@ import {
   delegatedTaskProgress,
 } from "../orchestration-v2/SubagentProjection.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import { CodeProfiles } from "../provider/CodeProfiles.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
@@ -778,6 +780,28 @@ const make = Effect.gen(function* () {
         .pipe(Effect.orElseSucceed(() => null));
       return shell?.projectId ?? parent.thread.projectId;
     });
+
+  const codeProfiles = Option.getOrUndefined(yield* Effect.serviceOption(CodeProfiles));
+  const projectStore = Option.getOrUndefined(
+    yield* Effect.serviceOption(ProjectStore.ProjectStoreV2),
+  );
+
+  /** The code profile of a thread's worktree, or of its project root without one. */
+  const threadProfile = Effect.fn("OrchestratorMcpService.threadProfile")(function* (thread: {
+    readonly projectId: OrchestrationV2ThreadProjection["thread"]["projectId"];
+    readonly worktreePath: string | null;
+  }) {
+    if (codeProfiles === undefined) return {};
+    const folder =
+      thread.worktreePath ??
+      (projectStore === undefined
+        ? undefined
+        : Option.getOrUndefined(
+            yield* projectStore.get(thread.projectId).pipe(Effect.orElseSucceed(Option.none)),
+          )?.workspaceRoot);
+    const profile = folder === undefined ? undefined : yield* codeProfiles.resolve(folder);
+    return profile === undefined ? {} : { profile: profile.name };
+  });
 
   const requireCapability = (scope: McpInvocationScope) =>
     scope.capabilities.has("orchestration")
@@ -1773,7 +1797,11 @@ const make = Effect.gen(function* () {
         return {
           projectId: parent.thread.projectId,
           currentThreadId: scope.threadId,
-          threads: page.map(listItemFromShell),
+          threads: yield* Effect.forEach(page, (shell) =>
+            threadProfile(shell).pipe(
+              Effect.map((profile) => ({ ...listItemFromShell(shell), ...profile })),
+            ),
+          ),
           nextCursor,
           total: filtered.length,
         } satisfies OrchestratorMcpThreadListResult;
@@ -1842,7 +1870,10 @@ const make = Effect.gen(function* () {
           }
         }
         return {
-          thread: threadDetail(target, timeline.totalItems),
+          thread: {
+            ...threadDetail(target, timeline.totalItems),
+            ...(yield* threadProfile(target.thread)),
+          },
           recentRuns: target.runs
             .toSorted((left, right) => right.ordinal - left.ordinal)
             .slice(0, input.runLimit ?? DEFAULT_THREAD_RUN_LIMIT)

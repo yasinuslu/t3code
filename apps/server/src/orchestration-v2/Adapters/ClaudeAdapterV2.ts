@@ -102,7 +102,10 @@ import {
   makeClaudeEnvironment,
   resolveClaudeHomePath,
 } from "../../provider/Drivers/ClaudeHome.ts";
-import type { ClaudeConfigDirResolver } from "../../provider/Drivers/ClaudeConfigDirCommand.ts";
+import type {
+  ClaudeConfigDirResolver,
+  ResolvedClaudeConfigDir,
+} from "../../provider/Drivers/ClaudeConfigDirCommand.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeCatalogContextWindow,
@@ -2959,7 +2962,7 @@ export interface ClaudeAdapterV2Options {
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ServerProviderShape["applyUsageLimits"];
-  /** Resolves CLAUDE_CONFIG_DIR per project when the instance sets `homePathCommand`. */
+  /** Resolves CLAUDE_CONFIG_DIR per project from code profiles or `homePathCommand`. */
   readonly configDirResolver?: ClaudeConfigDirResolver;
   /**
    * Receives the full command list whenever a session reloads it
@@ -2970,7 +2973,7 @@ export interface ClaudeAdapterV2Options {
     readonly cwd: string;
     readonly commands: ReadonlyArray<ClaudeSlashCommand>;
     readonly environment: NodeJS.ProcessEnv;
-    readonly projectConfigDir: string | undefined;
+    readonly projectConfigDir: ResolvedClaudeConfigDir | undefined;
   }) => Effect.Effect<void>;
   /** Sink for wake-turn continuation requests; defaults to dropping them. */
   readonly continuationRequests?: {
@@ -3015,7 +3018,8 @@ export function makeClaudeAdapterV2(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;
         const now = yield* DateTime.now;
-        // The instance may pick CLAUDE_CONFIG_DIR per project (`homePathCommand`).
+        // The instance may pick CLAUDE_CONFIG_DIR per project (code profile or
+        // `homePathCommand`).
         // It is resolved once per session from the session's cwd, so every CLI
         // process, skill scan and sign-in hint of the session uses one dir.
         const projectConfigDir =
@@ -3025,11 +3029,12 @@ export function makeClaudeAdapterV2(
         const sessionEnvironment: NodeJS.ProcessEnv =
           projectConfigDir === undefined
             ? adapterOptions.environment
-            : { ...adapterOptions.environment, CLAUDE_CONFIG_DIR: projectConfigDir };
+            : { ...adapterOptions.environment, CLAUDE_CONFIG_DIR: projectConfigDir.path };
         const configuredConfigDir = describeClaudeConfigDir(
           yield* resolveClaudeHomePath({ homePath: "" }, sessionEnvironment).pipe(
             Effect.provideService(Path.Path, path),
           ),
+          projectConfigDir?.profile,
         );
         // Holds the latest session record: the CLI reports the dir it actually
         // used after the launch, and later attaches and releases build on it.

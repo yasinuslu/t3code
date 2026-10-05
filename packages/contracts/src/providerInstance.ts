@@ -102,6 +102,8 @@ export type ProviderInstanceRef = typeof ProviderInstanceRef.Type;
 export const ProviderConfigDir = Schema.Struct({
   path: TrimmedNonEmptyString,
   displayPath: TrimmedNonEmptyString,
+  /** The code profile the workspace belongs to, when one matched. */
+  profile: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type ProviderConfigDir = typeof ProviderConfigDir.Type;
 

@@ -49,6 +49,7 @@ import {
   scopeClaudeModelCatalog,
 } from "../provider/ClaudeModelCatalog.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
+import type { ClaudeConfigDirResolver } from "../provider/Drivers/ClaudeConfigDirCommand.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
 
@@ -74,6 +75,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
   claudeSettings: ClaudeSettings,
   environment?: NodeJS.ProcessEnv,
   modelCatalog: Effect.Effect<ClaudeModelCatalog> = Effect.succeed(BUNDLED_CLAUDE_MODEL_CATALOG),
+  configDirResolver?: ClaudeConfigDirResolver,
 ) {
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -185,6 +187,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
+      // Same config dir (and login) as a session in this workspace would use.
+      const projectConfigDir = configDirResolver
+        ? yield* configDirResolver.resolveForWorkspace(cwd)
+        : undefined;
+      const environment = projectConfigDir
+        ? { ...claudeEnvironment, CLAUDE_CONFIG_DIR: projectConfigDir.path }
+        : claudeEnvironment;
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
         operation === "generateThreadTitle"
@@ -217,10 +226,10 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--permission-mode",
           "dontAsk",
         ],
-        { env: claudeEnvironment },
+        { env: environment },
       );
       const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        env: claudeEnvironment,
+        env: environment,
         cwd: workingDirectory,
         shell: spawnCommand.shell,
         stdin: {

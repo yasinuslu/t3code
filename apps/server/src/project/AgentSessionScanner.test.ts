@@ -20,6 +20,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import { CodeProfiles } from "../provider/CodeProfiles.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 
@@ -52,6 +53,8 @@ interface ScannerTestInput {
   /** Base dir for the test ServerConfig; worktreesDir derives from it. */
   readonly configBaseDir?: string;
   readonly providerInstances?: ContractServerSettings["providerInstances"];
+  /** Claude dirs the code profiles name; no CodeProfiles service when absent. */
+  readonly codeProfileClaudeDirs?: ReadonlyArray<string>;
 }
 
 const makeScannerTestLayer = (input: ScannerTestInput) =>
@@ -72,6 +75,16 @@ const makeScannerTestLayer = (input: ScannerTestInput) =>
           input.configBaseDir ?? { prefix: "t3code-scanner-config-" },
         ),
         makeProjectStoreLayer(input.importedWorkspaceRoots ?? []),
+        input.codeProfileClaudeDirs === undefined
+          ? Layer.empty
+          : Layer.mock(CodeProfiles)({
+              claudeConfigDirs: Effect.succeed(
+                input.codeProfileClaudeDirs.map((dir, index) => ({
+                  profile: `profile-${index}`,
+                  dir,
+                })),
+              ),
+            }),
       ),
     ),
   );
@@ -683,6 +696,45 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
           codexWorkspace,
           claudeWorkspace,
         ]);
+      }),
+    );
+
+    it.effect("scans code profile dirs for the instance that leaves the dir to the CLI", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const claudeHomePath = yield* makeTempDir("t3code-claude-default-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const profileHome = yield* makeTempDir("t3code-claude-profile-");
+        const workspace = yield* makeTempDir("t3code-workspace-profile-");
+        yield* writeTranscript({
+          filePath: path.join(profileHome, "projects", "-profile", "session.jsonl"),
+          contents: claudeSessionLine(workspace),
+          mtimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        });
+        const claudeInstance = (config: { homePath?: string }) => ({
+          [ProviderInstanceId.make("claudeAgent")]: {
+            driver: ProviderDriverKind.make("claudeAgent"),
+            environment: [{ name: "CLAUDE_CONFIG_DIR", value: claudeHomePath, sensitive: false }],
+            config,
+          },
+        });
+
+        const inherited = yield* runScan({
+          claudeHomePath,
+          codexHomePath,
+          providerInstances: claudeInstance({}),
+          codeProfileClaudeDirs: [profileHome],
+        });
+        expect(inherited.candidates.map((candidate) => candidate.path)).toEqual([workspace]);
+
+        // An explicit homePath pins the instance, so profile dirs have no owner.
+        const pinned = yield* runScan({
+          claudeHomePath,
+          codexHomePath,
+          providerInstances: claudeInstance({ homePath: claudeHomePath }),
+          codeProfileClaudeDirs: [profileHome],
+        });
+        expect(pinned.candidates).toEqual([]);
       }),
     );
 

@@ -1,14 +1,18 @@
 /**
- * Per-project Claude config dir from a user command (`homePathCommand`).
+ * Per-workspace Claude config dir, from the workspace's code profile
+ * (`settings.codeProfiles`) or a user command (`homePathCommand`).
  *
  * Some setups pick CLAUDE_CONFIG_DIR per project (a wrapper binary, a direnv
  * rule). Instead of guessing, the instance can name a shell command that
  * prints the dir for a project; T3 runs it in the project's workspace root and
  * launches the CLI with that dir as an explicit CLAUDE_CONFIG_DIR, so the
- * header, transcripts, skills and resume all agree on one dir.
+ * header, transcripts, skills and resume all agree on one dir. A code profile
+ * names the dir directly and wins over the command.
  *
  * @module ClaudeConfigDirCommand
  */
+import * as NodeOS from "node:os";
+
 import type { ClaudeSettings } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Data from "effect/Data";
@@ -20,6 +24,7 @@ import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { expandHomePath } from "../../pathExpansion.ts";
+import type { CodeProfiles } from "../CodeProfiles.ts";
 import { spawnAndCollect } from "../providerSnapshot.ts";
 
 const quote = Schema.encodeSync(Schema.fromJsonString(Schema.String));
@@ -109,38 +114,51 @@ export const resolveMainCheckoutRoot = Effect.fn("resolveMainCheckoutRoot")(func
   return /[\\/]\.git$/u.test(commonDir) ? path.dirname(commonDir) : undefined;
 });
 
+export interface ResolvedClaudeConfigDir {
+  readonly path: string;
+  /** The code profile the workspace belongs to, when one matched. */
+  readonly profile?: string;
+}
+
 export interface ClaudeConfigDirResolver {
-  /** The dir for a project root, or `undefined` when the command failed. */
-  readonly resolve: (projectRoot: string) => Effect.Effect<string | undefined>;
   /**
-   * The dir for a session or workspace in `cwd`: runs the command in
-   * `projectRoot` when given, otherwise in the main checkout of the repository
-   * `cwd` is in (so a worktree resolves like its project), otherwise in `cwd`.
+   * The dir for a session or workspace in `cwd`, or `undefined` to keep the
+   * instance's own dir. In order: the instance's `homePath` (still labelled
+   * with the workspace's code profile), the code profile's Claude dir, then
+   * the `homePathCommand` output. The command runs in `projectRoot` when
+   * given, otherwise in the main checkout of the repository `cwd` is in (so a
+   * worktree resolves like its project), otherwise in `cwd`.
    */
   readonly resolveForWorkspace: (
     cwd: string,
     projectRoot?: string | undefined,
-  ) => Effect.Effect<string | undefined>;
+  ) => Effect.Effect<ResolvedClaudeConfigDir | undefined>;
   readonly invalidate: Effect.Effect<void>;
 }
 
 /**
- * Build the per-instance resolver, or `undefined` when the instance does not
- * use a command (none set, or an explicit `homePath` wins). Successful results
- * are cached per project root for the life of the instance, which is rebuilt
- * whenever its settings change; failures are logged and retried next time.
+ * Build the per-instance resolver, or `undefined` when nothing can pick a dir
+ * per workspace (no code profiles service and no command, or an explicit
+ * `homePath` without profiles). Command results are cached per project root
+ * for the life of the instance, which is rebuilt whenever its settings
+ * change; failures are logged and retried next time.
  */
 export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolver")(function* (
   config: Pick<ClaudeSettings, "homePath" | "homePathCommand">,
   environment?: NodeJS.ProcessEnv,
-  options?: { readonly timeout?: Duration.Input | undefined },
+  options?: {
+    readonly timeout?: Duration.Input | undefined;
+    readonly codeProfiles?: CodeProfiles["Service"] | undefined;
+  },
 ): Effect.fn.Return<
   ClaudeConfigDirResolver | undefined,
   never,
   ChildProcessSpawner.ChildProcessSpawner | Path.Path
 > {
-  const command = config.homePathCommand.trim();
-  if (command.length === 0 || config.homePath.trim().length > 0) return undefined;
+  const homePath = config.homePath.trim();
+  const command = homePath.length > 0 ? "" : config.homePathCommand.trim();
+  const codeProfiles = options?.codeProfiles;
+  if (command.length === 0 && codeProfiles === undefined) return undefined;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const path = yield* Path.Path;
   const cache = yield* Cache.makeWith(
@@ -159,25 +177,51 @@ export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolve
       timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
     },
   );
-  const resolve = (projectRoot: string) =>
-    Cache.get(cache, projectRoot).pipe(
+  const runCommand = Effect.fn("ClaudeConfigDirResolver.runCommand")(function* (
+    cwd: string,
+    projectRoot: string | undefined,
+  ) {
+    if (command.length === 0) return undefined;
+    const root =
+      projectRoot ??
+      (yield* resolveMainCheckoutRoot(cwd).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(Path.Path, path),
+      )) ??
+      cwd;
+    return yield* Cache.get(cache, root).pipe(
       Effect.catch((error: ClaudeConfigDirCommandError) =>
         Effect.logWarning("Claude config dir command failed; using the default dir", {
           error: error.message,
         }).pipe(Effect.as(undefined)),
       ),
     );
+  });
   return {
-    resolve,
-    resolveForWorkspace: (cwd, projectRoot) =>
-      Effect.gen(function* () {
-        if (projectRoot !== undefined) return yield* resolve(projectRoot);
-        const mainCheckout = yield* resolveMainCheckoutRoot(cwd).pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provideService(Path.Path, path),
-        );
-        return yield* resolve(mainCheckout ?? cwd);
-      }),
+    resolveForWorkspace: Effect.fn("ClaudeConfigDirResolver.resolveForWorkspace")(function* (
+      cwd: string,
+      projectRoot?: string | undefined,
+    ) {
+      const profile = codeProfiles
+        ? yield* codeProfiles.resolve(projectRoot ?? cwd, environment)
+        : undefined;
+      const label = profile ? { profile: profile.name } : {};
+      if (homePath.length > 0) {
+        return profile ? { path: path.resolve(expandHomePath(homePath)), ...label } : undefined;
+      }
+      if (profile?.claudeConfigDir !== undefined) {
+        return { path: profile.claudeConfigDir, ...label };
+      }
+      const commandDir = yield* runCommand(cwd, projectRoot);
+      if (commandDir !== undefined) return { path: commandDir, ...label };
+      if (profile === undefined) return undefined;
+      // A profile without its own Claude dir still labels the workspace.
+      const inherited = environment?.CLAUDE_CONFIG_DIR?.trim();
+      return {
+        path: inherited ? path.resolve(inherited) : path.join(NodeOS.homedir(), ".claude"),
+        ...label,
+      };
+    }),
     invalidate: Cache.invalidateAll(cache),
   };
 });

@@ -49,6 +49,7 @@ import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 
 import * as ServerConfig from "../config.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import { CodeProfiles } from "../provider/CodeProfiles.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -624,6 +625,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig.ServerConfig;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const codeProfiles = Option.getOrUndefined(yield* Effect.serviceOption(CodeProfiles));
   const projectStore = yield* ProjectStore.ProjectStoreV2;
   const baseDir = path.resolve(serverConfig.baseDir);
   const worktreesDir = path.resolve(serverConfig.worktreesDir);
@@ -1124,6 +1126,9 @@ export const make = Effect.gen(function* () {
       });
       const homes: Array<{ homePath: string; providerInstanceId: ProviderInstanceId }> = [];
       const seenHomes = new Set<string>();
+      // The first Claude instance without a `homePath` picks the dir per
+      // workspace, so it owns the code profiles' dirs.
+      let profileDirsOwner: ProviderInstanceId | undefined;
       for (const { instanceId, config: instance } of instances) {
         const homeVariable = source === "claudeAgent" ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
         const environmentHome =
@@ -1135,6 +1140,7 @@ export const make = Effect.gen(function* () {
           const config = decodeClaudeSettings(instance.config ?? {});
           if (Option.isNone(config)) continue;
           homePath = resolveClaudeConfigDir(config.value.homePath, environmentHome);
+          if (config.value.homePath.trim().length === 0) profileDirsOwner ??= instanceId;
         } else {
           const config = decodeCodexSettings(instance.config ?? {});
           if (Option.isNone(config)) continue;
@@ -1154,6 +1160,14 @@ export const make = Effect.gen(function* () {
         if (seenHomes.has(homeKey)) continue;
         seenHomes.add(homeKey);
         homes.push({ homePath, providerInstanceId: instanceId });
+      }
+      if (profileDirsOwner !== undefined && codeProfiles !== undefined) {
+        for (const { dir } of yield* codeProfiles.claudeConfigDirs) {
+          const homeKey = `${source}\0${yield* directoryIdentity(dir)}`;
+          if (seenHomes.has(homeKey)) continue;
+          seenHomes.add(homeKey);
+          homes.push({ homePath: dir, providerInstanceId: profileDirsOwner });
+        }
       }
 
       const transcriptCandidates: Array<TranscriptCandidate> = [];
