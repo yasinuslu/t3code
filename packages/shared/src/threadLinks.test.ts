@@ -1,7 +1,11 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
 
-import { formatThreadLinkHref, formatThreadMarkdownLink, parseThreadLinkHref } from "./threadLinks";
+import {
+  formatThreadLinkHref,
+  formatThreadMarkdownLink,
+  parseThreadLinkHref,
+} from "./threadLinks.ts";
 
 const target = {
   environmentId: EnvironmentId.make("env-1"),
