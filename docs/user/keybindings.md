@@ -138,10 +138,6 @@ through the pages you have visited, like a browser's back and forward buttons.
 [new-thread defaults](./thread-sidebar.md#start-a-thread). `chat.newWithoutProject`
 (`mod+alt+n`) starts a thread [without a project](./thread-sidebar.md#start-without-a-project).
 
-`brainstorm.toggle` (`ctrl+alt+space` by default) opens the
-[brainstorm](./brainstorm.md) popup for the active space. The desktop app also registers it
-system-wide while it runs; a `when` condition keeps a binding in the app only.
-
 ## Right panel surfaces
 
 Each right-panel surface has a `Ctrl+Alt` chord that works anywhere in the app,

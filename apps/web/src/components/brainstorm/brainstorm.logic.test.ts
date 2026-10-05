@@ -1,14 +1,15 @@
 import {
-  type KeybindingShortcut,
+  type BrainstormTaskList,
   type ModelSelection,
   ProviderInstanceId,
-  type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { initialSpaceState, type Space } from "../../spaceStore";
+import { ALL_SPACE_ID, initialSpaceState, type Space } from "../../spaceStore";
 import {
-  brainstormAccelerator,
+  boardGoals,
+  boardThreadStatus,
+  needsYou,
   brainstormActivity,
   brainstormModelChoice,
   brainstormModelSelection,
@@ -17,22 +18,8 @@ import {
   isBrainstormModelShortcut,
   membershipChangesToAdopt,
   otherBrainstormModel,
-  shortcutToAccelerator,
   toolStepsOf,
 } from "./brainstorm.logic";
-
-const shortcut = (
-  key: string,
-  modifiers: Partial<KeybindingShortcut> = {},
-): KeybindingShortcut => ({
-  key,
-  metaKey: false,
-  ctrlKey: false,
-  shiftKey: false,
-  altKey: false,
-  modKey: false,
-  ...modifiers,
-});
 
 describe("brainstormSpacesInput", () => {
   it("classifies spaces and keeps only this environment's memberships", () => {
@@ -77,39 +64,6 @@ describe("membershipChangesToAdopt", () => {
       ["env-1:d", "s2", true],
       ["env-1:b", "s2", false],
     ]);
-  });
-});
-
-describe("shortcutToAccelerator", () => {
-  it("maps keybinding shortcuts to Electron accelerators", () => {
-    expect(shortcutToAccelerator(shortcut(" ", { modKey: true, shiftKey: true }))).toBe(
-      "CommandOrControl+Shift+Space",
-    );
-    expect(shortcutToAccelerator(shortcut("b", { ctrlKey: true, altKey: true }))).toBe(
-      "Control+Alt+B",
-    );
-    expect(shortcutToAccelerator(shortcut("f5", { metaKey: true }))).toBe("Super+F5");
-    expect(shortcutToAccelerator(shortcut("arrowup", { modKey: true }))).toBe(
-      "CommandOrControl+Up",
-    );
-  });
-
-  it("never registers a bare key system-wide", () => {
-    expect(shortcutToAccelerator(shortcut("b"))).toBeNull();
-  });
-
-  it("uses the last unconditional binding of the command", () => {
-    const keybindings = [
-      { command: "brainstorm.toggle", shortcut: shortcut(" ", { modKey: true, shiftKey: true }) },
-      {
-        command: "brainstorm.toggle",
-        shortcut: shortcut("b", { modKey: true }),
-        whenAst: { type: "identifier", name: "terminalFocus" },
-      },
-      { command: "chat.new", shortcut: shortcut("n", { modKey: true }) },
-    ] as ResolvedKeybindingsConfig;
-    expect(brainstormAccelerator(keybindings)).toBe("CommandOrControl+Shift+Space");
-    expect(brainstormAccelerator([])).toBeNull();
   });
 });
 
@@ -278,5 +232,96 @@ describe("brainstorm model", () => {
     expect(isBrainstormModelShortcut(key({ ctrlKey: true }), false)).toBe(true);
     expect(isBrainstormModelShortcut(key({ metaKey: true, shiftKey: true }), true)).toBe(false);
     expect(isBrainstormModelShortcut(key({}), true)).toBe(false);
+  });
+});
+
+describe("board", () => {
+  const shell = (overrides: Partial<Parameters<typeof boardThreadStatus>[0] & object> = {}) => ({
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    archivedAt: null,
+    settledOverride: null,
+    runtime: null,
+    latestRun: null,
+    ...overrides,
+  });
+
+  it("puts what needs the user before activity and outcome", () => {
+    expect(boardThreadStatus(undefined)).toBe("gone");
+    expect(
+      boardThreadStatus(shell({ hasPendingApprovals: true, runtime: { status: "running" } })),
+    ).toBe("needs-approval");
+    expect(boardThreadStatus(shell({ hasPendingUserInput: true }))).toBe("needs-input");
+    expect(boardThreadStatus(shell({ runtime: { status: "running" } }))).toBe("working");
+    expect(boardThreadStatus(shell({ latestRun: { status: "failed" } }))).toBe("failed");
+    expect(boardThreadStatus(shell({ runtime: { status: "completed" } }))).toBe("finished");
+    expect(
+      boardThreadStatus(shell({ settledOverride: "settled", runtime: { status: "failed" } })),
+    ).toBe("settled");
+    expect(boardThreadStatus(shell({ archivedAt: "2026-10-01T00:00:00Z" }))).toBe("archived");
+  });
+
+  it("lists approvals, questions and failures under Needs you", () => {
+    const approval = shell({ hasPendingApprovals: true });
+    const question = shell({ hasPendingUserInput: true });
+    const failed = shell({ runtime: { status: "failed" } });
+    const settledFailure = shell({ settledOverride: "settled", runtime: { status: "failed" } });
+    const working = shell({ runtime: { status: "running" } });
+    expect(needsYou([approval, working, question, settledFailure, failed])).toEqual([
+      approval,
+      question,
+      failed,
+    ]);
+  });
+
+  const task = (number: number, title: string, goal: string, done = false) => ({
+    number,
+    title,
+    done,
+    notes: [],
+    threadIds: [],
+    goal,
+  });
+  const lists: ReadonlyArray<BrainstormTaskList> = [
+    {
+      spaceId: "work",
+      spaceName: "work",
+      path: "/work-brain/tasks.md",
+      profile: "work",
+      goals: [
+        { number: 1, title: "Inbox", done: false, notes: [] },
+        { number: 2, title: "Ship it", done: false, notes: ["by Friday"] },
+        { number: 3, title: "Old goal", done: true, notes: [] },
+      ],
+      tasks: [
+        task(1, "loose", "Inbox"),
+        task(2, "write tests", "Ship it", true),
+        task(3, "fix bug", "Ship it"),
+        task(4, "old work", "Old goal", true),
+      ],
+    },
+    {
+      spaceId: "home",
+      spaceName: "home",
+      path: "/home-brain/tasks.md",
+      profile: "home",
+      goals: [{ number: 1, title: "Garden", done: false, notes: [] }],
+      tasks: [],
+    },
+  ];
+
+  it("merges every brain's goals for All, Inbox last, open tasks first", () => {
+    const goals = boardGoals(lists, ALL_SPACE_ID);
+    expect(goals.map((goal) => [goal.spaceName, goal.title])).toEqual([
+      ["work", "Ship it"],
+      ["home", "Garden"],
+      ["work", "Inbox"],
+    ]);
+    expect(goals[0]!.tasks.map((entry) => entry.title)).toEqual(["fix bug", "write tests"]);
+    expect(boardGoals(lists, ALL_SPACE_ID, true).map((goal) => goal.title)).toContain("Old goal");
+  });
+
+  it("filters to one space's brain", () => {
+    expect(boardGoals(lists, "home").map((goal) => goal.title)).toEqual(["Garden"]);
   });
 });
