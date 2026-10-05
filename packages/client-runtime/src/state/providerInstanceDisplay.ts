@@ -174,7 +174,9 @@ export function resolveProviderConfigDirIndicator(input: {
   if (observation && sameConfigDir(observation.configured, configured)) {
     return {
       current: observation.effective,
-      configured: observation.configured,
+      // The workspace's dir: same path, but it carries the current code profile label,
+      // which a session started before code profiles never recorded.
+      configured,
       redirected: !inherited && !sameConfigDir(observation.effective, observation.configured),
     };
   }

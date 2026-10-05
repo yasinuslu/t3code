@@ -197,6 +197,15 @@ describe("resolveProviderConfigDirIndicator", () => {
     ).toBe(false);
   });
 
+  it("keeps the workspace's code profile for a session that recorded none", () => {
+    expect(
+      resolveProviderConfigDirIndicator({
+        configured: { ...workDir, profile: "work" },
+        observation: { configured: workDir, effective: workDir },
+      }),
+    ).toEqual({ current: workDir, configured: { ...workDir, profile: "work" }, redirected: false });
+  });
+
   it("drops an observation made under a previous configured dir", () => {
     expect(
       resolveProviderConfigDirIndicator({
