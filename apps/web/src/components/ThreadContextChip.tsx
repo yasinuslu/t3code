@@ -117,7 +117,7 @@ export function ThreadContextChip(props: {
             }
             aria-label={`Thread, ${title}${status ? `, ${status.label}` : ""}`}
             data-markdown-copy={props.copyMarkdown}
-            className={cn("no-underline", !shell && "text-muted-foreground")}
+            className={cn("chat-markdown-chip no-underline", !shell && "text-muted-foreground")}
           >
             <MessagesSquareIcon />
             <ContextChipLabel>{title}</ContextChipLabel>
