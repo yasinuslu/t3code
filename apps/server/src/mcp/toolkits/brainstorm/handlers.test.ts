@@ -2,15 +2,12 @@ import {
   type BrainstormSpace,
   BrainstormError,
   EnvironmentId,
-  MessageId,
   ProjectId,
   ProviderInstanceId,
   RunId,
   RuntimeRequestId,
   ThreadId,
   type OrchestrationProjectShell,
-  type OrchestrationV2ConversationMessage,
-  type OrchestrationV2Run,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
@@ -29,13 +26,7 @@ import {
   taskPathOf,
 } from "../../../brainstorm/BrainstormService.ts";
 import { parseTaskMarkdown } from "../../../brainstorm/taskMarkdown.ts";
-import { GitWorkflowService } from "../../../git/GitWorkflowService.ts";
 import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
-import {
-  type ThreadLaunchInput,
-  ThreadLaunchService,
-} from "../../../orchestration-v2/ThreadLaunchService.ts";
-import { ServerSettingsService } from "../../../serverSettings.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { BrainstormToolkitHandlersLive, threadStatusOf } from "./handlers.ts";
 import { BrainstormToolkit } from "./tools.ts";
@@ -137,44 +128,6 @@ const THREADS = [
   }),
 ];
 
-const homeRun = (ordinal: number): OrchestrationV2Run => ({
-  id: RunId.make(`run-home-${ordinal}`),
-  threadId: HOME_THREAD,
-  ordinal,
-  providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-  modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
-  providerThreadId: null,
-  userMessageId: MessageId.make(`message-user-${ordinal}`),
-  rootNodeId: null,
-  activeAttemptId: null,
-  status: ordinal === 2 ? "running" : "completed",
-  requestedAt: at("2026-09-25T00:00:00.000Z"),
-  startedAt: null,
-  completedAt: null,
-  checkpointId: null,
-  contextHandoffId: null,
-});
-
-const message = (
-  ordinal: number,
-  role: "user" | "assistant",
-  text: string,
-  second: number,
-): OrchestrationV2ConversationMessage => ({
-  createdBy: role === "user" ? "user" : "agent",
-  creationSource: "web",
-  id: MessageId.make(`message-${role}-${ordinal}-${second}`),
-  threadId: HOME_THREAD,
-  runId: RunId.make(`run-home-${ordinal}`),
-  nodeId: null,
-  role,
-  text,
-  attachments: [],
-  streaming: false,
-  createdAt: at(`2026-09-25T00:00:0${second}.000Z`),
-  updatedAt: at(`2026-09-25T00:00:0${second}.000Z`),
-});
-
 const testCrypto = Crypto.make({
   randomBytes: (size) => new Uint8Array(size).fill(7),
   digest: (_algorithm, data) => Effect.succeed(data),
@@ -184,7 +137,6 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
   initialFiles: Record<string, string> = {},
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationV2ServerCommand>>([]);
-  const launched = yield* Ref.make<ReadonlyArray<ThreadLaunchInput>>([]);
   const files = new Map(Object.entries(initialFiles));
   const memberships: Record<string, ReadonlyArray<string>> = {};
   const context: BrainstormContext = {
@@ -219,11 +171,19 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
     readTaskList: (ctx, space) =>
       Effect.sync(() => {
         const path = taskPathOf(ctx, space);
+        const file = parseTaskMarkdown(path === null ? "" : (files.get(path) ?? ""));
         return {
           spaceId: space.id,
           spaceName: space.name,
           path,
-          tasks: parseTaskMarkdown(path === null ? "" : (files.get(path) ?? "")).tasks,
+          profile: space.kind === "profile" ? space.profile : null,
+          goals: file.goals.map(({ number, title, done, notes }) => ({
+            number,
+            title,
+            done,
+            notes,
+          })),
+          tasks: file.tasks,
         };
       }),
     editTasks: (ctx, space, edit) =>
@@ -255,42 +215,11 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
         }),
       getThreadShell: (threadId) =>
         Effect.succeed(THREADS.find((entry) => entry.id === threadId) ?? null),
-      getThreadRecords: (threadId) =>
-        Effect.succeed({
-          thread: { id: threadId },
-          runs: [homeRun(2), homeRun(1)],
-          // Out of order on purpose: the tool sorts by time.
-          messages: [
-            message(2, "assistant", "done", 4),
-            message(1, "user", "first ask", 1),
-            message(2, "user", "fix the bug", 3),
-            message(1, "assistant", "first answer", 2),
-          ],
-        } as never),
       dispatch: (command) =>
         Ref.update(commands, (recorded) => [...recorded, command]).pipe(
           Effect.as({ sequence: 1 } as never),
         ),
       streamDomainEvents: Stream.empty,
-    }),
-    Layer.mock(ThreadLaunchService)({
-      launch: (input) =>
-        Ref.update(launched, (recorded) => [...recorded, input]).pipe(
-          Effect.as({
-            threadId: input.threadId!,
-            projection: { thread: { branch: null, worktreePath: null } },
-            resumed: false,
-          } as never),
-        ),
-    }),
-    Layer.mock(ServerSettingsService)({
-      getSettings: Effect.succeed({
-        defaultModelSelection: null,
-        projectSettingsOverrides: {},
-      } as never),
-    }),
-    Layer.mock(GitWorkflowService)({
-      localStatus: () => Effect.succeed({ refName: "main" } as never),
     }),
     Layer.succeed(Crypto.Crypto, testCrypto),
   );
@@ -318,28 +247,37 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
       }),
       Effect.provide(dependencies),
     );
-  return { commands, launched, call, files, membershipCalls };
+  return { commands, call, files, membershipCalls };
 });
 
 const HOME_TASKS = "/code/home/home-brain/tasks.md";
 const WORK_TASKS = "/code/work/work-brain/tasks.md";
 
 describe("brainstorm toolkit", () => {
-  it.effect("a regular thread sees every space and projects", () =>
+  it.effect("the manager gets its operating rules and every profile's brain", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
-      const overview = yield* harness.call("brainstorm_overview", {}, WORK_THREAD);
-      expect(overview).toMatchObject({ spaceId: "all", seesEverything: true });
-      const projects = yield* harness.call("list_projects", {}, WORK_THREAD);
-      expect(projects.projects.map((entry) => entry.title)).toEqual([
-        "api",
-        "t3code",
-        "home-brain",
+      const manager = yield* harness.call("manager_overview", {}, BRAINSTORM_ALL);
+      expect(manager).toMatchObject({ isManager: true, spaceId: "all", seesEverything: true });
+      expect(manager.instructions.length).toBeGreaterThan(0);
+      expect(manager.profiles).toEqual([
+        {
+          profile: "home",
+          space: "home",
+          brainPath: "/code/home/home-brain",
+          taskFile: HOME_TASKS,
+          projects: ["t3code", "home-brain"],
+        },
+        {
+          profile: "work",
+          space: "work",
+          brainPath: "/code/work/work-brain",
+          taskFile: WORK_TASKS,
+          projects: ["api"],
+        },
       ]);
-      const scoped = yield* harness.call("list_projects", { space: "work" }, WORK_THREAD);
-      expect(scoped.projects.map((entry) => entry.title)).toEqual(["api"]);
-      const threads = yield* harness.call("list_threads", {}, WORK_THREAD);
-      expect(threads.threads.map((entry) => entry.threadId)).toEqual([HOME_THREAD, WORK_THREAD]);
+      const regular = yield* harness.call("manager_overview", {}, WORK_THREAD);
+      expect(regular).toMatchObject({ isManager: false, instructions: [], spaceId: "all" });
     }),
   );
 
@@ -359,36 +297,119 @@ describe("brainstorm toolkit", () => {
     }),
   );
 
-  it.effect("a regular thread starts threads in any space's project", () =>
+  it.effect("the manager must name the brain it writes to", () =>
     Effect.gen(function* () {
-      const harness = yield* makeHarness({ [WORK_TASKS]: "- [ ] Ship it\n" });
-      const started = yield* harness.call(
-        "start_thread",
-        { project: "t3code", prompt: "hi", task: 1, taskSpace: "work" },
-        WORK_THREAD,
-      );
-      expect(started.project).toBe("t3code");
-      const launched = yield* Ref.get(harness.launched);
-      expect(launched).toHaveLength(1);
-      expect(launched[0]).toMatchObject({
-        threadId: started.threadId,
-        projectId: "p-home",
-        workspaceStrategy: { type: "root" },
-        initialMessage: { text: "hi" },
-      });
-      expect(harness.files.get(WORK_TASKS)).toBe(
-        `- [ ] Ship it\n  - thread: ${started.threadId}\n`,
-      );
+      const harness = yield* makeHarness({ [HOME_TASKS]: "- [ ] home task\n" });
+      const error = yield* harness
+        .call("add_goal", { title: "Ship it" }, BRAINSTORM_ALL)
+        .pipe(Effect.flip);
+      expect(error.message).toContain("Pass space");
+      const taskError = yield* harness
+        .call("add_task", { title: "loose" }, BRAINSTORM_ALL)
+        .pipe(Effect.flip);
+      expect(taskError.message).toContain("Pass space");
+      expect(harness.files.get(HOME_TASKS)).toBe("- [ ] home task\n");
+      expect(harness.files.has(WORK_TASKS)).toBe(false);
+
+      yield* harness.call("add_goal", { title: "Ship it", space: "work" }, BRAINSTORM_ALL);
+      expect(harness.files.get(WORK_TASKS)).toBe("## Ship it\n");
+      expect(harness.files.get(HOME_TASKS)).toBe("- [ ] home task\n");
     }),
   );
 
-  it.effect("a regular thread still cannot act on brainstorm chats", () =>
+  it.effect("plans a goal: tasks under it, linked threads, done", () =>
     Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      const error = yield* harness
-        .call("rename_thread", { threadId: BRAINSTORM_HOME, title: "x" }, WORK_THREAD)
-        .pipe(Effect.flip);
-      expect(error.message).toContain("brainstorm chat, not a work thread");
+      const harness = yield* makeHarness({ [WORK_TASKS]: "- [ ] loose idea\n" });
+      const goal = yield* harness.call(
+        "add_goal",
+        { title: "Faster builds", notes: ["Done when CI < 5 min"], space: "work" },
+        BRAINSTORM_ALL,
+      );
+      expect(goal).toEqual({ space: "work", number: 2, path: WORK_TASKS });
+      yield* harness.call(
+        "add_task",
+        { title: "Cache deps", goal: "faster", space: "work" },
+        BRAINSTORM_ALL,
+      );
+      yield* harness.call(
+        "update_task",
+        { task: "Cache deps", linkThreadIds: [WORK_THREAD], space: "work" },
+        BRAINSTORM_ALL,
+      );
+      yield* harness.call(
+        "update_task",
+        { task: "loose idea", goal: "Faster builds", space: "work" },
+        BRAINSTORM_ALL,
+      );
+      expect(harness.files.get(WORK_TASKS)).toBe(
+        [
+          "## Faster builds",
+          "Done when CI < 5 min",
+          "",
+          "- [ ] Cache deps",
+          `  - thread: ${WORK_THREAD}`,
+          "- [ ] loose idea",
+          "",
+        ].join("\n"),
+      );
+
+      const listed = yield* harness.call("list_tasks", {}, BRAINSTORM_ALL);
+      expect(listed.lists).toHaveLength(1);
+      expect(listed.lists[0]).toMatchObject({ space: "work", profile: "work", path: WORK_TASKS });
+      expect(listed.lists[0]!.goals).toEqual([
+        {
+          number: 1,
+          title: "Faster builds",
+          done: false,
+          notes: ["Done when CI < 5 min"],
+          tasks: [
+            {
+              number: 1,
+              title: "Cache deps",
+              done: false,
+              notes: [],
+              goal: "Faster builds",
+              threads: [{ threadId: WORK_THREAD, title: `Thread ${WORK_THREAD}`, status: "ready" }],
+            },
+            {
+              number: 2,
+              title: "loose idea",
+              done: false,
+              notes: [],
+              goal: "Faster builds",
+              threads: [],
+            },
+          ],
+        },
+      ]);
+
+      const done = yield* harness.call(
+        "update_goal",
+        { goal: 1, done: true, space: "work" },
+        BRAINSTORM_ALL,
+      );
+      expect(done).toMatchObject({ title: "Faster builds", done: true });
+      expect(harness.files.get(WORK_TASKS)!.startsWith("## [x] Faster builds\n")).toBe(true);
+      const hidden = yield* harness.call("list_tasks", { space: "work" }, BRAINSTORM_ALL);
+      expect(hidden.lists[0]!.goals).toEqual([]);
+      const shown = yield* harness.call(
+        "list_tasks",
+        { space: "work", includeDone: true },
+        BRAINSTORM_ALL,
+      );
+      expect(shown.lists[0]!.goals.map((entry) => entry.title)).toEqual(["Faster builds"]);
+    }),
+  );
+
+  it.effect("deletes only empty goals", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        [HOME_TASKS]: "## Busy\n- [ ] work\n\n## Empty\nSome note\n",
+      });
+      const error = yield* harness.call("delete_goal", { goal: "Busy" }).pipe(Effect.flip);
+      expect(error.message).toContain("still has 1 task");
+      yield* harness.call("delete_goal", { goal: "Empty" });
+      expect(harness.files.get(HOME_TASKS)).toBe("## Busy\n- [ ] work\n\n");
     }),
   );
 
@@ -402,7 +423,7 @@ describe("brainstorm toolkit", () => {
       );
 
       const completed = yield* harness.call("complete_task", { task: "fix x" });
-      expect(completed).toMatchObject({ number: 2, title: "Fix X", done: true });
+      expect(completed).toMatchObject({ number: 2, title: "Fix X", done: true, goal: "Inbox" });
 
       yield* harness.call("delete_task", { task: 1 });
       expect(harness.files.get(HOME_TASKS)).toBe("# Tasks\n\n- [x] Fix X\n  see log\n");
@@ -420,7 +441,7 @@ describe("brainstorm toolkit", () => {
     }),
   );
 
-  it.effect("All sees every list and writes where it is told", () =>
+  it.effect("the manager sees every list and writes where it is told", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
         [HOME_TASKS]: "- [ ] home task\n",
@@ -428,16 +449,21 @@ describe("brainstorm toolkit", () => {
       });
       const listed = yield* harness.call("list_tasks", {}, BRAINSTORM_ALL);
       expect(
-        listed.lists.map((list) => [list.space, list.tasks.map((task) => task.title)]),
+        listed.lists.map((list) => [
+          list.space,
+          list.goals.flatMap((goal) => goal.tasks.map((task) => task.title)),
+        ]),
       ).toEqual([
         ["work", ["work task"]],
         ["home", ["home task"]],
       ]);
-      expect(listed.lists[0]!.tasks[0]!.threads).toEqual([
+      expect(listed.lists[0]!.goals[0]!.tasks[0]!.threads).toEqual([
         { threadId: "thread-work", title: "Thread thread-work", status: "ready" },
       ]);
       yield* harness.call("add_task", { title: "side", space: "Side Quests" }, BRAINSTORM_ALL);
-      expect(harness.files.get("/code/home/home-brain/tasks/side-quests.md")).toBe("- [ ] side\n");
+      expect(harness.files.get("/code/home/home-brain/tasks/side-quests.md")).toBe(
+        "## Inbox\n- [ ] side\n",
+      );
     }),
   );
 
@@ -459,39 +485,6 @@ describe("brainstorm toolkit", () => {
     }),
   );
 
-  it.effect("reads a thread's user and assistant messages but not out-of-scope threads", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      const read = yield* harness.call("read_thread", { threadId: HOME_THREAD });
-      expect(read.messages.map((entry) => [entry.role, entry.text])).toEqual([
-        ["user", "first ask"],
-        ["assistant", "first answer"],
-        ["user", "fix the bug"],
-        ["assistant", "done"],
-      ]);
-      const lastTurn = yield* harness.call("read_thread", { threadId: HOME_THREAD, turns: 1 });
-      expect(lastTurn.messages.map((entry) => entry.text)).toEqual(["fix the bug", "done"]);
-      expect(lastTurn.messages[0]!.createdAt).toBe("2026-09-25T00:00:03.000Z");
-      const error = yield* harness.call("read_thread", { threadId: WORK_THREAD }).pipe(Effect.flip);
-      expect(error.message).toContain("not in home");
-    }),
-  );
-
-  it.effect("settles, renames and archives through orchestration commands", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      yield* harness.call("settle_thread", { threadId: HOME_THREAD });
-      yield* harness.call("rename_thread", { threadId: HOME_THREAD, title: "  New\nname " });
-      yield* harness.call("archive_thread", { threadId: HOME_THREAD });
-      expect((yield* Ref.get(harness.commands)).map((command) => command.type)).toEqual([
-        "thread.settle",
-        "thread.metadata.update",
-        "thread.archive",
-      ]);
-      expect((yield* Ref.get(harness.commands))[1]).toMatchObject({ title: "New name" });
-    }),
-  );
-
   it.effect("moves a thread's project into a custom space", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
@@ -501,84 +494,6 @@ describe("brainstorm toolkit", () => {
       });
       expect(harness.membershipCalls).toEqual([["p-home", "space-side", true]]);
       expect(moved.spaces).toEqual(["home", "Side Quests"]);
-    }),
-  );
-
-  it.effect("starts a thread from a task and links the task to it", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ [HOME_TASKS]: "- [ ] Port the parser\n" });
-      const started = yield* harness.call("start_thread", {
-        project: "t3code",
-        prompt: "Port the parser to the server",
-        task: 1,
-      });
-      expect(started.project).toBe("t3code");
-      const launched = yield* Ref.get(harness.launched);
-      expect(launched).toHaveLength(1);
-      expect(launched[0]).toMatchObject({
-        threadId: started.threadId,
-        projectId: "p-home",
-        title: "Port the parser to the server",
-        workspaceStrategy: { type: "root" },
-        initialMessage: { text: "Port the parser to the server", attachments: [] },
-        createdBy: "agent",
-        creationSource: "mcp",
-      });
-      expect(yield* Ref.get(harness.commands)).toEqual([]);
-      expect(harness.files.get(HOME_TASKS)).toBe(
-        `- [ ] Port the parser\n  - thread: ${started.threadId}\n`,
-      );
-    }),
-  );
-
-  it.effect("starts a worktree thread through the same launch as the composer", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ [HOME_TASKS]: "- [ ] Port the parser\n" });
-      const started = yield* harness.call("start_thread", {
-        project: "t3code",
-        prompt: "Port the parser to the server",
-        task: 1,
-        worktree: true,
-      });
-      yield* harness.call("start_thread", {
-        project: "t3code",
-        prompt: "Try it on a branch",
-        worktree: true,
-        branch: "feat/parser",
-        baseBranch: "release",
-      });
-      const launched = yield* Ref.get(harness.launched);
-      expect(launched).toMatchObject([
-        {
-          threadId: started.threadId,
-          projectId: "p-home",
-          initialMessage: { text: "Port the parser to the server" },
-          // Based on the branch the project's checkout is on.
-          workspaceStrategy: { type: "worktree", baseRef: "main" },
-        },
-        {
-          projectId: "p-home",
-          initialMessage: { text: "Try it on a branch" },
-          workspaceStrategy: { type: "worktree", baseRef: "release", branch: "feat/parser" },
-        },
-      ]);
-      // Without a branch the server names the worktree's branch itself (t3code/<hash>).
-      expect(launched[0]!.workspaceStrategy).toEqual({ type: "worktree", baseRef: "main" });
-      expect(harness.files.get(HOME_TASKS)).toBe(
-        `- [ ] Port the parser\n  - thread: ${started.threadId}\n`,
-      );
-    }),
-  );
-
-  it.effect("will not start threads in another space's projects", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      const error = yield* harness
-        .call("start_thread", { project: "api", prompt: "hi" })
-        .pipe(Effect.flip);
-      expect(error.message).toContain("No single project in home");
-      expect(yield* Ref.get(harness.commands)).toEqual([]);
-      expect(yield* Ref.get(harness.launched)).toEqual([]);
     }),
   );
 });

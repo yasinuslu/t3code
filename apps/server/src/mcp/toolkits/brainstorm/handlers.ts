@@ -1,19 +1,10 @@
 import {
   BrainstormError,
   type BrainstormSpace,
-  CommandId,
-  DEFAULT_MODEL,
-  DEFAULT_PROVIDER_INTERACTION_MODE,
-  MessageId,
-  type ModelSelection,
   type OrchestrationProjectShell,
   type OrchestrationV2ThreadShell,
-  ProviderInstanceId,
-  RunId,
   ThreadId,
 } from "@t3tools/contracts";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
-import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
@@ -29,24 +20,42 @@ import {
   taskPathOf,
 } from "../../../brainstorm/BrainstormService.ts";
 import {
+  addGoal,
   addTask,
+  deleteGoal,
   deleteTask,
+  INBOX_GOAL,
   type ParsedTask,
+  parseTaskMarkdown,
+  updateGoal,
   updateTask,
 } from "../../../brainstorm/taskMarkdown.ts";
-import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
-import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
-import * as ServerSettings from "../../../serverSettings.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { BrainstormToolkit, type TaskEntry, type ThreadEntry, type ThreadStatus } from "./tools.ts";
 
 const fail = (message: string) => new BrainstormError({ message });
 
-const MESSAGE_TEXT_LIMIT = 4_000;
-const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
-
 type ThreadShell = OrchestrationV2ThreadShell;
+
+/**
+ * How the manager chat works. Returned by manager_overview, which the manager
+ * reads at the start of every conversation and after a restart or compaction,
+ * so the rules never depend on what is still in its context.
+ */
+export const MANAGER_INSTRUCTIONS: ReadonlyArray<string> = [
+  "You are the manager. The user talks to you; the work happens in other T3 Code threads (workers). Your job is that goals finish without the user pushing each step.",
+  "Durable state is the truth, not your memory: goals and tasks live in each profile brain's task file (list_tasks), thread state lives in T3 Code (list_threads, t3_thread_read). Re-read both after a restart or compaction before acting.",
+  "Every piece of work is a task under a goal. New goal: add_goal, then add_task for each step. Loose ideas go to the Inbox (add_task without goal).",
+  "A goal belongs to one profile and lives in that profile's brain. Pass space on every write. Work for one profile never goes into another profile's list; when it is unclear whose goal it is, ask the user once.",
+  "To start work on a task: find the project with t3_project_list, start a worker with t3_thread_launch (projectId, a clear title, the full task in message; use a worktree workspaceStrategy for code changes), then link it with update_task linkThreadIds. A task without a linked thread is not being worked on.",
+  "Follow workers with list_threads (status), t3_thread_wait and t3_thread_read. Steer with t3_thread_send. Stop with t3_thread_interrupt.",
+  "Answer routine worker questions yourself (t3_pending_request_list, t3_pending_request_read, t3_pending_request_respond): conventions, where things are, which of two equivalent options, retry after a transient failure.",
+  "Bring the user in only for real decisions: tool approvals (you cannot grant them), anything destructive, irreversible or outward-facing (publishing, merging, spending money, messaging people), a change of scope or goal, and choices with no clear default. Say it in this chat in one or two lines: which thread, what it needs, your recommendation.",
+  "When a worker fails or needs approval or input you cannot give, tell the user here; the board's Needs you strip shows the same threads.",
+  "Close the loop: when a worker's result checks out, complete_task and settle the thread (t3_thread_organize settle). When every task of a goal is done, update_goal done=true and tell the user in one line.",
+  "Keep replies short. Report outcomes, not plans.",
+];
 
 const ACTIVE_STATUSES = new Set(["preparing", "queued", "starting", "running"]);
 const FAILED_STATUSES = new Set(["failed", "interrupted", "cancelled", "rolled_back"]);
@@ -102,7 +111,7 @@ export function describeThread(context: BrainstormContext, thread: ThreadShell):
 }
 
 export function describeTask(
-  task: Pick<ParsedTask, "number" | "title" | "done" | "notes" | "threadIds">,
+  task: Pick<ParsedTask, "number" | "title" | "done" | "notes" | "threadIds" | "goal">,
   threads: ReadonlyArray<ThreadShell>,
 ): TaskEntry {
   return {
@@ -110,6 +119,7 @@ export function describeTask(
     title: task.title,
     done: task.done,
     notes: task.notes,
+    goal: task.goal,
     threads: task.threadIds.map((threadId) => {
       const thread = threads.find((candidate) => candidate.id === threadId);
       return { threadId, title: thread?.title ?? null, status: threadStatusOf(thread) };
@@ -120,25 +130,24 @@ export function describeTask(
 const make = Effect.gen(function* () {
   const brainstorm = yield* BrainstormService;
   const orchestrator = yield* Orchestrator.OrchestratorV2;
-  const launches = yield* ThreadLaunchService.ThreadLaunchService;
-  const serverSettings = yield* ServerSettings.ServerSettingsService;
-  const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
-  const crypto = yield* Crypto.Crypto;
-  const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
-  const commandId = (tag: string) =>
-    uuid.pipe(Effect.map((id) => CommandId.make(`server:brainstorm-${tag}:${id}`)));
 
   /**
-   * What the calling thread sees and a fresh context. A brainstorm chat sees
-   * its space; any other thread sees All, and its task tools default to its
-   * project's home space.
+   * What the calling thread sees and a fresh context. A space's brainstorm
+   * chat sees its space; the manager (All's chat) and any other thread see
+   * All. A regular thread's task tools default to its project's home space;
+   * the manager names the space on every write.
    */
   const scope = Effect.gen(function* () {
     const invocation = yield* McpInvocationContext.McpInvocationContext;
     const context = yield* brainstorm.context;
     const brainstormSpace = yield* brainstorm.spaceOfThread(invocation.threadId);
     if (brainstormSpace !== null) {
-      return { space: brainstormSpace, taskHome: null, context, threadId: invocation.threadId };
+      return {
+        space: brainstormSpace,
+        taskHome: null,
+        context,
+        isManager: brainstormSpace.kind === "all",
+      };
     }
     const all = context.spaces.find((candidate) => candidate.id === ALL_SPACE_ID);
     if (!all) return yield* fail("The All space is missing.");
@@ -147,7 +156,7 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orElseSucceed(() => null));
     const homeId = own === null ? null : homeSpaceIdOf(context, own.projectId);
     const taskHome = context.spaces.find((candidate) => candidate.id === homeId) ?? null;
-    return { space: all, taskHome, context, threadId: invocation.threadId };
+    return { space: all, taskHome, context, isManager: false };
   });
 
   /** Active and (optionally) archived thread shells, without subagent children. */
@@ -165,17 +174,26 @@ const make = Effect.gen(function* () {
 
   /**
    * The space a task tool works on: the given one (checked against scope), or
-   * this chat's, or the calling thread's home space.
+   * this chat's, or the calling thread's home space. The manager reads every
+   * list but must name the one it writes to, so a goal never lands in another
+   * profile's brain by default.
    */
   const taskSpace = (
-    context: BrainstormContext,
-    own: BrainstormSpace,
+    scoped: Effect.Success<typeof scope>,
     reference: string | undefined,
-    home: BrainstormSpace | null = null,
+    write: boolean,
   ): Effect.Effect<BrainstormSpace, BrainstormError> => {
+    const { context, space: own, taskHome } = scoped;
     if (reference === undefined) {
       if (own.id !== ALL_SPACE_ID) return Effect.succeed(own);
-      if (home !== null) return Effect.succeed(home);
+      if (scoped.isManager && write) {
+        return Effect.fail(
+          fail(
+            "Pass space: the profile (or space) whose brain this goal or task belongs to. See manager_overview for the profiles.",
+          ),
+        );
+      }
+      if (taskHome !== null) return Effect.succeed(taskHome);
       const fallback = context.spaces.find(
         (space) => space.kind === "profile" && space.profile === context.defaultProfile?.name,
       );
@@ -185,6 +203,9 @@ const make = Effect.gen(function* () {
     }
     const space = findSpace(context, reference);
     if (!space) return Effect.fail(fail(`There is no space "${reference}".`));
+    if (space.kind === "all") {
+      return Effect.fail(fail("All has no list of its own. Pass a profile or space."));
+    }
     if (own.id !== ALL_SPACE_ID && space.id !== own.id) {
       return Effect.fail(
         fail(`This brainstorm belongs to ${own.name}; it cannot change ${space.name}'s tasks.`),
@@ -221,17 +242,6 @@ const make = Effect.gen(function* () {
       return describeThread(context, shell);
     });
 
-  const couldNot = (what: string) => (cause: unknown) =>
-    fail(
-      `Could not ${what}${
-        typeof cause === "object" && cause !== null && "message" in cause
-          ? `: ${String((cause as { message: unknown }).message)}`
-          : "."
-      }`,
-    );
-  const dispatch = (command: Parameters<typeof orchestrator.dispatch>[0], what: string) =>
-    orchestrator.dispatch(command).pipe(Effect.mapError(couldNot(what)));
-
   const findProject = (
     context: BrainstormContext,
     space: BrainstormSpace,
@@ -251,19 +261,43 @@ const make = Effect.gen(function* () {
     return match
       ? Effect.succeed(match)
       : Effect.fail(
-          fail(`No single project in ${space.name} matches "${reference}". Use list_projects.`),
+          fail(`No single project in ${space.name} matches "${reference}". Use t3_project_list.`),
         );
   };
 
+  const goalOf = (text: string, number: number) => {
+    const goal = parseTaskMarkdown(text).goals[number - 1]!;
+    return { number: goal.number, title: goal.title, done: goal.done, notes: goal.notes };
+  };
+
   return BrainstormToolkit.of({
-    brainstorm_overview: () =>
+    manager_overview: () =>
       Effect.gen(function* () {
-        const { space, context } = yield* scope;
+        const scoped = yield* scope;
+        const { space, context } = scoped;
+        const profileSpace = (name: string) =>
+          context.spaces.find(
+            (candidate) => candidate.kind === "profile" && candidate.profile === name,
+          ) ?? null;
         return {
+          isManager: scoped.isManager,
+          instructions: scoped.isManager ? MANAGER_INSTRUCTIONS : [],
           space: space.name,
           spaceId: space.id,
           seesEverything: space.id === ALL_SPACE_ID,
           brainPath: brainPathOf(context, space),
+          profiles: context.profiles.map((profile) => {
+            const owned = profileSpace(profile.name);
+            return {
+              profile: profile.name,
+              space: owned?.name ?? null,
+              brainPath: profile.brainPath,
+              taskFile: owned === null ? null : taskPathOf(context, owned),
+              projects: context.projects
+                .filter((project) => context.profileByProjectId.get(project.id) === profile.name)
+                .map((project) => project.title),
+            };
+          }),
           spaces: context.spaces.map((candidate) => ({
             id: candidate.id,
             name: candidate.name,
@@ -276,53 +310,100 @@ const make = Effect.gen(function* () {
 
     list_tasks: (input) =>
       Effect.gen(function* () {
-        const { space, taskHome, context } = yield* scope;
+        const scoped = yield* scope;
+        const { space, taskHome, context } = scoped;
         const spaces =
           input.space === undefined && space.id === ALL_SPACE_ID && taskHome === null
             ? context.spaces.filter((candidate) => candidate.kind !== "all")
-            : [yield* taskSpace(context, space, input.space, taskHome)];
+            : [yield* taskSpace(scoped, input.space, false)];
         const threads = yield* allThreads(true);
         const lists = [];
         for (const candidate of spaces) {
           const list = yield* brainstorm.readTaskList(context, candidate);
-          if (spaces.length > 1 && list.tasks.length === 0) {
+          if (spaces.length > 1 && list.tasks.length === 0 && list.goals.length === 0) {
             continue;
           }
           lists.push({
             space: candidate.name,
             spaceId: candidate.id,
+            profile: list.profile,
             path: list.path,
-            tasks: list.tasks.map((task) => describeTask(task, threads)),
+            goals: list.goals
+              .filter((goal) => input.includeDone === true || !goal.done)
+              .map((goal) => ({
+                ...goal,
+                tasks: list.tasks
+                  .filter((task) => task.goal === goal.title)
+                  .map((task) => describeTask(task, threads)),
+              })),
           });
         }
         return { lists };
       }),
 
+    add_goal: (input) =>
+      Effect.gen(function* () {
+        const scoped = yield* scope;
+        const target = yield* taskSpace(scoped, input.space, true);
+        const number = yield* brainstorm.editTasks(scoped.context, target, (text) => {
+          const added = addGoal(text, { title: input.title, notes: input.notes ?? [] });
+          return { text: added.text, result: added.number };
+        });
+        return { space: target.name, number, path: taskPathOf(scoped.context, target) ?? "" };
+      }),
+
+    update_goal: (input) =>
+      Effect.gen(function* () {
+        const scoped = yield* scope;
+        const target = yield* taskSpace(scoped, input.space, true);
+        return yield* brainstorm.editTasks(scoped.context, target, (text) => {
+          const updated = updateGoal(text, input.goal, {
+            ...(input.title === undefined ? {} : { title: input.title }),
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+            ...(input.done === undefined ? {} : { done: input.done }),
+          });
+          return { text: updated.text, result: goalOf(updated.text, updated.goal.number) };
+        });
+      }),
+
+    delete_goal: (input) =>
+      Effect.gen(function* () {
+        const scoped = yield* scope;
+        const target = yield* taskSpace(scoped, input.space, true);
+        const removed = yield* brainstorm.editTasks(scoped.context, target, (text) => {
+          const result = deleteGoal(text, input.goal);
+          return { text: result.text, result: result.goal };
+        });
+        return { title: removed.title };
+      }),
+
     add_task: (input) =>
       Effect.gen(function* () {
-        const { space, taskHome, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space, taskHome);
+        const scoped = yield* scope;
+        const target = yield* taskSpace(scoped, input.space, true);
         if (input.title.trim().length === 0) return yield* fail("A task needs a title.");
-        const number = yield* brainstorm.editTasks(context, target, (text) => {
+        const number = yield* brainstorm.editTasks(scoped.context, target, (text) => {
           const added = addTask(text, {
             title: input.title,
             notes: input.notes ?? [],
             threadIds: input.threadIds ?? [],
+            goal: input.goal ?? INBOX_GOAL,
           });
           return { text: added.text, result: added.number };
         });
-        return { space: target.name, number, path: taskPathOf(context, target) ?? "" };
+        return { space: target.name, number, path: taskPathOf(scoped.context, target) ?? "" };
       }),
 
     update_task: (input) =>
       Effect.gen(function* () {
-        const { space, taskHome, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space, taskHome);
-        const task = yield* brainstorm.editTasks(context, target, (text) => {
+        const scoped = yield* scope;
+        const target = yield* taskSpace(scoped, input.space, true);
+        const task = yield* brainstorm.editTasks(scoped.context, target, (text) => {
           const updated = updateTask(text, input.task, {
             ...(input.title === undefined ? {} : { title: input.title }),
             ...(input.notes === undefined ? {} : { notes: input.notes }),
             ...(input.done === undefined ? {} : { done: input.done }),
+            ...(input.goal === undefined ? {} : { goal: input.goal }),
             ...(input.linkThreadIds === undefined ? {} : { addThreadIds: input.linkThreadIds }),
             ...(input.unlinkThreadIds === undefined
               ? {}
@@ -335,9 +416,9 @@ const make = Effect.gen(function* () {
 
     complete_task: (input) =>
       Effect.gen(function* () {
-        const { space, taskHome, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space, taskHome);
-        const task = yield* brainstorm.editTasks(context, target, (text) => {
+        const scoped = yield* scope;
+        const target = yield* taskSpace(scoped, input.space, true);
+        const task = yield* brainstorm.editTasks(scoped.context, target, (text) => {
           const updated = updateTask(text, input.task, { done: input.done ?? true });
           return { text: updated.text, result: updated.task };
         });
@@ -346,9 +427,9 @@ const make = Effect.gen(function* () {
 
     delete_task: (input) =>
       Effect.gen(function* () {
-        const { space, taskHome, context } = yield* scope;
-        const target = yield* taskSpace(context, space, input.space, taskHome);
-        const removed = yield* brainstorm.editTasks(context, target, (text) => {
+        const scoped = yield* scope;
+        const target = yield* taskSpace(scoped, input.space, true);
+        const removed = yield* brainstorm.editTasks(scoped.context, target, (text) => {
           const result = deleteTask(text, input.task);
           return { text: result.text, result: result.task };
         });
@@ -383,128 +464,6 @@ const make = Effect.gen(function* () {
         return { threads: threads.slice(0, limit), total: threads.length };
       }),
 
-    read_thread: (input) =>
-      Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const thread = yield* requireThread(context, space, input.threadId);
-        const turns = Math.max(1, Math.min(input.turns ?? 3, 20));
-        const records = yield* orchestrator
-          .getThreadRecords(thread.id, ["runs", "messages"], {
-            messageRoles: ["user", "assistant"],
-          })
-          .pipe(Effect.mapError(() => fail("Could not read the thread's messages.")));
-        // The last `turns` runs, by the order they were asked for.
-        const recentRuns = new Set<RunId>(
-          records.runs
-            .toSorted((left, right) => left.ordinal - right.ordinal)
-            .slice(-turns)
-            .map((run) => run.id),
-        );
-        const messages = records.messages
-          .filter((message) => message.runId !== null && recentRuns.has(message.runId))
-          .toSorted(
-            (left, right) =>
-              DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt),
-          )
-          .map((message) => ({
-            role: message.role,
-            text: cut(message.text, MESSAGE_TEXT_LIMIT),
-            createdAt: DateTime.formatIso(message.createdAt),
-          }));
-        return { thread: describeThread(context, thread), messages };
-      }),
-
-    list_projects: (input) =>
-      Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        let filterSpace = space;
-        if (input.space !== undefined) {
-          const requested = findSpace(context, input.space);
-          if (!requested) return yield* fail(`There is no space "${input.space}".`);
-          if (space.id !== ALL_SPACE_ID && requested.id !== space.id) {
-            return yield* fail(`This brainstorm only sees ${space.name}.`);
-          }
-          filterSpace = requested;
-        }
-        return {
-          projects: context.projects
-            .filter((project) => inScope(context, filterSpace, project.id))
-            .map((project) => ({
-              projectId: project.id,
-              title: project.title,
-              path: project.workspaceRoot,
-              spaces: spaceIdsOfProject(context, project.id).map(
-                (spaceId) => context.spaces.find((entry) => entry.id === spaceId)?.name ?? spaceId,
-              ),
-            })),
-        };
-      }),
-
-    settle_thread: (input) =>
-      Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const thread = yield* requireThread(context, space, input.threadId, false);
-        const settle = input.settled ?? true;
-        if (settle && thread.settledOverride !== "settled") {
-          yield* dispatch(
-            { type: "thread.settle", commandId: yield* commandId("settle"), threadId: thread.id },
-            "settle the thread",
-          );
-        } else if (!settle && thread.settledOverride === "settled") {
-          yield* dispatch(
-            {
-              type: "thread.unsettle",
-              commandId: yield* commandId("unsettle"),
-              threadId: thread.id,
-              reason: "user",
-            },
-            "unsettle the thread",
-          );
-        }
-        return yield* refreshed(thread.id);
-      }),
-
-    archive_thread: (input) =>
-      Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const thread = yield* requireThread(context, space, input.threadId);
-        const archive = input.archived ?? true;
-        if (archive && thread.archivedAt === null) {
-          yield* dispatch(
-            { type: "thread.archive", commandId: yield* commandId("archive"), threadId: thread.id },
-            "archive the thread",
-          );
-        } else if (!archive && thread.archivedAt !== null) {
-          yield* dispatch(
-            {
-              type: "thread.unarchive",
-              commandId: yield* commandId("unarchive"),
-              threadId: thread.id,
-            },
-            "restore the thread",
-          );
-        }
-        return { threadId: thread.id, archived: archive };
-      }),
-
-    rename_thread: (input) =>
-      Effect.gen(function* () {
-        const { space, context } = yield* scope;
-        const thread = yield* requireThread(context, space, input.threadId, false);
-        const title = input.title.replace(/\s+/g, " ").trim();
-        if (title.length === 0) return yield* fail("A title cannot be empty.");
-        yield* dispatch(
-          {
-            type: "thread.metadata.update",
-            commandId: yield* commandId("rename"),
-            threadId: thread.id,
-            title,
-          },
-          "rename the thread",
-        );
-        return yield* refreshed(thread.id);
-      }),
-
     set_thread_space: (input) =>
       Effect.gen(function* () {
         const { space, context } = yield* scope;
@@ -517,109 +476,6 @@ const make = Effect.gen(function* () {
           input.member ?? true,
         );
         return yield* refreshed(thread.id);
-      }),
-
-    start_thread: (input) =>
-      Effect.gen(function* () {
-        const { space, taskHome, context } = yield* scope;
-        const project = yield* findProject(context, space, input.project);
-        const prompt = input.prompt.trim();
-        if (prompt.length === 0) return yield* fail("The first prompt cannot be empty.");
-        const taskTarget =
-          input.task === undefined
-            ? null
-            : yield* taskSpace(context, space, input.taskSpace, taskHome);
-        const settings = yield* serverSettings.getSettings.pipe(
-          Effect.mapError(() => fail("Could not read the server settings.")),
-        );
-        const projectSettings = resolveProjectSettings(settings, project.id, project).settings;
-        const threads = yield* allThreads(false);
-        const recent = threads
-          .filter((thread) => thread.projectId === project.id)
-          .toSorted(
-            (left, right) =>
-              DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
-          )[0];
-        const modelSelection: ModelSelection = projectSettings.defaultModelSelection ??
-          settings.defaultModelSelection ??
-          recent?.modelSelection ?? {
-            instanceId: ProviderInstanceId.make("codex"),
-            model: DEFAULT_MODEL,
-          };
-        const title = (input.title ?? prompt.split("\n")[0] ?? "New thread")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 80);
-        let workspaceStrategy: ThreadLaunchService.ThreadLaunchInput["workspaceStrategy"] = {
-          type: "root",
-        };
-        if (input.worktree === true) {
-          // The same launch the new-thread composer sends for "New worktree": V2
-          // provisions the worktree, names its branch and runs the setup script
-          // before the first turn starts.
-          const baseBranch =
-            input.baseBranch?.trim() ||
-            (yield* gitWorkflow.localStatus({ cwd: project.workspaceRoot }).pipe(
-              Effect.map((status) => status.refName),
-              Effect.orElseSucceed(() => null),
-            ));
-          if (!baseBranch) {
-            return yield* fail(
-              `${project.title} is not on a git branch to start a worktree from; pass baseBranch.`,
-            );
-          }
-          const branch = input.branch?.trim();
-          workspaceStrategy = {
-            type: "worktree",
-            baseRef: baseBranch,
-            ...(branch ? { branch } : {}),
-            ...(projectSettings.newWorktreesStartFromOrigin ? { startFromOrigin: true } : {}),
-          };
-        }
-        const threadId = ThreadId.make(yield* uuid);
-        const launched = yield* launches
-          .launch({
-            commandId: yield* commandId("thread"),
-            threadId,
-            projectId: project.id,
-            title,
-            modelSelection,
-            runtimeMode: projectSettings.defaultRuntimeMode,
-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-            workspaceStrategy,
-            initialMessage: {
-              messageId: MessageId.make(yield* uuid),
-              text: prompt,
-              attachments: [],
-            },
-            createdBy: "agent",
-            creationSource: "mcp",
-          })
-          .pipe(
-            Effect.mapError(
-              couldNot(
-                input.worktree === true ? "start the thread in a new worktree" : "start the thread",
-              ),
-            ),
-          );
-        // The thread exists from here on, even if its workspace is still being prepared.
-        if (taskTarget !== null && input.task !== undefined) {
-          const reference = input.task;
-          yield* brainstorm.editTasks(context, taskTarget, (text) => {
-            const updated = updateTask(text, reference, { addThreadIds: [threadId] });
-            return { text: updated.text, result: undefined };
-          });
-        }
-        const shell = yield* orchestrator
-          .getThreadShell(threadId)
-          .pipe(Effect.orElseSucceed(() => null));
-        return {
-          threadId,
-          title,
-          project: project.title,
-          branch: shell?.branch ?? launched.projection.thread.branch ?? null,
-          worktreePath: shell?.worktreePath ?? launched.projection.thread.worktreePath ?? null,
-        };
       }),
   });
 });

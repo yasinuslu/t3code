@@ -570,6 +570,14 @@ export function updateTask(
   if (target !== null && target.title === moving.goal) return { text: nextText, task: moving };
   const rest = [...updated.lines];
   const block = rest.splice(moving.line, moving.end - moving.line);
+  // Don't leave a blank line at the top or two in a row where the task was.
+  if (
+    moving.line < rest.length &&
+    isBlank(rest[moving.line]!) &&
+    (moving.line === 0 || isBlank(rest[moving.line - 1]!))
+  ) {
+    rest.splice(moving.line, 1);
+  }
   const without = parseTaskMarkdown(rest.length === 0 ? "" : serialize(updated, rest));
   const placed = placeInGoal(without, patch.goal, () => block);
   const movedText = serialize(without, placed.lines);
