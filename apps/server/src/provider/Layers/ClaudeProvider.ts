@@ -683,8 +683,9 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 });
 
 /**
- * Probe each code profile's account with its own CLAUDE_CONFIG_DIR. Every
- * profile shares the instance's CLI, so only the account is probed here.
+ * Probe each code profile's account with its own CLAUDE_CONFIG_DIR, from the
+ * profile's root so a wrapper binary that picks the dir by folder agrees.
+ * Every profile shares the instance's CLI, so only the account is probed here.
  */
 export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(function* (
   profiles: ReadonlyArray<{
@@ -692,9 +693,12 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
     readonly root: string;
     readonly claudeConfigDir: string | undefined;
   }>,
-  probe: (environment: NodeJS.ProcessEnv) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
+  probe: (
+    environment: NodeJS.ProcessEnv,
+    cwd: string,
+  ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
   environment: NodeJS.ProcessEnv = process.env,
-) {
+): Effect.fn.Return<ReadonlyArray<ServerProviderCodeProfile>> {
   return yield* Effect.forEach(
     profiles,
     (profile) =>
@@ -712,10 +716,10 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
             message: "This profile sets no Claude config dir.",
           } satisfies ServerProviderCodeProfile;
         }
-        const capabilities = yield* probe({
-          ...environment,
-          CLAUDE_CONFIG_DIR: profile.claudeConfigDir,
-        }).pipe(Effect.orElseSucceed(() => undefined));
+        const capabilities = yield* probe(
+          { ...environment, CLAUDE_CONFIG_DIR: profile.claudeConfigDir },
+          profile.root,
+        ).pipe(Effect.orElseSucceed(() => undefined));
         if (!capabilities) {
           return {
             ...base,
@@ -730,7 +734,7 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
             ...base,
             status: "error",
             auth: { status: "unauthenticated" },
-            message: "Not signed in. Run claude with this config dir and use /login.",
+            message: "Not signed in with this config dir.",
           } satisfies ServerProviderCodeProfile;
         }
         const authMetadata =

@@ -358,6 +358,7 @@ it.effect("preserves initialized capabilities when optional usage times out", ()
 it.effect("probes each code profile's account with that profile's config dir", () =>
   Effect.gen(function* () {
     const seen: Array<string | undefined> = [];
+    const cwds: Array<string> = [];
     const accounts: Record<
       string,
       { email?: string; subscriptionType?: string; tokenSource: string }
@@ -380,9 +381,10 @@ it.effect("probes each code profile's account with that profile's config dir", (
           claudeConfigDir: "/home/dev/.claude-broken",
         },
       ],
-      (environment) =>
+      (environment, cwd) =>
         Effect.sync(() => {
           seen.push(environment.CLAUDE_CONFIG_DIR);
+          cwds.push(cwd);
           const account = accounts[environment.CLAUDE_CONFIG_DIR ?? ""];
           return account
             ? {
@@ -401,6 +403,11 @@ it.effect("probes each code profile's account with that profile's config dir", (
       "/home/dev/.claude-broken",
       "/home/dev/.claude-home",
       "/home/dev/.claude-work",
+    ]);
+    assert.deepEqual(cwds.toSorted(), [
+      "/home/dev/code/broken",
+      "/home/dev/code/home",
+      "/home/dev/code/work",
     ]);
     assert.deepEqual(
       profiles.map((profile) => [profile.name, profile.status, profile.auth.status]),

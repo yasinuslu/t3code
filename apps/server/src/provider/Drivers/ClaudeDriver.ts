@@ -281,14 +281,20 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               Effect.flatMap((profiles) =>
                 checkClaudeCodeProfiles(
                   profiles,
-                  (profileEnvironment) =>
+                  (profileEnvironment, root) =>
                     snapshot.installed
-                      ? probeClaudeCapabilities(
-                          effectiveConfig,
-                          profileEnvironment,
-                          cwd,
-                          false,
-                        ).pipe(Effect.provideService(Path.Path, path))
+                      ? fileSystem.exists(root).pipe(
+                          Effect.orElseSucceed(() => false),
+                          Effect.flatMap((rootExists) =>
+                            probeClaudeCapabilities(
+                              effectiveConfig,
+                              profileEnvironment,
+                              rootExists ? root : cwd,
+                              false,
+                            ),
+                          ),
+                          Effect.provideService(Path.Path, path),
+                        )
                       : Effect.succeed(undefined),
                   processEnv,
                 ),
