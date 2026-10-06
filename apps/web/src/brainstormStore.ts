@@ -1,37 +1,38 @@
 /**
- * Manager screen state: which threads are brainstorm and manager chats (kept
- * out of the normal thread lists), the manager's brain and model choices.
+ * Brainstorm state the lists need: which threads are brainstorm chats (kept
+ * out of the normal thread lists), which thread is the manager (an ordinary,
+ * listed thread with a marker), the manager's brain choice and whether the
+ * work overlay is open.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import {
-  type BrainstormModelChoice,
-  isBrainstormModelChoice,
-} from "./components/brainstorm/brainstorm.logic";
 import { resolveStorage } from "./lib/storage";
 import { useThreadShells } from "./state/entities";
 
 interface BrainstormStore {
-  /** `${environmentId}:${threadId}` of every brainstorm chat. */
+  /** `${environmentId}:${threadId}` of every brainstorm chat except the manager. */
   readonly hiddenThreadKeys: ReadonlySet<string>;
+  /** `${environmentId}:${threadId}` of the manager thread, once the server has one. */
+  readonly managerThreadKey: string | null;
   /** Profile whose brain custom spaces, Other and All use; null: the server picks. */
   readonly defaultProfile: string | null;
-  /** `${environmentId}:${threadId}` → the model toggled in the manager screen. */
-  readonly modelChoiceByThreadKey: Readonly<Record<string, BrainstormModelChoice>>;
+  readonly workOverlayOpen: boolean;
   readonly setHiddenThreadKeys: (keys: ReadonlySet<string>) => void;
+  readonly setManagerThreadKey: (key: string | null) => void;
   readonly setDefaultProfile: (profile: string | null) => void;
-  readonly setModelChoice: (threadKey: string, choice: BrainstormModelChoice) => void;
+  readonly setWorkOverlayOpen: (open: boolean) => void;
 }
 
 export const useBrainstormStore = create<BrainstormStore>()(
   persist(
     (set) => ({
       hiddenThreadKeys: new Set(),
+      managerThreadKey: null,
       defaultProfile: null,
-      modelChoiceByThreadKey: {},
+      workOverlayOpen: false,
       setHiddenThreadKeys: (keys) =>
         set((state) =>
           state.hiddenThreadKeys.size === keys.size &&
@@ -39,44 +40,27 @@ export const useBrainstormStore = create<BrainstormStore>()(
             ? state
             : { hiddenThreadKeys: keys },
         ),
+      setManagerThreadKey: (managerThreadKey) => set({ managerThreadKey }),
       setDefaultProfile: (defaultProfile) => set({ defaultProfile }),
-      setModelChoice: (threadKey, choice) =>
-        set((state) => ({
-          modelChoiceByThreadKey: { ...state.modelChoiceByThreadKey, [threadKey]: choice },
-        })),
+      setWorkOverlayOpen: (workOverlayOpen) => set({ workOverlayOpen }),
     }),
     {
       name: "t3code:brainstorm:v1",
       storage: createJSONStorage(() =>
         resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
       ),
-      partialize: (state) => ({
-        defaultProfile: state.defaultProfile,
-        modelChoiceByThreadKey: state.modelChoiceByThreadKey,
-      }),
+      partialize: (state) => ({ defaultProfile: state.defaultProfile }),
       merge: (persisted, current) => {
-        const stored = persisted as {
-          defaultProfile?: unknown;
-          modelChoiceByThreadKey?: unknown;
-        } | null;
-        const profile = stored?.defaultProfile;
-        const choices =
-          stored?.modelChoiceByThreadKey && typeof stored.modelChoiceByThreadKey === "object"
-            ? Object.fromEntries(
-                Object.entries(stored.modelChoiceByThreadKey).filter(([, choice]) =>
-                  isBrainstormModelChoice(choice),
-                ),
-              )
-            : {};
-        return {
-          ...current,
-          defaultProfile: typeof profile === "string" ? profile : null,
-          modelChoiceByThreadKey: choices,
-        };
+        const profile = (persisted as { defaultProfile?: unknown } | null)?.defaultProfile;
+        return { ...current, defaultProfile: typeof profile === "string" ? profile : null };
       },
     },
   ),
 );
+
+export function useIsManagerThread(environmentId: string, threadId: string): boolean {
+  return useBrainstormStore((state) => state.managerThreadKey === `${environmentId}:${threadId}`);
+}
 
 /** Every thread shell except brainstorm chats, for the normal thread lists. */
 export function useThreadShellsWithoutBrainstorms(): ReadonlyArray<EnvironmentThreadShell> {

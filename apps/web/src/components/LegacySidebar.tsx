@@ -76,6 +76,7 @@ import {
   type SidebarThreadSortOrder,
 } from "@t3tools/contracts/settings";
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
+import { ManagerThreadMarker } from "./brainstorm/ManagerThreadMarker";
 import { isDesktopLocalConnectionTarget, isWslConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
@@ -783,19 +784,22 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               onDoubleClick={handleRenameInputClick}
             />
           ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className="min-w-0 flex-1 truncate text-sm"
-                    data-testid={`thread-title-${thread.id}`}
-                  >
-                    {thread.title}
-                  </span>
-                }
-              />
-              <TooltipPopup side="top">{thread.title}</TooltipPopup>
-            </Tooltip>
+            <>
+              <ManagerThreadMarker environmentId={thread.environmentId} threadId={thread.id} />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      className="min-w-0 flex-1 truncate text-sm"
+                      data-testid={`thread-title-${thread.id}`}
+                    >
+                      {thread.title}
+                    </span>
+                  }
+                />
+                <TooltipPopup side="top">{thread.title}</TooltipPopup>
+              </Tooltip>
+            </>
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">

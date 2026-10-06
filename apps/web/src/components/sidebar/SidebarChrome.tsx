@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
+import { useBrainstormStore } from "../../brainstormStore";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
@@ -208,10 +209,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigate({ to: "/usage" });
   }, [isMobile, navigate, setOpenMobile]);
 
-  const handleManagerClick = useCallback(() => {
+  const handleWorkClick = useCallback(() => {
     closeMobileSidebar();
-    void navigate({ to: "/manager" });
-  }, [closeMobileSidebar, navigate]);
+    useBrainstormStore.getState().setWorkOverlayOpen(true);
+  }, [closeMobileSidebar]);
 
   const handleBackClick = useCallback(() => {
     closeMobileSidebar();
@@ -236,8 +237,8 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
           <SidebarUtilityItem
             icon={<LayoutDashboardIcon />}
-            label="Manager"
-            onClick={handleManagerClick}
+            label="Work"
+            onClick={handleWorkClick}
           />
           {pullRequestsSupported ? (
             <SidebarUtilityItem

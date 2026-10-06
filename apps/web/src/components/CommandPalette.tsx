@@ -46,6 +46,7 @@ import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
+  CompassIcon,
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
@@ -81,7 +82,8 @@ import {
 import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
 
-import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
+import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
+import { useOpenManagerThread } from "./brainstorm/useOpenManagerThread";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -497,6 +499,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const openManagerThread = useOpenManagerThread();
   const { theme, themeHalves, resolvedTheme, appearanceMode, setAppearanceMode } = useTheme();
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
   const routeTarget = useParams({
@@ -582,6 +585,24 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         void navigate({ to: "/usage" });
         return;
       }
+      if (command === "manager.open") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        setOpen(false);
+        useBrainstormStore.getState().setWorkOverlayOpen(false);
+        void openManagerThread();
+        return;
+      }
+      if (command === "workOverlay.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        setOpen(false);
+        const store = useBrainstormStore.getState();
+        store.setWorkOverlayOpen(!store.workOverlayOpen);
+        return;
+      }
       const mode = overlayModeForCommand(command);
       if (mode === null) {
         return;
@@ -596,6 +617,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     appearanceMode,
     keybindings,
     navigate,
+    openManagerThread,
     previewOpen,
     resolvedTheme,
     setAppearanceMode,
@@ -805,6 +827,7 @@ function OpenCommandPaletteDialog(props: {
   }, [activeThreadReferenceCopyTarget]);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShellsWithoutBrainstorms();
+  const openManagerThread = useOpenManagerThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const {
     theme,
@@ -2252,11 +2275,22 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push({
     kind: "action",
     value: "action:manager",
-    searchTerms: ["manager", "goals", "tasks", "board", "brainstorm", "todo", "plan"],
-    title: "Open manager",
+    searchTerms: ["manager", "goals", "tasks", "brainstorm", "todo", "plan"],
+    title: "Open manager thread",
+    icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "manager.open",
+    run: openManagerThread,
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:work-overlay",
+    searchTerms: ["work", "overview", "board", "status", "progress", "goals", "threads"],
+    title: "Show work overview",
     icon: <LayoutDashboardIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "workOverlay.toggle",
     run: async () => {
-      await navigate({ to: "/manager" });
+      useBrainstormStore.getState().setWorkOverlayOpen(true);
     },
   });
 

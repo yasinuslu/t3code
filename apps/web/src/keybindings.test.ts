@@ -237,6 +237,53 @@ describe("settle thread shortcut", () => {
   });
 });
 
+describe("manager and work overlay shortcuts", () => {
+  const ctrlAlt = (key: string) => event({ key, ctrlKey: true, altKey: true });
+
+  it("opens the manager with Ctrl+Alt+M and toggles the overlay with Ctrl+Alt+O everywhere", () => {
+    for (const platform of ["MacIntel", "Linux", "Win32"]) {
+      for (const terminalFocus of [false, true]) {
+        const options = { platform, context: { terminalFocus } };
+        assert.strictEqual(
+          resolveShortcutCommand(ctrlAlt("m"), DEFAULT_RESOLVED_KEYBINDINGS, options),
+          "manager.open",
+        );
+        assert.strictEqual(
+          resolveShortcutCommand(ctrlAlt("o"), DEFAULT_RESOLVED_KEYBINDINGS, options),
+          "workOverlay.toggle",
+        );
+      }
+    }
+  });
+
+  it("does not share its chords with any other default", () => {
+    const chords = new Set(["ctrl+alt+m", "ctrl+alt+o"]);
+    const owners = DEFAULT_RESOLVED_KEYBINDINGS.filter(({ shortcut }) =>
+      chords.has(
+        `${shortcut.ctrlKey ? "ctrl+" : ""}${shortcut.altKey ? "alt+" : ""}${shortcut.key}`,
+      ),
+    ).filter(({ shortcut }) => !shortcut.metaKey && !shortcut.shiftKey && !shortcut.modKey);
+    assert.deepEqual(owners.map((binding) => binding.command).toSorted(), [
+      "manager.open",
+      "workOverlay.toggle",
+    ]);
+  });
+
+  it("can be rebound, which frees the default chord", () => {
+    const bindings = mergeWithDefaultKeybindings(
+      compileResolvedKeybindingsConfig([{ key: "mod+shift+y", command: "manager.open" }]),
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(event({ key: "y", ctrlKey: true, shiftKey: true }), bindings, {
+        platform: "Linux",
+      }),
+      "manager.open",
+    );
+    assert.isNull(resolveShortcutCommand(ctrlAlt("m"), bindings, { platform: "Linux" }));
+    assert.strictEqual(shortcutLabelForCommand(bindings, "manager.open", "Linux"), "Ctrl+Shift+Y");
+  });
+});
+
 describe("thread undo shortcut", () => {
   it("resolves mod+z with nothing editable focused", () => {
     assert.equal(

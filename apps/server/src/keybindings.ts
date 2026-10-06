@@ -176,7 +176,7 @@ const RETIRED_COMMANDS: Readonly<Record<string, KeybindingRule["command"]>> = {
  * naming one are dropped, and the startup sync writes the file without them.
  */
 const REMOVED_COMMANDS: ReadonlySet<string> = new Set([
-  // The brainstorm popup became the manager screen, which has no shortcut.
+  // The brainstorm popup is gone; manager.open opens the manager thread instead.
   "brainstorm.toggle",
 ]);
 

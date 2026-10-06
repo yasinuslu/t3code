@@ -1,12 +1,12 @@
 /**
  * Keeps the server's view of spaces current for the manager and its tools,
- * and hides brainstorm and manager chats from the thread lists. Mounted once in
- * the app shell, so it works whether or not the manager screen is open.
+ * tells the lists which thread is the manager, and hides the other brainstorm
+ * chats from them. Mounted once in the app shell.
  */
 import { useEffect, useRef } from "react";
 
 import { useBrainstormStore } from "../../brainstormStore";
-import { useSpaceStore } from "../../spaceStore";
+import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment } from "../../state/brainstorm";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
@@ -42,16 +42,19 @@ export function BrainstormHost() {
   ).data;
 
   const setHiddenThreadKeys = useBrainstormStore((store) => store.setHiddenThreadKeys);
+  const setManagerThreadKey = useBrainstormStore((store) => store.setManagerThreadKey);
   useEffect(() => {
     if (environmentId === null || state === null) return;
+    const managerId = state.threadIdsBySpaceId[ALL_SPACE_ID];
+    setManagerThreadKey(managerId ? `${environmentId}:${managerId}` : null);
     setHiddenThreadKeys(
       new Set(
-        [...Object.values(state.threadIdsBySpaceId), ...state.hiddenThreadIds].map(
-          (threadId) => `${environmentId}:${threadId}`,
-        ),
+        state.hiddenThreadIds
+          .filter((threadId) => threadId !== managerId)
+          .map((threadId) => `${environmentId}:${threadId}`),
       ),
     );
-  }, [environmentId, setHiddenThreadKeys, state]);
+  }, [environmentId, setHiddenThreadKeys, setManagerThreadKey, state]);
 
   // The agent changed a custom space's projects: adopt the server's view.
   const adoptedRevision = useRef(0);

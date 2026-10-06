@@ -98,6 +98,7 @@ import {
 import { useParams, useRouter } from "@tanstack/react-router";
 
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
+import { ManagerThreadMarker } from "./brainstorm/ManagerThreadMarker";
 import { useRightPanelStore } from "../rightPanelStore";
 import {
   isAtomCommandInterrupted,
@@ -1661,6 +1662,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {thread.title}
     </span>
   );
+  const markedTitle = isRenaming ? (
+    title
+  ) : (
+    <>
+      <ManagerThreadMarker environmentId={thread.environmentId} threadId={thread.id} />
+      {title}
+    </>
+  );
   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
 
   // Stacks show their layer count; multiple unrelated links show their total count.
@@ -1800,7 +1809,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {props.project ? <ProjectFavicon project={props.project} className="size-4" /> : null}
             </span>
             {draftIndicator}
-            {title}
+            {markedTitle}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -2118,8 +2127,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className="mt-1 flex min-w-0">
-              {title}
+            <div className="mt-1 flex min-w-0 items-center gap-1">
+              {markedTitle}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title

@@ -99,6 +99,8 @@ const PersistedBrainstorm = Schema.Struct({
    */
   threadIdsBySpaceBrain: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   defaultProfile: Schema.optional(Schema.NullOr(Schema.String)),
+  /** The manager thread the server last pinned. */
+  pinnedManagerThreadId: Schema.optional(Schema.String),
 });
 type PersistedBrainstorm = typeof PersistedBrainstorm.Type;
 const PersistedBrainstormJson = Schema.fromJsonString(PersistedBrainstorm);
@@ -147,6 +149,22 @@ export interface BrainstormContext {
   /** Code profile of each project, by project id. */
   readonly profileByProjectId: ReadonlyMap<string, string | null>;
   readonly projects: ReadonlyArray<OrchestrationProjectShell>;
+}
+
+/**
+ * Where the manager works when there is no brain: the project whose threads
+ * moved most recently, else the first project.
+ */
+export function fallbackManagerProject(
+  projects: ReadonlyArray<OrchestrationProjectShell>,
+  threads: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "projectId" | "updatedAt">>,
+): OrchestrationProjectShell | undefined {
+  let latest: { projectId: string; at: number } | null = null;
+  for (const thread of threads) {
+    const at = DateTime.toEpochMillis(thread.updatedAt);
+    if (latest === null || at > latest.at) latest = { projectId: thread.projectId, at };
+  }
+  return projects.find((project) => project.id === latest?.projectId) ?? projects[0];
 }
 
 /** The brain a space's chat works in. */
@@ -571,27 +589,67 @@ export const make = Effect.gen(function* () {
 
   const realPath = (path: string) => Effect.promise(() => NodeFSP.realpath(path).catch(() => path));
 
+  /**
+   * The manager thread is pinned once, when it first becomes the manager, so
+   * it sits at the top of the sidebar. An unpin by the user sticks.
+   */
+  const pinManagerOnce = (threadId: ThreadId, alreadyPinned: boolean) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.get(stateRef);
+      if (state.pinnedManagerThreadId === threadId) return;
+      if (!alreadyPinned) {
+        yield* orchestrator
+          .dispatch({
+            type: "thread.pin",
+            commandId: CommandId.make(`server:manager-pin:${yield* uuid}`),
+            threadId,
+          })
+          .pipe(Effect.ignore);
+      }
+      yield* Ref.update(stateRef, (current) => ({ ...current, pinnedManagerThreadId: threadId }));
+      yield* save;
+    });
+
   const open: BrainstormService["Service"]["open"] = (spaceId) =>
     openLock.withPermits(1)(
       Effect.gen(function* () {
         const ctx = yield* context;
         const space = yield* requireSpace(ctx, spaceId);
         const brainPath = brainPathOf(ctx, space);
-        if (brainPath === null) {
-          return yield* new BrainstormError({
-            message: "No brain repository found (expected ~/code/<profile>/<profile>-brain).",
-          });
-        }
-        const brainReal = yield* realPath(brainPath);
-
         let project: OrchestrationProjectShell | undefined;
-        for (const candidate of ctx.projects) {
-          if ((yield* realPath(candidate.workspaceRoot)) === brainReal) {
-            project = candidate;
-            break;
+        if (brainPath === null) {
+          if (space.kind !== "all") {
+            return yield* new BrainstormError({
+              message: "No brain repository found (expected ~/code/<profile>/<profile>-brain).",
+            });
+          }
+          // Without a brain the manager stays where it is, or starts in the
+          // project used most recently.
+          const snapshot = yield* orchestrator
+            .getShellSnapshot({ location: "active" })
+            .pipe(Effect.mapError(failWith("Could not read the threads.")));
+          const currentId = (yield* Ref.get(stateRef)).threadIdsBySpaceId[space.id];
+          const current = snapshot.threads.find(
+            (thread) => thread.id === currentId && thread.deletedAt === null,
+          );
+          project =
+            ctx.projects.find((candidate) => candidate.id === current?.projectId) ??
+            fallbackManagerProject(ctx.projects, snapshot.threads);
+          if (!project) {
+            return yield* new BrainstormError({
+              message: "Add a project first; the manager thread lives in one.",
+            });
+          }
+        } else {
+          const brainReal = yield* realPath(brainPath);
+          for (const candidate of ctx.projects) {
+            if ((yield* realPath(candidate.workspaceRoot)) === brainReal) {
+              project = candidate;
+              break;
+            }
           }
         }
-        if (!project) {
+        if (!project && brainPath !== null) {
           const projectId = ProjectId.make(yield* uuid);
           yield* projectService
             .create({
@@ -609,6 +667,10 @@ export const make = Effect.gen(function* () {
           }
           project = created.value;
         }
+        if (!project) {
+          return yield* new BrainstormError({ message: "No project for the manager thread." });
+        }
+        const workPath = brainPath ?? project.workspaceRoot;
 
         const state = yield* Ref.get(stateRef);
         const brainKey = `${space.id}|${project.id}`;
@@ -648,7 +710,13 @@ export const make = Effect.gen(function* () {
             yield* save;
             yield* notify;
           }
-          return { spaceId: space.id, projectId: project.id, threadId: existing.id, brainPath };
+          if (space.kind === "all") yield* pinManagerOnce(existing.id, existing.pinnedAt != null);
+          return {
+            spaceId: space.id,
+            projectId: project.id,
+            threadId: existing.id,
+            brainPath: workPath,
+          };
         }
 
         const threadId = ThreadId.make(yield* uuid);
@@ -687,9 +755,10 @@ export const make = Effect.gen(function* () {
           threadIdsBySpaceId: { ...current.threadIdsBySpaceId, [space.id]: threadId },
           threadIdsBySpaceBrain: { ...current.threadIdsBySpaceBrain, [brainKey]: threadId },
         }));
+        if (space.kind === "all") yield* pinManagerOnce(threadId, false);
         yield* save;
         yield* notify;
-        return { spaceId: space.id, projectId: project.id, threadId, brainPath };
+        return { spaceId: space.id, projectId: project.id, threadId, brainPath: workPath };
       }),
     );
 
@@ -764,7 +833,10 @@ export const make = Effect.gen(function* () {
     const state = yield* Ref.get(stateRef);
     return {
       threadIdsBySpaceId: state.threadIdsBySpaceId as Record<string, ThreadId>,
-      hiddenThreadIds: [...allBrainstormThreadIds(state)] as ThreadId[],
+      // The manager is an ordinary thread in the lists; other brainstorm chats stay hidden.
+      hiddenThreadIds: [...allBrainstormThreadIds(state)].filter(
+        (threadId) => threadId !== state.threadIdsBySpaceId[ALL_SPACE_ID],
+      ) as ThreadId[],
       taskLists: lists,
       customSpaceIdsByProjectId: state.customSpaceIdsByProjectId as Record<string, string[]>,
       membershipRevision: yield* Ref.get(membershipRevision),

@@ -39,6 +39,12 @@ on macOS and Ctrl on Windows and Linux, including GNOME, KDE Plasma, Niri, and
 Hyprland. If a custom desktop shortcut takes the same keys, choose another binding
 in Settings.
 
+## Manager and work overlay
+
+`ctrl+alt+m` opens the [manager](./manager.md) thread with its composer focused, from anywhere in
+the app. `ctrl+alt+o` shows or hides the work overlay above the current view. They use `ctrl` on
+every platform, like the right-panel chords.
+
 ## Copy pull request references
 
 With a PR open in the right panel or on the Pull Requests page, use `mod+shift+c`
