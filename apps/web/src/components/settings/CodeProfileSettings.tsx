@@ -43,14 +43,15 @@ function splitDirs(value: string): string[] {
 function profileWith(
   profile: CodeProfile,
   patch: { root?: string; configDir?: string; extra?: string[] },
-) {
+): CodeProfile {
+  const root = patch.root ?? profile.root;
+  const configDir = patch.configDir ?? profile.claude?.configDir;
+  // A profile written without Claude settings keeps none until a dir is set.
+  if (configDir === undefined) return { root };
   return {
-    root: patch.root ?? profile.root,
-    claude: {
-      configDir: patch.configDir ?? profile.claude?.configDir ?? "",
-      extraConfigDirs: patch.extra ?? profile.claude?.extraConfigDirs ?? [],
-    },
-  } satisfies CodeProfile;
+    root,
+    claude: { configDir, extraConfigDirs: patch.extra ?? profile.claude?.extraConfigDirs ?? [] },
+  };
 }
 
 function StatusDot({ status }: { readonly status: ServerProviderCodeProfile | undefined }) {
