@@ -46,8 +46,8 @@ export const redactClaudeLoginTokens = (text: string) =>
 
 /** The last token `claude setup-token` printed, ignoring terminal escapes. */
 export const findClaudeLoginToken = (transcript: string): string | undefined =>
-  // oxlint-disable-next-line no-control-regex
   transcript
+    // oxlint-disable-next-line no-control-regex
     .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
     .match(CLAUDE_LOGIN_TOKEN_PATTERN)
     ?.at(-1);

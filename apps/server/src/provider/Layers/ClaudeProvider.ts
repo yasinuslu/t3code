@@ -700,6 +700,7 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
       readonly token?: string | undefined;
       readonly expiresAt?: string | undefined;
     };
+    readonly savedLogins?: ReadonlyArray<{ readonly id: string; readonly expiresAt?: string }>;
   }>,
   probe: (
     environment: NodeJS.ProcessEnv,
@@ -716,6 +717,7 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
           name: profile.name,
           root: profile.root,
           ...(profile.claudeConfigDir ? { configDir: profile.claudeConfigDir } : {}),
+          ...(profile.savedLogins ? { savedLogins: profile.savedLogins } : {}),
           ...(login
             ? {
                 login: {

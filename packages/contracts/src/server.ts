@@ -230,6 +230,12 @@ export const ServerProviderCodeProfile = Schema.Struct({
       expiresAt: Schema.optionalKey(IsoDateTime),
     }),
   ),
+  // Every login whose token is on this machine, with its estimated expiry.
+  savedLogins: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({ id: TrimmedNonEmptyString, expiresAt: Schema.optionalKey(IsoDateTime) }),
+    ),
+  ),
   status: ServerProviderState,
   auth: ServerProviderAuth,
   message: Schema.optionalKey(TrimmedNonEmptyString),

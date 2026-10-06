@@ -38,6 +38,7 @@ export interface ListedCodeProfile {
   /** Absolute; `undefined` when the profile sets no Claude config. */
   readonly claudeConfigDir: string | undefined;
   readonly claudeLogin?: CodeProfileClaudeLogin | undefined;
+  readonly claudeLogins: ReadonlyArray<CodeProfileClaudeLogin>;
 }
 
 export interface CodeProfileClaudeConfigDir {
@@ -183,6 +184,7 @@ const make = Effect.gen(function* () {
         root: path.resolve(expandHomePathWith(profile.root, path)),
         claudeConfigDir: claudeDirs(profile)[0],
         claudeLogin: activeLogin(profile),
+        claudeLogins: profile.claude?.logins ?? [],
       })),
     ),
   );

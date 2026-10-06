@@ -1,6 +1,9 @@
 import {
+  CODE_PROFILE_HOME_LOGIN,
   ProviderDriverKind,
   type CodeProfile,
+  type EnvironmentId,
+  type ProviderInstanceId,
   type ServerProviderCodeProfile,
 } from "@t3tools/contracts";
 import { CopyIcon, PlusIcon, Trash2Icon } from "lucide-react";
@@ -14,8 +17,10 @@ import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
 import { RefreshIcon } from "../ui/refresh-icon";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { CodeProfileLoginFlow } from "./CodeProfileLoginFlow";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { getProviderVersionLabel, PROVIDER_STATUS_STYLES } from "./providerStatus";
@@ -50,8 +55,88 @@ function profileWith(
   if (configDir === undefined) return { root };
   return {
     root,
-    claude: { configDir, extraConfigDirs: patch.extra ?? profile.claude?.extraConfigDirs ?? [] },
+    claude: {
+      ...profile.claude,
+      configDir,
+      extraConfigDirs: patch.extra ?? profile.claude?.extraConfigDirs ?? [],
+    },
   };
+}
+
+/** `profile` with `activeLogin` set; `"home"` clears it. */
+export function profileWithActiveLogin(profile: CodeProfile, loginId: string): CodeProfile {
+  if (profile.claude === undefined) return profile;
+  const { activeLogin: _previous, ...claude } = profile.claude;
+  return {
+    ...profile,
+    claude: loginId === CODE_PROFILE_HOME_LOGIN ? claude : { ...claude, activeLogin: loginId },
+  };
+}
+
+/** `profile` without the login `loginId`, back on the home login if it was active. */
+export function profileWithoutLogin(profile: CodeProfile, loginId: string): CodeProfile {
+  if (profile.claude === undefined) return profile;
+  const next = {
+    ...profile,
+    claude: {
+      ...profile.claude,
+      logins: (profile.claude.logins ?? []).filter((login) => login.id !== loginId),
+    },
+  };
+  return profile.claude.activeLogin === loginId
+    ? profileWithActiveLogin(next, CODE_PROFILE_HOME_LOGIN)
+    : next;
+}
+
+const activeLoginId = (profile: CodeProfile) => {
+  const id = profile.claude?.activeLogin;
+  return id && profile.claude?.logins?.some((login) => login.id === id)
+    ? id
+    : CODE_PROFILE_HOME_LOGIN;
+};
+
+const formatDay = (iso: string) =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(Date.parse(iso));
+
+/** Home or one of the profile's token logins; applies to new sessions. */
+export function CodeProfileLoginPicker({
+  name,
+  profile,
+  disabled,
+  onSave,
+}: {
+  readonly name: string;
+  readonly profile: CodeProfile;
+  readonly disabled: boolean;
+  readonly onSave: (name: string, profile: CodeProfile) => void;
+}) {
+  const logins = profile.claude?.logins ?? [];
+  const active = activeLoginId(profile);
+  const label = (id: string) =>
+    id === CODE_PROFILE_HOME_LOGIN
+      ? "Home login"
+      : (logins.find((login) => login.id === id)?.name ?? "Home login");
+  return (
+    <Select
+      value={active}
+      disabled={disabled || profile.claude === undefined}
+      onValueChange={(value) => {
+        if (value && value !== active) onSave(name, profileWithActiveLogin(profile, value));
+      }}
+    >
+      <SelectTrigger size="xs" aria-label={`Login for ${name}`} className="w-28">
+        <SelectValue>{label(active)}</SelectValue>
+      </SelectTrigger>
+      <SelectPopup>
+        <SelectItem value={CODE_PROFILE_HOME_LOGIN}>Home login</SelectItem>
+        {logins.map((login) => (
+          <SelectItem key={login.id} value={login.id}>
+            {login.name}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
 }
 
 function StatusDot({ status }: { readonly status: ServerProviderCodeProfile | undefined }) {
@@ -71,16 +156,21 @@ export function CodeProfileListRow({
   status,
   version,
   selected,
+  readOnly,
   onSelect,
+  onSave,
 }: {
   readonly name: string;
   readonly profile: CodeProfile;
   readonly status: ServerProviderCodeProfile | undefined;
   readonly version: string | null;
   readonly selected: boolean;
+  readonly readOnly: boolean;
   readonly onSelect: () => void;
+  readonly onSave: (name: string, profile: CodeProfile) => void;
 }) {
   const versionLabel = getProviderVersionLabel(version);
+  const home = profile.claude?.configDir;
   return (
     <div
       data-slot="settings-row"
@@ -125,8 +215,16 @@ export function CodeProfileListRow({
           <span className="mt-0.5 block truncate font-mono text-2xs text-muted-foreground/70">
             {profile.root}
           </span>
+          {home ? (
+            <span className="block truncate font-mono text-2xs text-muted-foreground/70">
+              home {home}
+            </span>
+          ) : null}
         </span>
       </div>
+      <span className="flex shrink-0 items-center">
+        <CodeProfileLoginPicker name={name} profile={profile} disabled={readOnly} onSave={onSave} />
+      </span>
     </div>
   );
 }
@@ -194,7 +292,11 @@ export function CodeProfileEditor({
   onSave,
   onDelete,
   onRefresh,
+  environmentId,
+  instanceId,
 }: {
+  readonly environmentId: EnvironmentId;
+  readonly instanceId: ProviderInstanceId;
   readonly name: string | undefined;
   readonly profile: CodeProfile | undefined;
   readonly status: ServerProviderCodeProfile | undefined;
@@ -290,122 +392,190 @@ export function CodeProfileEditor({
     onSave(name, profileWith(profile, { [key]: trimmed }));
   };
 
+  const logins = profile.claude?.logins ?? [];
+  const saved = new Map((status?.savedLogins ?? []).map((login) => [login.id, login]));
   return (
-    <SettingsSection
-      title={name}
-      icon={icon}
-      headerAction={
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Badge variant="outline" size="sm" className="shrink-0">
-            profile
-          </Badge>
-          {versionLabel ? (
-            <code className="text-xs text-muted-foreground">{versionLabel}</code>
-          ) : null}
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost-muted"
-            disabled={isRefreshing}
-            onClick={onRefresh}
-            aria-label={`Refresh ${name} account`}
-          >
-            <RefreshIcon refreshing={isRefreshing} />
-          </Button>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost-destructive"
-            disabled={readOnly}
-            onClick={() => onDelete(name)}
-            aria-label={`Delete code profile ${name}`}
-          >
-            <Trash2Icon />
-          </Button>
-        </div>
-      }
-    >
-      <SettingsRow
-        title="Account"
-        status={
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-            <StatusDot status={status} />
-            {email ? (
-              <>
-                <span>Authenticated as</span>
-                <RedactedSensitiveText
-                  value={email}
-                  ariaLabel="Toggle account email visibility"
-                  revealTooltip="Click to reveal email"
-                  hideTooltip="Click to hide email"
-                  className="max-w-full truncate"
-                />
-                {status?.auth.label ? <span>· {status.auth.label}</span> : null}
-              </>
-            ) : (
-              <span>{codeProfileHeadline(status)}</span>
-            )}
-            {status?.message ? (
-              <span className="min-w-0 [overflow-wrap:anywhere]">· {status.message}</span>
+    <>
+      <SettingsSection
+        title={name}
+        icon={icon}
+        headerAction={
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Badge variant="outline" size="sm" className="shrink-0">
+              profile
+            </Badge>
+            {versionLabel ? (
+              <code className="text-xs text-muted-foreground">{versionLabel}</code>
             ) : null}
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost-muted"
+              disabled={isRefreshing}
+              onClick={onRefresh}
+              aria-label={`Refresh ${name} account`}
+            >
+              <RefreshIcon refreshing={isRefreshing} />
+            </Button>
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost-destructive"
+              disabled={readOnly}
+              onClick={() => onDelete(name)}
+              aria-label={`Delete code profile ${name}`}
+            >
+              <Trash2Icon />
+            </Button>
           </div>
         }
       >
-        {status?.auth.status === "unauthenticated" && configDir ? (
-          <div className="pb-2">
-            <LoginCommand configDir={status.configDir ?? configDir} />
-          </div>
-        ) : null}
-      </SettingsRow>
-      <div
-        inert={readOnly}
-        aria-disabled={readOnly || undefined}
-        className={readOnly ? "opacity-50 select-none" : undefined}
-      >
         <SettingsRow
-          title="Root folder"
-          description="Threads in this folder, and in worktrees of its repositories, use this profile."
-          control={
-            <DraftInput
-              size="sm"
-              className="min-w-0 flex-1 @min-[32rem]/settings-row:w-72"
-              value={profile.root}
-              onCommit={commitRequired("root")}
-              spellCheck={false}
-              aria-label="Root folder"
-            />
+          title="Account"
+          status={
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+              <StatusDot status={status} />
+              {email ? (
+                <>
+                  <span>Authenticated as</span>
+                  <RedactedSensitiveText
+                    value={email}
+                    ariaLabel="Toggle account email visibility"
+                    revealTooltip="Click to reveal email"
+                    hideTooltip="Click to hide email"
+                    className="max-w-full truncate"
+                  />
+                  {status?.auth.label ? <span>· {status.auth.label}</span> : null}
+                </>
+              ) : (
+                <span>{codeProfileHeadline(status)}</span>
+              )}
+              {status?.message ? (
+                <span className="min-w-0 [overflow-wrap:anywhere]">· {status.message}</span>
+              ) : null}
+            </div>
           }
-        />
-        <SettingsRow
-          title="Claude config dir"
-          description="CLAUDE_CONFIG_DIR for this profile's sessions."
-          control={
-            <DraftInput
-              size="sm"
-              className="min-w-0 flex-1 @min-[32rem]/settings-row:w-72"
-              value={configDir}
-              onCommit={commitRequired("configDir")}
-              spellCheck={false}
-              aria-label="Claude config dir"
-            />
-          }
-        />
-        <SettingsRow
-          title="Extra config dirs"
-          description="Other logins of this profile, kept when a session already uses one. Comma separated."
-          control={
-            <DraftInput
-              size="sm"
-              className="min-w-0 flex-1 @min-[32rem]/settings-row:w-72"
-              value={(profile.claude?.extraConfigDirs ?? []).join(", ")}
-              onCommit={(value) => onSave(name, profileWith(profile, { extra: splitDirs(value) }))}
-              placeholder="None"
-              spellCheck={false}
-              aria-label="Extra config dirs"
-            />
-          }
-        />
-      </div>
-    </SettingsSection>
+        >
+          {status?.auth.status === "unauthenticated" && configDir ? (
+            <div className="pb-2">
+              <LoginCommand configDir={status.configDir ?? configDir} />
+            </div>
+          ) : null}
+        </SettingsRow>
+        <div
+          inert={readOnly}
+          aria-disabled={readOnly || undefined}
+          className={readOnly ? "opacity-50 select-none" : undefined}
+        >
+          <SettingsRow
+            title="Root folder"
+            description="Threads in this folder, and in worktrees of its repositories, use this profile."
+            control={
+              <DraftInput
+                size="sm"
+                className="min-w-0 flex-1 @min-[32rem]/settings-row:w-72"
+                value={profile.root}
+                onCommit={commitRequired("root")}
+                spellCheck={false}
+                aria-label="Root folder"
+              />
+            }
+          />
+          <SettingsRow
+            title="Claude config dir"
+            description="CLAUDE_CONFIG_DIR for this profile's sessions."
+            control={
+              <DraftInput
+                size="sm"
+                className="min-w-0 flex-1 @min-[32rem]/settings-row:w-72"
+                value={configDir}
+                onCommit={commitRequired("configDir")}
+                spellCheck={false}
+                aria-label="Claude config dir"
+              />
+            }
+          />
+          <SettingsRow
+            title="Extra config dirs"
+            description="Other logins of this profile, kept when a session already uses one. Comma separated."
+            control={
+              <DraftInput
+                size="sm"
+                className="min-w-0 flex-1 @min-[32rem]/settings-row:w-72"
+                value={(profile.claude?.extraConfigDirs ?? []).join(", ")}
+                onCommit={(value) =>
+                  onSave(name, profileWith(profile, { extra: splitDirs(value) }))
+                }
+                placeholder="None"
+                spellCheck={false}
+                aria-label="Extra config dirs"
+              />
+            }
+          />
+        </div>
+      </SettingsSection>
+      {profile.claude ? (
+        <SettingsSection title="Logins">
+          <SettingsRow
+            title="Active login"
+            description="The account this profile's new sessions bill. The home dir keeps its settings, plugins, skills, memory and history either way."
+            control={
+              <CodeProfileLoginPicker
+                name={name}
+                profile={profile}
+                disabled={readOnly}
+                onSave={onSave}
+              />
+            }
+          />
+          <SettingsRow
+            title="Home login"
+            description={`The credentials ${configDir} holds itself, from claude auth login.`}
+          />
+          {logins.map((login) => {
+            const token = saved.get(login.id);
+            return (
+              <SettingsRow
+                key={login.id}
+                title={login.name}
+                description={
+                  token === undefined
+                    ? status === undefined
+                      ? "Token login."
+                      : "Token missing on this machine. Remove this login and add it again."
+                    : token.expiresAt
+                      ? `Token login. Expires around ${formatDay(token.expiresAt)}.`
+                      : "Token login."
+                }
+                control={
+                  <Button
+                    size="icon-xs"
+                    variant="ghost-destructive"
+                    disabled={readOnly}
+                    aria-label={`Remove login ${login.name}`}
+                    onClick={() => onSave(name, profileWithoutLogin(profile, login.id))}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                }
+              />
+            );
+          })}
+          <SettingsRow
+            title="Add a token login"
+            description="Bill another Claude account in this profile's folders. Tokens from claude setup-token can't use Remote Control or claude.ai connectors (local MCP servers still work) and expire after a year."
+          >
+            <div className="pb-2">
+              <CodeProfileLoginFlow
+                environmentId={environmentId}
+                instanceId={instanceId}
+                profile={name}
+                readOnly={readOnly}
+              />
+            </div>
+          </SettingsRow>
+        </SettingsSection>
+      ) : null}
+    </>
   );
 }

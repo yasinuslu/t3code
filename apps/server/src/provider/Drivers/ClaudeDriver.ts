@@ -286,18 +286,36 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           : folderProfiles.list.pipe(
               Effect.flatMap((profiles) =>
                 Effect.forEach(profiles, (profile) =>
-                  profile.claudeLogin === undefined
-                    ? Effect.succeed(profile)
-                    : (profileLogins?.read(profile.claudeLogin.id) ?? Effect.succeedNone).pipe(
-                        Effect.map((stored) => ({
-                          ...profile,
-                          login: {
-                            ...profile.claudeLogin!,
-                            token: Option.getOrUndefined(stored)?.token,
-                            expiresAt: Option.getOrUndefined(stored)?.expiresAt,
-                          },
-                        })),
-                      ),
+                  Effect.gen(function* () {
+                    const stored = new Map<string, { token: string; expiresAt?: string }>();
+                    for (const login of profile.claudeLogins) {
+                      const read = profileLogins
+                        ? Option.getOrUndefined(yield* profileLogins.read(login.id))
+                        : undefined;
+                      if (read)
+                        stored.set(login.id, {
+                          token: read.token,
+                          ...(read.expiresAt ? { expiresAt: read.expiresAt } : {}),
+                        });
+                    }
+                    const active = profile.claudeLogin;
+                    return {
+                      ...profile,
+                      savedLogins: [...stored].map(([id, { expiresAt }]) => ({
+                        id,
+                        ...(expiresAt ? { expiresAt } : {}),
+                      })),
+                      ...(active
+                        ? {
+                            login: {
+                              ...active,
+                              token: stored.get(active.id)?.token,
+                              expiresAt: stored.get(active.id)?.expiresAt,
+                            },
+                          }
+                        : {}),
+                    };
+                  }),
                 ),
               ),
               Effect.flatMap((profiles) =>
