@@ -8,15 +8,19 @@ import type * as ServerSettingsModule from "../serverSettings.ts";
 export interface ProviderSnapshotSettings<Settings> {
   readonly provider: Settings;
   readonly enableProviderUpdateChecks: boolean;
+  /** Set for an instance whose snapshot covers the code profiles, so editing them re-probes it. */
+  readonly codeProfiles?: ServerSettings["codeProfiles"];
 }
 
 function makeProviderSnapshotSettings<Settings>(
   provider: Settings,
   settings: ServerSettings,
+  includeCodeProfiles: boolean,
 ): ProviderSnapshotSettings<Settings> {
   return {
     provider,
     enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+    ...(includeCodeProfiles ? { codeProfiles: settings.codeProfiles } : {}),
   };
 }
 
@@ -30,12 +34,13 @@ export function haveProviderSnapshotSettingsChanged<Settings>(
 export function makeProviderSnapshotSettingsSource<Settings>(
   provider: Settings,
   serverSettings: ServerSettingsModule.ServerSettingsService["Service"],
+  options?: { readonly includeCodeProfiles?: boolean },
 ): {
   readonly getSettings: Effect.Effect<ProviderSnapshotSettings<Settings>, ServerSettingsError>;
   readonly streamSettings: Stream.Stream<ProviderSnapshotSettings<Settings>>;
 } {
   const mapSettings = (settings: ServerSettings) =>
-    makeProviderSnapshotSettings(provider, settings);
+    makeProviderSnapshotSettings(provider, settings, options?.includeCodeProfiles === true);
   return {
     getSettings: serverSettings.getSettings.pipe(Effect.map(mapSettings)),
     streamSettings: serverSettings.streamChanges.pipe(Stream.map(mapSettings)),

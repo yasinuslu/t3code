@@ -281,6 +281,7 @@ export function applyServerSettingsPatch(
     usageLimitSources: usageLimitSourcesPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
     usageModelAliases: usageModelAliasesPatch,
+    codeProfiles: codeProfilesPatch,
     // Entry replacement: deepMerge would keep keys the client meant to clear.
     projectSettingsOverrides: projectSettingsOverridesPatch,
     // Already translated into `projectSettingsOverrides` above; the legacy
@@ -402,6 +403,9 @@ export function applyServerSettingsPatch(
             usageModelAliasesPatch,
           ),
         }
+      : {}),
+    ...(codeProfilesPatch !== undefined
+      ? { codeProfiles: mergeSettingsEntries(current.codeProfiles, codeProfilesPatch) }
       : {}),
     ...(patch.sourceControlWriterModelSelection !== undefined
       ? { sourceControlWriterModelSelection: patch.sourceControlWriterModelSelection }

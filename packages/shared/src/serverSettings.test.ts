@@ -558,6 +558,25 @@ describe("serverSettings helpers", () => {
     expect(Object.keys(removed.usageLimitSources)).toEqual([hubB]);
   });
 
+  it("adds, replaces and removes code profiles per entry", () => {
+    const work = {
+      root: "/home/dev/code/work",
+      claude: { configDir: "/home/dev/.claude-work", extraConfigDirs: [] },
+    };
+    const home = { root: "/home/dev/code/home" };
+    const added = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      codeProfiles: { work, home },
+    });
+    expect(added.codeProfiles).toEqual({ work, home });
+
+    const moved = { ...work, root: "/home/dev/src/work" };
+    const replaced = applyServerSettingsPatch(added, { codeProfiles: { work: moved } });
+    expect(replaced.codeProfiles).toEqual({ work: moved, home });
+
+    const removed = applyServerSettingsPatch(replaced, { codeProfiles: { home: null } });
+    expect(removed.codeProfiles).toEqual({ work: moved });
+  });
+
   it("replaces and removes individual usage prices without clobbering other models", () => {
     const prices = { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 };
     const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {

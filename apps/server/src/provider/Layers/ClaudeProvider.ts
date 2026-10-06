@@ -2,6 +2,7 @@ import {
   type ClaudeSettings,
   type ModelCapabilities,
   type ServerProvider,
+  type ServerProviderCodeProfile,
   type ServerProviderSlashCommand,
   type ServerProviderResetCredits,
 } from "@t3tools/contracts";
@@ -230,7 +231,7 @@ function nonEmptyProbeString(value: string): string | undefined {
   return candidate ? candidate : undefined;
 }
 
-type ClaudeCapabilitiesProbe = {
+export type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
@@ -679,6 +680,76 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       usageLimits: resetCredits ? { ...usageLimits, resetCredits } : usageLimits,
     },
   });
+});
+
+/**
+ * Probe each code profile's account with its own CLAUDE_CONFIG_DIR. Every
+ * profile shares the instance's CLI, so only the account is probed here.
+ */
+export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(function* (
+  profiles: ReadonlyArray<{
+    readonly name: string;
+    readonly root: string;
+    readonly claudeConfigDir: string | undefined;
+  }>,
+  probe: (environment: NodeJS.ProcessEnv) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  return yield* Effect.forEach(
+    profiles,
+    (profile) =>
+      Effect.gen(function* () {
+        const base = {
+          name: profile.name,
+          root: profile.root,
+          ...(profile.claudeConfigDir ? { configDir: profile.claudeConfigDir } : {}),
+        };
+        if (profile.claudeConfigDir === undefined) {
+          return {
+            ...base,
+            status: "warning",
+            auth: { status: "unknown" },
+            message: "This profile sets no Claude config dir.",
+          } satisfies ServerProviderCodeProfile;
+        }
+        const capabilities = yield* probe({
+          ...environment,
+          CLAUDE_CONFIG_DIR: profile.claudeConfigDir,
+        }).pipe(Effect.orElseSucceed(() => undefined));
+        if (!capabilities) {
+          return {
+            ...base,
+            status: "warning",
+            auth: { status: "unknown" },
+            message: "Could not verify Claude authentication status from initialization result.",
+          } satisfies ServerProviderCodeProfile;
+        }
+        // A config dir with no login still initializes, reporting no token.
+        if (capabilities.tokenSource === "none" && !capabilities.email) {
+          return {
+            ...base,
+            status: "error",
+            auth: { status: "unauthenticated" },
+            message: "Not signed in. Run claude with this config dir and use /login.",
+          } satisfies ServerProviderCodeProfile;
+        }
+        const authMetadata =
+          claudeAuthMetadata({
+            subscriptionType: capabilities.subscriptionType,
+            authMethod: capabilities.tokenSource,
+          }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
+        return {
+          ...base,
+          status: "ready",
+          auth: {
+            status: "authenticated",
+            ...(capabilities.email ? { email: capabilities.email } : {}),
+            ...authMetadata,
+          },
+        } satisfies ServerProviderCodeProfile;
+      }),
+    { concurrency: "unbounded" },
+  );
 });
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
