@@ -700,7 +700,11 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
       readonly token?: string | undefined;
       readonly expiresAt?: string | undefined;
     };
-    readonly savedLogins?: ReadonlyArray<{ readonly id: string; readonly expiresAt?: string }>;
+    readonly savedLogins?: ReadonlyArray<{
+      readonly id: string;
+      readonly expiresAt?: string;
+      readonly missing?: true;
+    }>;
   }>,
   probe: (
     environment: NodeJS.ProcessEnv,
@@ -768,14 +772,21 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
             auth: { status: "unauthenticated" },
           } satisfies ServerProviderCodeProfile;
         }
-        // A token login reports no account details without the profile scope.
+        // A setup-token token has no profile scope, so Claude reports no
+        // account for it and starting up does not prove it works.
+        if (login && !capabilities.email) {
+          return {
+            ...base,
+            status: "ready",
+            auth: { status: "unknown", type: "token", label: "Token login" },
+            message: "Claude checks a token login when a session starts.",
+          } satisfies ServerProviderCodeProfile;
+        }
         const authMetadata =
           claudeAuthMetadata({
             subscriptionType: capabilities.subscriptionType,
             authMethod: capabilities.tokenSource,
-          }) ??
-          apiProviderAuthMetadata(capabilities.apiProvider) ??
-          (login ? { type: "token", label: "Claude token" } : undefined);
+          }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
         return {
           ...base,
           status: "ready",

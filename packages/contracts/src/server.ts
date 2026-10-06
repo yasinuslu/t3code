@@ -230,10 +230,15 @@ export const ServerProviderCodeProfile = Schema.Struct({
       expiresAt: Schema.optionalKey(IsoDateTime),
     }),
   ),
-  // Every login whose token is on this machine, with its estimated expiry.
+  // Every login of the profile at the last probe, with its token's estimated
+  // expiry, or `missing` when this machine has no token for it.
   savedLogins: Schema.optionalKey(
     Schema.Array(
-      Schema.Struct({ id: TrimmedNonEmptyString, expiresAt: Schema.optionalKey(IsoDateTime) }),
+      Schema.Struct({
+        id: TrimmedNonEmptyString,
+        expiresAt: Schema.optionalKey(IsoDateTime),
+        missing: Schema.optionalKey(Schema.Literal(true)),
+      }),
     ),
   ),
   status: ServerProviderState,

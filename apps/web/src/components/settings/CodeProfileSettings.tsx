@@ -6,7 +6,7 @@ import {
   type ProviderInstanceId,
   type ServerProviderCodeProfile,
 } from "@t3tools/contracts";
-import { CopyIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, CopyIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
@@ -16,6 +16,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
+import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { toastManager } from "../ui/toast";
@@ -30,6 +31,8 @@ const CLAUDE_DRIVER = ProviderDriverKind.make("claudeAgent");
 /** A profile's account line, from the routing instance's last probe. */
 export function codeProfileHeadline(status: ServerProviderCodeProfile | undefined): string {
   if (!status) return "Checking account";
+  if (status.login && status.auth.status !== "unauthenticated" && status.status === "ready")
+    return `Token login · ${status.login.name}`;
   if (status.auth.status === "authenticated") {
     const label = status.auth.label ?? status.auth.type;
     return label ? `Authenticated · ${label}` : "Authenticated";
@@ -104,11 +107,13 @@ export function CodeProfileLoginPicker({
   profile,
   disabled,
   onSave,
+  compact = false,
 }: {
   readonly name: string;
   readonly profile: CodeProfile;
   readonly disabled: boolean;
   readonly onSave: (name: string, profile: CodeProfile) => void;
+  readonly compact?: boolean;
 }) {
   const logins = profile.claude?.logins ?? [];
   const active = activeLoginId(profile);
@@ -116,15 +121,42 @@ export function CodeProfileLoginPicker({
     id === CODE_PROFILE_HOME_LOGIN
       ? "Home login"
       : (logins.find((login) => login.id === id)?.name ?? "Home login");
+  const choose = (value: unknown) => {
+    if (typeof value === "string" && value !== active)
+      onSave(name, profileWithActiveLogin(profile, value));
+  };
+  const isDisabled = disabled || profile.claude === undefined;
+  // A list row has no room for a full select; a small menu button fits.
+  if (compact) {
+    return (
+      <Menu>
+        <MenuTrigger
+          render={<Button size="xs" variant="ghost-muted" />}
+          disabled={isDisabled}
+          aria-label={`Login for ${name}`}
+          className="max-w-28"
+        >
+          <span className="truncate">{label(active)}</span>
+          <ChevronDownIcon />
+        </MenuTrigger>
+        <MenuPopup align="end">
+          <MenuRadioGroup value={active} onValueChange={choose}>
+            <MenuRadioItem value={CODE_PROFILE_HOME_LOGIN} closeOnClick>
+              Home login
+            </MenuRadioItem>
+            {logins.map((login) => (
+              <MenuRadioItem key={login.id} value={login.id} closeOnClick>
+                {login.name}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        </MenuPopup>
+      </Menu>
+    );
+  }
   return (
-    <Select
-      value={active}
-      disabled={disabled || profile.claude === undefined}
-      onValueChange={(value) => {
-        if (value && value !== active) onSave(name, profileWithActiveLogin(profile, value));
-      }}
-    >
-      <SelectTrigger size="xs" aria-label={`Login for ${name}`} className="w-28">
+    <Select value={active} disabled={isDisabled} onValueChange={choose}>
+      <SelectTrigger size="xs" aria-label={`Login for ${name}`}>
         <SelectValue>{label(active)}</SelectValue>
       </SelectTrigger>
       <SelectPopup>
@@ -215,16 +247,24 @@ export function CodeProfileListRow({
           <span className="mt-0.5 block truncate font-mono text-2xs text-muted-foreground/70">
             {profile.root}
           </span>
-          {home ? (
-            <span className="block truncate font-mono text-2xs text-muted-foreground/70">
-              home {home}
+          {/* The home dir and the login it bills, side by side. */}
+          <span className="mt-1.5 flex min-w-0 items-center gap-2">
+            {/* Truncated from the start, so the dir's own name stays visible. */}
+            <span className="min-w-0 flex-1 truncate text-left font-mono text-2xs text-muted-foreground/70 [direction:rtl]">
+              <bdi>{home ?? "no home dir"}</bdi>
             </span>
-          ) : null}
+            <span className="pointer-events-auto relative shrink-0">
+              <CodeProfileLoginPicker
+                name={name}
+                profile={profile}
+                disabled={readOnly}
+                onSave={onSave}
+                compact
+              />
+            </span>
+          </span>
         </span>
       </div>
-      <span className="flex shrink-0 items-center">
-        <CodeProfileLoginPicker name={name} profile={profile} disabled={readOnly} onSave={onSave} />
-      </span>
     </div>
   );
 }
@@ -539,11 +579,9 @@ export function CodeProfileEditor({
                 key={login.id}
                 title={login.name}
                 description={
-                  token === undefined
-                    ? status === undefined
-                      ? "Token login."
-                      : "Token missing on this machine. Remove this login and add it again."
-                    : token.expiresAt
+                  token?.missing
+                    ? "Token missing on this machine. Remove this login and add it again."
+                    : token?.expiresAt
                       ? `Token login. Expires around ${formatDay(token.expiresAt)}.`
                       : "Token login."
                 }

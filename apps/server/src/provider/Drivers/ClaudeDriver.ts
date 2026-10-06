@@ -301,10 +301,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
                     const active = profile.claudeLogin;
                     return {
                       ...profile,
-                      savedLogins: [...stored].map(([id, { expiresAt }]) => ({
-                        id,
-                        ...(expiresAt ? { expiresAt } : {}),
-                      })),
+                      savedLogins: profile.claudeLogins.map(({ id }) => {
+                        const token = stored.get(id);
+                        if (!token) return { id, missing: true as const };
+                        return { id, ...(token.expiresAt ? { expiresAt: token.expiresAt } : {}) };
+                      }),
                       ...(active
                         ? {
                             login: {
