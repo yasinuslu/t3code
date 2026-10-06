@@ -40,7 +40,6 @@ import {
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
-import { claudeProfileEnvironment } from "../ClaudeProfileLogins.ts";
 import type { ProviderWorkspaceSnapshot } from "../ProviderDriver.ts";
 import { makeUnavailableUsageLimits } from "../providerUsageLimits.ts";
 import type { ServerProviderShape } from "../Services/ServerProvider.ts";
@@ -693,18 +692,6 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
     readonly name: string;
     readonly root: string;
     readonly claudeConfigDir: string | undefined;
-    /** The active token login; `token` is absent when its secret is missing. */
-    readonly login?: {
-      readonly id: string;
-      readonly name: string;
-      readonly token?: string | undefined;
-      readonly expiresAt?: string | undefined;
-    };
-    readonly savedLogins?: ReadonlyArray<{
-      readonly id: string;
-      readonly expiresAt?: string;
-      readonly missing?: true;
-    }>;
   }>,
   probe: (
     environment: NodeJS.ProcessEnv,
@@ -716,21 +703,10 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
     profiles,
     (profile) =>
       Effect.gen(function* () {
-        const login = profile.login;
         const base = {
           name: profile.name,
           root: profile.root,
           ...(profile.claudeConfigDir ? { configDir: profile.claudeConfigDir } : {}),
-          ...(profile.savedLogins ? { savedLogins: profile.savedLogins } : {}),
-          ...(login
-            ? {
-                login: {
-                  id: login.id,
-                  name: login.name,
-                  ...(login.expiresAt ? { expiresAt: login.expiresAt } : {}),
-                },
-              }
-            : {}),
         };
         if (profile.claudeConfigDir === undefined) {
           return {
@@ -740,20 +716,8 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
             message: "This profile sets no Claude config dir.",
           } satisfies ServerProviderCodeProfile;
         }
-        if (login && !login.token) {
-          return {
-            ...base,
-            status: "error",
-            auth: { status: "unknown" },
-            message: "This login's token is missing on this machine. Add the login again.",
-          } satisfies ServerProviderCodeProfile;
-        }
         const capabilities = yield* probe(
-          claudeProfileEnvironment(environment, {
-            configDir: profile.claudeConfigDir,
-            profiled: true,
-            ...(login?.token ? { token: login.token } : {}),
-          }),
+          { ...environment, CLAUDE_CONFIG_DIR: profile.claudeConfigDir },
           profile.root,
         ).pipe(Effect.orElseSucceed(() => undefined));
         if (!capabilities) {
@@ -770,16 +734,6 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
             ...base,
             status: "error",
             auth: { status: "unauthenticated" },
-          } satisfies ServerProviderCodeProfile;
-        }
-        // A setup-token token has no profile scope, so Claude reports no
-        // account for it and starting up does not prove it works.
-        if (login && !capabilities.email) {
-          return {
-            ...base,
-            status: "ready",
-            auth: { status: "unknown", type: "token", label: "Token login" },
-            message: "Claude checks a token login when a session starts.",
           } satisfies ServerProviderCodeProfile;
         }
         const authMetadata =

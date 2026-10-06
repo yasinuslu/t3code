@@ -42,14 +42,6 @@ repository there, runs on that profile's account. Each profile is listed under t
 instance with its account status; when a profile is not signed in, its panel shows
 the login command for its config directory.
 
-A profile can bill a different Claude account without changing its home: in the
-profile's panel, **Add a token login** runs `claude setup-token` in a terminal (or
-takes a pasted token) and saves the token on this machine, never in settings. Pick
-the login per profile from its row; the home dir's own login is **Home login**. The
-choice applies to new sessions in that profile, including its status check and
-generated titles. Token logins can't use Remote Control or claude.ai connectors
-(local MCP servers still work) and expire a year after they are created.
-
 For presets that differ only in API keys or endpoints, use the instance's
 **Environment variables**. Variable assignments do not belong in **Launch arguments**.
 

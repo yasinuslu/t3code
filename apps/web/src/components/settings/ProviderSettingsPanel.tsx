@@ -1352,11 +1352,7 @@ export function EnvironmentProviderSettings({
                           )}
                           version={routingProvider.version}
                           selected={showCodeProfileEditor && selectedCodeProfile?.name === name}
-                          readOnly={readOnly}
                           onSelect={() => setSelectedCodeProfile({ name })}
-                          onSave={(profileName, next) =>
-                            updateSettings({ codeProfiles: { [profileName]: next } })
-                          }
                         />
                       ))}
                       <AddCodeProfileListRow
@@ -1379,8 +1375,6 @@ export function EnvironmentProviderSettings({
                 <div className="space-y-6 p-4">
                   <CodeProfileEditor
                     key={selectedCodeProfile?.name ?? "new"}
-                    environmentId={environmentId}
-                    instanceId={routingProvider!.instanceId}
                     name={selectedProfileEntry?.[0]}
                     profile={selectedProfileEntry?.[1]}
                     status={routingProvider?.codeProfiles?.find(

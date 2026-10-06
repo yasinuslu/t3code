@@ -221,26 +221,6 @@ export const ServerProviderCodeProfile = Schema.Struct({
   name: TrimmedNonEmptyString,
   root: TrimmedNonEmptyString,
   configDir: Schema.optionalKey(TrimmedNonEmptyString),
-  // The token login the probe used, absent for the home dir's own login.
-  // `expiresAt` is estimated from when T3 stored the token.
-  login: Schema.optionalKey(
-    Schema.Struct({
-      id: TrimmedNonEmptyString,
-      name: TrimmedNonEmptyString,
-      expiresAt: Schema.optionalKey(IsoDateTime),
-    }),
-  ),
-  // Every login of the profile at the last probe, with its token's estimated
-  // expiry, or `missing` when this machine has no token for it.
-  savedLogins: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        id: TrimmedNonEmptyString,
-        expiresAt: Schema.optionalKey(IsoDateTime),
-        missing: Schema.optionalKey(Schema.Literal(true)),
-      }),
-    ),
-  ),
   status: ServerProviderState,
   auth: ServerProviderAuth,
   message: Schema.optionalKey(TrimmedNonEmptyString),

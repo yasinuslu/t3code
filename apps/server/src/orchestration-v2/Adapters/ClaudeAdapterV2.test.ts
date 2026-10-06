@@ -2545,8 +2545,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         return { path: `/profiles/${profile}/claude`, profile };
       }),
     invalidate: Effect.void,
-    environmentFor: (resolved: { readonly path: string } | undefined, base: NodeJS.ProcessEnv) =>
-      Effect.succeed(resolved ? { ...base, CLAUDE_CONFIG_DIR: resolved.path } : base),
   });
 
   it.effect.each([

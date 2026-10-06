@@ -191,8 +191,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       const projectConfigDir = configDirResolver
         ? yield* configDirResolver.resolveForWorkspace(cwd)
         : undefined;
-      const environment = configDirResolver
-        ? yield* configDirResolver.environmentFor(projectConfigDir, claudeEnvironment)
+      const environment = projectConfigDir
+        ? { ...claudeEnvironment, CLAUDE_CONFIG_DIR: projectConfigDir.path }
         : claudeEnvironment;
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =

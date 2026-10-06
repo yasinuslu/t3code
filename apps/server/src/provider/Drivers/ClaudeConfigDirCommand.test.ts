@@ -6,7 +6,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as TestClock from "effect/testing/TestClock";
@@ -121,89 +120,14 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
             homePath: "",
             homePathCommand: "echo /from-command",
           });
-          expect(yield* withCommand(work!)).toEqual({
-            path: "/profiles/work",
-            profile: "work",
-            profileHome: true,
-          });
+          expect(yield* withCommand(work!)).toEqual({ path: "/profiles/work", profile: "work" });
           expect(yield* withCommand(bare!)).toEqual({ path: "/from-command", profile: "bare" });
           expect(yield* withCommand(plain!)).toEqual({ path: "/from-command" });
 
           const profilesOnly = yield* resolverFor({ homePath: "", homePathCommand: "" });
-          expect(yield* profilesOnly(work!)).toEqual({
-            path: "/profiles/work",
-            profile: "work",
-            profileHome: true,
-          });
+          expect(yield* profilesOnly(work!)).toEqual({ path: "/profiles/work", profile: "work" });
           expect(yield* profilesOnly(plain!)).toBe(undefined);
         }).pipe(Effect.scoped),
-    );
-
-    it.effect("runs a profile's sessions on its active login, keeping its home dir", () =>
-      Effect.gen(function* () {
-        const token = `sk-ant-oat01-${"x".repeat(40)}`;
-        const profiles: Record<
-          string,
-          { name: string; claudeConfigDir: string; claudeLogin?: { id: string; name: string } }
-        > = {
-          "/code/billed": {
-            name: "billed",
-            claudeConfigDir: "/home/billed",
-            claudeLogin: { id: "l1", name: "Billing" },
-          },
-          "/code/home": { name: "home", claudeConfigDir: "/home/plain" },
-          "/code/lost": {
-            name: "lost",
-            claudeConfigDir: "/home/lost",
-            claudeLogin: { id: "gone", name: "Gone" },
-          },
-        };
-        const resolver = yield* makeClaudeConfigDirResolver(
-          { homePath: "", homePathCommand: "" },
-          {},
-          {
-            codeProfiles: {
-              resolve: (folder: string) => Effect.succeed(profiles[folder]),
-              list: Effect.succeed([]),
-              claudeConfigDirs: Effect.succeed([]),
-            },
-            logins: {
-              read: (id: string) =>
-                Effect.succeed(
-                  id === "l1"
-                    ? Option.some({
-                        token,
-                        createdAt: "2026-01-01T00:00:00.000Z",
-                        expiresAt: undefined,
-                      })
-                    : Option.none(),
-                ),
-              save: () => Effect.die("unused"),
-              remove: () => Effect.void,
-            },
-          },
-        );
-        if (!resolver) throw new Error("resolver expected");
-        const base = { CLAUDE_CODE_OAUTH_TOKEN: "inherited", KEEP: "1" };
-        const envFor = (folder: string) =>
-          resolver
-            .resolveForWorkspace(folder, folder)
-            .pipe(Effect.flatMap((resolved) => resolver.environmentFor(resolved, base)));
-
-        expect(yield* envFor("/code/billed")).toEqual({
-          KEEP: "1",
-          CLAUDE_CONFIG_DIR: "/home/billed",
-          CLAUDE_CODE_OAUTH_TOKEN: token,
-        });
-        expect(yield* envFor("/code/home")).toEqual({
-          KEEP: "1",
-          CLAUDE_CONFIG_DIR: "/home/plain",
-        });
-        // A login whose token is missing falls back to the home login.
-        expect(yield* envFor("/code/lost")).toEqual({ KEEP: "1", CLAUDE_CONFIG_DIR: "/home/lost" });
-        // Outside every profile the environment is untouched.
-        expect(yield* resolver.environmentFor(undefined, base)).toBe(base);
-      }),
     );
 
     it.effect("is absent without a command or when homePath is set", () =>

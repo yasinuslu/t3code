@@ -1205,35 +1205,16 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
-/** The login a code profile's home dir holds itself, from `claude auth login`. */
-export const CODE_PROFILE_HOME_LOGIN = "home";
-
-/**
- * A long-lived Claude token (`claude setup-token`) a profile can bill instead
- * of its home login. Only the name and id live in settings; the token is in
- * the server's secret store under the id.
- */
-export const CodeProfileClaudeLogin = Schema.Struct({
-  id: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
-  name: TrimmedNonEmptyString.check(Schema.isMaxLength(80)),
-});
-export type CodeProfileClaudeLogin = typeof CodeProfileClaudeLogin.Type;
-
 /**
  * A code profile's Claude config: sessions in the profile's folders use
  * `configDir`, unless an inherited CLAUDE_CONFIG_DIR is already the default
  * or one of `extraConfigDirs` (a second login of the same profile).
- * `activeLogin` is `"home"` or the id of one of `logins`; a token login
- * keeps the home dir (settings, plugins, history) and only changes the account.
  */
 export const CodeProfileClaudeSettings = Schema.Struct({
   configDir: TrimmedNonEmptyString,
   extraConfigDirs: Schema.Array(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
-  logins: Schema.optionalKey(Schema.Array(CodeProfileClaudeLogin)),
-  /** Absent means `"home"`. */
-  activeLogin: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type CodeProfileClaudeSettings = typeof CodeProfileClaudeSettings.Type;
 

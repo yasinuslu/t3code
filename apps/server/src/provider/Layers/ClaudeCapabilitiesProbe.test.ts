@@ -30,7 +30,6 @@ import { COMPACT_SLASH_COMMAND } from "../providerSnapshot.ts";
 vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
 
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
-const toJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 it("isolates Claude capability probes without dropping workspace setting sources", () => {
   const abortController = new AbortController();
@@ -423,56 +422,5 @@ it.effect("probes each code profile's account with that profile's config dir", (
     assert.equal(profiles[0]?.auth.label, "Claude Max Subscription");
     assert.equal(profiles[0]?.configDir, "/home/dev/.claude-work");
     assert.equal(profiles[2]?.configDir, undefined);
-  }),
-);
-
-it.effect("probes a profile's token login with its token over an inherited one", () =>
-  Effect.gen(function* () {
-    const token = `sk-ant-oat01-${"t".repeat(40)}`;
-    const tokens: Array<string | undefined> = [];
-    const profiles = yield* checkClaudeCodeProfiles(
-      [
-        {
-          name: "billed",
-          root: "/home/dev/code/billed",
-          claudeConfigDir: "/home/dev/.claude-billed",
-          login: { id: "l1", name: "Billing", token, expiresAt: "2027-01-01T00:00:00.000Z" },
-        },
-        {
-          name: "lost",
-          root: "/home/dev/code/lost",
-          claudeConfigDir: "/home/dev/.claude-lost",
-          login: { id: "l2", name: "Gone" },
-        },
-      ],
-      (environment) =>
-        Effect.sync(() => {
-          tokens.push(environment.CLAUDE_CODE_OAUTH_TOKEN);
-          return {
-            email: undefined,
-            subscriptionType: undefined,
-            tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
-            apiProvider: "firstParty",
-            slashCommands: [],
-          };
-        }),
-      { CLAUDE_CODE_OAUTH_TOKEN: "inherited" },
-    );
-
-    // The missing token is never probed with the inherited one.
-    assert.deepEqual(tokens, [token]);
-    assert.deepEqual(
-      profiles.map((profile) => [profile.name, profile.status, profile.auth.status]),
-      [
-        ["billed", "ready", "unknown"],
-        ["lost", "error", "unknown"],
-      ],
-    );
-    assert.deepEqual(profiles[0]?.login, {
-      id: "l1",
-      name: "Billing",
-      expiresAt: "2027-01-01T00:00:00.000Z",
-    });
-    assert.notInclude(toJson(profiles), token);
   }),
 );
