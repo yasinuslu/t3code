@@ -86,6 +86,7 @@ import * as NativeAppIconResolver from "./assets/NativeAppIconResolver.ts";
 import * as AntigravityInstallation from "./provider/AntigravityInstallation.ts";
 import * as CodexInstallation from "./provider/CodexInstallation.ts";
 import * as ProviderInstanceRegistry from "./provider/Services/ProviderInstanceRegistry.ts";
+import * as ClaudeProfileLogins from "./provider/ClaudeProfileLogins.ts";
 import * as CodeProfiles from "./provider/CodeProfiles.ts";
 import * as ProviderAdapterRegistry from "./orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
@@ -578,6 +579,11 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ),
   // Below the instance registry, so Claude drivers resolve config dirs per profile.
   Layer.provideMerge(CodeProfilesLayerLive),
+  Layer.provideMerge(
+    ClaudeProfileLogins.layer.pipe(
+      Layer.provide(Layer.merge(ServerSettingsLayerLive, ServerSecretStore.layer)),
+    ),
+  ),
 );
 
 const RuntimeCoreDependenciesLive = RuntimeCoreDependenciesBaseLive.pipe(

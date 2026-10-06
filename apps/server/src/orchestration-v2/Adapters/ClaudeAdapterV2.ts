@@ -3027,9 +3027,12 @@ export function makeClaudeAdapterV2(
             ? yield* adapterOptions.configDirResolver.resolveForWorkspace(input.runtimePolicy.cwd)
             : undefined;
         const sessionEnvironment: NodeJS.ProcessEnv =
-          projectConfigDir === undefined
+          adapterOptions.configDirResolver === undefined
             ? adapterOptions.environment
-            : { ...adapterOptions.environment, CLAUDE_CONFIG_DIR: projectConfigDir.path };
+            : yield* adapterOptions.configDirResolver.environmentFor(
+                projectConfigDir,
+                adapterOptions.environment,
+              );
         const configuredConfigDir = describeClaudeConfigDir(
           yield* resolveClaudeHomePath({ homePath: "" }, sessionEnvironment).pipe(
             Effect.provideService(Path.Path, path),

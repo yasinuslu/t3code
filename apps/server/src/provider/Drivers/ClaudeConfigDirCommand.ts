@@ -13,17 +13,19 @@
  */
 import * as NodeOS from "node:os";
 
-import type { ClaudeSettings } from "@t3tools/contracts";
+import type { ClaudeSettings, CodeProfileClaudeLogin } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { expandHomePath } from "../../pathExpansion.ts";
+import { claudeProfileEnvironment, type ClaudeProfileLogins } from "../ClaudeProfileLogins.ts";
 import type { CodeProfiles } from "../CodeProfiles.ts";
 import { spawnAndCollect } from "../providerSnapshot.ts";
 
@@ -118,6 +120,10 @@ export interface ResolvedClaudeConfigDir {
   readonly path: string;
   /** The code profile the workspace belongs to, when one matched. */
   readonly profile?: string;
+  /** `path` is the profile's own home, so the profile's login applies. */
+  readonly profileHome?: true;
+  /** The profile's active token login; absent for the home login. */
+  readonly login?: CodeProfileClaudeLogin;
 }
 
 export interface ClaudeConfigDirResolver {
@@ -134,6 +140,14 @@ export interface ClaudeConfigDirResolver {
     projectRoot?: string | undefined,
   ) => Effect.Effect<ResolvedClaudeConfigDir | undefined>;
   readonly invalidate: Effect.Effect<void>;
+  /**
+   * `base` with the resolved dir, plus the profile's login: its token as
+   * CLAUDE_CODE_OAUTH_TOKEN, or no inherited token for the home login.
+   */
+  readonly environmentFor: (
+    resolved: ResolvedClaudeConfigDir | undefined,
+    base: NodeJS.ProcessEnv,
+  ) => Effect.Effect<NodeJS.ProcessEnv>;
 }
 
 /**
@@ -149,6 +163,7 @@ export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolve
   options?: {
     readonly timeout?: Duration.Input | undefined;
     readonly codeProfiles?: CodeProfiles["Service"] | undefined;
+    readonly logins?: ClaudeProfileLogins["Service"] | undefined;
   },
 ): Effect.fn.Return<
   ClaudeConfigDirResolver | undefined,
@@ -210,7 +225,12 @@ export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolve
         return profile ? { path: path.resolve(expandHomePath(homePath)), ...label } : undefined;
       }
       if (profile?.claudeConfigDir !== undefined) {
-        return { path: profile.claudeConfigDir, ...label };
+        return {
+          path: profile.claudeConfigDir,
+          ...label,
+          profileHome: true as const,
+          ...(profile.claudeLogin ? { login: profile.claudeLogin } : {}),
+        };
       }
       const commandDir = yield* runCommand(cwd, projectRoot);
       if (commandDir !== undefined) return { path: commandDir, ...label };
@@ -223,5 +243,26 @@ export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolve
       };
     }),
     invalidate: Cache.invalidateAll(cache),
+    environmentFor: Effect.fn("ClaudeConfigDirResolver.environmentFor")(function* (
+      resolved: ResolvedClaudeConfigDir | undefined,
+      base: NodeJS.ProcessEnv,
+    ) {
+      if (resolved === undefined) return base;
+      const stored =
+        resolved.login && options?.logins
+          ? Option.getOrUndefined(yield* options.logins.read(resolved.login.id))
+          : undefined;
+      if (resolved.login && !stored) {
+        yield* Effect.logWarning("Claude login token is missing; using the profile's home login", {
+          profile: resolved.profile,
+          login: resolved.login.name,
+        });
+      }
+      return claudeProfileEnvironment(base, {
+        configDir: resolved.path,
+        profiled: resolved.profileHome === true,
+        ...(stored ? { token: stored.token } : {}),
+      });
+    }),
   };
 });

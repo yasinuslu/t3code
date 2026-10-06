@@ -221,6 +221,15 @@ export const ServerProviderCodeProfile = Schema.Struct({
   name: TrimmedNonEmptyString,
   root: TrimmedNonEmptyString,
   configDir: Schema.optionalKey(TrimmedNonEmptyString),
+  // The token login the probe used, absent for the home dir's own login.
+  // `expiresAt` is estimated from when T3 stored the token.
+  login: Schema.optionalKey(
+    Schema.Struct({
+      id: TrimmedNonEmptyString,
+      name: TrimmedNonEmptyString,
+      expiresAt: Schema.optionalKey(IsoDateTime),
+    }),
+  ),
   status: ServerProviderState,
   auth: ServerProviderAuth,
   message: Schema.optionalKey(TrimmedNonEmptyString),

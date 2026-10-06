@@ -36,6 +36,10 @@ import {
   type ClaudeAdapterV2DriverEnv,
 } from "../../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as ServerSettings from "../../serverSettings.ts";
+import * as PtyAdapter from "../../terminal/PtyAdapter.ts";
+import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { ClaudeProfileLogins } from "../ClaudeProfileLogins.ts";
+import { makeClaudeProfileLoginAuth } from "../ClaudeProfileLoginAuth.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeClaudeScopedLimitNames } from "../Layers/claudeUsageLimits.ts";
 import * as ClaudeResetCredits from "../Layers/claudeResetCredits.ts";
@@ -171,8 +175,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           : undefined,
       );
       const codeProfiles = yield* Effect.serviceOption(CodeProfiles);
+      const profileLogins = Option.getOrUndefined(yield* Effect.serviceOption(ClaudeProfileLogins));
       const configDirResolver = yield* makeClaudeConfigDirResolver(effectiveConfig, processEnv, {
         codeProfiles: Option.getOrUndefined(codeProfiles),
+        logins: profileLogins,
       }).pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(Path.Path, path),
@@ -278,6 +284,22 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         folderProfiles === undefined || !effectiveConfig.enabled
           ? Effect.succeed(snapshot)
           : folderProfiles.list.pipe(
+              Effect.flatMap((profiles) =>
+                Effect.forEach(profiles, (profile) =>
+                  profile.claudeLogin === undefined
+                    ? Effect.succeed(profile)
+                    : (profileLogins?.read(profile.claudeLogin.id) ?? Effect.succeedNone).pipe(
+                        Effect.map((stored) => ({
+                          ...profile,
+                          login: {
+                            ...profile.claudeLogin!,
+                            token: Option.getOrUndefined(stored)?.token,
+                            expiresAt: Option.getOrUndefined(stored)?.expiresAt,
+                          },
+                        })),
+                      ),
+                ),
+              ),
               Effect.flatMap((profiles) =>
                 checkClaudeCodeProfiles(
                   profiles,
@@ -393,8 +415,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
                 effectiveConfig,
                 machineSnapshot,
                 cwd,
-                projectConfigDir
-                  ? { ...processEnv, CLAUDE_CONFIG_DIR: projectConfigDir.path }
+                configDirResolver
+                  ? yield* configDirResolver.environmentFor(projectConfigDir, processEnv)
                   : processEnv,
               );
               const { skills } = probed;
@@ -492,9 +514,30 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           ),
         );
 
+      // The routing instance is where a profile's token logins are added.
+      const pty = yield* Effect.serviceOption(PtyAdapter.PtyAdapter);
+      const setupTokenCommand = yield* resolveSpawnCommand(
+        effectiveConfig.binaryPath,
+        ["setup-token"],
+        { env: processEnv },
+      );
+      const auth =
+        folderProfiles !== undefined && profileLogins !== undefined
+          ? yield* makeClaudeProfileLoginAuth({
+              instanceId,
+              settings: serverSettings,
+              logins: profileLogins,
+              pty,
+              setupTokenCommand,
+              environment: processEnv,
+              cwd,
+            })
+          : undefined;
+
       return {
         instanceId,
         driverKind: DRIVER_KIND,
+        ...(auth ? { auth } : {}),
         continuationIdentity: {
           ...fallbackContinuationIdentity,
           continuationKey: continuationGroupKey,

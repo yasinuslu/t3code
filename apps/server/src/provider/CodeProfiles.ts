@@ -10,7 +10,7 @@
  *
  * @module provider/CodeProfiles
  */
-import type { CodeProfile } from "@t3tools/contracts";
+import type { CodeProfile, CodeProfileClaudeLogin } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -28,6 +28,8 @@ export interface ResolvedCodeProfile {
   readonly name: string;
   /** Absolute; `undefined` when the profile sets no Claude config. */
   readonly claudeConfigDir: string | undefined;
+  /** The active token login, `undefined` for the home dir's own login. */
+  readonly claudeLogin?: CodeProfileClaudeLogin | undefined;
 }
 
 export interface ListedCodeProfile {
@@ -35,6 +37,7 @@ export interface ListedCodeProfile {
   readonly root: string;
   /** Absolute; `undefined` when the profile sets no Claude config. */
   readonly claudeConfigDir: string | undefined;
+  readonly claudeLogin?: CodeProfileClaudeLogin | undefined;
 }
 
 export interface CodeProfileClaudeConfigDir {
@@ -120,6 +123,10 @@ const make = Effect.gen(function* () {
           path.resolve(expandHomePathWith(dir, path)),
         );
 
+  // An active id that names no login falls back to the home login.
+  const activeLogin = (profile: CodeProfile) =>
+    profile.claude?.logins?.find((login) => login.id === profile.claude?.activeLogin);
+
   const resolve = Effect.fn("CodeProfiles.resolve")(function* (
     folder: string,
     environment?: NodeJS.ProcessEnv,
@@ -144,7 +151,12 @@ const make = Effect.gen(function* () {
         if ((yield* physical(dir)) === current) claudeConfigDir = dir;
       }
     }
-    return { name: found.name, claudeConfigDir } satisfies ResolvedCodeProfile;
+    const claudeLogin = activeLogin(found.profile);
+    return {
+      name: found.name,
+      claudeConfigDir,
+      ...(claudeLogin ? { claudeLogin } : {}),
+    } satisfies ResolvedCodeProfile;
   });
 
   const claudeConfigDirs = profiles.pipe(
@@ -170,6 +182,7 @@ const make = Effect.gen(function* () {
         name,
         root: path.resolve(expandHomePathWith(profile.root, path)),
         claudeConfigDir: claudeDirs(profile)[0],
+        claudeLogin: activeLogin(profile),
       })),
     ),
   );
