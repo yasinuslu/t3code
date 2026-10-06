@@ -5,7 +5,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon } from "lucide-react";
+import { Link, useLocation } from "@tanstack/react-router";
+import { ChevronDownIcon, CompassIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -37,6 +38,9 @@ import {
   WorkspaceBreadcrumbText,
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
+import { useIsManagerThread } from "~/brainstormStore";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -87,6 +91,11 @@ export const ChatHeader = memo(function ChatHeader({
   const activeProjectName = activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
+  const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
+  // Docked on Home, the manager needs no way back to where it already is.
+  const onHome = useLocation({ select: (location) => location.pathname === "/home" });
+  // The manager docked on Home: a narrow pane, so only its name and badge.
+  const docked = onHome && isManager;
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
@@ -246,11 +255,29 @@ export const ChatHeader = memo(function ChatHeader({
       )}
       onContextMenu={handleHeaderContextMenu}
     >
+      {onHome ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
+                aria-label="Home"
+                data-chat-header-home=""
+                render={<Link to="/home" />}
+              />
+            }
+          >
+            <CompassIcon />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">Home: your work and the manager</TooltipPopup>
+        </Tooltip>
+      )}
       <WorkspaceBreadcrumb
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
       >
-        {activeSpaceId !== ALL_SPACE_ID ? (
+        {activeSpaceId !== ALL_SPACE_ID && !docked ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink-0">
               <ActiveSpaceLabel className="text-muted-foreground" />
@@ -263,7 +290,7 @@ export const ChatHeader = memo(function ChatHeader({
         {/* The project always leads the thread itself: knowing which project
             a thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
-        {activeProject ? (
+        {activeProject && !docked ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink">
               <Tooltip>
@@ -351,10 +378,16 @@ export const ChatHeader = memo(function ChatHeader({
             </Tooltip>
           )}
         </WorkspaceBreadcrumbItem>
+        {isManager ? (
+          <Badge variant="secondary" size="sm" className="shrink-0" data-manager-badge="">
+            <CompassIcon aria-hidden />
+            Manager
+          </Badge>
+        ) : null}
       </WorkspaceBreadcrumb>
       {providerConfigDir ? (
         <div className="flex min-w-0 max-w-80 shrink items-center">
-          <ProviderConfigDirIndicator value={providerConfigDir} compact={false} />
+          <ProviderConfigDirIndicator value={providerConfigDir} compact={docked} />
         </div>
       ) : null}
     </div>

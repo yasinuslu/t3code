@@ -12,7 +12,7 @@
 - [Appearance and themes](./user/appearance.md)
 - [Keyboard shortcuts](./user/keybindings.md)
 - [SnapShots](./user/snap-shot.md)
-- [Manager](./user/manager.md)
+- [Home and the manager](./user/manager.md)
 - [Import browser sessions](./user/browser-import.md)
 - [Devices](./user/devices.md)
 - [Usage and limits](./user/usage.md)

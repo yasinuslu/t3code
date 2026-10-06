@@ -149,6 +149,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.filesystemCodeProfiles]: AuthOrchestrationReadScope,
   [WS_METHODS.brainstormSyncSpaces]: AuthOrchestrationOperateScope,
   [WS_METHODS.brainstormOpen]: AuthOrchestrationOperateScope,
+  [WS_METHODS.brainstormThreadReport]: AuthOrchestrationReadScope,
   [WS_METHODS.brainstormMutateTasks]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeBrainstorm]: AuthOrchestrationReadScope,
   [WS_METHODS.agentSessionsScan]: AuthOrchestrationReadScope,

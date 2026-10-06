@@ -11,6 +11,7 @@ import {
   type OrchestrationV2ThreadShell,
   ProjectId,
   ProviderInstanceId,
+  RunId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -103,6 +104,8 @@ const testCrypto = Crypto.make({
 const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: {
   readonly projects: ReadonlyArray<OrchestrationProjectShell>;
   readonly threads: ReadonlyArray<OrchestrationV2ThreadShell>;
+  /** Assistant answers by run ordinal, oldest first; one thread is enough here. */
+  readonly answersByRun?: ReadonlyArray<ReadonlyArray<{ text: string; streaming?: boolean }>>;
 }) {
   const projects = yield* Ref.make(input.projects);
   const threads = yield* Ref.make(input.threads);
@@ -148,6 +151,32 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
         Ref.get(threads).pipe(
           Effect.map((current) => current.find((candidate) => candidate.id === threadId) ?? null),
         ),
+      getThreadRecords: ((
+        threadId: ThreadId,
+        fields: ReadonlyArray<string>,
+        filter?: {
+          readonly messageRunIds?: ReadonlyArray<string>;
+        },
+      ) => {
+        const runs = (input.answersByRun ?? []).map((_, index) => ({
+          id: RunId.make(`run-${index + 1}`),
+          ordinal: index + 1,
+        }));
+        if (fields.includes("runs")) return Effect.succeed({ thread: {}, runs } as never);
+        const run = runs.find((candidate) => filter?.messageRunIds?.includes(candidate.id));
+        const answers = run ? (input.answersByRun?.[run.ordinal - 1] ?? []) : [];
+        return Effect.succeed({
+          thread: {},
+          messages: answers.map((answer, index) => ({
+            threadId,
+            runId: run?.id ?? null,
+            role: "assistant",
+            text: answer.text,
+            streaming: answer.streaming ?? false,
+            createdAt: at(`2026-10-06T10:0${index}:00.000Z`),
+          })),
+        } as never);
+      }) as never,
       dispatch: (command) =>
         Ref.update(commands, (current) => [...current, command]).pipe(Effect.as({} as never)),
     }),
@@ -235,6 +264,39 @@ describe("BrainstormService manager thread", () => {
       ]);
       const second = yield* harness.brainstorm.open("all");
       expect(second.threadId).toBe(first.threadId);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("BrainstormService threadReport", () => {
+  it.effect("returns the newest answer, looking past a run that has none yet", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        projects: [],
+        threads: [],
+        answersByRun: [
+          [{ text: "old report" }],
+          [{ text: "progress" }, { text: "## Done\n- final report" }],
+          [{ text: "" }, { text: "still typing", streaming: true }],
+        ],
+      });
+      const report = yield* harness.brainstorm.threadReport(ThreadId.make("t"));
+      expect(report).toEqual({
+        threadId: "t",
+        runId: "run-2",
+        text: "## Done\n- final report",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("has no text before the first answer", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ projects: [], threads: [], answersByRun: [] });
+      expect(yield* harness.brainstorm.threadReport(ThreadId.make("t"))).toEqual({
+        threadId: "t",
+        runId: null,
+        text: null,
+      });
     }).pipe(Effect.scoped),
   );
 });

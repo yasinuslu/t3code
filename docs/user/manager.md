@@ -1,40 +1,46 @@
-# Manager
+# Home and the manager
 
-The manager is one ordinary thread that runs your goals: it plans tasks, starts and steers worker
-threads in any project, and brings you in only for real decisions. The work overlay shows how
-everything is going at a glance.
+**Home** is where you follow all of your work. It shows every thread as a card next to the manager,
+one ordinary thread that runs your goals: it plans tasks, starts and steers worker threads in any
+project, and brings you in only for real decisions.
 
-## The manager thread
+## Getting Home
 
-Press `ctrl+alt+m` from anywhere, or choose **Open manager thread** in the command palette. The
-manager opens like any other thread, with its composer focused. The first time, T3 Code creates it in
-the default profile's brain project (a `~/code/<profile>/<profile>-brain` repository). Without a
-brain it uses the project you used most recently. The manager is pinned in the sidebar and marked
-with a compass. Unpin, rename or archive it like any thread; after archiving, the shortcut starts a
-new one.
+Press `ctrl+alt+m` from anywhere. The same keys are the way back from any thread. You can also click
+**Home** at the top of the sidebar or the compass at the start of a thread's header, or choose **Go
+home** in the command palette. Home opens with the manager's composer focused. Change the shortcut in
+**Settings → Keybindings** under **Manager: Open**.
+
+## The work cards
+
+A banner at the top says in one line what needs you, or what is moving. Below it, threads from every
+connected machine are grouped:
+
+- **Needs you**: waiting on an approval or an answer, or the last turn failed.
+- **Working**: running a turn or waiting on their own background work.
+- **Ready for review**: finished threads you have not settled.
+- **Recently done**: threads settled in the last day.
+
+Each card shows the thread's state, project, profile and machine, then **Try it** for the dev
+servers and preview pages the thread points at, **Open thread**, and its pull requests. Under them
+are the first lines of the thread's latest report, its screenshots, and any open questions it asked.
+**Goals** from every brain follow, with their progress and open tasks.
+
+## The manager
+
+The manager is docked on the right of Home as a normal thread view. On narrow windows, open it from
+the sidebar, where it is pinned and marked with a compass. A thread that is the manager shows a
+**Manager** badge in its header.
+
+The first time, T3 Code creates the manager in the default profile's brain project (a
+`~/code/<profile>/<profile>-brain` repository); without a brain it uses the project you used most
+recently. The default profile is the one that a symlink directly under `~/code` points into, or
+else the first profile by name. Unpin, rename or archive it like any thread; after archiving, Home
+starts a new one.
 
 Tell it what you want done. It breaks goals into tasks, starts worker threads, answers their routine
 questions and closes tasks. It reads its rules again after a restart, so nothing depends on its chat
-history. The default profile is the one that a symlink directly under `~/code` points into, or else
-the first profile by name.
-
-## The work overlay
-
-Press `ctrl+alt+o`, choose **Work** at the bottom of the sidebar, or **Show work overview** in the
-command palette. The overlay opens above the current view; Esc or the same shortcut closes it.
-
-- **Needs you**: threads waiting on an approval or an answer, and threads whose last turn failed.
-- **Working**: threads running a turn or waiting on their own background work.
-- **Ready for review**: finished threads you have not settled.
-- **Recently done**: threads settled in the last day.
-- **Goals**: every brain's open goals with their progress and open tasks.
-
-Each thread shows its project, profile, branch, pull requests, open preview pages and time since its
-last activity. Click a thread to open it. Threads from every connected environment are listed, and a
-thread on another machine names it. Goals come from the environment you are connected to first.
-
-Both shortcuts can be changed in **Settings → Keybindings** (**Manager: Open** and **Work Overlay:
-Toggle**).
+history.
 
 The manager's tools are on the `t3-code` MCP server: `manager_overview` (its rules, every profile's
 brain and task file), `list_tasks`, `add_goal`, `update_goal`, `delete_goal`, `add_task`,
@@ -73,7 +79,7 @@ notes. A top-level `- [ ]` or `- [x]` item is a task (`*` and `+` bullets work t
 lines under it are its notes. A `thread: <id>` line links the task to a thread. When a linked thread
 finishes a turn successfully and all of the task's threads are finished, the task is marked done.
 
-A file from before goals gets an `## Inbox` heading over its tasks the first time the manager or the overlay reads
+A file from before goals gets an `## Inbox` heading over its tasks the first time the manager or Home reads
 it; nothing else in it changes. Every edit re-reads the file first and changes only the lines it
-touches, and changes made in an editor show up in the work overlay as soon as the file is saved. Each goal
+touches, and changes made in an editor show up on Home as soon as the file is saved. Each goal
 lives in the brain of the profile it belongs to; the manager has to name that brain on every write.

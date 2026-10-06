@@ -3288,6 +3288,12 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.brainstormMutateTasks, brainstorm.mutateTasks(input), {
             "rpc.aggregate": "workspace",
           }),
+        [WS_METHODS.brainstormThreadReport]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.brainstormThreadReport,
+            brainstorm.threadReport(input.threadId),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.subscribeBrainstorm]: () =>
           observeRpcStream(WS_METHODS.subscribeBrainstorm, brainstorm.stateChanges, {
             "rpc.aggregate": "workspace",

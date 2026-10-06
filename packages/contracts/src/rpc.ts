@@ -75,6 +75,8 @@ import {
   BrainstormOpenResult,
   BrainstormState,
   BrainstormSyncSpacesInput,
+  BrainstormThreadReport,
+  BrainstormThreadReportInput,
 } from "./brainstorm.ts";
 import {
   AgentSessionImportInput,
@@ -369,6 +371,7 @@ export const WS_METHODS = {
   brainstormSyncSpaces: "brainstorm.syncSpaces",
   brainstormOpen: "brainstorm.open",
   brainstormMutateTasks: "brainstorm.mutateTasks",
+  brainstormThreadReport: "brainstorm.threadReport",
   subscribeBrainstorm: "subscribeBrainstorm",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
@@ -1222,6 +1225,12 @@ const WsBrainstormMutateTasksRpc = Rpc.make(WS_METHODS.brainstormMutateTasks, {
   error: Schema.Union([BrainstormError, EnvironmentAuthorizationError]),
 });
 
+const WsBrainstormThreadReportRpc = Rpc.make(WS_METHODS.brainstormThreadReport, {
+  payload: BrainstormThreadReportInput,
+  success: BrainstormThreadReport,
+  error: Schema.Union([BrainstormError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribeBrainstormRpc = Rpc.make(WS_METHODS.subscribeBrainstorm, {
   payload: Schema.Struct({}),
   success: BrainstormState,
@@ -1854,6 +1863,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsBrainstormSyncSpacesRpc,
   WsBrainstormOpenRpc,
   WsBrainstormMutateTasksRpc,
+  WsBrainstormThreadReportRpc,
   WsSubscribeBrainstormRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,

@@ -54,7 +54,6 @@ import {
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
-  LayoutDashboardIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -82,7 +81,7 @@ import {
 import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
 
-import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
+import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { useOpenManagerThread } from "./brainstorm/useOpenManagerThread";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -590,17 +589,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         event.stopPropagation();
         if (event.repeat) return;
         setOpen(false);
-        useBrainstormStore.getState().setWorkOverlayOpen(false);
         void openManagerThread();
-        return;
-      }
-      if (command === "workOverlay.toggle") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (event.repeat) return;
-        setOpen(false);
-        const store = useBrainstormStore.getState();
-        store.setWorkOverlayOpen(!store.workOverlayOpen);
         return;
       }
       const mode = overlayModeForCommand(command);
@@ -2275,23 +2264,11 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push({
     kind: "action",
     value: "action:manager",
-    searchTerms: ["manager", "goals", "tasks", "brainstorm", "todo", "plan"],
-    title: "Open manager thread",
+    searchTerms: ["home", "manager", "dashboard", "work", "goals", "tasks", "status", "plan"],
+    title: "Go home (manager and work)",
     icon: <CompassIcon className={ITEM_ICON_CLASS} />,
     shortcutCommand: "manager.open",
     run: openManagerThread,
-  });
-
-  actionItems.push({
-    kind: "action",
-    value: "action:work-overlay",
-    searchTerms: ["work", "overview", "board", "status", "progress", "goals", "threads"],
-    title: "Show work overview",
-    icon: <LayoutDashboardIcon className={ITEM_ICON_CLASS} />,
-    shortcutCommand: "workOverlay.toggle",
-    run: async () => {
-      useBrainstormStore.getState().setWorkOverlayOpen(true);
-    },
   });
 
   actionItems.push({

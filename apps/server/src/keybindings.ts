@@ -178,6 +178,8 @@ const RETIRED_COMMANDS: Readonly<Record<string, KeybindingRule["command"]>> = {
 const REMOVED_COMMANDS: ReadonlySet<string> = new Set([
   // The brainstorm popup is gone; manager.open opens the manager thread instead.
   "brainstorm.toggle",
+  // Briefly a work overlay on a preview branch; Home (manager.open) replaced it.
+  "workOverlay.toggle",
 ]);
 
 function removedCommandOf(entry: unknown): string | null {

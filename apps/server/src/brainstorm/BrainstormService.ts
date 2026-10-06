@@ -31,6 +31,7 @@ import {
   BrainstormState,
   type BrainstormSyncSpacesInput,
   type BrainstormTaskList,
+  type BrainstormThreadReport,
   BrainstormError,
   CommandId,
   DEFAULT_MODEL,
@@ -77,6 +78,10 @@ import {
 } from "./taskAutoComplete.ts";
 
 export const ALL_SPACE_ID = "all";
+
+/** Enough for a final report's summary, links, screenshots and questions. */
+const THREAD_REPORT_MAX_CHARS = 12_000;
+const THREAD_REPORT_RUNS_BACK = 3;
 
 function allBrainstormThreadIds(state: {
   readonly threadIdsBySpaceId: Readonly<Record<string, string>>;
@@ -233,6 +238,10 @@ export class BrainstormService extends Context.Service<
   {
     readonly syncSpaces: (input: BrainstormSyncSpacesInput) => Effect.Effect<void>;
     readonly open: (spaceId: string) => Effect.Effect<BrainstormOpenResult, BrainstormError>;
+    /** The last assistant message of a thread's latest run, for the home dashboard's cards. */
+    readonly threadReport: (
+      threadId: ThreadId,
+    ) => Effect.Effect<BrainstormThreadReport, BrainstormError>;
     readonly mutateTasks: (
       input: BrainstormMutateTasksInput,
     ) => Effect.Effect<void, BrainstormError>;
@@ -860,9 +869,44 @@ export const make = Effect.gen(function* () {
     }),
   );
 
+  /**
+   * The newest run with an answer, looking back a few runs: a run that is
+   * still going, or ended without a word, should not blank the card.
+   */
+  const threadReport: BrainstormService["Service"]["threadReport"] = (threadId) =>
+    Effect.gen(function* () {
+      const readFailed = failWith("Could not read the thread.");
+      const { runs } = yield* orchestrator
+        .getThreadRecords(threadId, ["runs"])
+        .pipe(Effect.mapError(readFailed));
+      const recentRuns = runs
+        .toSorted((left, right) => right.ordinal - left.ordinal)
+        .slice(0, THREAD_REPORT_RUNS_BACK);
+      for (const run of recentRuns) {
+        const { messages } = yield* orchestrator
+          .getThreadRecords(threadId, ["messages"], {
+            messageRoles: ["assistant"],
+            messageRunIds: [run.id],
+          })
+          .pipe(Effect.mapError(readFailed));
+        const last = messages
+          .filter((message) => !message.streaming && message.text.trim().length > 0)
+          .toSorted(
+            (left, right) =>
+              DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt),
+          )
+          .at(-1);
+        if (last) {
+          return { threadId, runId: run.id, text: last.text.slice(0, THREAD_REPORT_MAX_CHARS) };
+        }
+      }
+      return { threadId, runId: recentRuns[0]?.id ?? null, text: null };
+    });
+
   return BrainstormService.of({
     syncSpaces,
     open,
+    threadReport,
     mutateTasks,
     stateChanges,
     context,

@@ -56,7 +56,6 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+u", command: "usage.open", when: "!terminalFocus" },
   // Same physical chord everywhere, like the surface chords above.
   { key: "ctrl+alt+m", command: "manager.open" },
-  { key: "ctrl+alt+o", command: "workOverlay.toggle" },
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
   { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },

@@ -32,7 +32,6 @@ import {
   usePanelNavigationSuppression,
 } from "../panelAnimations";
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
-import { WorkOverlay } from "./brainstorm/WorkOverlay";
 import LegacyThreadSidebar from "./LegacySidebar";
 import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
@@ -310,7 +309,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
         <ProjectProjectionRetention />
         <BrainstormHost />
-        <WorkOverlay />
         <Sidebar
           side="left"
           collapsible="offcanvas"

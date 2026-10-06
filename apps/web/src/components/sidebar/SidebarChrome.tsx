@@ -1,14 +1,8 @@
-import {
-  ArrowLeftIcon,
-  ChartNoAxesColumnIcon,
-  LayoutDashboardIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
-import { useBrainstormStore } from "../../brainstormStore";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
@@ -209,11 +203,6 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigate({ to: "/usage" });
   }, [isMobile, navigate, setOpenMobile]);
 
-  const handleWorkClick = useCallback(() => {
-    closeMobileSidebar();
-    useBrainstormStore.getState().setWorkOverlayOpen(true);
-  }, [closeMobileSidebar]);
-
   const handleBackClick = useCallback(() => {
     closeMobileSidebar();
     void navigateToMainApp();
@@ -234,11 +223,6 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             icon={<SettingsIcon />}
             label="Settings"
             onClick={handleSettingsClick}
-          />
-          <SidebarUtilityItem
-            icon={<LayoutDashboardIcon />}
-            label="Work"
-            onClick={handleWorkClick}
           />
           {pullRequestsSupported ? (
             <SidebarUtilityItem

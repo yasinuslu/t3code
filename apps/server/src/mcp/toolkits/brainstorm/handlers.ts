@@ -54,7 +54,7 @@ export const MANAGER_INSTRUCTIONS: ReadonlyArray<string> = [
   "Follow workers with list_threads (status), t3_thread_wait and t3_thread_read. Steer with t3_thread_send. Stop with t3_thread_interrupt.",
   "Answer routine worker questions yourself (t3_pending_request_list, t3_pending_request_read, t3_pending_request_respond): conventions, where things are, which of two equivalent options, retry after a transient failure.",
   "Bring the user in only for real decisions: tool approvals (you cannot grant them), anything destructive, irreversible or outward-facing (publishing, merging, spending money, messaging people), a change of scope or goal, and choices with no clear default. Say it in this chat in one or two lines: which thread, what it needs, your recommendation.",
-  "When a worker fails or needs approval or input you cannot give, tell the user here; the work overlay's Needs you list shows the same threads.",
+  "When a worker fails or needs approval or input you cannot give, tell the user here; Home's Needs you cards show the same threads.",
   "Close the loop: when a worker's result checks out, complete_task and settle the thread (t3_thread_organize settle). When every task of a goal is done, update_goal done=true and tell the user in one line.",
   "Keep replies short. Report outcomes, not plans.",
 ];

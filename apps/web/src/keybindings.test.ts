@@ -237,10 +237,10 @@ describe("settle thread shortcut", () => {
   });
 });
 
-describe("manager and work overlay shortcuts", () => {
+describe("home (manager) shortcut", () => {
   const ctrlAlt = (key: string) => event({ key, ctrlKey: true, altKey: true });
 
-  it("opens the manager with Ctrl+Alt+M and toggles the overlay with Ctrl+Alt+O everywhere", () => {
+  it("goes Home to the manager with Ctrl+Alt+M everywhere, even from a terminal", () => {
     for (const platform of ["MacIntel", "Linux", "Win32"]) {
       for (const terminalFocus of [false, true]) {
         const options = { platform, context: { terminalFocus } };
@@ -248,25 +248,21 @@ describe("manager and work overlay shortcuts", () => {
           resolveShortcutCommand(ctrlAlt("m"), DEFAULT_RESOLVED_KEYBINDINGS, options),
           "manager.open",
         );
-        assert.strictEqual(
-          resolveShortcutCommand(ctrlAlt("o"), DEFAULT_RESOLVED_KEYBINDINGS, options),
-          "workOverlay.toggle",
-        );
       }
     }
   });
 
   it("does not share its chords with any other default", () => {
-    const chords = new Set(["ctrl+alt+m", "ctrl+alt+o"]);
+    const chords = new Set(["ctrl+alt+m"]);
     const owners = DEFAULT_RESOLVED_KEYBINDINGS.filter(({ shortcut }) =>
       chords.has(
         `${shortcut.ctrlKey ? "ctrl+" : ""}${shortcut.altKey ? "alt+" : ""}${shortcut.key}`,
       ),
     ).filter(({ shortcut }) => !shortcut.metaKey && !shortcut.shiftKey && !shortcut.modKey);
-    assert.deepEqual(owners.map((binding) => binding.command).toSorted(), [
-      "manager.open",
-      "workOverlay.toggle",
-    ]);
+    assert.deepEqual(
+      owners.map((binding) => binding.command),
+      ["manager.open"],
+    );
   });
 
   it("can be rebound, which frees the default chord", () => {

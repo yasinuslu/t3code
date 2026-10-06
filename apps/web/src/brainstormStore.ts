@@ -1,8 +1,7 @@
 /**
  * Brainstorm state the lists need: which threads are brainstorm chats (kept
  * out of the normal thread lists), which thread is the manager (an ordinary,
- * listed thread with a marker), the manager's brain choice and whether the
- * work overlay is open.
+ * listed thread with a marker) and the manager's brain choice.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useMemo } from "react";
@@ -19,11 +18,9 @@ interface BrainstormStore {
   readonly managerThreadKey: string | null;
   /** Profile whose brain custom spaces, Other and All use; null: the server picks. */
   readonly defaultProfile: string | null;
-  readonly workOverlayOpen: boolean;
   readonly setHiddenThreadKeys: (keys: ReadonlySet<string>) => void;
   readonly setManagerThreadKey: (key: string | null) => void;
   readonly setDefaultProfile: (profile: string | null) => void;
-  readonly setWorkOverlayOpen: (open: boolean) => void;
 }
 
 export const useBrainstormStore = create<BrainstormStore>()(
@@ -32,7 +29,6 @@ export const useBrainstormStore = create<BrainstormStore>()(
       hiddenThreadKeys: new Set(),
       managerThreadKey: null,
       defaultProfile: null,
-      workOverlayOpen: false,
       setHiddenThreadKeys: (keys) =>
         set((state) =>
           state.hiddenThreadKeys.size === keys.size &&
@@ -42,7 +38,6 @@ export const useBrainstormStore = create<BrainstormStore>()(
         ),
       setManagerThreadKey: (managerThreadKey) => set({ managerThreadKey }),
       setDefaultProfile: (defaultProfile) => set({ defaultProfile }),
-      setWorkOverlayOpen: (workOverlayOpen) => set({ workOverlayOpen }),
     }),
     {
       name: "t3code:brainstorm:v1",
