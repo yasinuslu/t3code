@@ -734,7 +734,6 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
             ...base,
             status: "error",
             auth: { status: "unauthenticated" },
-            message: "Not signed in with this config dir.",
           } satisfies ServerProviderCodeProfile;
         }
         const authMetadata =
