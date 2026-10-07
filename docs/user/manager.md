@@ -38,6 +38,12 @@ recently. The default profile is the one that a symlink directly under `~/code` 
 else the first profile by name. Unpin, rename or archive it like any thread; after archiving, Home
 starts a new one.
 
+The manager runs on the machine you connected to, unless one of your connected machines has
+**Settings → General → Host the manager** turned on: then every device opens the manager, its goals
+and its tasks on that machine, and its tools reach that machine's threads. Turn it on for a machine
+that stays on, so the manager keeps working while a laptop is closed. While that machine is offline,
+Home says so instead of opening a manager elsewhere.
+
 Tell it what you want done. It breaks goals into tasks, starts worker threads, answers their routine
 questions and closes tasks. It reads its rules again after a restart, so nothing depends on its chat
 history.
