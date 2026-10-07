@@ -23,7 +23,7 @@ import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../../bra
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
-import { brainstormEnvironment } from "../../state/brainstorm";
+import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
 import { useEnvironment, usePrimaryEnvironmentId } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import { previewEnvironment } from "../../state/preview";
@@ -85,10 +85,11 @@ export function HomeDashboard() {
     [managerThreadKey, now, threads],
   );
   const verdict = homeVerdict(overview);
+  const managerEnvironmentId = useManagerEnvironmentId();
   const brainstorm = useEnvironmentQuery(
-    primaryEnvironmentId === null
+    managerEnvironmentId === null
       ? null
-      : brainstormEnvironment.state({ environmentId: primaryEnvironmentId, input: {} }),
+      : brainstormEnvironment.state({ environmentId: managerEnvironmentId, input: {} }),
   ).data;
   const goals = useMemo(() => boardGoals(brainstorm?.taskLists ?? [], ALL_SPACE_ID), [brainstorm]);
   const manager = useEnsureManagerThread();
@@ -153,7 +154,7 @@ export function HomeDashboard() {
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3">
                   {goals.map((goal) => (
-                    <GoalCard key={goal.key} goal={goal} environmentId={primaryEnvironmentId} />
+                    <GoalCard key={goal.key} goal={goal} environmentId={managerEnvironmentId} />
                   ))}
                 </div>
               )}

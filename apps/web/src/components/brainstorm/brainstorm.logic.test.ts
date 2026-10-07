@@ -1,8 +1,13 @@
-import type { BrainstormTaskList } from "@t3tools/contracts";
+import type { BrainstormTaskList, EnvironmentId, ServerConfig } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ALL_SPACE_ID, initialSpaceState, type Space } from "../../spaceStore";
-import { boardGoals, brainstormSpacesInput, membershipChangesToAdopt } from "./brainstorm.logic";
+import {
+  boardGoals,
+  brainstormSpacesInput,
+  membershipChangesToAdopt,
+  resolveManagerEnvironmentId,
+} from "./brainstorm.logic";
 
 describe("brainstormSpacesInput", () => {
   it("classifies spaces and keeps only this environment's memberships", () => {
@@ -100,5 +105,36 @@ describe("boardGoals", () => {
 
   it("filters to one space's brain", () => {
     expect(boardGoals(lists, "home").map((goal) => goal.title)).toEqual(["Garden"]);
+  });
+});
+
+describe("resolveManagerEnvironmentId", () => {
+  const laptop = "laptop" as EnvironmentId;
+  const desktop = "desktop" as EnvironmentId;
+  const configs = (hosts: Record<string, boolean>) =>
+    new Map(
+      Object.entries(hosts).map(([id, hostsManager]) => [
+        id as EnvironmentId,
+        { settings: { hostsManager } } as unknown as ServerConfig,
+      ]),
+    );
+
+  it("opens the manager on a connected machine that hosts it", () => {
+    expect(resolveManagerEnvironmentId(laptop, configs({ laptop: false, desktop: true }))).toBe(
+      desktop,
+    );
+  });
+
+  it("prefers the primary environment when it hosts the manager too", () => {
+    expect(resolveManagerEnvironmentId(laptop, configs({ desktop: true, laptop: true }))).toBe(
+      laptop,
+    );
+  });
+
+  it("falls back to the primary environment when no machine hosts it", () => {
+    expect(resolveManagerEnvironmentId(laptop, configs({ laptop: false, desktop: false }))).toBe(
+      laptop,
+    );
+    expect(resolveManagerEnvironmentId(null, configs({}))).toBe(null);
   });
 });

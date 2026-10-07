@@ -1,14 +1,14 @@
 /**
  * Keeps the server's view of spaces current for the manager and its tools,
  * tells the lists which thread is the manager, and hides the other brainstorm
- * chats from them. Mounted once in the app shell.
+ * chats from them. Works on the environment that hosts the manager. Mounted
+ * once in the app shell.
  */
 import { useEffect, useRef } from "react";
 
 import { useBrainstormStore } from "../../brainstormStore";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
-import { brainstormEnvironment } from "../../state/brainstorm";
-import { usePrimaryEnvironmentId } from "../../state/environments";
+import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { brainstormSpacesInput, membershipChangesToAdopt } from "./brainstorm.logic";
@@ -16,7 +16,7 @@ import { brainstormSpacesInput, membershipChangesToAdopt } from "./brainstorm.lo
 const SYNC_DELAY_MS = 300;
 
 export function BrainstormHost() {
-  const environmentId = usePrimaryEnvironmentId();
+  const environmentId = useManagerEnvironmentId();
 
   const spaces = useSpaceStore((store) => store.spaces);
   const memberships = useSpaceStore((store) => store.customSpaceIdsByProjectKey);

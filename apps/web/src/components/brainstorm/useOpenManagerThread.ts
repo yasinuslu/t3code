@@ -5,9 +5,8 @@ import { useBrainstormStore } from "../../brainstormStore";
 import { openHomeOverlay, useHomeOverlayStore } from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { ALL_SPACE_ID } from "../../spaceStore";
-import { brainstormEnvironment } from "../../state/brainstorm";
+import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
 import { useThreadShell } from "../../state/entities";
-import { usePrimaryEnvironmentId } from "../../state/environments";
 import { formatEnvironmentQueryError } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 
@@ -25,14 +24,18 @@ export type ManagerThreadState =
   | { readonly _tag: "Ready"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
 /**
- * The manager thread, created on first use. The server makes it in the
+ * The manager thread, created on first use on the environment that hosts
+ * the manager (see `managerEnvironmentIdAtom`). The server makes it in the
  * default profile's brain project (else the project used most recently) and
  * returns the same thread after that, so this only asks when the client does
  * not know it yet.
  */
 export function useEnsureManagerThread(): ManagerThreadState {
-  const environmentId = usePrimaryEnvironmentId();
-  const knownKey = useBrainstormStore((state) => state.managerThreadKey);
+  const environmentId = useManagerEnvironmentId();
+  const storedKey = useBrainstormStore((state) => state.managerThreadKey);
+  // A key from before the manager moved to another environment is not this one.
+  const knownKey =
+    environmentId !== null && storedKey?.startsWith(`${environmentId}:`) ? storedKey : null;
   const knownShell = useThreadShell(knownKey === null ? null : parseThreadKey(knownKey));
   // An archived manager is replaced: the server starts a new one on open.
   const managerThreadKey = knownShell?.archivedAt != null ? null : knownKey;

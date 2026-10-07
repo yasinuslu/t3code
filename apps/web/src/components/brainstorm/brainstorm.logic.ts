@@ -3,6 +3,8 @@ import type {
   BrainstormSyncSpacesInput,
   BrainstormTask,
   BrainstormTaskList,
+  EnvironmentId,
+  ServerConfig,
 } from "@t3tools/contracts";
 
 import { ALL_SPACE_ID, OTHER_SPACE_ID, type Space, type SpaceState } from "../../spaceStore";
@@ -110,4 +112,24 @@ export function boardGoals(
     }
   }
   return [...goals, ...inboxes];
+}
+
+/**
+ * The environment that runs the manager: the primary one when it hosts the
+ * manager (or nothing does), else the first connected one that does. Lets a
+ * laptop open the manager on an always-on machine.
+ */
+export function resolveManagerEnvironmentId(
+  primaryEnvironmentId: EnvironmentId | null,
+  serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
+): EnvironmentId | null {
+  if (
+    primaryEnvironmentId !== null &&
+    serverConfigs.get(primaryEnvironmentId)?.settings.hostsManager
+  )
+    return primaryEnvironmentId;
+  for (const [environmentId, config] of serverConfigs) {
+    if (config.settings.hostsManager) return environmentId;
+  }
+  return primaryEnvironmentId;
 }

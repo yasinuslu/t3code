@@ -293,6 +293,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["usage quota rate limit reset wake recover continue"],
   },
   {
+    id: "host-manager",
+    title: "Host the manager",
+    to: "/settings/general",
+    searchTerms: ["manager home always on machine server remote"],
+  },
+  {
     id: "auto-resume-limited-threads",
     title: "Auto-resume limited threads",
     to: "/settings/general",
