@@ -3,7 +3,18 @@ import * as Schema from "effect/Schema";
 
 const ConnectionTargetBase = {
   environmentId: EnvironmentId,
+  /**
+   * The label saved when the environment was registered. Display prefers the
+   * server's live descriptor label (see `resolveEnvironmentDisplayLabel`) unless
+   * `labelOverride` marks this label as deliberately chosen.
+   */
   label: Schema.String,
+  /**
+   * True when `label` was chosen on purpose (a user rename, an explicit SSH
+   * label, or a desktop bootstrap name such as "WSL: Ubuntu") and must win over
+   * the server's descriptor label.
+   */
+  labelOverride: Schema.optionalKey(Schema.Boolean),
 };
 
 export class PrimaryConnectionTarget extends Schema.TaggedClass<PrimaryConnectionTarget>()(

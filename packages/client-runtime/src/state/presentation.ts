@@ -10,6 +10,7 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { AVAILABLE_CONNECTION_STATE, type SupervisorConnectionState } from "../connection/model.ts";
 import {
   connectionCatalogDisplayUrl,
+  presentCatalogEntry,
   presentEnvironmentConnection,
   type EnvironmentConnectionPhase,
   type EnvironmentPresentation,
@@ -46,13 +47,15 @@ export function createEnvironmentPresentationAtoms<E>(input: {
         AsyncResult.value(get(input.stateAtom(environmentId))),
         () => AVAILABLE_CONNECTION_STATE,
       );
+      const serverConfig = get(input.serverConfigValueAtom(environmentId));
       return {
-        entry,
+        // Shows the server's live descriptor label rather than the stale saved one.
+        entry: presentCatalogEntry(entry, serverConfig),
         connection:
           entry.unsupportedReason === undefined
             ? presentEnvironmentConnection(state)
             : { phase: "unsupported", error: entry.unsupportedReason, traceId: null },
-        serverConfig: get(input.serverConfigValueAtom(environmentId)),
+        serverConfig,
       } satisfies EnvironmentPresentation;
     }).pipe(Atom.withLabel(`environment-presentation:${environmentId}`)),
   );
@@ -125,7 +128,7 @@ export function createEnvironmentSummaryAtoms(input: {
   const identitiesAtom = Atom.make((get) => {
     const next = [...get(input.catalogValueAtom).entries].map(([environmentId, entry]) => ({
       environmentId,
-      label: entry.target.label,
+      label: get(input.presentationAtom(environmentId))?.entry.target.label ?? entry.target.label,
     }));
     const previous = Option.getOrNull(
       get.self<ReadonlyArray<{ readonly environmentId: EnvironmentId; readonly label: string }>>(),
