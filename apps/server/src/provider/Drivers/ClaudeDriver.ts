@@ -41,6 +41,7 @@ import { makeClaudeScopedLimitNames } from "../Layers/claudeUsageLimits.ts";
 import * as ClaudeResetCredits from "../Layers/claudeResetCredits.ts";
 import * as ResetCreditCoordinator from "../Layers/resetCreditCoordinator.ts";
 import {
+  checkClaudeCodeProfiles,
   checkClaudeProviderStatus,
   claudeSlashCommands,
   makeClaudeWorkspaceCatalog,
@@ -265,6 +266,42 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         processEnv,
       );
 
+      // An instance without its own config dir picks one per thread from the
+      // code profiles, so its snapshot also reports each profile's account.
+      const folderProfiles =
+        effectiveConfig.homePath.trim().length === 0
+          ? Option.getOrUndefined(codeProfiles)
+          : undefined;
+      const attachCodeProfiles = <Snapshot extends { readonly installed: boolean }>(
+        snapshot: Snapshot,
+      ) =>
+        folderProfiles === undefined || !effectiveConfig.enabled
+          ? Effect.succeed(snapshot)
+          : folderProfiles.list.pipe(
+              Effect.flatMap((profiles) =>
+                checkClaudeCodeProfiles(
+                  profiles,
+                  (profileEnvironment, root) =>
+                    snapshot.installed
+                      ? fileSystem.exists(root).pipe(
+                          Effect.orElseSucceed(() => false),
+                          Effect.flatMap((rootExists) =>
+                            probeClaudeCapabilities(
+                              effectiveConfig,
+                              profileEnvironment,
+                              rootExists ? root : cwd,
+                              false,
+                            ),
+                          ),
+                          Effect.provideService(Path.Path, path),
+                        )
+                      : Effect.succeed(undefined),
+                  processEnv,
+                ),
+              ),
+              Effect.map((profiles) => ({ ...snapshot, codeProfiles: profiles })),
+            );
+
       // Start the TTL-gated refresh without delaying provider readiness. The
       // next check observes a remote manifest after the background fetch lands.
       const checkProvider = modelManifest.refreshInBackground.pipe(
@@ -287,6 +324,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               ),
             ),
             Effect.map(stampIdentity),
+            Effect.flatMap(attachCodeProfiles),
           ),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -294,7 +332,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         Effect.provideService(Path.Path, path),
       );
 
-      const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
+      const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings, {
+        includeCodeProfiles: folderProfiles !== undefined,
+      });
       const managedSnapshot = yield* makeManagedServerProvider<
         ProviderSnapshotSettings<ClaudeSettings>
       >({

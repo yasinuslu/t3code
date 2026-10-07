@@ -30,6 +30,13 @@ export interface ResolvedCodeProfile {
   readonly claudeConfigDir: string | undefined;
 }
 
+export interface ListedCodeProfile {
+  readonly name: string;
+  readonly root: string;
+  /** Absolute; `undefined` when the profile sets no Claude config. */
+  readonly claudeConfigDir: string | undefined;
+}
+
 export interface CodeProfileClaudeConfigDir {
   readonly profile: string;
   readonly dir: string;
@@ -47,6 +54,8 @@ export class CodeProfiles extends Context.Service<
       folder: string,
       environment?: NodeJS.ProcessEnv,
     ) => Effect.Effect<ResolvedCodeProfile | undefined>;
+    /** Every profile in settings order, with its default Claude config dir. */
+    readonly list: Effect.Effect<ReadonlyArray<ListedCodeProfile>>;
     /** Every Claude config dir the profiles name, defaults first, without duplicates. */
     readonly claudeConfigDirs: Effect.Effect<ReadonlyArray<CodeProfileClaudeConfigDir>>;
   }
@@ -155,7 +164,17 @@ const make = Effect.gen(function* () {
     }),
   );
 
-  return CodeProfiles.of({ resolve, claudeConfigDirs });
+  const list = profiles.pipe(
+    Effect.map((entries) =>
+      entries.map(([name, profile]): ListedCodeProfile => ({
+        name,
+        root: path.resolve(expandHomePathWith(profile.root, path)),
+        claudeConfigDir: claudeDirs(profile)[0],
+      })),
+    ),
+  );
+
+  return CodeProfiles.of({ resolve, list, claudeConfigDirs });
 });
 
 export const layer = Layer.effect(CodeProfiles, make);

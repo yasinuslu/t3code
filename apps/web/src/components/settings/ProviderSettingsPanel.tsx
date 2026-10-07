@@ -11,6 +11,7 @@ import {
   defaultInstanceIdForDriver,
   type EnvironmentId,
   type AcpRegistryUrlAuthAction,
+  type CodeProfile,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
   type ProviderInstanceConfig,
@@ -28,7 +29,7 @@ import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Result from "effect/Result";
 import { PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { isDesktopLocalConnectionTarget } from "../../connection/desktopLocal";
 import { isElectron } from "../../env";
@@ -84,6 +85,11 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
+import {
+  AddCodeProfileListRow,
+  CodeProfileEditor,
+  CodeProfileListRow,
+} from "./CodeProfileSettings";
 import { ExpandableText } from "./ExpandableText";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { UsageProviderSettings } from "./UsageProviderSettings";
@@ -630,6 +636,10 @@ export function EnvironmentProviderSettings({
   const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | null>(
     targetInstanceId ?? null,
   );
+  // A code profile in the editor instead of an instance; `name: undefined` is a new one.
+  const [selectedCodeProfile, setSelectedCodeProfile] = useState<{
+    readonly name: string | undefined;
+  } | null>(null);
   const [updatingProviderInstanceIds, setUpdatingProviderInstanceIds] = useState<
     ReadonlySet<ProviderInstanceId>
   >(() => new Set());
@@ -867,6 +877,36 @@ export function EnvironmentProviderSettings({
     }
   }
 
+  // Code profiles group under the Claude instance that picks its account by
+  // folder; only a server that probes them reports `codeProfiles`.
+  const routingProvider = serverProviders.find(
+    (provider) =>
+      provider.codeProfiles !== undefined &&
+      rows.some((row) => row.instanceId === provider.instanceId),
+  );
+  const codeProfiles = routingProvider ? Object.entries(settings.codeProfiles ?? {}) : [];
+  const codeProfileNames = codeProfiles.map(([name]) => name);
+  const selectedProfileEntry =
+    selectedCodeProfile?.name === undefined
+      ? undefined
+      : codeProfiles.find(([name]) => name === selectedCodeProfile.name);
+  const showCodeProfileEditor =
+    routingProvider !== undefined &&
+    selectedCodeProfile !== null &&
+    (selectedCodeProfile.name === undefined || selectedProfileEntry !== undefined);
+  const selectInstance = (instanceId: ProviderInstanceId) => {
+    setSelectedCodeProfile(null);
+    setSelectedInstanceId(instanceId);
+  };
+  const saveCodeProfile = (name: string, profile: CodeProfile) => {
+    updateSettings({ codeProfiles: { [name]: profile } });
+    setSelectedCodeProfile({ name });
+  };
+  const deleteCodeProfile = (name: string) => {
+    updateSettings({ codeProfiles: { [name]: null } });
+    if (routingProvider) selectInstance(routingProvider.instanceId);
+  };
+
   const targetInstanceMissing =
     targetInstanceId !== undefined &&
     selectedInstanceId === targetInstanceId &&
@@ -1047,8 +1087,15 @@ export function EnvironmentProviderSettings({
         driverOption={driverOption}
         liveProvider={liveProvider}
         mode={mode}
-        selected={mode === "list" && selectedRow?.instanceId === row.instanceId}
-        onSelect={mode === "list" ? () => setSelectedInstanceId(row.instanceId) : undefined}
+        selected={
+          mode === "list" && !showCodeProfileEditor && selectedRow?.instanceId === row.instanceId
+        }
+        onSelect={mode === "list" ? () => selectInstance(row.instanceId) : undefined}
+        nameDetail={
+          routingProvider?.instanceId === row.instanceId && codeProfileNames.length > 0
+            ? `Picks account by folder (${codeProfileNames.join(", ")})`
+            : undefined
+        }
         readOnly={readOnly}
         runtime={
           mode === "editor" &&
@@ -1118,6 +1165,26 @@ export function EnvironmentProviderSettings({
             <SettingsRow
               title="Cursor account"
               description="Using CURSOR_API_KEY. Remove it from this provider's environment to use browser sign-in."
+            />
+          ) : mode === "editor" && routingProvider?.instanceId === row.instanceId ? (
+            <SettingsRow
+              title="Code profiles"
+              description={
+                codeProfileNames.length > 0
+                  ? `Picks the account by the thread's folder: ${codeProfileNames.join(", ")}.`
+                  : "Add a code profile to pick the Claude account by the thread's folder."
+              }
+              control={
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={readOnly}
+                  onClick={() => setSelectedCodeProfile({ name: undefined })}
+                >
+                  <PlusIcon />
+                  Add profile
+                </Button>
+              }
             />
           ) : null
         }
@@ -1271,13 +1338,59 @@ export function EnvironmentProviderSettings({
               className="@min-[48rem]/providers:min-h-0 @min-[48rem]/providers:flex-1"
             >
               <div className="divide-y divide-border/50">
-                {rows.map((row) => renderProviderInstance(row, "list"))}
+                {rows.map((row) =>
+                  routingProvider?.instanceId === row.instanceId && codeProfiles.length > 0 ? (
+                    <Fragment key={row.instanceId}>
+                      {renderProviderInstance(row, "list")}
+                      {codeProfiles.map(([name, profile]) => (
+                        <CodeProfileListRow
+                          key={`code-profile:${name}`}
+                          name={name}
+                          profile={profile}
+                          status={routingProvider.codeProfiles?.find(
+                            (entry) => entry.name === name,
+                          )}
+                          version={routingProvider.version}
+                          selected={showCodeProfileEditor && selectedCodeProfile?.name === name}
+                          onSelect={() => setSelectedCodeProfile({ name })}
+                        />
+                      ))}
+                      <AddCodeProfileListRow
+                        selected={showCodeProfileEditor && selectedCodeProfile?.name === undefined}
+                        disabled={readOnly}
+                        onSelect={() => setSelectedCodeProfile({ name: undefined })}
+                      />
+                    </Fragment>
+                  ) : (
+                    renderProviderInstance(row, "list")
+                  ),
+                )}
               </div>
             </ScrollArea>
           </div>
 
           <div className="min-w-0 @min-[48rem]/providers:min-h-0">
-            {selectedRow ? (
+            {showCodeProfileEditor ? (
+              <ScrollArea scrollFade chainVerticalScroll className="@min-[48rem]/providers:h-full">
+                <div className="space-y-6 p-4">
+                  <CodeProfileEditor
+                    key={selectedCodeProfile?.name ?? "new"}
+                    name={selectedProfileEntry?.[0]}
+                    profile={selectedProfileEntry?.[1]}
+                    status={routingProvider?.codeProfiles?.find(
+                      (entry) => entry.name === selectedProfileEntry?.[0],
+                    )}
+                    version={routingProvider?.version ?? null}
+                    existingNames={codeProfileNames}
+                    readOnly={readOnly}
+                    isRefreshing={isRefreshingProviders}
+                    onSave={saveCodeProfile}
+                    onDelete={deleteCodeProfile}
+                    onRefresh={refreshProviders}
+                  />
+                </div>
+              </ScrollArea>
+            ) : selectedRow ? (
               <ScrollArea scrollFade chainVerticalScroll className="@min-[48rem]/providers:h-full">
                 <div className="space-y-6 p-4">{renderProviderInstance(selectedRow, "editor")}</div>
               </ScrollArea>

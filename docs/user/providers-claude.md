@@ -34,6 +34,14 @@ threads can switch only between Claude instances with the same config directory.
 Separate account directories stay isolated, including their local conversation
 state. Claude does not have Codex's shared-home and shadow-home arrangement.
 
+To pick the account by folder instead, add code profiles to a Claude instance whose
+CLAUDE_CONFIG_DIR path is empty: select it in **Settings > Providers** and use
+**Add profile**. Each profile has a root folder, such as `~/code/work`, and the
+config directory its threads use. A thread in that folder, or in a worktree of a
+repository there, runs on that profile's account. Each profile is listed under the
+instance with its account status; when a profile is not signed in, its panel shows
+the login command for its config directory.
+
 For presets that differ only in API keys or endpoints, use the instance's
 **Environment variables**. Variable assignments do not belong in **Launch arguments**.
 

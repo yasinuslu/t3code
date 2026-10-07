@@ -1448,10 +1448,7 @@ export const ServerSettings = Schema.Struct({
   usageModelAliases: Schema.Record(TrimmedNonEmptyString, TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
-  /**
-   * Code profiles keyed by name. Edited in settings.json only, so absent from
-   * ServerSettingsPatch.
-   */
+  /** Code profiles keyed by name. */
   codeProfiles: Schema.Record(TrimmedNonEmptyString, CodeProfile).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1755,6 +1752,10 @@ export const ServerSettingsPatch = Schema.Struct({
   /** Each entry replaces one model's mapping; `null` removes it. */
   usageModelAliases: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(TrimmedNonEmptyString)),
+  ),
+  /** Each entry replaces one profile; `null` removes it. */
+  codeProfiles: Schema.optionalKey(
+    Schema.Record(TrimmedNonEmptyString, Schema.NullOr(CodeProfile)),
   ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;

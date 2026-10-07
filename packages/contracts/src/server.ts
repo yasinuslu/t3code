@@ -213,6 +213,20 @@ export const ServerProviderUpdateState = Schema.Struct({
 });
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
+/**
+ * The account a code profile's sessions use, probed with the profile's Claude
+ * config dir. Only an instance that picks its config dir by folder has these.
+ */
+export const ServerProviderCodeProfile = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  root: TrimmedNonEmptyString,
+  configDir: Schema.optionalKey(TrimmedNonEmptyString),
+  status: ServerProviderState,
+  auth: ServerProviderAuth,
+  message: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ServerProviderCodeProfile = typeof ServerProviderCodeProfile.Type;
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.
@@ -235,6 +249,9 @@ export const ServerProvider = Schema.Struct({
   // the real one per session. Absent means the dir was set explicitly. A
   // workspace snapshot's `configDir`, when present, is explicit.
   configDirInherited: Schema.optional(Schema.Boolean),
+  // Present (possibly empty) when the instance picks its config dir by the
+  // thread's code profile, one entry per profile in settings order.
+  codeProfiles: Schema.optionalKey(Schema.Array(ServerProviderCodeProfile)),
   showInteractionModeToggle: Schema.optional(Schema.Boolean),
   // The driver streams context window usage, so a started thread will have a
   // meter once its activities load. Clients reserve the meter's space on it.

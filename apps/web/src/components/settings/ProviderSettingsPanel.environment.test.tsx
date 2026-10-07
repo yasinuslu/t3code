@@ -124,6 +124,11 @@ vi.mock("../../state/entities", () => ({
   useProjects: () => [],
 }));
 
+import {
+  AddCodeProfileListRow,
+  CodeProfileEditor,
+  CodeProfileListRow,
+} from "./CodeProfileSettings";
 import { EnvironmentProviderSettings } from "./ProviderSettingsPanel";
 
 const environmentId = EnvironmentId.make("remote-device");
@@ -615,6 +620,114 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(commands.acceptUrlAuth).toHaveBeenCalledWith({
       environmentId,
       input: { instanceId, elicitationId: action.elicitationId },
+    });
+  });
+
+  describe("code profiles", () => {
+    const claudeId = ProviderInstanceId.make("claudeAgent");
+    const work = {
+      root: "/home/dev/code/work",
+      claude: { configDir: "/home/dev/code/work/.claude", extraConfigDirs: [] },
+    };
+    const personal = {
+      root: "/home/dev/code/personal",
+      claude: { configDir: "/home/dev/code/personal/.claude", extraConfigDirs: [] },
+    };
+
+    function claudeProvider(codeProfiles: ServerProvider["codeProfiles"]): ServerProvider {
+      return {
+        ...provider(),
+        instanceId: claudeId,
+        driver: ProviderDriverKind.make("claudeAgent"),
+        version: "2.1.0",
+        ...(codeProfiles ? { codeProfiles } : {}),
+      };
+    }
+
+    function collect(
+      panel: ReactElement,
+      type: unknown,
+    ): Array<ReactElement<Record<string, unknown>>> {
+      const found: Array<ReactElement<Record<string, unknown>>> = [];
+      visitElements(panel, (element) => {
+        if (element.type === type) found.push(element);
+        return false;
+      });
+      return found;
+    }
+
+    it("lists each profile with its account under the Claude instance that routes by folder", () => {
+      settingsState.value = { ...DEFAULT_UNIFIED_SETTINGS, codeProfiles: { work, personal } };
+      atoms.providers = [
+        provider(),
+        claudeProvider([
+          {
+            name: "work",
+            root: work.root,
+            configDir: work.claude.configDir,
+            status: "ready",
+            auth: { status: "authenticated", label: "Claude Max Subscription" },
+          },
+        ]),
+      ];
+      const panel = renderPanel();
+
+      const rows = collect(panel, CodeProfileListRow);
+      expect(rows.map((row) => row.props.name)).toEqual(["work", "personal"]);
+      expect(rows[0]?.props.status).toMatchObject({ auth: { status: "authenticated" } });
+      // Not probed yet: no status rather than another profile's account.
+      expect(rows[1]?.props.status).toBeUndefined();
+      expect(rows[0]?.props.version).toBe("2.1.0");
+      expect(collect(panel, AddCodeProfileListRow)).toHaveLength(1);
+      const claudeRow = visitElements(
+        panel,
+        (element) => element.props.instanceId === claudeId && element.props.mode === "list",
+      );
+      expect(claudeRow?.props.nameDetail).toBe("Picks account by folder (work, personal)");
+    });
+
+    it("leaves the list unchanged without profiles or on a server that does not probe them", () => {
+      atoms.providers = [provider(), claudeProvider([])];
+      let panel = renderPanel();
+      expect(collect(panel, CodeProfileListRow)).toHaveLength(0);
+      expect(collect(panel, AddCodeProfileListRow)).toHaveLength(0);
+      expect(
+        visitElements(
+          panel,
+          (element) => element.props.instanceId === claudeId && element.props.mode === "list",
+        )?.props.nameDetail,
+      ).toBeUndefined();
+
+      settingsState.value = { ...DEFAULT_UNIFIED_SETTINGS, codeProfiles: { work } };
+      atoms.providers = [provider(), claudeProvider(undefined)];
+      panel = renderPanel();
+      expect(collect(panel, CodeProfileListRow)).toHaveLength(0);
+    });
+
+    it("edits, adds and deletes one profile at a time", () => {
+      settingsState.value = { ...DEFAULT_UNIFIED_SETTINGS, codeProfiles: { work, personal } };
+      atoms.providers = [claudeProvider([])];
+      let panel = renderPanel();
+      (collect(panel, CodeProfileListRow)[0]?.props.onSelect as () => void)();
+
+      panel = renderPanel();
+      const editor = collect(panel, CodeProfileEditor)[0];
+      expect(editor?.props.name).toBe("work");
+      const moved = { ...work, root: "/home/dev/src/work" };
+      (editor?.props.onSave as (name: string, profile: typeof work) => void)("work", moved);
+      expect(settingsState.updateSettings).toHaveBeenLastCalledWith({
+        codeProfiles: { work: moved },
+      });
+      (editor?.props.onDelete as (name: string) => void)("work");
+      expect(settingsState.updateSettings).toHaveBeenLastCalledWith({
+        codeProfiles: { work: null },
+      });
+
+      (collect(panel, AddCodeProfileListRow)[0]?.props.onSelect as () => void)();
+      panel = renderPanel();
+      const draft = collect(panel, CodeProfileEditor)[0];
+      expect(draft?.props.name).toBeUndefined();
+      expect(draft?.props.existingNames).toEqual(["work", "personal"]);
     });
   });
 });

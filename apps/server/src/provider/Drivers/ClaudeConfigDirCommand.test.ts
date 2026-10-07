@@ -98,6 +98,7 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
           ]);
           const codeProfiles = {
             resolve: (folder: string) => Effect.succeed(profiles.get(folder)),
+            list: Effect.succeed([]),
             claudeConfigDirs: Effect.succeed([]),
           };
           const resolverFor = (config: { homePath: string; homePathCommand: string }) =>

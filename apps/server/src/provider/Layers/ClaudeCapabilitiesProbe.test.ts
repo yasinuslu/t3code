@@ -20,6 +20,7 @@ import * as Schema from "effect/Schema";
 
 import {
   buildClaudeCapabilitiesProbeQueryOptions,
+  checkClaudeCodeProfiles,
   CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES,
   probeClaudeCapabilities,
   probeClaudeWorkspaceSnapshot,
@@ -352,4 +353,74 @@ it.effect("preserves initialized capabilities when optional usage times out", ()
     assert.equal(capabilities?.usage, undefined);
     assert.equal(abortSignal?.aborted, true);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("probes each code profile's account with that profile's config dir", () =>
+  Effect.gen(function* () {
+    const seen: Array<string | undefined> = [];
+    const cwds: Array<string> = [];
+    const accounts: Record<
+      string,
+      { email?: string; subscriptionType?: string; tokenSource: string }
+    > = {
+      "/home/dev/.claude-work": {
+        email: "dev@example.com",
+        subscriptionType: "max",
+        tokenSource: "claude.ai",
+      },
+      "/home/dev/.claude-home": { tokenSource: "none" },
+    };
+    const profiles = yield* checkClaudeCodeProfiles(
+      [
+        { name: "work", root: "/home/dev/code/work", claudeConfigDir: "/home/dev/.claude-work" },
+        { name: "home", root: "/home/dev/code/home", claudeConfigDir: "/home/dev/.claude-home" },
+        { name: "plain", root: "/home/dev/code/plain", claudeConfigDir: undefined },
+        {
+          name: "broken",
+          root: "/home/dev/code/broken",
+          claudeConfigDir: "/home/dev/.claude-broken",
+        },
+      ],
+      (environment, cwd) =>
+        Effect.sync(() => {
+          seen.push(environment.CLAUDE_CONFIG_DIR);
+          cwds.push(cwd);
+          const account = accounts[environment.CLAUDE_CONFIG_DIR ?? ""];
+          return account
+            ? {
+                email: account.email,
+                subscriptionType: account.subscriptionType,
+                tokenSource: account.tokenSource,
+                apiProvider: "firstParty",
+                slashCommands: [],
+              }
+            : undefined;
+        }),
+      { HOME: "/home/dev", CLAUDE_CONFIG_DIR: "/home/dev/.claude" },
+    );
+
+    assert.deepEqual(seen.toSorted(), [
+      "/home/dev/.claude-broken",
+      "/home/dev/.claude-home",
+      "/home/dev/.claude-work",
+    ]);
+    assert.deepEqual(cwds.toSorted(), [
+      "/home/dev/code/broken",
+      "/home/dev/code/home",
+      "/home/dev/code/work",
+    ]);
+    assert.deepEqual(
+      profiles.map((profile) => [profile.name, profile.status, profile.auth.status]),
+      [
+        ["work", "ready", "authenticated"],
+        ["home", "error", "unauthenticated"],
+        ["plain", "warning", "unknown"],
+        ["broken", "warning", "unknown"],
+      ],
+    );
+    assert.equal(profiles[0]?.auth.email, "dev@example.com");
+    assert.equal(profiles[0]?.auth.label, "Claude Max Subscription");
+    assert.equal(profiles[0]?.configDir, "/home/dev/.claude-work");
+    assert.equal(profiles[2]?.configDir, undefined);
+  }),
 );

@@ -475,6 +475,8 @@ interface ProviderInstanceCardProps {
   readonly driverOption: DriverOption | undefined;
   readonly liveProvider: ServerProvider | undefined;
   readonly mode: "list" | "editor";
+  /** Replaces a healthy status line in list mode, such as how the instance picks its account. */
+  readonly nameDetail?: string | undefined;
   readonly selected?: boolean | undefined;
   readonly onSelect?: (() => void) | undefined;
   readonly readOnly?: boolean | undefined;
@@ -563,6 +565,7 @@ export function ProviderInstanceCard({
   onAcceptUrlAuth,
   environmentId,
   acpProjects = EMPTY_ACP_PROJECTS,
+  nameDetail,
 }: ProviderInstanceCardProps) {
   const enabled = resolveProviderInstanceEnabled(instance);
   const compatibility = enabled ? liveProvider?.compatibilityAdvisory : undefined;
@@ -906,7 +909,7 @@ export function ProviderInstanceCard({
                   tabIndex={statusDiagnostic ? 0 : undefined}
                   className="pointer-events-auto line-clamp-2 [overflow-wrap:anywhere]"
                 >
-                  {summary.headline}
+                  {nameDetail && !needsAttention ? nameDetail : summary.headline}
                   {needsAttention && inlineStatusDetail ? ` · ${inlineStatusDetail}` : null}
                 </span>
               </ProviderStatusDiagnostic>
