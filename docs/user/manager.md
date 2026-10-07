@@ -28,9 +28,9 @@ are the first lines of the thread's latest report, its screenshots, and any open
 
 ## The manager
 
-The manager is docked on the right of Home as a normal thread view. On narrow windows, open it from
-the sidebar, where it is pinned and marked with a compass. A thread that is the manager shows a
-**Manager** badge in its header.
+The manager is docked on the right of Home as a normal thread view. It has no row in the sidebar's
+thread list; **Home** at the top of the sidebar opens it, and on narrow windows that opens the
+manager thread itself. A thread that is the manager shows a **Manager** badge in its header.
 
 The first time, T3 Code creates the manager in the default profile's brain project (a
 `~/code/<profile>/<profile>-brain` repository); without a brain it uses the project you used most

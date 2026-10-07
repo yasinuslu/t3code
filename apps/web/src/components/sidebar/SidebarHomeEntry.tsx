@@ -1,10 +1,12 @@
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { classifyWorkThread } from "@t3tools/client-runtime/state/work-overview";
+import { useNavigate } from "@tanstack/react-router";
 import { CompassIcon } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 
 import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../../brainstormStore";
 import { openManagerHome } from "../brainstorm/useOpenManagerThread";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerKeybindingsAtom } from "../../state/server";
@@ -13,7 +15,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 /**
  * The way Home from anywhere: always at the top of the thread list, whatever
  * space or filter is active. Shows how many threads need the user and whether
- * the manager is working.
+ * the manager is working. The manager has no row of its own in the lists; on
+ * windows too narrow for Home's docked manager this opens the manager thread.
  */
 export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -33,6 +36,19 @@ export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
     return { needsYou: count, managerWorking: working };
   }, [managerThreadKey, now, threads]);
   const shortcut = shortcutLabelForCommand(keybindings, "manager.open");
+  const narrow = useMediaQuery("max-lg");
+  const navigate = useNavigate();
+  const open = () => {
+    const separator = managerThreadKey?.indexOf(":") ?? -1;
+    if (!narrow || managerThreadKey === null || separator < 0) return openManagerHome();
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: {
+        environmentId: managerThreadKey.slice(0, separator),
+        threadId: managerThreadKey.slice(separator + 1),
+      },
+    });
+  };
 
   return (
     <div className="px-2 pb-1">
@@ -42,7 +58,7 @@ export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
             <button
               type="button"
               data-sidebar-home=""
-              onClick={openManagerHome}
+              onClick={open}
               className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-foreground/90 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             />
           }

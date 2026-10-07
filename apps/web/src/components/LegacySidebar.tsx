@@ -75,8 +75,7 @@ import {
   type SidebarThreadPreviewCount,
   type SidebarThreadSortOrder,
 } from "@t3tools/contracts/settings";
-import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
-import { ManagerThreadMarker } from "./brainstorm/ManagerThreadMarker";
+import { useSidebarThreadShells } from "../brainstormStore";
 import { isDesktopLocalConnectionTarget, isWslConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
@@ -786,7 +785,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             />
           ) : (
             <>
-              <ManagerThreadMarker environmentId={thread.environmentId} threadId={thread.id} />
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -3139,7 +3137,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
 export default function LegacySidebar() {
   const projects = useProjects();
-  const sidebarThreads = useThreadShellsWithoutBrainstorms();
+  const sidebarThreads = useSidebarThreadShells();
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);

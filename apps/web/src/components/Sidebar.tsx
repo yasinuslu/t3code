@@ -97,8 +97,7 @@ import {
 } from "react";
 import { useParams, useRouter } from "@tanstack/react-router";
 
-import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
-import { ManagerThreadMarker } from "./brainstorm/ManagerThreadMarker";
+import { useSidebarThreadShells } from "../brainstormStore";
 import { useRightPanelStore } from "../rightPanelStore";
 import {
   isAtomCommandInterrupted,
@@ -1663,14 +1662,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {thread.title}
     </span>
   );
-  const markedTitle = isRenaming ? (
-    title
-  ) : (
-    <>
-      <ManagerThreadMarker environmentId={thread.environmentId} threadId={thread.id} />
-      {title}
-    </>
-  );
   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
 
   // Stacks show their layer count; multiple unrelated links show their total count.
@@ -1810,7 +1801,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {props.project ? <ProjectFavicon project={props.project} className="size-4" /> : null}
             </span>
             {draftIndicator}
-            {markedTitle}
+            {title}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -2129,7 +2120,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {props.sweepAction !== null ? dragDestination : null}
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-1">
-              {markedTitle}
+              {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
@@ -2354,7 +2345,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
 export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
-  const threads = useThreadShellsWithoutBrainstorms();
+  const threads = useSidebarThreadShells();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);

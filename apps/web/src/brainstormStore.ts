@@ -69,3 +69,19 @@ export function useThreadShellsWithoutBrainstorms(): ReadonlyArray<EnvironmentTh
     [hidden, threads],
   );
 }
+
+/**
+ * The sidebar's threads: no brainstorm chats and no manager, which the
+ * sidebar's Home entry opens instead.
+ */
+export function useSidebarThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
+  const threads = useThreadShellsWithoutBrainstorms();
+  const managerKey = useBrainstormStore((state) => state.managerThreadKey);
+  return useMemo(
+    () =>
+      managerKey === null
+        ? threads
+        : threads.filter((thread) => `${thread.environmentId}:${thread.id}` !== managerKey),
+    [managerKey, threads],
+  );
+}
