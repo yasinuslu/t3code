@@ -2,7 +2,14 @@ import type { ServerConfig } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import type { ConnectionCatalogEntry } from "./catalog.ts";
-import type { SupervisorConnectionState } from "./model.ts";
+import {
+  BearerConnectionTarget,
+  PrimaryConnectionTarget,
+  RelayConnectionTarget,
+  SshConnectionTarget,
+  type ConnectionTarget,
+  type SupervisorConnectionState,
+} from "./model.ts";
 
 export type EnvironmentConnectionPhase =
   | "available"
@@ -107,4 +114,70 @@ export function connectionCatalogDisplayUrl(entry: ConnectionCatalogEntry): stri
         ? `${entry.profile.value.target.username}@${entry.profile.value.target.hostname}`
         : null;
   }
+}
+
+/**
+ * The name to show for a saved environment.
+ *
+ * The label saved at registration never refreshes, so it goes stale when the
+ * host is renamed, and a T3 Connect record without a label carries the
+ * environment id instead. The server's live descriptor label (from its config,
+ * which is cached across restarts) is therefore the source of truth, except
+ * when the saved label was chosen on purpose (`labelOverride`).
+ */
+export function resolveEnvironmentDisplayLabel(
+  target: ConnectionTarget,
+  serverConfig: Pick<ServerConfig, "environment"> | null,
+): string {
+  if (target.labelOverride === true) {
+    return target.label;
+  }
+  // Defensive reads: cached configs are decoded loosely and may predate fields.
+  const environment = serverConfig?.environment;
+  const descriptorLabel = typeof environment?.label === "string" ? environment.label.trim() : "";
+  if (descriptorLabel !== "" && environment?.environmentId === target.environmentId) {
+    return descriptorLabel;
+  }
+  return target.label;
+}
+
+function withTargetLabel(target: ConnectionTarget, label: string): ConnectionTarget {
+  switch (target._tag) {
+    case "PrimaryConnectionTarget":
+      return new PrimaryConnectionTarget({
+        environmentId: target.environmentId,
+        label,
+        httpBaseUrl: target.httpBaseUrl,
+        wsBaseUrl: target.wsBaseUrl,
+      });
+    case "BearerConnectionTarget":
+      return new BearerConnectionTarget({
+        environmentId: target.environmentId,
+        label,
+        connectionId: target.connectionId,
+      });
+    case "RelayConnectionTarget":
+      return new RelayConnectionTarget({ environmentId: target.environmentId, label });
+    case "SshConnectionTarget":
+      return new SshConnectionTarget({
+        environmentId: target.environmentId,
+        label,
+        connectionId: target.connectionId,
+      });
+  }
+}
+
+/**
+ * The catalog entry as presentation shows it: `target.label` is the display
+ * label from {@link resolveEnvironmentDisplayLabel}. Returns the same entry when
+ * nothing changes, so reference equality keeps holding.
+ */
+export function presentCatalogEntry(
+  entry: ConnectionCatalogEntry,
+  serverConfig: Pick<ServerConfig, "environment"> | null,
+): ConnectionCatalogEntry {
+  const label = resolveEnvironmentDisplayLabel(entry.target, serverConfig);
+  return label === entry.target.label
+    ? entry
+    : { ...entry, target: withTargetLabel(entry.target, label) };
 }

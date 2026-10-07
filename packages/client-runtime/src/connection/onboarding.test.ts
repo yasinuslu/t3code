@@ -284,6 +284,41 @@ describe("connection onboarding", () => {
     }),
   );
 
+  it.effect("marks only a changed label as a user rename", () =>
+    Effect.gen(function* () {
+      const environmentId = EnvironmentId.make("environment-paired");
+      const update = (label: string, labelOverride?: true) =>
+        prepareBearerConnectionUpdate({
+          input: { environmentId, label, httpBaseUrl: "http://new.example.test/" },
+          entry: Option.some({
+            target: new BearerConnectionTarget({
+              environmentId,
+              label: "t3code-6d9f-abcde",
+              connectionId: "bearer:environment-paired",
+              ...(labelOverride ? { labelOverride } : {}),
+            }),
+            profile: Option.some(
+              new BearerConnectionProfile({
+                connectionId: "bearer:environment-paired",
+                environmentId,
+                label: "t3code-6d9f-abcde",
+                httpBaseUrl: "http://old.example.test/",
+                wsBaseUrl: "ws://old.example.test/",
+              }),
+            ),
+            enabled: true,
+          }),
+          credential: Option.some(new BearerConnectionCredential({ token: "bearer-token" })),
+        });
+
+      // Editing only the URL keeps following the server's descriptor label.
+      expect((yield* update("t3code-6d9f-abcde")).target.labelOverride).toBeUndefined();
+      expect((yield* update("Cloud box")).target.labelOverride).toBe(true);
+      // An earlier rename stays a rename.
+      expect((yield* update("t3code-6d9f-abcde", true)).target.labelOverride).toBe(true);
+    }),
+  );
+
   it.effect("prepares an SSH registration from the provisioned platform environment", () =>
     Effect.gen(function* () {
       const target = {

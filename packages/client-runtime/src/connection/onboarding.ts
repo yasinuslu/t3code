@@ -199,11 +199,15 @@ export const prepareBearerConnectionUpdate = Effect.fn(
       }),
   });
   const connectionId = entry.target.connectionId;
+  // A changed label is a user rename, which must win over the server's
+  // descriptor label from then on; an untouched one keeps following the server.
+  const labelOverride = entry.target.labelOverride === true || label !== entry.target.label;
   return new BearerConnectionRegistration({
     target: new BearerConnectionTarget({
       environmentId: options.input.environmentId,
       label,
       connectionId,
+      ...(labelOverride ? { labelOverride: true } : {}),
     }),
     profile: new BearerConnectionProfile({
       connectionId,
@@ -222,13 +226,15 @@ export const prepareSshRegistration = Effect.fn(
   const gateway = yield* ClientCapabilities.SshEnvironmentGateway;
   const provisioned = yield* gateway.provision(input.target);
   const connectionId = `ssh:${provisioned.environmentId}`;
-  const label = input.label?.trim() || provisioned.label || provisioned.bootstrap.target.alias;
+  const explicitLabel = input.label?.trim() || null;
+  const label = explicitLabel || provisioned.label || provisioned.bootstrap.target.alias;
 
   return new SshConnectionRegistration({
     target: new SshConnectionTarget({
       environmentId: provisioned.environmentId,
       label,
       connectionId,
+      ...(explicitLabel !== null ? { labelOverride: true } : {}),
     }),
     profile: new SshConnectionProfile({
       connectionId,

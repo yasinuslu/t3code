@@ -340,6 +340,8 @@ const loadSecondaryConnectionRegistration = Effect.fn(
   // Prefer the desktop's bootstrap label (it identifies the backend and distro,
   // e.g. "WSL: Ubuntu") over the generic descriptor label, so consumers can show
   // a meaningful name without recovering it from the bootstrap list later.
+  // `labelOverride` keeps that bootstrap label ahead of the descriptor label
+  // that presentation otherwise prefers.
   const label = entry.label || descriptor.label;
   return {
     registration: new BearerConnectionRegistration({
@@ -347,6 +349,7 @@ const loadSecondaryConnectionRegistration = Effect.fn(
         environmentId: descriptor.environmentId,
         label,
         connectionId,
+        ...(entry.label ? { labelOverride: true } : {}),
       }),
       profile: new BearerConnectionProfile({
         connectionId,

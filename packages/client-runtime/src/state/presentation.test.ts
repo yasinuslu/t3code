@@ -198,3 +198,30 @@ describe("environment summary subscriptions", () => {
     }
   });
 });
+
+describe("environment labels", () => {
+  it("names an environment by its live descriptor label once its config is known", () => {
+    const h = harness();
+    try {
+      expect(h.registry.get(h.identitiesAtom)).toEqual([
+        { environmentId: FIRST, label: "first" },
+        { environmentId: SECOND, label: "second" },
+      ]);
+      h.registry.set(h.configs(SECOND), {
+        ...config(),
+        environment: { ...config().environment, environmentId: SECOND, label: "tenriyo" },
+      } as ServerConfig);
+      expect(h.registry.get(h.identitiesAtom)).toEqual([
+        { environmentId: FIRST, label: "first" },
+        { environmentId: SECOND, label: "tenriyo" },
+      ]);
+      expect(h.registry.get(h.environmentsAtom).map((e) => e.environmentLabel)).toEqual([
+        "first",
+        "tenriyo",
+      ]);
+      expect(h.registry.get(h.full.presentationAtom(SECOND))?.entry.target.label).toBe("tenriyo");
+    } finally {
+      h.registry.dispose();
+    }
+  });
+});
