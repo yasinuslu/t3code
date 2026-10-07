@@ -48,6 +48,11 @@ Tell it what you want done. It breaks goals into tasks, starts worker threads, a
 questions and closes tasks. It reads its rules again after a restart, so nothing depends on its chat
 history.
 
+The manager starts every session knowing its role. To add your own rules, such as where new work
+should run or how you like reports, write them in `MANAGER.md` at the root of the default profile's
+brain. The manager gets the file's current text at the start of each session and from
+`manager_overview`.
+
 The manager's tools are on the `t3-code` MCP server: `manager_overview` (its rules, every profile's
 brain and task file), `list_tasks`, `add_goal`, `update_goal`, `delete_goal`, `add_task`,
 `update_task`, `complete_task`, `delete_task`, `list_threads` (every project's threads with a

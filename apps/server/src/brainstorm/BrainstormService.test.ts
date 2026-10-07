@@ -24,6 +24,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
+import * as ManagerRole from "./ManagerRole.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -240,6 +241,34 @@ describe("BrainstormService manager thread", () => {
       const state = Option.getOrThrow(yield* Stream.runHead(harness.brainstorm.stateChanges));
       expect(state.threadIdsBySpaceId.all).toBe(manager.threadId);
       expect(state.hiddenThreadIds).toEqual([homeChat.threadId]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("the manager knows its role and the user's MANAGER.md; other chats do not", () =>
+    Effect.gen(function* () {
+      const brain = NodePath.join(home, "code", "home", "home-brain");
+      NodeFS.mkdirSync(brain, { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(brain, "MANAGER.md"), "Launch new work on the desk.\n");
+      const harness = yield* makeHarness({ projects: [project("p-brain", brain)], threads: [] });
+      yield* harness.brainstorm.syncSpaces({
+        spaces: [
+          { id: "all", name: "All", kind: "all", profile: null },
+          { id: "space-home", name: "home", kind: "profile", profile: "home" },
+        ],
+        customSpaceIdsByProjectId: {},
+      });
+      const manager = yield* harness.brainstorm.open("all");
+      const homeChat = yield* harness.brainstorm.open("space-home");
+      const role = yield* ManagerRole.ManagerRole;
+
+      const instructions = yield* role.instructionsFor(manager.threadId);
+      expect(instructions?.slice(0, -1)).toEqual(ManagerRole.MANAGER_INSTRUCTIONS);
+      expect(instructions?.at(-1)).toContain("Launch new work on the desk.");
+      expect(yield* role.instructionsFor(homeChat.threadId)).toBeNull();
+
+      const prompt = ManagerRole.withManagerRole("hi", instructions ?? []);
+      expect(prompt).toMatch(/^<t3_code_manager_role>[\s\S]*<user_request>\nhi\n<\/user_request>$/);
+      expect(ManagerRole.withManagerRole("/compact", instructions ?? [])).toBe("/compact");
     }).pipe(Effect.scoped),
   );
 

@@ -25,6 +25,7 @@ import {
   BrainstormService,
   taskPathOf,
 } from "../../../brainstorm/BrainstormService.ts";
+import { MANAGER_INSTRUCTIONS } from "../../../brainstorm/ManagerRole.ts";
 import { parseTaskMarkdown } from "../../../brainstorm/taskMarkdown.ts";
 import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -164,6 +165,7 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
 
   const brainstorm = Layer.mock(BrainstormService)({
     context: Effect.succeed(context),
+    managerInstructions: Effect.succeed(MANAGER_INSTRUCTIONS),
     spaceOfThread: (threadId) =>
       Effect.succeed(
         SPACES.find((space) => context.threadIdsBySpaceId[space.id] === threadId) ?? null,

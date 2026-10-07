@@ -63,6 +63,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveCodeProfiles, resolveDefaultCodeProfile } from "../workspace/CodeProfiles.ts";
 import * as ManagerScope from "../mcp/ManagerScope.ts";
+import * as ManagerRole from "./ManagerRole.ts";
 import {
   addTask,
   deleteTask,
@@ -250,6 +251,8 @@ export class BrainstormService extends Context.Service<
     readonly context: Effect.Effect<BrainstormContext, BrainstormError>;
     /** The space whose brainstorm this thread is. */
     readonly spaceOfThread: (threadId: string) => Effect.Effect<BrainstormSpace | null>;
+    /** The manager's rules: T3 Code's, then the user's `MANAGER.md` in the default brain. */
+    readonly managerInstructions: Effect.Effect<ReadonlyArray<string>>;
     readonly readTaskList: (
       context: BrainstormContext,
       space: BrainstormSpace,
@@ -903,6 +906,29 @@ export const make = Effect.gen(function* () {
       return { threadId, runId: recentRuns[0]?.id ?? null, text: null };
     });
 
+  const managerInstructions = Effect.gen(function* () {
+    const ctx = yield* context.pipe(Effect.orElseSucceed(() => null));
+    const brainPath = ctx?.defaultProfile?.brainPath ?? null;
+    const rules =
+      brainPath === null
+        ? ""
+        : (yield* readTextOrEmpty(NodePath.join(brainPath, ManagerRole.MANAGER_RULES_FILE))).trim();
+    return rules === ""
+      ? ManagerRole.MANAGER_INSTRUCTIONS
+      : [
+          ...ManagerRole.MANAGER_INSTRUCTIONS,
+          `The user's own rules (${ManagerRole.MANAGER_RULES_FILE}):\n\n${rules}`,
+        ];
+  });
+  const managerRole = yield* ManagerRole.ManagerRole;
+  yield* managerRole.register((threadId) =>
+    spaceOfThread(threadId).pipe(
+      Effect.flatMap((space) =>
+        space?.kind === "all" ? managerInstructions : Effect.succeed(null),
+      ),
+    ),
+  );
+
   return BrainstormService.of({
     syncSpaces,
     open,
@@ -911,6 +937,7 @@ export const make = Effect.gen(function* () {
     stateChanges,
     context,
     spaceOfThread,
+    managerInstructions,
     readTaskList,
     editTasks,
     setProjectInCustomSpace,
