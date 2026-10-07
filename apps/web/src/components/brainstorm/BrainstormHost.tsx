@@ -9,6 +9,7 @@ import { useEffect, useRef } from "react";
 import { useBrainstormStore } from "../../brainstormStore";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
+import { useEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { brainstormSpacesInput, membershipChangesToAdopt } from "./brainstorm.logic";
@@ -17,13 +18,15 @@ const SYNC_DELAY_MS = 300;
 
 export function BrainstormHost() {
   const environmentId = useManagerEnvironmentId();
+  // Mirror again on (re)connect: the manager's machine may connect after this mounts.
+  const connected = useEnvironment(environmentId)?.connection.phase === "connected";
 
   const spaces = useSpaceStore((store) => store.spaces);
   const memberships = useSpaceStore((store) => store.customSpaceIdsByProjectKey);
   const defaultProfile = useBrainstormStore((store) => store.defaultProfile);
   const syncSpaces = useAtomCommand(brainstormEnvironment.syncSpaces, { reportFailure: false });
   useEffect(() => {
-    if (environmentId === null) return;
+    if (environmentId === null || !connected) return;
     const timer = window.setTimeout(() => {
       void syncSpaces({
         environmentId,
@@ -35,7 +38,7 @@ export function BrainstormHost() {
       });
     }, SYNC_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [defaultProfile, environmentId, memberships, spaces, syncSpaces]);
+  }, [connected, defaultProfile, environmentId, memberships, spaces, syncSpaces]);
 
   const state = useEnvironmentQuery(
     environmentId === null ? null : brainstormEnvironment.state({ environmentId, input: {} }),

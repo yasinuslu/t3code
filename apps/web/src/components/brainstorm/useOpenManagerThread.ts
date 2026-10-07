@@ -7,6 +7,7 @@ import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { ALL_SPACE_ID } from "../../spaceStore";
 import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
 import { useThreadShell } from "../../state/entities";
+import { useEnvironment } from "../../state/environments";
 import { formatEnvironmentQueryError } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 
@@ -39,11 +40,16 @@ export function useEnsureManagerThread(): ManagerThreadState {
   const knownShell = useThreadShell(knownKey === null ? null : parseThreadKey(knownKey));
   // An archived manager is replaced: the server starts a new one on open.
   const managerThreadKey = knownShell?.archivedAt != null ? null : knownKey;
+  // The manager may run on another machine, which connects after this mounts.
+  const environment = useEnvironment(environmentId);
+  const phase = environment?.connection.phase;
+  const connected = phase === "connected";
   const openManager = useAtomCommand(brainstormEnvironment.open, { reportFailure: false });
   const [failure, setFailure] = useState<string | null>(null);
   useEffect(() => {
-    if (environmentId === null || managerThreadKey !== null) return;
+    if (environmentId === null || managerThreadKey !== null || !connected) return;
     let cancelled = false;
+    setFailure(null);
     void openManager({ environmentId, input: { spaceId: ALL_SPACE_ID } }).then((result) => {
       if (cancelled) return;
       if (result._tag === "Failure") setFailure(formatEnvironmentQueryError(result.cause));
@@ -55,9 +61,15 @@ export function useEnsureManagerThread(): ManagerThreadState {
     return () => {
       cancelled = true;
     };
-  }, [environmentId, managerThreadKey, openManager]);
+  }, [connected, environmentId, managerThreadKey, openManager]);
   if (managerThreadKey !== null) return { _tag: "Ready", ...parseThreadKey(managerThreadKey) };
-  return failure === null ? { _tag: "Loading" } : { _tag: "Failed", message: failure };
+  if (failure !== null) return { _tag: "Failed", message: failure };
+  if (phase === "offline" || phase === "error")
+    return {
+      _tag: "Failed",
+      message: `${environment?.label ?? "Its machine"} is offline; the manager runs there.`,
+    };
+  return { _tag: "Loading" };
 }
 
 /** Opens Home, where the manager is docked, with the manager's composer focused. */
