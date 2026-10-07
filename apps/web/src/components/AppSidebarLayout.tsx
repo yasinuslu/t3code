@@ -32,6 +32,8 @@ import {
   usePanelNavigationSuppression,
 } from "../panelAnimations";
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
+import { HomeOverlay } from "./home/HomeOverlay";
+import { useHomeOverlayStore } from "../homeOverlayStore";
 import LegacyThreadSidebar from "./LegacySidebar";
 import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
@@ -83,6 +85,7 @@ function readInitialThreadSidebarWidth(): number {
 
 function SidebarControl() {
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
+  const homeOpen = useHomeOverlayStore((state) => state.open);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
@@ -97,6 +100,7 @@ function SidebarControl() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      if (useHomeOverlayStore.getState().open) return;
       if (
         event.target instanceof HTMLElement &&
         event.target.closest("[data-keybinding-capture]")
@@ -127,6 +131,9 @@ function SidebarControl() {
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [keybindings, toggleSidebar, usagePageOpen]);
+
+  // Home covers the sidebar; the toggle comes back with the page.
+  if (homeOpen) return null;
 
   return (
     // The right-side layout controls carry mr-px (border compensation inside
@@ -338,6 +345,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
         {children}
+        <HomeOverlay />
         <SidebarControl />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />

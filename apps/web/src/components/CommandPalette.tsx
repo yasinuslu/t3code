@@ -82,7 +82,8 @@ import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
 
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
-import { useOpenManagerThread } from "./brainstorm/useOpenManagerThread";
+import { openManagerHome } from "./brainstorm/useOpenManagerThread";
+import { toggleHomeOverlay } from "../homeOverlayStore";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -498,7 +499,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const openManagerThread = useOpenManagerThread();
   const { theme, themeHalves, resolvedTheme, appearanceMode, setAppearanceMode } = useTheme();
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
   const routeTarget = useParams({
@@ -589,7 +589,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         event.stopPropagation();
         if (event.repeat) return;
         setOpen(false);
-        void openManagerThread();
+        toggleHomeOverlay();
         return;
       }
       const mode = overlayModeForCommand(command);
@@ -606,7 +606,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     appearanceMode,
     keybindings,
     navigate,
-    openManagerThread,
     previewOpen,
     resolvedTheme,
     setAppearanceMode,
@@ -816,7 +815,6 @@ function OpenCommandPaletteDialog(props: {
   }, [activeThreadReferenceCopyTarget]);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShellsWithoutBrainstorms();
-  const openManagerThread = useOpenManagerThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const {
     theme,
@@ -2268,7 +2266,7 @@ function OpenCommandPaletteDialog(props: {
     title: "Go home (manager and work)",
     icon: <CompassIcon className={ITEM_ICON_CLASS} />,
     shortcutCommand: "manager.open",
-    run: openManagerThread,
+    run: async () => openManagerHome(),
   });
 
   actionItems.push({

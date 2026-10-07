@@ -1,12 +1,11 @@
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { classifyWorkThread } from "@t3tools/client-runtime/state/work-overview";
-import { Link, useLocation } from "@tanstack/react-router";
 import { CompassIcon } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 
 import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../../brainstormStore";
+import { openManagerHome } from "../brainstorm/useOpenManagerThread";
 import { shortcutLabelForCommand } from "../../keybindings";
-import { cn } from "../../lib/utils";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -17,7 +16,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  * the manager is working.
  */
 export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
-  const onHome = useLocation({ select: (location) => location.pathname === "/home" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const managerThreadKey = useBrainstormStore((state) => state.managerThreadKey);
   const threads = useThreadShellsWithoutBrainstorms();
@@ -41,14 +39,11 @@ export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <Link
-              to="/home"
+            <button
+              type="button"
               data-sidebar-home=""
-              aria-current={onHome ? "page" : undefined}
-              className={cn(
-                "flex h-9 w-full items-center gap-2 rounded-lg px-2 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-                onHome ? "bg-accent font-medium text-foreground" : "text-foreground/90",
-              )}
+              onClick={openManagerHome}
+              className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-foreground/90 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             />
           }
         >

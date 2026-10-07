@@ -2307,3 +2307,25 @@ code {
     }
   }
 }
+
+/* Home opens as an overlay over the app (components/home/HomeOverlay.tsx). It
+   covers the sidebar, so its header clears the window controls itself. */
+.home-overlay {
+  --home-header-start: max(
+    var(--workspace-gutter-start),
+    calc(var(--workspace-controls-left) + 0.25rem)
+  );
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .home-overlay {
+    animation: t3-home-overlay-in 120ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+}
+
+@keyframes t3-home-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+}

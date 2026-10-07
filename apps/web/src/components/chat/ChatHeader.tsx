@@ -5,10 +5,10 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronDownIcon, CompassIcon } from "lucide-react";
 import {
   memo,
+  useContext,
   useCallback,
   useEffect,
   useMemo,
@@ -19,6 +19,8 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { InHomeOverlayContext } from "../../homeOverlayStore";
+import { openManagerHome } from "../brainstorm/useOpenManagerThread";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -93,7 +95,7 @@ export const ChatHeader = memo(function ChatHeader({
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
   const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
   // Docked on Home, the manager needs no way back to where it already is.
-  const onHome = useLocation({ select: (location) => location.pathname === "/home" });
+  const onHome = useContext(InHomeOverlayContext);
   // The manager docked on Home: a narrow pane, so only its name and badge.
   const docked = onHome && isManager;
   const activeThreadRef = useMemo(
@@ -264,7 +266,7 @@ export const ChatHeader = memo(function ChatHeader({
                 variant="ghost-muted"
                 aria-label="Home"
                 data-chat-header-home=""
-                render={<Link to="/home" />}
+                onClick={openManagerHome}
               />
             }
           >

@@ -1,8 +1,8 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useBrainstormStore } from "../../brainstormStore";
+import { openHomeOverlay, useHomeOverlayStore } from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { ALL_SPACE_ID } from "../../spaceStore";
 import { brainstormEnvironment } from "../../state/brainstorm";
@@ -57,12 +57,8 @@ export function useEnsureManagerThread(): ManagerThreadState {
   return failure === null ? { _tag: "Loading" } : { _tag: "Failed", message: failure };
 }
 
-/** Goes Home, where the manager is docked, with the manager's composer focused. */
-export function useOpenManagerThread(): () => Promise<void> {
-  const navigate = useNavigate();
-  return useCallback(async () => {
-    await navigate({ to: "/home" });
-    // Home may already be open; ask the docked composer for focus either way.
-    window.requestAnimationFrame(dispatchSnapShotComposerFocus);
-  }, [navigate]);
+/** Opens Home, where the manager is docked, with the manager's composer focused. */
+export function openManagerHome(): void {
+  if (useHomeOverlayStore.getState().open) dispatchSnapShotComposerFocus();
+  else openHomeOverlay();
 }

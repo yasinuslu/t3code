@@ -32,7 +32,6 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { SidebarInset } from "../ui/sidebar";
 import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, boardGoals } from "../brainstorm/brainstorm.logic";
@@ -95,11 +94,16 @@ export function HomeDashboard() {
   const manager = useEnsureManagerThread();
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background">
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]">
         {/* Home has its own canvas so the cards read as one board, apart from thread views. */}
         <div className="flex min-h-0 min-w-0 flex-col bg-muted/40" data-home-dashboard="">
-          <WorkspacePageHeader electron={isElectron} reserveNativeControls={false}>
+          <WorkspacePageHeader
+            electron={isElectron}
+            reserveNativeControls={false}
+            // Home covers the sidebar, so its header clears the window controls itself.
+            className="pl-(--home-header-start)"
+          >
             <CompassIcon className="size-4 text-muted-foreground" aria-hidden />
             <h1 className="font-medium text-sm">Home</h1>
             <span className="text-muted-foreground text-xs">
@@ -158,7 +162,7 @@ export function HomeDashboard() {
         </div>
         <ManagerPane manager={manager} />
       </div>
-    </SidebarInset>
+    </div>
   );
 }
 

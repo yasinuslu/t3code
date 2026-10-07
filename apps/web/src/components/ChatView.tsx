@@ -171,6 +171,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
+import { useCoveredByHome } from "../homeOverlayStore";
 import { useDiffPanelStore } from "../diffPanelStore";
 import {
   type ComposerSubmissionIntent,
@@ -1783,6 +1784,13 @@ export default function ChatView(props: ChatViewProps) {
   const composerTerminalContextsRef = useRef<TerminalContextDraft[]>([]);
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
+  // Under the open Home overlay this view stays mounted but must not take keys,
+  // pastes or composer focus meant for Home.
+  const coveredByHome = useCoveredByHome();
+  const coveredByHomeRef = useRef(coveredByHome);
+  useLayoutEffect(() => {
+    coveredByHomeRef.current = coveredByHome;
+  }, [coveredByHome]);
   const branchToolbarRef = useRef<BranchToolbarHandle>(null);
   const pasteAsTextShortcutUntilRef = useRef(0);
   const [restingComposerControlsHost, setRestingComposerControlsHost] =
@@ -4533,7 +4541,13 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
   }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
-  useEffect(() => subscribeSnapShotComposerFocus(focusComposer), [focusComposer]);
+  useEffect(
+    () =>
+      subscribeSnapShotComposerFocus(() => {
+        if (!coveredByHomeRef.current) focusComposer();
+      }),
+    [focusComposer],
+  );
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -7653,6 +7667,7 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
+      if (coveredByHomeRef.current) return;
       if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
         event.stopPropagation();
         return;
@@ -7990,6 +8005,7 @@ export default function ChatView(props: ChatViewProps) {
   // Route it to the composer like a typed key, which also expands it.
   useEffect(() => {
     const keyHandler = (event: KeyboardEvent) => {
+      if (coveredByHomeRef.current) return;
       if (
         shouldRedirectInputToComposer(event) &&
         isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))
@@ -7998,6 +8014,7 @@ export default function ChatView(props: ChatViewProps) {
       }
     };
     const handler = (event: ClipboardEvent) => {
+      if (coveredByHomeRef.current) return;
       if (!activeThreadId || isCommandPaletteOpen()) return;
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
