@@ -1055,12 +1055,32 @@ export type OrchestrationV2NotificationSource = typeof OrchestrationV2Notificati
 
 // A notification records an observed event, not whether its payload has reached the agent.
 // Provider delivery, wake policy, and agent-facing instructions belong to the backend.
+const OrchestrationV2NotificationOutcome = Schema.Literals([
+  "completed",
+  "failed",
+  "cancelled",
+  "updated",
+  "unknown",
+]);
+
+/** One provider background task a notification reports, by the id its tool item carries. */
+export const OrchestrationV2NotificationTask = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  outcome: OrchestrationV2NotificationOutcome,
+  exitCode: Schema.optional(Schema.Int),
+  /** The task description, which outlives the running roster that also names it. */
+  label: Schema.optional(TrimmedNonEmptyString),
+});
+export type OrchestrationV2NotificationTask = typeof OrchestrationV2NotificationTask.Type;
+
 export const OrchestrationV2Notification = Schema.Struct({
   source: OrchestrationV2NotificationSource,
   // Item status describes this timeline record; outcome describes the reported work.
-  outcome: Schema.Literals(["completed", "failed", "cancelled", "updated", "unknown"]),
+  outcome: OrchestrationV2NotificationOutcome,
   summary: TrimmedNonEmptyString,
   detail: Schema.optional(Schema.String),
+  /** Per-task results for work whose tool item carries a `backgroundTaskId`. */
+  tasks: Schema.optional(Schema.Array(OrchestrationV2NotificationTask)),
 });
 export type OrchestrationV2Notification = typeof OrchestrationV2Notification.Type;
 
@@ -1374,6 +1394,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     outputOmitted: Schema.optional(Schema.Boolean),
     outputIndicatesFailure: Schema.optional(Schema.Boolean),
     exitCode: Schema.optional(Schema.Int),
+    /** The provider task a backgrounded command keeps running as; read its output by this id. */
+    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -1500,6 +1522,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     output: Schema.optional(Schema.Unknown),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
+    /** The provider task this tool started, such as a monitor; read its output by this id. */
+    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
   }),
 ]);
 export type OrchestrationV2TurnItem = typeof OrchestrationV2TurnItem.Type;
@@ -2110,6 +2134,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     outputOmitted: Schema.optional(Schema.Boolean),
     outputIndicatesFailure: Schema.optional(Schema.Boolean),
     exitCode: Schema.optional(Schema.Int),
+    /** The provider task a backgrounded command keeps running as; read its output by this id. */
+    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
@@ -2233,6 +2259,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     output: Schema.optional(Schema.Unknown),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
+    /** The provider task this tool started, such as a monitor; read its output by this id. */
+    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
   }),
 ]);
 export type OrchestrationV2TurnItemJson = typeof OrchestrationV2TurnItemJson.Type;
@@ -2991,6 +3019,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   getThreadProjection: "orchestration.getThreadProjection",
   getWorkflowScript: "orchestration.getWorkflowScript",
   getTurnItem: "orchestration.getTurnItem",
+  getBackgroundTaskOutput: "orchestration.getBackgroundTaskOutput",
   launchThread: "orchestration.launchThread",
   subscribeArchivedShell: "orchestration.subscribeArchivedShell",
   subscribeShell: "orchestration.subscribeShell",
@@ -3291,6 +3320,30 @@ export const OrchestrationV2GetTurnItemResult = Schema.Struct({
 });
 export type OrchestrationV2GetTurnItemResult = typeof OrchestrationV2GetTurnItemResult.Type;
 
+export const OrchestrationV2GetBackgroundTaskOutputInput = Schema.Struct({
+  threadId: ThreadId,
+  /** A `backgroundTaskId` from one of the thread's tool items. */
+  taskId: TrimmedNonEmptyString,
+});
+export type OrchestrationV2GetBackgroundTaskOutputInput =
+  typeof OrchestrationV2GetBackgroundTaskOutputInput.Type;
+
+/**
+ * What a background command or monitor runs and the tail of what it printed so
+ * far. `output` is null when the provider's output file is gone or unknown.
+ */
+export const OrchestrationV2GetBackgroundTaskOutputResult = Schema.Struct({
+  command: Schema.NullOr(Schema.String),
+  output: Schema.NullOr(Schema.String),
+  /** Bytes the output file holds; `output` keeps only the last part when larger. */
+  outputBytes: NonNegativeInt,
+  truncated: Schema.Boolean,
+  /** Set once the task exited, from the exit line the provider appends to its output. */
+  exitCode: Schema.optional(Schema.Int),
+});
+export type OrchestrationV2GetBackgroundTaskOutputResult =
+  typeof OrchestrationV2GetBackgroundTaskOutputResult.Type;
+
 const WORKFLOW_SCRIPT_ERROR_MESSAGES = {
   "invalid-path": "Workflow scripts must be absolute .js paths.",
   "root-unavailable": "Script root unavailable.",
@@ -3352,6 +3405,10 @@ export const OrchestrationV2RpcSchemas = {
   getTurnItem: {
     input: OrchestrationV2GetTurnItemInput,
     output: OrchestrationV2GetTurnItemResult,
+  },
+  getBackgroundTaskOutput: {
+    input: OrchestrationV2GetBackgroundTaskOutputInput,
+    output: OrchestrationV2GetBackgroundTaskOutputResult,
   },
   launchThread: {
     input: OrchestrationV2ThreadLaunchInput,

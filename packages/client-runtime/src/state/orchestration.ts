@@ -51,6 +51,21 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       staleTimeMs: 60_000,
       idleTtlMs: 60_000,
     }),
+    // A finished task's output no longer changes; a running one's is re-read
+    // every second while its details are open.
+    backgroundTaskOutput: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:orchestration:background-task-output",
+      tag: ORCHESTRATION_V2_WS_METHODS.getBackgroundTaskOutput,
+      staleTimeMs: 0,
+      idleTtlMs: 10_000,
+    }),
+    liveBackgroundTaskOutput: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:orchestration:live-background-task-output",
+      tag: ORCHESTRATION_V2_WS_METHODS.getBackgroundTaskOutput,
+      staleTimeMs: 0,
+      idleTtlMs: 0,
+      refreshIntervalMs: 1_000,
+    }),
     fullThreadDiff: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:orchestration:full-thread-diff",
       tag: ORCHESTRATION_V2_WS_METHODS.getFullThreadDiff,

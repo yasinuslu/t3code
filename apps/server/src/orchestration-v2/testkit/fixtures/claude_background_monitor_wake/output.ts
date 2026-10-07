@@ -46,6 +46,17 @@ export function assertClaudeBackgroundMonitorWakeOutput(
     });
   }
   assert.deepEqual(projection.providerThreads[0]?.pendingBackgroundTasks ?? [], []);
+  // The Monitor row names its task, so its command and output can be shown.
+  const monitorItem = projection.turnItems.find(
+    (item) => item.type === "dynamic_tool" && item.backgroundTaskId === MONITOR_TASK_ID,
+  );
+  assert.equal(monitorItem?.type === "dynamic_tool" ? monitorItem.toolName : null, "Monitor");
+  assert.deepEqual(
+    projection.turnItems.flatMap((item) =>
+      item.type === "notification" ? (item.tasks ?? []) : [],
+    ),
+    [{ taskId: MONITOR_TASK_ID, outcome: "completed", label: "Background monitor test" }],
+  );
 
   assert.deepEqual(backgroundNotifications(projection), [
     {

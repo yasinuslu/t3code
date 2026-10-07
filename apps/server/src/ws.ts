@@ -1851,6 +1851,21 @@ const makeWsRpcLayer = (
             readWorkflowScript({ scriptPath: input.scriptPath }),
             { "rpc.aggregate": "orchestration" },
           ),
+        [ORCHESTRATION_V2_WS_METHODS.getBackgroundTaskOutput]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_V2_WS_METHODS.getBackgroundTaskOutput,
+            threadManagement.getBackgroundTaskOutput(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationV2GetThreadProjectionError({
+                    threadId: input.threadId,
+                    message: "Failed to read background task output",
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [ORCHESTRATION_V2_WS_METHODS.getTurnItem]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_V2_WS_METHODS.getTurnItem,

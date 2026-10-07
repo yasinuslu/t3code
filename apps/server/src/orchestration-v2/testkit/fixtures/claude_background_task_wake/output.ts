@@ -90,11 +90,30 @@ export function assertClaudeBackgroundTaskWakeOutput(
   });
   assert.deepEqual(backgroundNotifications(projection), [
     {
-      summary: 'Command "Background sleep test" finished',
+      summary: 'Command "Background sleep test" finished (exit 0)',
       outcome: "completed",
       source: { kind: "command" },
     },
   ]);
+  // The Bash row names its task, and the notification reports that task's exit,
+  // so the details view can pair the command with its output and result.
+  const commandItem = projection.turnItems.find(
+    (item) => item.type === "command_execution" && item.backgroundTaskId === BACKGROUND_TASK_ID,
+  );
+  assert.isDefined(commandItem, "the background Bash row must carry its task id");
+  assert.deepEqual(
+    projection.turnItems.flatMap((item) =>
+      item.type === "notification" ? (item.tasks ?? []) : [],
+    ),
+    [
+      {
+        taskId: BACKGROUND_TASK_ID,
+        outcome: "completed",
+        label: "Background sleep test",
+        exitCode: 0,
+      },
+    ],
+  );
 
   // Background Bash is roster-only: it never renders as a subagent.
   assert.lengthOf(projection.subagents, 0);

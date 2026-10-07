@@ -266,6 +266,7 @@ import {
   formatUpcomingTimestamp,
 } from "../../timestampFormat";
 import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
+import { openBackgroundCommand } from "../../backgroundCommandsDialogStore";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "../ui/collapsible";
 import {
@@ -4996,6 +4997,19 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowP
   );
 });
 
+/** The background command a row starts or reports the end of, when it names exactly one. */
+function backgroundTaskIdOfItem(item: OrchestrationV2TurnItem): string | undefined {
+  switch (item.type) {
+    case "command_execution":
+    case "dynamic_tool":
+      return item.backgroundTaskId;
+    case "notification":
+      return item.tasks?.length === 1 ? item.tasks[0]!.taskId : undefined;
+    default:
+      return undefined;
+  }
+}
+
 function WorkEntryLogRow(props: WorkEntryRowProps) {
   const { workEntry, workspaceRoot, displayLabel } = props;
   const ctx = use(TimelineRowCtx);
@@ -5009,6 +5023,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     workEntry.projectedItem?.item.type === "notification"
       ? notificationChildThreadId(workEntry.projectedItem.item.source)
       : undefined;
+  const backgroundTaskId = workEntry.projectedItem
+    ? backgroundTaskIdOfItem(workEntry.projectedItem.item)
+    : undefined;
   const groupView = use(WorkGroupViewCtx);
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
@@ -5289,6 +5306,22 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             >
               Open chat
             </button>
+          ) : null}
+          {backgroundTaskId && workEntry.projectedItem ? (
+            <InlineButton
+              aria-label="Show background command output"
+              onClick={(event) => {
+                event.stopPropagation();
+                openBackgroundCommand({
+                  environmentId: ctx.activeThreadEnvironmentId,
+                  threadId: workEntry.projectedItem!.sourceThreadId,
+                  taskId: backgroundTaskId,
+                });
+              }}
+              onKeyDown={stopRowToggle}
+            >
+              Output
+            </InlineButton>
           ) : null}
           {notifiedSubagentThreadId ? (
             <InlineButton

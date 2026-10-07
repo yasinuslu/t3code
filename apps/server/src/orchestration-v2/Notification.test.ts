@@ -72,6 +72,24 @@ describe("backgroundWorkNotification", () => {
       summary: "4 subagents finished",
     });
   });
+
+  it("keeps each task's own outcome and exit code under a combined summary", () => {
+    assert.deepEqual(
+      backgroundWorkNotification([
+        { kind: "command", label: "pnpm build", taskId: "b1", outcome: "failed", exitCode: 2 },
+        { kind: "command", label: "pnpm lint", taskId: "b2", outcome: "completed", exitCode: 0 },
+      ]),
+      {
+        source: { kind: "command" },
+        outcome: "failed",
+        summary: 'Command "pnpm build" (exit 2) and command "pnpm lint" (exit 0) failed',
+        tasks: [
+          { taskId: "b1", outcome: "failed", label: "pnpm build", exitCode: 2 },
+          { taskId: "b2", outcome: "completed", label: "pnpm lint", exitCode: 0 },
+        ],
+      },
+    );
+  });
 });
 
 describe("notificationTurnItem", () => {
