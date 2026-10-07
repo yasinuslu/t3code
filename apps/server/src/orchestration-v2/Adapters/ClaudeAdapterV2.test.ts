@@ -5838,7 +5838,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* awaitUntil(() => harness.continuationRequests.length === 2, "command wake");
         assert.equal(
           harness.continuationRequests[1]?.notification?.summary,
-          `Command "${WAKE_TASK_DESCRIPTION}" finished`,
+          `Command "${WAKE_TASK_DESCRIPTION}" finished (exit 0)`,
         );
       }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
     ),
@@ -5899,7 +5899,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* awaitUntil(() => harness.continuationRequests.length === 1, "command wake");
         assert.equal(
           harness.continuationRequests[0]?.notification?.summary,
-          `Command "${WAKE_TASK_DESCRIPTION}" finished`,
+          `Command "${WAKE_TASK_DESCRIPTION}" finished (exit 0)`,
         );
       }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
     ),

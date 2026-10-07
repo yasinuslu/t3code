@@ -18,7 +18,6 @@ import {
   orderWebThreadLineageRows,
   resolveMergeBackTargetThreadId,
   type ThreadRelationshipEdge,
-  type ThreadRelationshipWalkRow,
 } from "@t3tools/client-runtime/state/thread-relationships";
 import {
   canDetachThreadProviderSession,
@@ -51,6 +50,13 @@ import {
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { AgentElapsed } from "./AgentElapsed";
+import { openBackgroundCommand } from "../../backgroundCommandsDialogStore";
+import {
+  BackgroundCommandKindIcon,
+  BackgroundCommandStatusDot,
+  useBackgroundCommands,
+} from "./BackgroundCommandsDialog";
+import { backgroundCommandStatusLabel } from "@t3tools/client-runtime/state/background-commands";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -111,18 +117,17 @@ export function ThreadLineageRowList(props: {
   );
 }
 
-function ThreadLineageGroup(props: {
+function ThreadLineageGroup<Row>(props: {
   readonly label: string | null;
-  readonly rows: ReadonlyArray<ThreadRelationshipWalkRow>;
+  readonly rows: ReadonlyArray<Row>;
+  readonly failedCount: number;
   readonly expanded: boolean;
-  readonly children: (rows: ReadonlyArray<ThreadRelationshipWalkRow>) => ReactNode;
+  readonly children: (rows: ReadonlyArray<Row>) => ReactNode;
 }) {
   const [expanded, setExpanded] = useState(props.expanded);
   const [visibleCount, setVisibleCount] = useState(THREAD_LINEAGE_INITIAL_COUNT);
   const { visibleRows, hiddenCount } = resolveThreadLineageWindow(props.rows, visibleCount);
-  const failedCount = props.rows.filter(
-    ({ edge }) => edge.status === "failed" || edge.status === "error",
-  ).length;
+  const failedCount = props.failedCount;
   if (props.rows.length === 0) return null;
   return (
     <div>
@@ -247,6 +252,7 @@ export function ThreadRelationshipsPanel(props: {
     [graph, mergeTargetThreadId, props.threadId],
   );
   const canMerge = mergeTargetThreadId !== null && latestMergeBackRun !== null;
+  const backgroundCommands = useBackgroundCommands(props.environmentId, props.threadId);
   const canDetach = projection ? canDetachThreadProviderSession(projection) : false;
 
   const {
@@ -266,14 +272,36 @@ export function ThreadRelationshipsPanel(props: {
     { id: "related", label: null, rows: related, expanded: true },
     { id: "active", label: null, rows: active, expanded: true },
     { id: "previous", label: "Previous agents", rows: previous, expanded: false },
-  ];
+  ].map((group) => ({
+    ...group,
+    failedCount: group.rows.filter(
+      ({ edge }) => edge.status === "failed" || edge.status === "error",
+    ).length,
+  }));
+  const { runningCommands = [], previousCommands = [] } = groupBy(backgroundCommands, (command) =>
+    command.status === "running" ? "runningCommands" : "previousCommands",
+  );
+  const commandGroups = [
+    { id: "running-commands", label: null, rows: runningCommands, expanded: true },
+    {
+      id: "previous-commands",
+      label: "Previous commands",
+      rows: previousCommands,
+      expanded: false,
+    },
+  ].map((group) => ({
+    ...group,
+    failedCount: group.rows.filter((command) => command.status === "failed").length,
+  }));
   // Subagents without a child thread yet have no row, so count them separately.
   const runningCount =
     (projection?.subagents.filter(
       (agent) => agent.childThreadId === null && agent.status === "running",
-    ).length ?? 0) + active.filter(({ edge }) => edge.status === "running").length;
+    ).length ?? 0) +
+    active.filter(({ edge }) => edge.status === "running").length +
+    runningCommands.length;
 
-  if (relationshipRows.length === 0 && runningCount === 0) {
+  if (relationshipRows.length === 0 && runningCount === 0 && backgroundCommands.length === 0) {
     return null;
   }
 
@@ -510,6 +538,40 @@ export function ThreadRelationshipsPanel(props: {
                 </li>
               );
             })
+          }
+        </ThreadLineageGroup>
+      ))}
+      {commandGroups.map((group) => (
+        <ThreadLineageGroup key={`${scopedThreadKey(ref)}:${group.id}`} {...group}>
+          {(visibleRows) =>
+            visibleRows.map((command) => (
+              <li key={command.taskId} className="group flex h-8 items-center rounded-lg">
+                <ThreadDetailsControl
+                  size="sm"
+                  variant="ghost"
+                  part="row"
+                  aria-label={`Show ${command.kind} ${command.label}`}
+                  onClick={() =>
+                    openBackgroundCommand({
+                      environmentId: props.environmentId,
+                      threadId: props.threadId,
+                      taskId: command.taskId,
+                    })
+                  }
+                >
+                  <span className="relative flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                    <BackgroundCommandKindIcon kind={command.kind} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-left text-sm font-medium leading-4 text-foreground/85">
+                    {command.label}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground">
+                    <BackgroundCommandStatusDot status={command.status} />
+                    {backgroundCommandStatusLabel(command)}
+                  </span>
+                </ThreadDetailsControl>
+              </li>
+            ))
           }
         </ThreadLineageGroup>
       ))}

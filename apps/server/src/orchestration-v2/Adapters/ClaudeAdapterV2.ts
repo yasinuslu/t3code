@@ -1757,6 +1757,33 @@ function claudePendingBackgroundTask(input: {
   };
 }
 
+// Claude ends a background command's summary with "(exit code N)".
+function claudeExitCodeFromTaskSummary(summary: string | undefined): number | undefined {
+  const match = summary?.match(/\(exit code (-?\d+)\)\s*$/);
+  return match?.[1] === undefined ? undefined : Number(match[1]);
+}
+
+/**
+ * The task a backgrounded tool keeps running as: Bash with run_in_background
+ * reports `backgroundTaskId`, Monitor reports `taskId`.
+ */
+function claudeBackgroundTaskIdFromToolOutput(
+  normalizedToolName: string,
+  output: ClaudeNativeToolOutput,
+): string | undefined {
+  if (output.type !== "structured_tool_use_result") return undefined;
+  const value = output.value;
+  if (typeof value !== "object" || value === null) return undefined;
+  const key =
+    normalizedToolName === "bash"
+      ? "backgroundTaskId"
+      : normalizedToolName === "monitor"
+        ? "taskId"
+        : undefined;
+  const taskId = key === undefined ? undefined : Reflect.get(value, key);
+  return typeof taskId === "string" && taskId.trim().length > 0 ? taskId.trim() : undefined;
+}
+
 function claudeTaskTypeFromSdkMessage(message: SDKMessage): string | null {
   if (typeof message !== "object" || message === null) {
     return null;
@@ -3271,16 +3298,23 @@ export function makeClaudeAdapterV2(
           });
           const outcome = claudeTaskOutcome(message.status);
           const label = task?.description;
+          const taskId = message.task_id;
           switch (task?.kind) {
             case "subagent":
               return { kind: "subagent", label, outcome, childThreadId: task.childThreadId };
             case "monitor":
             case "background_task":
-              return { kind: task.kind, label, outcome };
+              return { kind: task.kind, label, outcome, taskId };
             case "command":
             case undefined:
               // Only local_bash is opaque background work today.
-              return { kind: "command", label, outcome };
+              return {
+                kind: "command",
+                label,
+                outcome,
+                taskId,
+                exitCode: claudeExitCodeFromTaskSummary(message.summary),
+              };
           }
         });
         const requestedContinuations = yield* Ref.make(new Set<string>());
@@ -3917,6 +3951,10 @@ export function makeClaudeAdapterV2(
             itemType === "command_execution"
               ? claudeCommandOutputText(input.output)
               : claudeNativeToolOutputText(input.output);
+          const backgroundTaskId = claudeBackgroundTaskIdFromToolOutput(
+            input.classification.normalizedName,
+            input.output,
+          );
           const turnItem: OrchestrationV2TurnItem =
             itemType === "command_execution"
               ? {
@@ -3924,6 +3962,7 @@ export function makeClaudeAdapterV2(
                   type: "command_execution",
                   input: commandInputFromClaudeTool(input.toolName, input.toolInput),
                   ...(outputText.length === 0 ? {} : { output: outputText }),
+                  ...(backgroundTaskId === undefined ? {} : { backgroundTaskId }),
                 }
               : itemType === "file_change"
                 ? {
@@ -3965,6 +4004,7 @@ export function makeClaudeAdapterV2(
                       ...(viewedImagePath === undefined ? {} : { viewedImagePath }),
                       input: claudeNativeToolInputValue(input.toolInput),
                       ...(outputValue === undefined ? {} : { output: outputValue }),
+                      ...(backgroundTaskId === undefined ? {} : { backgroundTaskId }),
                     };
           return { node, turnItem };
         };

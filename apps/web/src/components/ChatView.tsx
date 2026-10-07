@@ -598,6 +598,13 @@ const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
+import { openBackgroundCommand } from "../backgroundCommandsDialogStore";
+import { BackgroundCommandsDialog } from "./chat/BackgroundCommandsDialog";
+
+/** Claude tags these with a task id whose command and output the details dialog shows. */
+function opensBackgroundCommand(kind: string): boolean {
+  return kind === "command" || kind === "monitor";
+}
 
 const TIMELINE_SCROLL_CANCEL_SENTINEL = Object.freeze({});
 const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
@@ -7201,6 +7208,14 @@ export default function ChatView(props: ChatViewProps) {
     [environmentId, navigate],
   );
 
+  const onOpenBackgroundCommand = useCallback(
+    (taskId: string) => {
+      if (!activeThreadId) return;
+      openBackgroundCommand({ environmentId, threadId: activeThreadId, taskId });
+    },
+    [activeThreadId, environmentId],
+  );
+
   const backgroundWorkBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     const presentation = presentPendingBackgroundWork(activeBackgroundTasks);
     if (presentation === null || !activeThread) {
@@ -7222,29 +7237,45 @@ export default function ChatView(props: ChatViewProps) {
         />
       ),
       title: presentation.title,
-      // A single named item is already in the title.
-      description:
-        presentation.items.length === 1 && presentation.items[0]?.childThreadId === undefined
-          ? undefined
-          : presentation.items.map((item, index) => {
-              const childThreadId = item.childThreadId;
-              return (
-                <Fragment key={item.taskId}>
-                  {index > 0 ? ", " : null}
-                  {childThreadId === undefined ? (
-                    item.label
-                  ) : (
-                    <InlineButton
-                      tone="muted"
-                      aria-label={`Open subagent ${item.label}`}
-                      onClick={() => onOpenRelatedThread(childThreadId)}
-                    >
-                      {item.label}
-                    </InlineButton>
-                  )}
-                </Fragment>
-              );
-            }),
+      // Subagents open their thread; commands and monitors open their command and output.
+      description: (() => {
+        const [only] = presentation.items;
+        if (presentation.items.length === 1 && only !== undefined && !only.childThreadId) {
+          // A single named item is already in the title.
+          return opensBackgroundCommand(only.kind) ? (
+            <InlineButton tone="muted" onClick={() => onOpenBackgroundCommand(only.taskId)}>
+              Show command and output
+            </InlineButton>
+          ) : undefined;
+        }
+        return presentation.items.map((item, index) => {
+          const childThreadId = item.childThreadId;
+          return (
+            <Fragment key={item.taskId}>
+              {index > 0 ? ", " : null}
+              {childThreadId !== undefined ? (
+                <InlineButton
+                  tone="muted"
+                  aria-label={`Open subagent ${item.label}`}
+                  onClick={() => onOpenRelatedThread(childThreadId)}
+                >
+                  {item.label}
+                </InlineButton>
+              ) : opensBackgroundCommand(item.kind) ? (
+                <InlineButton
+                  tone="muted"
+                  aria-label={`Show ${item.kind} ${item.label}`}
+                  onClick={() => onOpenBackgroundCommand(item.taskId)}
+                >
+                  {item.label}
+                </InlineButton>
+              ) : (
+                item.label
+              )}
+            </Fragment>
+          );
+        });
+      })(),
       actions: (
         <Button
           size="xs"
@@ -7261,6 +7292,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThread,
     handleStopBackgroundWork,
     isStoppingBackgroundWork,
+    onOpenBackgroundCommand,
     onOpenRelatedThread,
   ]);
   // A woken thread announces itself in the open view, not just the sidebar
@@ -11723,6 +11755,7 @@ export default function ChatView(props: ChatViewProps) {
         </AlertDialogPopup>
       </AlertDialog>
       <LinkPullRequestDialogHost />
+      <BackgroundCommandsDialog />
       {expandedImage && (
         <ExpandedImageDialog
           key={expandedImageKey(expandedImage)}
