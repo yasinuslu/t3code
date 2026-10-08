@@ -60,6 +60,15 @@ one-word status) and `set_thread_space`. The `t3_thread_*`, `t3_pending_request_
 `t3_thread_search` tools reach every project's threads for the manager, and only the calling
 project's threads for any other thread. The manager starts workers with `t3_thread_launch`.
 
+The manager can also work on your other T3 Code servers. Set each one up once on the machine that
+hosts the manager: issue a token on the other server with `t3 auth session issue --token-only` (it lasts 30 days
+unless you pass a longer `--ttl`), then
+pipe it into `t3 peer add --name <name> --url <its http(s) address> --token-stdin`. The command
+checks that the server answers before saving the token in the manager machine's secret store; pass
+the same `--base-dir` the server uses if it is not the default. `t3 peer list` shows the peers and
+`t3 peer remove <name>` forgets one. The manager then lists, reads, starts and messages threads there
+with the `t3_peer_*` tools; a peer that is offline is reported as unreachable.
+
 ## Goals and tasks
 
 Goals and tasks are plain markdown in each brain repository, so they sync with it and can be edited

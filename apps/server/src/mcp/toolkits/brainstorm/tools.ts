@@ -32,7 +32,7 @@ const TaskReferenceInput = Schema.Union([Schema.Int, Schema.String]).annotate({
     "The task's number from list_tasks, or its title (exact, or a unique part of it). Numbers shift when tasks above are added or removed, so re-list after edits.",
 });
 
-const ThreadStatus = Schema.Literals([
+export const ThreadStatus = Schema.Literals([
   "working",
   "needs-approval",
   "needs-input",
