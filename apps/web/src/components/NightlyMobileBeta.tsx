@@ -18,9 +18,13 @@ import { toastManager } from "./ui/toast";
 // still V1 and cannot connect to a V2 server, so Nightly users need the V2 beta
 // app. Delete this file when the store apps move to V2. See #14871.
 
-/** True on Nightly desktop, `npx t3@nightly`, and the hosted Nightly app. */
+// Fork builds (`<version>-nepjua.<sha>`, see flake.nix) track main, so they run V2 too.
+const V2_PRERELEASE_TAGS = new Set(["nightly", "nepjua"]);
+
+/** True on Nightly desktop, `npx t3@nightly`, the hosted Nightly app, and fork builds. */
 export const IS_NIGHTLY_BUILD =
-  parseSemver(APP_VERSION)?.prerelease[0] === "nightly" || HOSTED_APP_CHANNEL === "nightly";
+  V2_PRERELEASE_TAGS.has(parseSemver(APP_VERSION)?.prerelease[0] ?? "") ||
+  HOSTED_APP_CHANNEL === "nightly";
 
 const IOS_TESTFLIGHT_URL = "https://testflight.apple.com/join/XgaxaRtd";
 const ANDROID_BETA_GROUP_URL = "https://groups.google.com/g/t3-code-v2-beta";
