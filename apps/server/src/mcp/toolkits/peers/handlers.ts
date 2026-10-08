@@ -17,12 +17,12 @@ const toFailure = (error: PeerEnvironments.PeerError) =>
     message: error.message,
   });
 
-/** Reaching other servers is the manager's job; every other thread stays on this server. */
+/** Reaching other servers is a manager's job; every other thread stays on this server. */
 const managerOnly = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const invocation = yield* McpInvocationContext.McpInvocationContext;
     const scope = yield* ManagerScope.ManagerScope;
-    if (!(yield* scope.isManagerThread(invocation.threadId))) {
+    if ((yield* scope.reachableProjectIds(invocation.threadId)) === null) {
       return yield* new OrchestratorMcpFailure({
         code: "capability_denied",
         message: "Peer tools are for the manager thread.",

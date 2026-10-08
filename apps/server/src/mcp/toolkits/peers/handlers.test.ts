@@ -43,7 +43,8 @@ const callPeerList = (threadId: ThreadId) =>
         issuedAt: 1,
       }),
       Effect.provideService(ManagerScope.ManagerScope, {
-        isManagerThread: (candidate) => Effect.succeed(candidate === MANAGER),
+        reachableProjectIds: (candidate) =>
+          Effect.succeed(candidate === MANAGER ? new Set() : null),
       }),
       Effect.provide(peers),
     );
