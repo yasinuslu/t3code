@@ -202,6 +202,8 @@ import {
   BrowserPreviewUnavailableError,
   BrowserSettingsReadError,
 } from "../browser/openFileInPreview";
+import { isReportPage, useReportPagesStore } from "../browser/reportPages";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 
@@ -2466,6 +2468,9 @@ function useChatMarkdownState({
   const searchProjectEntries = useAtomQueryRunner(projectEnvironment.searchEntries, {
     reportFailure: false,
   });
+  const readProjectFile = useAtomQueryRunner(projectEnvironment.readFile, {
+    reportFailure: false,
+  });
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
@@ -2680,7 +2685,7 @@ function useChatMarkdownState({
     [openPreview, threadRef],
   );
   const openMarkdownFileInPreview = useCallback(
-    (path: string) => {
+    (path: string, report = false) => {
       if (!threadRef || preparedConnection._tag === "None") {
         return Promise.resolve(
           AsyncResult.failure<void, BrowserPreviewUnavailableError>(
@@ -2699,6 +2704,7 @@ function useChatMarkdownState({
         httpBaseUrl: preparedConnection.value.httpBaseUrl,
         createAssetUrl,
         openPreview,
+        report,
       });
     },
     [createAssetUrl, cwd, openPreview, preparedConnection, threadRef],
@@ -2731,8 +2737,34 @@ function useChatMarkdownState({
       // Claimed on every open so a synchronous one supersedes a lookup already
       // in flight.
       const isLatestLookup = claimWorkspaceBasenameLookup();
-      const openAt = (path: string) =>
+      const openInPanel = (path: string) =>
         useRightPanelStore.getState().openFile(threadRef, path, line);
+      // A report page lands big: the preview browser at its design size where
+      // there is one, otherwise the files panel (which scales reports to fit),
+      // maximized either way. Other HTML, or a jump to a line, opens as before.
+      const openAt = (path: string) => {
+        if (!cwd || line !== undefined || !/\.html?$/i.test(path)) {
+          openInPanel(path);
+          return;
+        }
+        void (async () => {
+          const file = await readProjectFile({
+            environmentId: threadRef.environmentId,
+            input: { cwd, relativePath: path },
+          });
+          if (!isLatestLookup()) return;
+          if (file._tag !== "Success" || !isReportPage(file.value.contents)) {
+            openInPanel(path);
+            return;
+          }
+          if (isPreviewSupportedInRuntime()) {
+            const opened = await openMarkdownFileInPreview(resolvePathLinkTarget(path, cwd), true);
+            if (opened._tag === "Success" || isAtomCommandInterrupted(opened)) return;
+          }
+          openInPanel(path);
+          useReportPagesStore.getState().requestMaximize(scopedThreadKey(threadRef));
+        })();
+      };
       if (!cwd || !needsWorkspaceBasenameLookup(panelPath)) {
         openAt(panelPath);
         return;
@@ -2743,7 +2775,7 @@ function useChatMarkdownState({
         openAt(match ?? panelPath);
       })();
     },
-    [cwd, findWorkspaceBasenameMatch, threadRef],
+    [cwd, findWorkspaceBasenameMatch, openMarkdownFileInPreview, readProjectFile, threadRef],
   );
   const revealMarkdownFileInFileManager = useCallback(
     async (fileLinkMeta: MarkdownFileLinkMeta) => {

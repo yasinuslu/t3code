@@ -254,6 +254,7 @@ import {
   useThreadPreviewState,
 } from "../previewStateStore";
 import { BrowserSettingsReadError, openUrlInPreview } from "../browser/openFileInPreview";
+import { useReportPagesStore } from "../browser/reportPages";
 import { resolveDiscoveredServerUrl } from "../browser/browserTargetResolver";
 import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
 import { addBrowserSurface } from "./preview/addBrowserSurface";
@@ -1872,6 +1873,19 @@ export default function ChatView(props: ChatViewProps) {
   const [maximizedRightPanelThreadKey, setMaximizedRightPanelThreadKey] = useState<string | null>(
     null,
   );
+  // Opening a report page maximizes the panel so the page lands big.
+  const reportMaximizeRequest = useReportPagesStore((state) => state.maximizeRequest);
+  // A request that predates this view was already honoured; remounting must not replay it.
+  const handledReportMaximizeIdRef = useRef(reportMaximizeRequest?.id ?? 0);
+  useEffect(() => {
+    if (!reportMaximizeRequest || reportMaximizeRequest.id === handledReportMaximizeIdRef.current) {
+      return;
+    }
+    handledReportMaximizeIdRef.current = reportMaximizeRequest.id;
+    if (reportMaximizeRequest.threadKey === routeThreadKey) {
+      setMaximizedRightPanelThreadKey(routeThreadKey);
+    }
+  }, [reportMaximizeRequest, routeThreadKey]);
   const userInputResponsesInFlight = useRef(new Set<string>());
   const [respondingRequestIds, setRespondingRequestIds] = useState<RuntimeRequestId[]>([]);
 

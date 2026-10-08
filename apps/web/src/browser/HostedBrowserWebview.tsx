@@ -21,6 +21,7 @@ import { BrowserViewportResizeHandles } from "./BrowserViewportResizeHandles";
 import { acquireDesktopTab, type AcquiredDesktopTab } from "./desktopTabLifetime";
 import { resolveHostedBrowserWebviewWrapperStyle } from "./hostedBrowserWebviewStyle";
 import { usePreviewWebviewConfig } from "./previewWebviewConfigState";
+import { useReportPagesStore } from "./reportPages";
 import { useBrowserViewportResize } from "./useBrowserViewportResize";
 import {
   INITIAL_WEBVIEW_CRASH_RECOVERY_STATE,
@@ -208,7 +209,10 @@ export function HostedBrowserWebview(props: {
           height: hiddenContentSize?.height ?? lastRect?.height ?? 800,
         };
   const containerSize = active && lastRect ? lastRect : hiddenSize;
-  const deviceToolbarVisible = active && viewport._tag !== "fill" && !presentation.fitSourceContent;
+  const reportPage = useReportPagesStore((state) => state.tabIds.has(tabId));
+  // A report page is a document to read, not a device to size, so it has no device chrome.
+  const deviceToolbarVisible =
+    active && viewport._tag !== "fill" && !presentation.fitSourceContent && !reportPage;
   const {
     activeDrag,
     commitViewportChange,
@@ -223,6 +227,7 @@ export function HostedBrowserWebview(props: {
     containerSize,
     deviceToolbarVisible,
     aspectRatio: lockedAspectRatio,
+    allowUpscale: reportPage,
   });
   const fittedSourceViewport =
     presentation.fitSourceContent && lastRect
@@ -338,11 +343,11 @@ export function HostedBrowserWebview(props: {
             top: layout.viewportY,
             width: layout.viewportWidth / layout.viewportScale,
             height: layout.viewportHeight / layout.viewportScale,
-            transform: layout.viewportScale < 1 ? `scale(${layout.viewportScale})` : undefined,
+            transform: layout.viewportScale !== 1 ? `scale(${layout.viewportScale})` : undefined,
             transformOrigin: "top left",
           }}
         />
-        {active && effectiveViewport._tag !== "fill" && !fittedSourceViewport ? (
+        {active && effectiveViewport._tag !== "fill" && !fittedSourceViewport && !reportPage ? (
           <>
             <BrowserViewportResizeHandles
               layout={layout}

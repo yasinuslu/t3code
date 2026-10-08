@@ -27,6 +27,7 @@ import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPreview";
+import { isReportPage } from "~/browser/reportPages";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
 import { OpenInPicker } from "~/components/chat/OpenInPicker";
 import { MediaVideoPlayer } from "~/components/media/MediaVideoPlayer";
@@ -54,7 +55,11 @@ import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 
 import { AttachmentFilePreview } from "./AttachmentFilePreview";
 import { AudioPreview } from "./AudioPreview";
-import { BrowserDocumentFrame, isPdfPreviewFile } from "./BrowserDocumentFrame";
+import {
+  BrowserDocumentFrame,
+  isPdfPreviewFile,
+  ReportDocumentFrame,
+} from "./BrowserDocumentFrame";
 import { DelimitedTablePreview } from "./DelimitedTablePreview";
 import FileBrowserPanel from "./FileBrowserPanel";
 import { FileBreadcrumbs } from "./FileBreadcrumbs";
@@ -190,6 +195,7 @@ function WorkspaceBrowserPreview(props: {
   readonly workspaceRoot: string;
   readonly title: string;
   readonly workspaceMutationId: string | null;
+  readonly report: boolean;
 }) {
   const insideWorkspace =
     mediaFileReference(props.absolutePath, props.workspaceRoot).relativePath !== undefined;
@@ -221,9 +227,12 @@ function WorkspaceBrowserPreview(props: {
       </div>
     );
   }
-  return (
+  const src = `${assetUrl.url}${revisionSuffix}`;
+  return props.report ? (
+    <ReportDocumentFrame src={src} title={props.title} />
+  ) : (
     <BrowserDocumentFrame
-      src={`${assetUrl.url}${revisionSuffix}`}
+      src={src}
       title={props.title}
       pdf={isPdfPreviewFile(props.absolutePath)}
     />
@@ -956,6 +965,7 @@ export default function FilePreviewPanel({
     relativePath,
     attachment === undefined && relativePath !== null,
   );
+  const isReportFile = isHtml && file.data !== null && isReportPage(file.data.contents);
   // A chat link cannot tell a folder from a file, so a folder arrives here as
   // a file surface and the read fails. Keep the breadcrumbs, drop the preview
   // pane, and let the tree fill the surface with the folder revealed. Mutation
@@ -1080,6 +1090,7 @@ export default function FilePreviewPanel({
         httpBaseUrl: environmentHttpBaseUrl,
         createAssetUrl,
         openPreview,
+        report: isReportFile,
       });
       if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
         return;
@@ -1093,7 +1104,15 @@ export default function FilePreviewPanel({
         }),
       );
     })();
-  }, [absolutePath, createAssetUrl, cwd, environmentHttpBaseUrl, openPreview, threadRef]);
+  }, [
+    absolutePath,
+    createAssetUrl,
+    cwd,
+    environmentHttpBaseUrl,
+    isReportFile,
+    openPreview,
+    threadRef,
+  ]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -1232,6 +1251,7 @@ export default function FilePreviewPanel({
               workspaceRoot={cwd}
               title={relativePath}
               workspaceMutationId={workspaceMutationId}
+              report={isReportFile}
             />
           ) : relativePath && file.error && file.data === null ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-destructive">

@@ -6,6 +6,7 @@ import type {
   PreviewSessionSnapshot,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import {
   type AtomCommandResult,
@@ -28,6 +29,7 @@ import {
   browserDefaultOpenViewport,
   resolveBrowserDefaults,
 } from "./browserDefaults";
+import { REPORT_DESIGN_VIEWPORT, useReportPagesStore } from "./reportPages";
 
 export const isBrowserPreviewFile = (path: string): boolean =>
   /\.(?:html?|pdf)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
@@ -55,6 +57,8 @@ export async function openUrlInPreview<E>(input: {
   readonly threadRef: ScopedThreadRef;
   readonly url: string;
   readonly openPreview: OpenPreviewMutation<E>;
+  /** Open as a report page: design viewport, scaled to fill a maximized panel. */
+  readonly report?: boolean;
 }): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
   const defaults = await resolveBrowserDefaults().catch(
     (cause: unknown) => new BrowserSettingsReadError({ cause }),
@@ -70,13 +74,18 @@ export async function openUrlInPreview<E>(input: {
       // Built here rather than via `openPreviewSession` because this path
       // maps the result differently, so the configured defaults have to be
       // applied explicitly or file/link opens would ignore them.
-      viewport: browserDefaultOpenViewport(defaults),
+      viewport: input.report ? REPORT_DESIGN_VIEWPORT : browserDefaultOpenViewport(defaults),
       profileId: browserDefaultOpenProfileId(defaults),
     },
   });
   return mapAtomCommandResult(result, (snapshot) => {
     applyPreviewServerSnapshot(input.threadRef, snapshot);
     rememberPreviewUrl(input.threadRef, input.url);
+    if (input.report) {
+      const reportPages = useReportPagesStore.getState();
+      reportPages.markReportTab(snapshot.tabId);
+      reportPages.requestMaximize(scopedThreadKey(input.threadRef));
+    }
     useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
   });
 }
@@ -95,6 +104,7 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
     readonly input: { readonly resource: AssetResource };
   }) => Promise<AtomCommandResult<AssetCreateUrlResult, AssetError>>;
   readonly openPreview: OpenPreviewMutation<PreviewError>;
+  readonly report?: boolean;
 }): Promise<
   AtomCommandResult<
     void,
@@ -135,5 +145,6 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
     threadRef: input.threadRef,
     url: assetUrl,
     openPreview: input.openPreview,
+    report: input.report ?? false,
   });
 }

@@ -84,6 +84,8 @@ export function resolveBrowserViewportLayout(
   container: { readonly width: number; readonly height: number },
   setting: PreviewViewportSetting,
   zoomFactor = 1,
+  // Report pages grow past 1x to fill the panel; other fixed viewports only shrink.
+  allowUpscale = false,
 ): BrowserViewportLayout {
   const containerWidth = Math.max(1, Math.round(container.width));
   const containerHeight = Math.max(1, Math.round(container.height));
@@ -103,7 +105,7 @@ export function resolveBrowserViewportLayout(
   const renderedWidth = setting.width * normalizedZoomFactor;
   const renderedHeight = setting.height * normalizedZoomFactor;
   const viewportScale = Math.min(
-    1,
+    allowUpscale ? Number.POSITIVE_INFINITY : 1,
     containerWidth / renderedWidth,
     containerHeight / renderedHeight,
   );
