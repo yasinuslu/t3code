@@ -29,7 +29,12 @@ import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { BrainstormService, fallbackManagerProject, layer } from "./BrainstormService.ts";
+import * as ManagerScope from "../mcp/ManagerScope.ts";
+import {
+  BrainstormService,
+  fallbackManagerProject,
+  layerWithManagerScope,
+} from "./BrainstormService.ts";
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 
@@ -183,92 +188,152 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
     }),
   ).pipe(Layer.provideMerge(NodeServices.layer));
 
-  const services = yield* Layer.build(layer.pipe(Layer.provide(deps)));
+  const services = yield* Layer.build(layerWithManagerScope.pipe(Layer.provide(deps)));
   const brainstorm = Context.get(services, BrainstormService);
+  const managerScope = Effect.succeed(Context.get(services, ManagerScope.ManagerScope));
   const pins = Ref.get(commands).pipe(
     Effect.map((current) =>
       current.flatMap((command) => (command.type === "thread.pin" ? [command.threadId] : [])),
     ),
   );
-  return { brainstorm, threads, pins, baseDir };
+  return { brainstorm, threads, pins, baseDir, managerScope };
 });
 
-describe("BrainstormService manager thread", () => {
-  it.effect("creates the manager in the brain project, pins it once and keeps it", () =>
+describe("BrainstormService managers", () => {
+  /** Two code profiles with brains, each with an app project; `home` sorts first, so it is the default. */
+  const twoProfiles = () => {
+    const homeBrain = NodePath.join(home, "code", "home", "home-brain");
+    const workBrain = NodePath.join(home, "code", "work", "work-brain");
+    const homeApp = NodePath.join(home, "code", "home", "app");
+    const workApp = NodePath.join(home, "code", "work", "app");
+    for (const directory of [homeBrain, workBrain, homeApp, workApp]) {
+      NodeFS.mkdirSync(directory, { recursive: true });
+    }
+    return {
+      homeBrain,
+      workBrain,
+      projects: [
+        project("p-home-brain", homeBrain),
+        project("p-work-brain", workBrain),
+        project("p-home-app", homeApp),
+        project("p-work-app", workApp),
+      ],
+    };
+  };
+
+  it.effect("each profile gets its own manager in its brain, pinned once and kept", () =>
     Effect.gen(function* () {
-      const brain = NodePath.join(home, "code", "home", "home-brain");
-      NodeFS.mkdirSync(brain, { recursive: true });
-      const harness = yield* makeHarness({
-        projects: [project("p-app", "/work/app"), project("p-brain", brain)],
-        threads: [],
+      const { homeBrain, workBrain, projects } = twoProfiles();
+      const harness = yield* makeHarness({ projects, threads: [] });
+
+      // All without a profile opens the default profile's manager.
+      const homeManager = yield* harness.brainstorm.open({ spaceId: "all" });
+      expect(homeManager.projectId).toBe("p-home-brain");
+      expect(homeManager.brainPath).toBe(homeBrain);
+      const workManager = yield* harness.brainstorm.open({ spaceId: "all", profile: "work" });
+      expect(workManager.projectId).toBe("p-work-brain");
+      expect(workManager.brainPath).toBe(workBrain);
+      expect(workManager.threadId).not.toBe(homeManager.threadId);
+      const titles = (yield* Ref.get(harness.threads)).map((candidate) => candidate.title);
+      expect(titles).toEqual(["Manager · home", "Manager · work"]);
+      expect(yield* harness.pins).toEqual([homeManager.threadId, workManager.threadId]);
+
+      const again = yield* harness.brainstorm.open({ spaceId: "all", profile: "work" });
+      expect(again.threadId).toBe(workManager.threadId);
+      expect(yield* harness.pins).toEqual([homeManager.threadId, workManager.threadId]);
+
+      const state = Option.getOrThrow(yield* Stream.runHead(harness.brainstorm.stateChanges));
+      expect(state.managerThreadIdsByProfile).toEqual({
+        home: homeManager.threadId,
+        work: workManager.threadId,
       });
-
-      const first = yield* harness.brainstorm.open("all");
-      expect(first.projectId).toBe("p-brain");
-      expect(first.brainPath).toBe(brain);
-      const created = (yield* Ref.get(harness.threads)).find(
-        (candidate) => candidate.id === first.threadId,
-      );
-      expect(created?.title).toBe("Manager");
-      expect(yield* harness.pins).toEqual([first.threadId]);
-
-      // Opening again returns the same thread without pinning it again.
-      const second = yield* harness.brainstorm.open("all");
-      expect(second.threadId).toBe(first.threadId);
-      expect(yield* harness.pins).toEqual([first.threadId]);
+      expect(state.hiddenThreadIds).toEqual([]);
     }).pipe(Effect.scoped),
   );
 
-  it.effect("lists the manager as an ordinary thread and hides other brainstorm chats", () =>
+  it.effect("the manager from before per-profile managers stays its brain profile's manager", () =>
     Effect.gen(function* () {
       const brain = NodePath.join(home, "code", "home", "home-brain");
-      NodeFS.mkdirSync(brain, { recursive: true });
       const harness = yield* makeHarness({
         projects: [project("p-brain", brain)],
-        threads: [],
+        threads: [thread("t-work", "p-brain")],
       });
+      // No brain yet: the single manager starts in the project used most recently.
+      const legacy = yield* harness.brainstorm.open({ spaceId: "all" });
+      expect(legacy.projectId).toBe("p-brain");
+
+      NodeFS.mkdirSync(brain, { recursive: true });
+      const adopted = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      expect(adopted.threadId).toBe(legacy.threadId);
+      expect(yield* harness.pins).toEqual([legacy.threadId]);
+      const state = Option.getOrThrow(yield* Stream.runHead(harness.brainstorm.stateChanges));
+      expect(state.managerThreadIdsByProfile).toEqual({ home: legacy.threadId });
+      expect(state.threadIdsBySpaceId.all).toBeUndefined();
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("hides brainstorm chats that are not managers", () =>
+    Effect.gen(function* () {
+      const { projects } = twoProfiles();
+      const harness = yield* makeHarness({ projects, threads: [] });
       yield* harness.brainstorm.syncSpaces({
         spaces: [
           { id: "all", name: "All", kind: "all", profile: null },
-          { id: "space-home", name: "home", kind: "profile", profile: "home" },
+          { id: "space-ideas", name: "Ideas", kind: "custom", profile: null },
           { id: "other", name: "Other", kind: "other", profile: null },
         ],
         customSpaceIdsByProjectId: {},
       });
-      const manager = yield* harness.brainstorm.open("all");
-      const homeChat = yield* harness.brainstorm.open("space-home");
+      const manager = yield* harness.brainstorm.open({ spaceId: "all" });
+      const ideas = yield* harness.brainstorm.open({ spaceId: "space-ideas" });
 
       const state = Option.getOrThrow(yield* Stream.runHead(harness.brainstorm.stateChanges));
-      expect(state.threadIdsBySpaceId.all).toBe(manager.threadId);
-      expect(state.hiddenThreadIds).toEqual([homeChat.threadId]);
+      expect(state.managerThreadIdsByProfile).toEqual({ home: manager.threadId });
+      expect(state.hiddenThreadIds).toEqual([ideas.threadId]);
     }).pipe(Effect.scoped),
   );
 
-  it.effect("the manager knows its role and the user's MANAGER.md; other chats do not", () =>
+  it.effect("a manager reads its profile's MANAGER.md, else the default profile's", () =>
     Effect.gen(function* () {
-      const brain = NodePath.join(home, "code", "home", "home-brain");
-      NodeFS.mkdirSync(brain, { recursive: true });
-      NodeFS.writeFileSync(NodePath.join(brain, "MANAGER.md"), "Launch new work on the desk.\n");
-      const harness = yield* makeHarness({ projects: [project("p-brain", brain)], threads: [] });
-      yield* harness.brainstorm.syncSpaces({
-        spaces: [
-          { id: "all", name: "All", kind: "all", profile: null },
-          { id: "space-home", name: "home", kind: "profile", profile: "home" },
-        ],
-        customSpaceIdsByProjectId: {},
-      });
-      const manager = yield* harness.brainstorm.open("all");
-      const homeChat = yield* harness.brainstorm.open("space-home");
+      const { homeBrain, workBrain, projects } = twoProfiles();
+      NodeFS.writeFileSync(NodePath.join(homeBrain, "MANAGER.md"), "Shared rules.\n");
+      const harness = yield* makeHarness({ projects, threads: [] });
       const role = yield* ManagerRole.ManagerRole;
+      const homeManager = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      const workManager = yield* harness.brainstorm.open({ spaceId: "all", profile: "work" });
 
-      const instructions = yield* role.instructionsFor(manager.threadId);
-      expect(instructions?.slice(0, -1)).toEqual(ManagerRole.MANAGER_INSTRUCTIONS);
-      expect(instructions?.at(-1)).toContain("Launch new work on the desk.");
-      expect(yield* role.instructionsFor(homeChat.threadId)).toBeNull();
+      const fallback = yield* role.instructionsFor(workManager.threadId);
+      expect(fallback?.slice(0, ManagerRole.MANAGER_INSTRUCTIONS.length)).toEqual(
+        ManagerRole.MANAGER_INSTRUCTIONS,
+      );
+      expect(fallback).toContain(ManagerRole.profileScopeInstruction("work"));
+      expect(fallback?.at(-1)).toContain("Shared rules.");
 
-      const prompt = ManagerRole.withManagerRole("hi", instructions ?? []);
+      NodeFS.writeFileSync(NodePath.join(workBrain, "MANAGER.md"), "Work rules.\n");
+      const own = yield* role.instructionsFor(workManager.threadId);
+      expect(own?.at(-1)).toContain("Work rules.");
+      expect(own?.join("\n")).not.toContain("Shared rules.");
+      expect((yield* role.instructionsFor(homeManager.threadId))?.at(-1)).toContain(
+        "Shared rules.",
+      );
+      expect(yield* role.instructionsFor(ThreadId.make("not-a-manager"))).toBeNull();
+
+      const prompt = ManagerRole.withManagerRole("hi", own ?? []);
       expect(prompt).toMatch(/^<t3_code_manager_role>[\s\S]*<user_request>\nhi\n<\/user_request>$/);
-      expect(ManagerRole.withManagerRole("/compact", instructions ?? [])).toBe("/compact");
+      expect(ManagerRole.withManagerRole("/compact", own ?? [])).toBe("/compact");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a manager's thread tools reach only its profile's projects", () =>
+    Effect.gen(function* () {
+      const { projects } = twoProfiles();
+      const harness = yield* makeHarness({ projects, threads: [] });
+      const workManager = yield* harness.brainstorm.open({ spaceId: "all", profile: "work" });
+      const scope = yield* harness.managerScope;
+
+      const reach = yield* scope.reachableProjectIds(workManager.threadId);
+      expect([...(reach ?? [])].toSorted()).toEqual(["p-work-app", "p-work-brain"]);
+      expect(yield* scope.reachableProjectIds(ThreadId.make("not-a-manager"))).toBeNull();
     }).pipe(Effect.scoped),
   );
 
@@ -282,17 +347,24 @@ describe("BrainstormService manager thread", () => {
         ],
       });
 
-      const first = yield* harness.brainstorm.open("all");
+      const first = yield* harness.brainstorm.open({ spaceId: "all" });
       expect(first.projectId).toBe("p-new");
       expect(first.brainPath).toBe("/work/new");
+      const created = (yield* Ref.get(harness.threads)).find(
+        (candidate) => candidate.id === first.threadId,
+      );
+      expect(created?.title).toBe("Manager");
 
       // Activity elsewhere does not move the manager.
       yield* Ref.update(harness.threads, (current) => [
         ...current,
         thread("t-later", "p-old", { updatedAt: at("2026-10-05T00:00:00.000Z") }),
       ]);
-      const second = yield* harness.brainstorm.open("all");
+      const second = yield* harness.brainstorm.open({ spaceId: "all" });
       expect(second.threadId).toBe(first.threadId);
+      // That manager reaches every project.
+      const reach = yield* (yield* harness.managerScope).reachableProjectIds(first.threadId);
+      expect([...(reach ?? [])].toSorted()).toEqual(["p-new", "p-old"]);
     }).pipe(Effect.scoped),
   );
 });

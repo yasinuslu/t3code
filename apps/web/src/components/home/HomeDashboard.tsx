@@ -4,7 +4,9 @@
  * thread, screenshots, open questions), and the manager thread docked on the
  * right as the real thread view. Everything comes from durable state: thread
  * shells, each thread's latest report, preview sessions and the brain task
- * files; nothing reads the manager's chat memory.
+ * files; nothing reads the manager's chat memory. Home shows the active
+ * space's work and its profile's manager; the profile switcher in the header
+ * changes both.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
@@ -19,10 +21,10 @@ import { CompassIcon, ExternalLinkIcon, MessagesSquareIcon, PlayIcon } from "luc
 import { useEffect, useMemo, useState } from "react";
 
 import { useAssetUrlState } from "../../assets/assetUrls";
-import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../../brainstormStore";
+import { useHomeThreadShells, useManagerProfile } from "../../brainstormStore";
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
-import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
+import { useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
 import { useEnvironment, usePrimaryEnvironmentId } from "../../state/environments";
 import { useProjects } from "../../state/entities";
@@ -34,8 +36,14 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { type BoardGoal, boardGoals } from "../brainstorm/brainstorm.logic";
-import { useEnsureManagerThread } from "../brainstorm/useOpenManagerThread";
+import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
+import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
+import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
+import {
+  selectManagerProfile,
+  useEnsureManagerThread,
+  useOpenManagerThreadPage,
+} from "../brainstorm/useOpenManagerThread";
 import { type Verdict, digestThreadReport, homeVerdict } from "./home.logic";
 
 /** Time labels move on while the page stays open; a coarse tick is enough. */
@@ -69,21 +77,13 @@ const VERDICT_LOOK: Readonly<
 
 export function HomeDashboard() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const managerThreadKey = useBrainstormStore((state) => state.managerThreadKey);
-  const threads = useThreadShellsWithoutBrainstorms();
+  const threads = useHomeThreadShells();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
     return () => window.clearInterval(timer);
   }, []);
-  const overview = useMemo(
-    () =>
-      buildWorkOverview(
-        threads.filter((thread) => `${thread.environmentId}:${thread.id}` !== managerThreadKey),
-        now,
-      ),
-    [managerThreadKey, now, threads],
-  );
+  const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
   const managerEnvironmentId = useManagerEnvironmentId();
   const brainstorm = useEnvironmentQuery(
@@ -91,11 +91,22 @@ export function HomeDashboard() {
       ? null
       : brainstormEnvironment.state({ environmentId: managerEnvironmentId, input: {} }),
   ).data;
-  const goals = useMemo(() => boardGoals(brainstorm?.taskLists ?? [], ALL_SPACE_ID), [brainstorm]);
+  const activeSpace = useSpaceStore(
+    (store) => store.spaces.find((space) => space.id === store.activeSpaceId) ?? null,
+  );
+  const goals = useMemo(
+    () => goalsOfSpace(brainstorm?.taskLists ?? [], activeSpace),
+    [activeSpace, brainstorm],
+  );
   const manager = useEnsureManagerThread();
+  const managerProfile = useManagerProfile();
+  const openManagerThreadPage = useOpenManagerThreadPage();
+  const projects = useProjects();
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background">
+      {/* Cards sort by profile; phones may not have shown the sidebar that detects them. */}
+      <CodeProfileProbes projects={projects} />
       {/* The cards stay one column wide (narrower than two 24rem cards); the manager gets the rest. */}
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]">
         {/* Home has its own canvas so the cards read as one board, apart from thread views. */}
@@ -108,10 +119,22 @@ export function HomeDashboard() {
           >
             <CompassIcon className="size-4 text-muted-foreground" aria-hidden />
             <h1 className="font-medium text-sm">Home</h1>
-            <span className="text-muted-foreground text-xs">
+            <ManagerProfileSwitcher includeAll onSelect={selectManagerProfile} />
+            <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
               {overview.needsMe.length} need you · {overview.working.length} working ·{" "}
               {overview.review.length} to review
             </span>
+            {/* Narrow windows have no docked manager; this opens it as a page. */}
+            <Button
+              size="xs"
+              variant="outline"
+              className="ms-auto lg:hidden"
+              data-home-open-manager=""
+              onClick={() => void openManagerThreadPage(managerProfile)}
+            >
+              <MessagesSquareIcon />
+              {managerProfile === null ? "Manager" : `${managerProfile} manager`}
+            </Button>
           </WorkspacePageHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
             <VerdictBanner verdict={verdict} />

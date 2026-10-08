@@ -36,8 +36,9 @@ export const readCaller = Effect.fn("mcp.readCaller")(function* () {
     });
   }
   const managers = yield* ManagerScope.ManagerScope;
-  const manager = yield* managers.isManagerThread(caller.id);
-  return { scope, threads, caller, manager };
+  // A manager reaches its profile's projects, see ManagerScope.
+  const reach = yield* managers.reachableProjectIds(caller.id);
+  return { scope, threads, caller, reach };
 });
 
 function assertLiveCaller({
@@ -66,16 +67,19 @@ export const readMutationCaller = Effect.fn("mcp.readMutationCaller")(function* 
 
 /**
  * Resolve the credential's project before looking up a caller-supplied thread.
- * The manager thread reaches a thread in any project.
+ * A manager thread reaches a thread in any project of its profile.
  */
 export const readThread = Effect.fn("mcp.readThread")(function* <
   K extends ProjectionRecordField = never,
 >(threadId?: ThreadId, fields: ReadonlyArray<K> = []) {
-  const { scope, threads, caller, manager } = yield* readCaller();
+  const { scope, threads, caller, reach } = yield* readCaller();
+  const targetProjectId =
+    reach !== null && threadId !== undefined && threadId !== caller.id
+      ? (yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))?.projectId
+      : undefined;
   const projectId =
-    manager && threadId !== undefined && threadId !== caller.id
-      ? ((yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))
-          ?.projectId ?? caller.projectId)
+    targetProjectId !== undefined && reach?.has(targetProjectId)
+      ? targetProjectId
       : caller.projectId;
   const projection = yield* threads
     .getProjectThreadRecords({ projectId, threadId: threadId ?? caller.id }, fields, {
@@ -91,7 +95,7 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
           : unavailable(),
       ),
     );
-  return { scope, threads, caller, manager, projection };
+  return { scope, threads, caller, reach, projection };
 });
 
 export const readWritableThread = Effect.fn("mcp.readWritableThread")(function* <

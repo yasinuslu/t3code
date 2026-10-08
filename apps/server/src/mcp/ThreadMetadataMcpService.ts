@@ -172,11 +172,17 @@ const make = Effect.gen(function* () {
         ),
       );
     const threadId = input.threadId ?? scope.threadId;
-    // The manager thread reaches threads in every project.
+    // A manager thread reaches threads in every project of its profile.
+    const reach =
+      threadId === scope.threadId ? null : yield* managers.reachableProjectIds(scope.threadId);
+    const targetProjectId =
+      reach === null
+        ? undefined
+        : (yield* threadManagement.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))
+            ?.projectId;
     const projectId =
-      threadId !== scope.threadId && (yield* managers.isManagerThread(scope.threadId))
-        ? ((yield* threadManagement.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))
-            ?.projectId ?? parent.thread.projectId)
+      targetProjectId !== undefined && reach?.has(targetProjectId)
+        ? targetProjectId
         : parent.thread.projectId;
     const target =
       threadId === scope.threadId

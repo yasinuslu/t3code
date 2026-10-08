@@ -133,3 +133,40 @@ export function resolveManagerEnvironmentId(
   }
   return primaryEnvironmentId;
 }
+
+/** Key of the single manager in the client's map when no profile has a brain. */
+export const SINGLE_MANAGER_KEY = "";
+
+/**
+ * Whose manager Home shows: the active space's profile, else the profile
+ * last picked, else the server's default profile. Null when no profile has a
+ * brain (one manager for everything).
+ */
+export function resolveManagerProfile(input: {
+  readonly profiles: ReadonlyArray<string>;
+  readonly activeSpaceProfile: string | null;
+  readonly lastManagerProfile: string | null;
+  readonly serverDefaultProfile: string | null;
+}): string | null {
+  const known = (profile: string | null) =>
+    profile !== null && input.profiles.includes(profile) ? profile : null;
+  return (
+    known(input.activeSpaceProfile) ??
+    known(input.lastManagerProfile) ??
+    known(input.serverDefaultProfile) ??
+    input.profiles[0] ??
+    null
+  );
+}
+
+/** Goals of a space: All's are everyone's, a profile space's live in that profile's brain. */
+export function goalsOfSpace(
+  lists: ReadonlyArray<BrainstormTaskList>,
+  space: { readonly id: string; readonly profile: string | null } | null,
+): BoardGoal[] {
+  if (space === null || space.id === ALL_SPACE_ID) return boardGoals(lists, ALL_SPACE_ID);
+  const own = lists.filter((list) =>
+    space.profile !== null ? list.profile === space.profile : list.spaceId === space.id,
+  );
+  return boardGoals(own, ALL_SPACE_ID);
+}

@@ -25,7 +25,7 @@ import {
   BrainstormService,
   taskPathOf,
 } from "../../../brainstorm/BrainstormService.ts";
-import { MANAGER_INSTRUCTIONS } from "../../../brainstorm/ManagerRole.ts";
+import { MANAGER_INSTRUCTIONS, profileScopeInstruction } from "../../../brainstorm/ManagerRole.ts";
 import { parseTaskMarkdown } from "../../../brainstorm/taskMarkdown.ts";
 import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -165,7 +165,23 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
 
   const brainstorm = Layer.mock(BrainstormService)({
     context: Effect.succeed(context),
-    managerInstructions: Effect.succeed(MANAGER_INSTRUCTIONS),
+    managerInstructions: (profile) =>
+      Effect.succeed(
+        profile === null
+          ? MANAGER_INSTRUCTIONS
+          : [...MANAGER_INSTRUCTIONS, profileScopeInstruction(profile)],
+      ),
+    // The All chat is the manager without profile brains; each profile chat is its manager.
+    managerOf: (threadId) =>
+      Effect.succeed(
+        threadId === BRAINSTORM_ALL
+          ? { profile: null }
+          : threadId === BRAINSTORM_WORK
+            ? { profile: "work" }
+            : threadId === BRAINSTORM_HOME
+              ? { profile: "home" }
+              : null,
+      ),
     spaceOfThread: (threadId) =>
       Effect.succeed(
         SPACES.find((space) => context.threadIdsBySpaceId[space.id] === threadId) ?? null,
@@ -280,6 +296,38 @@ describe("brainstorm toolkit", () => {
       ]);
       const regular = yield* harness.call("manager_overview", {}, WORK_THREAD);
       expect(regular).toMatchObject({ isManager: false, instructions: [], spaceId: "all" });
+    }),
+  );
+
+  it.effect("a profile's manager sees only its own profile", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        [HOME_TASKS]: "- [ ] home task\n",
+        [WORK_TASKS]: "- [ ] work task\n",
+      });
+      const overview = yield* harness.call("manager_overview", {}, BRAINSTORM_HOME);
+      expect(overview).toMatchObject({
+        isManager: true,
+        spaceId: "space-home",
+        seesEverything: false,
+      });
+      expect(overview.instructions).toContain(profileScopeInstruction("home"));
+      expect(overview.profiles.map((profile) => profile.profile)).toEqual(["home"]);
+      expect(overview.spaces.map((space) => space.id)).toEqual(["space-home"]);
+
+      const listed = yield* harness.call("list_tasks", {}, BRAINSTORM_HOME);
+      expect(listed.lists.map((list) => list.space)).toEqual(["home"]);
+      // Writes default to its own brain; another profile's list is out of reach.
+      yield* harness.call("add_task", { title: "mine" }, BRAINSTORM_HOME);
+      expect(harness.files.get(HOME_TASKS)).toBe("- [ ] home task\n- [ ] mine\n");
+      const denied = yield* harness
+        .call("list_tasks", { space: "work" }, BRAINSTORM_HOME)
+        .pipe(Effect.flip);
+      expect(denied.message).toContain("cannot change work's tasks");
+      const threads = yield* harness
+        .call("list_threads", { space: "work" }, BRAINSTORM_HOME)
+        .pipe(Effect.flip);
+      expect(threads.message).toContain("only sees home");
     }),
   );
 

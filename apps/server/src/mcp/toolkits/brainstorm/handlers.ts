@@ -120,21 +120,24 @@ const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
 
   /**
-   * What the calling thread sees and a fresh context. A space's brainstorm
-   * chat sees its space; the manager (All's chat) and any other thread see
-   * All. A regular thread's task tools default to its project's home space;
-   * the manager names the space on every write.
+   * What the calling thread sees and a fresh context. A profile's manager and
+   * a space's brainstorm chat see their space; the manager without profile
+   * brains (All's chat) and any other thread see All. A regular thread's task
+   * tools default to its project's home space; the All manager names the
+   * space on every write.
    */
   const scope = Effect.gen(function* () {
     const invocation = yield* McpInvocationContext.McpInvocationContext;
     const context = yield* brainstorm.context;
     const brainstormSpace = yield* brainstorm.spaceOfThread(invocation.threadId);
+    const manager = yield* brainstorm.managerOf(invocation.threadId);
     if (brainstormSpace !== null) {
       return {
         space: brainstormSpace,
         taskHome: null,
         context,
-        isManager: brainstormSpace.kind === "all",
+        isManager: manager !== null,
+        managerProfile: manager?.profile ?? null,
         threadId: invocation.threadId,
         environmentId: invocation.environmentId,
       };
@@ -151,6 +154,7 @@ const make = Effect.gen(function* () {
       taskHome,
       context,
       isManager: false,
+      managerProfile: null,
       threadId: invocation.threadId,
       environmentId: invocation.environmentId,
     };
@@ -205,7 +209,7 @@ const make = Effect.gen(function* () {
     }
     if (own.id !== ALL_SPACE_ID && space.id !== own.id) {
       return Effect.fail(
-        fail(`This brainstorm belongs to ${own.name}; it cannot change ${space.name}'s tasks.`),
+        fail(`This chat belongs to ${own.name}; it cannot change ${space.name}'s tasks.`),
       );
     }
     return Effect.succeed(space);
@@ -278,30 +282,37 @@ const make = Effect.gen(function* () {
           ) ?? null;
         return {
           isManager: scoped.isManager,
-          instructions: scoped.isManager ? yield* brainstorm.managerInstructions : [],
+          instructions: scoped.isManager
+            ? yield* brainstorm.managerInstructions(scoped.managerProfile)
+            : [],
           space: space.name,
           spaceId: space.id,
           seesEverything: space.id === ALL_SPACE_ID,
           brainPath: brainPathOf(context, space),
-          profiles: context.profiles.map((profile) => {
-            const owned = profileSpace(profile.name);
-            return {
-              profile: profile.name,
-              space: owned?.name ?? null,
-              brainPath: profile.brainPath,
-              taskFile: owned === null ? null : taskPathOf(context, owned),
-              projects: context.projects
-                .filter((project) => context.profileByProjectId.get(project.id) === profile.name)
-                .map((project) => project.title),
-            };
-          }),
-          spaces: context.spaces.map((candidate) => ({
-            id: candidate.id,
-            name: candidate.name,
-            kind: candidate.kind,
-            taskFile: taskPathOf(context, candidate),
-            inScope: space.id === ALL_SPACE_ID || candidate.id === space.id,
-          })),
+          // A profile's chat learns nothing about the other profiles.
+          profiles: context.profiles
+            .filter((profile) => space.id === ALL_SPACE_ID || profile.name === space.profile)
+            .map((profile) => {
+              const owned = profileSpace(profile.name);
+              return {
+                profile: profile.name,
+                space: owned?.name ?? null,
+                brainPath: profile.brainPath,
+                taskFile: owned === null ? null : taskPathOf(context, owned),
+                projects: context.projects
+                  .filter((project) => context.profileByProjectId.get(project.id) === profile.name)
+                  .map((project) => project.title),
+              };
+            }),
+          spaces: context.spaces
+            .filter((candidate) => space.id === ALL_SPACE_ID || candidate.id === space.id)
+            .map((candidate) => ({
+              id: candidate.id,
+              name: candidate.name,
+              kind: candidate.kind,
+              taskFile: taskPathOf(context, candidate),
+              inScope: true,
+            })),
         };
       }),
 
@@ -441,7 +452,7 @@ const make = Effect.gen(function* () {
           const requested = findSpace(context, input.space);
           if (!requested) return yield* fail(`There is no space "${input.space}".`);
           if (space.id !== ALL_SPACE_ID && requested.id !== space.id) {
-            return yield* fail(`This brainstorm only sees ${space.name}.`);
+            return yield* fail(`This chat only sees ${space.name}.`);
           }
           filterSpace = requested;
         }

@@ -2317,6 +2317,11 @@ code {
   );
 }
 
+/* The covered page's header controls are fixed above Home's layer; they belong to that page. */
+body:has(.home-overlay) [data-workspace-titlebar-controls]:not(.home-overlay *) {
+  display: none;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .home-overlay {
     animation: t3-home-overlay-in 120ms cubic-bezier(0.2, 0, 0, 1) both;
