@@ -96,7 +96,8 @@ export function HomeDashboard() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background">
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]">
+      {/* The cards stay one column wide (narrower than two 24rem cards); the manager gets the rest. */}
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]">
         {/* Home has its own canvas so the cards read as one board, apart from thread views. */}
         <div className="flex min-h-0 min-w-0 flex-col bg-muted/40" data-home-dashboard="">
           <WorkspacePageHeader
