@@ -4903,6 +4903,71 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("fails a turn whose prompt Claude completes without running it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        const droppedAttempt = RunAttemptId.make("attempt-claude-duplicate-prompt-1");
+        const retryAttempt = RunAttemptId.make("attempt-claude-duplicate-prompt-2");
+        const lifecycle = (attemptId: RunAttemptId, state: string, uuid: string) =>
+          claudeSdkFrame({
+            type: "command_lifecycle",
+            command_uuid: ClaudeAdapterV2.claudePromptUuid(attemptId),
+            state,
+            uuid,
+            session_id: "claude-session-1",
+          });
+
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: droppedAttempt,
+            text: "Continue where you left off.",
+            attachments: [],
+          }),
+        );
+        // The session already holds a message with this uuid, so the CLI
+        // closes the prompt with no queued or started frame and no turn.
+        yield* Queue.offer(
+          harness.sdkMessages,
+          lifecycle(droppedAttempt, "completed", "00000000-0000-4000-8000-000000000720"),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "dropped turn terminal");
+        const dropped = harness.terminalEvents()[0];
+        assert.equal(dropped?.status, "failed");
+        if (dropped?.status !== "failed") return;
+        assert.include(dropped.failure.message, "already delivered");
+
+        // The same process still runs the next prompt.
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: retryAttempt,
+            text: "Continue where you left off.",
+            attachments: [],
+            providerTurnOrdinal: 2,
+          }),
+        );
+        yield* Queue.offerAll(harness.sdkMessages, [
+          lifecycle(retryAttempt, "queued", "00000000-0000-4000-8000-000000000721"),
+          lifecycle(retryAttempt, "started", "00000000-0000-4000-8000-000000000722"),
+          claudeSdkFrame({
+            ...makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000723", result: "Done." }),
+            user_message_uuids: [ClaudeAdapterV2.claudePromptUuid(retryAttempt)],
+          }),
+          lifecycle(retryAttempt, "completed", "00000000-0000-4000-8000-000000000724"),
+        ]);
+        yield* awaitUntil(() => harness.terminalEvents().length === 2, "retry turn terminal");
+        assert.equal(harness.terminalEvents()[1]?.status, "completed");
+      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("buffers wake output and requests a single continuation run", () =>
     Effect.scoped(
       Effect.gen(function* () {
