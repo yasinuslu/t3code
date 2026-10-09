@@ -59,6 +59,11 @@ and their tasks on that machine, and its tools reach that machine's threads. Tur
 that stays on, so the manager keeps working while a laptop is closed. While that machine is offline,
 Home says so instead of opening a manager elsewhere.
 
+To run each profile's manager where that profile's work happens, list the profiles in **Settings →
+General → Managers hosted here** on each machine (for example `sn` on a laptop, `yu` on a desktop).
+A machine that lists profiles runs only those managers. Every device that connects to both
+machines opens each manager on the machine that lists it.
+
 Tell it what you want done. It breaks goals into tasks, starts worker threads, answers their routine
 questions and closes tasks. It reads its rules again after a restart, so nothing depends on its chat
 history.
