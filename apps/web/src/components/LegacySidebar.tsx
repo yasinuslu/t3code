@@ -215,6 +215,7 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { ThreadPreviewLinks } from "~/components/preview/ThreadPreviewLinkChip";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -770,6 +771,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             >
               <PullRequestGlyph.pullRequest className="size-3" />
             </a>
+          ) : null}
+          {thread.previewLinks && thread.previewLinks.length > 0 ? (
+            <ThreadPreviewLinks
+              threadRef={threadRef}
+              links={thread.previewLinks}
+              display="latest"
+              onBeforeOpen={() => {
+                if (!isActive) void navigateToThread(threadRef);
+              }}
+            />
           ) : null}
           {threadStatus && <ThreadStatusLabel status={threadStatus} />}
           {renamingThreadKey === threadKey ? (

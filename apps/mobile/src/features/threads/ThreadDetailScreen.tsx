@@ -1143,6 +1143,16 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     ? { count: devicePreviews.length, onPress: openDevicePreview }
                     : null
                 }
+                previewLinks={
+                  props.selectedThread.previewLinks !== undefined &&
+                  props.selectedThread.previewLinks.length > 0
+                    ? {
+                        environmentId: props.environmentId,
+                        threadId: props.selectedThread.id,
+                        links: props.selectedThread.previewLinks,
+                      }
+                    : null
+                }
                 showScrollToEnd={showScrollToEndButton}
                 onScrollToEnd={handleScrollToEnd}
                 agents={agentsSegment}

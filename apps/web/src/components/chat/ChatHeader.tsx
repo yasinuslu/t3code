@@ -1,4 +1,4 @@
-import { type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+import { type EnvironmentId, type ScopedThreadRef, type ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
@@ -48,6 +48,8 @@ import { cn } from "~/lib/utils";
 import { useIsManagerThread } from "~/brainstormStore";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { ThreadPreviewLinks } from "../preview/ThreadPreviewLinkChip";
+import { useThreadShell } from "~/state/entities";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -404,6 +406,7 @@ export const ChatHeader = memo(function ChatHeader({
           </Badge>
         ) : null}
       </WorkspaceBreadcrumb>
+      {isServerThread && !docked ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
       {providerConfigDir ? (
         <div className="flex min-w-0 max-w-80 shrink items-center">
           <ProviderConfigDirIndicator value={providerConfigDir} compact={docked} />
@@ -412,3 +415,14 @@ export const ChatHeader = memo(function ChatHeader({
     </div>
   );
 });
+
+/** Every preview linked to the thread. Its own component so the header does not subscribe to the thread shell. */
+function ChatHeaderPreviewLinks({ threadRef }: { threadRef: ScopedThreadRef }) {
+  const links = useThreadShell(threadRef)?.previewLinks;
+  if (!links || links.length === 0) return null;
+  return (
+    <div className="flex min-w-0 shrink items-center gap-2">
+      <ThreadPreviewLinks threadRef={threadRef} links={links} display="all" />
+    </div>
+  );
+}

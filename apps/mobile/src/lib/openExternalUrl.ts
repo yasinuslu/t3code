@@ -6,6 +6,7 @@ const ExternalUrlTarget = Schema.Literals([
   "markdown-link",
   "pull-request",
   "provider-auth",
+  "preview-link",
 ]);
 
 export type ExternalUrlTarget = typeof ExternalUrlTarget.Type;

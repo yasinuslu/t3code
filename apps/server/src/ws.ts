@@ -185,6 +185,7 @@ import { attachmentRelativePath, createDeterministicAttachmentId } from "./attac
 import { parseBase64DataUrl } from "./imageMime.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
+import * as PreviewLinkStatus from "./preview/PreviewLinkStatus.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
@@ -1260,6 +1261,7 @@ const makeWsRpcLayer = (
       const brainstorm = yield* BrainstormService.BrainstormService;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
+      const previewLinkStatus = yield* PreviewLinkStatus.PreviewLinkStatus;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const modelManifest = yield* ModelManifest.ModelManifest;
@@ -3536,6 +3538,10 @@ const makeWsRpcLayer = (
           }),
         [WS_METHODS.previewReportStatus]: (input) =>
           observeRpcEffect(WS_METHODS.previewReportStatus, previewManager.reportStatus(input), {
+            "rpc.aggregate": "preview",
+          }),
+        [WS_METHODS.previewLinksStatus]: (input) =>
+          observeRpcEffect(WS_METHODS.previewLinksStatus, previewLinkStatus.status(input), {
             "rpc.aggregate": "preview",
           }),
         [WS_METHODS.previewAutomationConnect]: (input) =>

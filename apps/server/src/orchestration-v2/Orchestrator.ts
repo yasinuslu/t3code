@@ -6,6 +6,10 @@ import {
 } from "@t3tools/shared/orchestrationV2ThreadError";
 import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
 import {
+  MAX_THREAD_PREVIEW_LINKS,
+  normalizePreviewLinkUrl,
+} from "@t3tools/shared/threadPreviewLinks";
+import {
   normalizeThreadPullRequestKey,
   visibleThreadPullRequests,
   threadPullRequestKeysEqual,
@@ -390,6 +394,8 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.visit":
     case "thread.mark-unread":
     case "thread.metadata.update":
+    case "thread.preview-link.link":
+    case "thread.preview-link.unlink":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
     case "thread.pull-request-link.sync":
@@ -2326,6 +2332,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.active.reorder"
           | "thread.mark-unread"
           | "thread.metadata.update"
+          | "thread.preview-link.link"
+          | "thread.preview-link.unlink"
           | "thread.pull-request.link"
           | "thread.pull-request.unlink"
           | "thread.pull-request-link.sync"
@@ -2356,6 +2364,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandId: command.commandId,
         commandType: command.type,
         cause: `Thread ${command.threadId} is deleted.`,
+      });
+    }
+    if (
+      command.type === "thread.preview-link.link" &&
+      normalizePreviewLinkUrl(command.url) === null
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "A preview link must be an http or https URL.",
       });
     }
     if (
@@ -2865,6 +2883,46 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             updatedAt: now,
           };
         }
+        case "thread.preview-link.link":
+        case "thread.preview-link.unlink": {
+          // Links are keyed by normalized URL; the link check above guarantees it parses.
+          const url = normalizePreviewLinkUrl(command.url) ?? command.url;
+          const links = thread.previewLinks ?? [];
+          const existing = links.find((link) => link.url === url);
+          if (command.type === "thread.preview-link.unlink") {
+            if (!existing) return thread;
+            return {
+              ...thread,
+              previewLinks: links.filter((link) => link !== existing),
+              updatedAt: now,
+            };
+          }
+          if (existing) {
+            // Relinking only ever updates the label; the first link keeps its time and source.
+            if (command.label === undefined || command.label === existing.label) return thread;
+            return {
+              ...thread,
+              previewLinks: links.map((link) =>
+                link === existing ? { ...existing, label: command.label } : link,
+              ),
+              updatedAt: now,
+            };
+          }
+          return {
+            ...thread,
+            previewLinks: [
+              ...links,
+              {
+                url,
+                ...(command.label === undefined ? {} : { label: command.label }),
+                source: command.source,
+                linkedAt: DateTime.formatIso(now),
+              },
+            ].slice(-MAX_THREAD_PREVIEW_LINKS),
+            // A link found in a finished run's report is not new activity on the thread.
+            updatedAt: command.source === "report" ? thread.updatedAt : now,
+          };
+        }
         case "thread.pull-request.link":
         case "thread.pull-request.unlink":
         case "thread.pull-request-link.sync": {
@@ -3069,6 +3127,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           };
       }
     })();
+    if (
+      updatedThread === thread &&
+      (command.type === "thread.preview-link.link" || command.type === "thread.preview-link.unlink")
+    ) {
+      return;
+    }
     const eventType = (() => {
       switch (command.type) {
         case "thread.archive":
@@ -3097,6 +3161,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.marked-unread" as const;
         case "thread.metadata.update":
         case "thread.title.regeneration.complete":
+        case "thread.preview-link.link":
+        case "thread.preview-link.unlink":
           return "thread.metadata-updated" as const;
         case "thread.pull-request.link":
         case "thread.pull-request.unlink":
@@ -9523,6 +9589,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.pull-request-link.sync":
       case "thread.pull-request.watch":
       case "thread.pull-request.sync":
+      case "thread.preview-link.link":
+      case "thread.preview-link.unlink":
       case "thread.title.regeneration.complete":
       case "thread.runtime-mode.set":
       case "thread.interaction-mode.set":
@@ -9752,8 +9820,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const plan = yield* dispatchOnce(command).pipe(
       Effect.flatMap((planned) =>
         // A settle that finds the provider already ended everything has
-        // nothing to record, which is its expected outcome, not a failure.
-        planned.events.length > 0 || command.type === "thread.background-work.settle"
+        // nothing to record, which is its expected outcome, not a failure. So
+        // does relinking an identical preview or unlinking one already gone.
+        planned.events.length > 0 ||
+        command.type === "thread.background-work.settle" ||
+        command.type === "thread.preview-link.link" ||
+        command.type === "thread.preview-link.unlink"
           ? Effect.succeed(planned)
           : Effect.fail(
               new OrchestratorDispatchError({

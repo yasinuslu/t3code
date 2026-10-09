@@ -2064,6 +2064,75 @@ it.layer(TestLayer)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("links preview URLs by normalized URL, keeps the newest ten, and unlinks", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const threadId = ThreadId.make("runtime-preview-links");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("preview-create"),
+        threadId,
+        projectId: ProjectId.make("preview-project"),
+        title: "Previews",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const previewLinks = () =>
+        orchestrator.getThreadShell(threadId).pipe(Effect.map((shell) => shell?.previewLinks));
+      const link = (id: string, url: string, label?: string) =>
+        orchestrator.dispatch({
+          type: "thread.preview-link.link",
+          commandId: CommandId.make(`preview-link-${id}`),
+          threadId,
+          url,
+          ...(label === undefined ? {} : { label }),
+          source: "agent",
+        });
+
+      yield* link("first", " HTTP://T3code-Branch.pv.example.org/ ");
+      const [first] = (yield* previewLinks()) ?? [];
+      assert.strictEqual(first?.url, "http://t3code-branch.pv.example.org");
+      assert.strictEqual(first?.source, "agent");
+
+      // The same URL again is a no-op that records no event.
+      const sequenceBefore = (yield* link("same", "http://t3code-branch.pv.example.org")).sequence;
+      const sequenceAfter = (yield* link("same-again", "http://t3code-branch.pv.example.org/"))
+        .sequence;
+      assert.strictEqual(sequenceAfter, sequenceBefore);
+
+      // Relinking with a label updates the label and keeps the first link time.
+      yield* link("labelled", "http://t3code-branch.pv.example.org", "Branch build");
+      assert.deepEqual(yield* previewLinks(), [{ ...first!, label: "Branch build" }]);
+
+      yield* Effect.flip(link("not-http", "ftp://example.org/build"));
+
+      for (let index = 0; index < 11; index++) {
+        yield* link(`many-${index}`, `https://preview-${index}.example.org/app`);
+      }
+      const capped = (yield* previewLinks()) ?? [];
+      assert.strictEqual(capped.length, 10);
+      assert.strictEqual(capped[0]?.url, "https://preview-1.example.org/app");
+      assert.strictEqual(capped.at(-1)?.url, "https://preview-10.example.org/app");
+
+      yield* orchestrator.dispatch({
+        type: "thread.preview-link.unlink",
+        commandId: CommandId.make("preview-unlink"),
+        threadId,
+        url: "https://preview-5.example.org/app",
+      });
+      assert.isTrue((yield* maintenance.rebuild).valid);
+      const remaining = (yield* previewLinks()) ?? [];
+      assert.strictEqual(remaining.length, 9);
+      assert.isFalse(remaining.some((entry) => entry.url === "https://preview-5.example.org/app"));
+    }),
+  );
+
   it.effect("retains multiple pull requests and dismissed stack members through rebuilds", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;

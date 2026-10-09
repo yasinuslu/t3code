@@ -1065,3 +1065,31 @@ export const unlinkThreadPullRequest = Effect.fn("EnvironmentCommands.unlinkThre
     });
   },
 );
+export type LinkThreadPreviewInput = Omit<
+  Extract<OrchestrationV2Command, { type: "thread.preview-link.link" }>,
+  "type" | "commandId"
+> &
+  CommandMetadata;
+export type UnlinkThreadPreviewInput = Omit<
+  Extract<OrchestrationV2Command, { type: "thread.preview-link.unlink" }>,
+  "type" | "commandId"
+> &
+  CommandMetadata;
+export const linkThreadPreview = Effect.fn("EnvironmentCommands.linkThreadPreview")(function* (
+  input: LinkThreadPreviewInput,
+) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.preview-link.link",
+    commandId: yield* allocateCommandId(input),
+  });
+});
+export const unlinkThreadPreview = Effect.fn("EnvironmentCommands.unlinkThreadPreview")(function* (
+  input: UnlinkThreadPreviewInput,
+) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.preview-link.unlink",
+    commandId: yield* allocateCommandId(input),
+  });
+});

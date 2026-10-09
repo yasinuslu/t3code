@@ -382,6 +382,12 @@ export function summarizeT3ToolCalls(
         quantity(selected.length, "pull request"),
       );
       break;
+    case "link-preview":
+      label = phrase("Linked", "link", quantity(selected.length, "preview"));
+      break;
+    case "unlink-preview":
+      label = phrase("Unlinked", "unlink", quantity(selected.length, "preview"));
+      break;
     case "list-prs":
       label = phrase(
         "Checked",

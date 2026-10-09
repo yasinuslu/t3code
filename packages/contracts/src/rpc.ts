@@ -256,6 +256,7 @@ import {
   PreviewResizeInput,
   PreviewSessionSnapshot,
 } from "./preview.ts";
+import { PreviewLinkStatusInput, PreviewLinkStatusResult } from "./threadPreviewLink.ts";
 import {
   DeviceActionInput,
   DeviceCloseInput,
@@ -434,6 +435,7 @@ export const WS_METHODS = {
   previewClose: "preview.close",
   previewList: "preview.list",
   previewReportStatus: "preview.reportStatus",
+  previewLinksStatus: "previewLinks.status",
   previewAutomationConnect: "previewAutomation.connect",
   previewAutomationRespond: "previewAutomation.respond",
   previewAutomationFocusHost: "previewAutomation.focusHost",
@@ -1459,6 +1461,13 @@ const WsPreviewListRpc = Rpc.make(WS_METHODS.previewList, {
   error: EnvironmentAuthorizationError,
 });
 
+/** Reads whether thread preview links are up, without waking them; unreadable ones are "unknown". */
+const WsPreviewLinksStatusRpc = Rpc.make(WS_METHODS.previewLinksStatus, {
+  payload: PreviewLinkStatusInput,
+  success: PreviewLinkStatusResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsPreviewReportStatusRpc = Rpc.make(WS_METHODS.previewReportStatus, {
   payload: PreviewReportStatusInput,
   error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
@@ -1913,6 +1922,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewCloseRpc,
   WsPreviewListRpc,
   WsPreviewReportStatusRpc,
+  WsPreviewLinksStatusRpc,
   WsPreviewAutomationConnectRpc,
   WsPreviewAutomationRespondRpc,
   WsPreviewAutomationFocusHostRpc,
