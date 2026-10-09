@@ -2732,6 +2732,8 @@ interface ActiveClaudeTurnContext {
   // prompt's turn echoes this uuid (see handleSdkMessage).
   readonly promptUuid: string | null;
   promptEcho: "pending" | "confirmed";
+  // Claude reported starting the prompt's command (command_lifecycle).
+  promptStarted: boolean;
   // Root frames seen before the echo; held only when the CLI echoes early.
   gatedFramesBeforeEcho: number;
   readonly heldRootFrames: Array<SDKMessage>;
@@ -6614,6 +6616,30 @@ export function makeClaudeAdapterV2(
           ) {
             liveQuery.promptEchoMode = "acknowledged";
           }
+          if (claudeAcknowledgedPromptUuid(message) === context.promptUuid) {
+            const state = Reflect.get(message, "state");
+            if (state === "started") {
+              context.promptStarted = true;
+            } else if (state === "completed" && !context.promptStarted) {
+              // Claude closed the prompt without running it: its session
+              // already holds a message with this uuid (another process
+              // resumed the session with the same run attempt). No turn will
+              // answer it, so the turn fails instead of waiting forever.
+              yield* releaseHeldRootFrames(context);
+              yield* finalizeActiveTurn({
+                context,
+                status: "failed",
+                completedAt: yield* DateTime.now,
+                failure: makeProviderFailure({
+                  message:
+                    "Claude did not run this prompt: it reported the message as already delivered (duplicate message id). Send it again.",
+                  code: "prompt_not_run",
+                  class: "provider_error",
+                }),
+              });
+              return;
+            }
+          }
           if (!isClaudePromptEchoGatedFrame(message)) {
             // Frames the held turn produced through its own tool uses (a
             // subagent it launched, its task lifecycle) follow that turn;
@@ -7295,6 +7321,7 @@ export function makeClaudeAdapterV2(
                 ? null
                 : claudePromptUuid(turnInput.attemptId),
               promptEcho: isClaudeProviderContinuationTurn(turnInput) ? "confirmed" : "pending",
+              promptStarted: false,
               gatedFramesBeforeEcho: 0,
               heldRootFrames: [],
             };
