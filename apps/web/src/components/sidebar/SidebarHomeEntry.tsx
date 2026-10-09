@@ -1,11 +1,15 @@
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { classifyWorkThread } from "@t3tools/client-runtime/state/work-overview";
-import { useNavigate } from "@tanstack/react-router";
 import { CompassIcon } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 
-import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../../brainstormStore";
-import { openManagerHome } from "../brainstorm/useOpenManagerThread";
+import {
+  useHomeThreadShells,
+  useManagerProfile,
+  useManagerThreadKeys,
+  useThreadShellsWithoutBrainstorms,
+} from "../../brainstormStore";
+import { openManagerHome, useOpenManagerThreadPage } from "../brainstorm/useOpenManagerThread";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useAtomValue } from "@effect/atom-react";
@@ -14,40 +18,38 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /**
  * The way Home from anywhere: always at the top of the thread list, whatever
- * space or filter is active. Shows how many threads need the user and whether
- * the manager is working. The manager has no row of its own in the lists; on
- * windows too narrow for Home's docked manager this opens the manager thread.
+ * space or filter is active. Shows how many of the active space's threads need
+ * the user and whether a manager is working. Managers have no rows of their
+ * own in the lists; on windows too narrow for Home's docked manager this opens
+ * the active profile's manager thread.
  */
 export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const managerThreadKey = useBrainstormStore((state) => state.managerThreadKey);
-  const threads = useThreadShellsWithoutBrainstorms();
+  const managerKeys = useManagerThreadKeys();
+  const allThreads = useThreadShellsWithoutBrainstorms();
+  const homeThreads = useHomeThreadShells();
   const [now] = useState(() => Date.now());
-  const { needsYou, managerWorking } = useMemo(() => {
-    let count = 0;
-    let working = false;
-    for (const thread of threads) {
-      if (`${thread.environmentId}:${thread.id}` === managerThreadKey) {
-        working = threadRuntimeIsActive(thread.runtime);
-        continue;
-      }
-      if (classifyWorkThread(thread, now)?.group === "needsMe") count += 1;
-    }
-    return { needsYou: count, managerWorking: working };
-  }, [managerThreadKey, now, threads]);
+  const needsYou = useMemo(
+    () =>
+      homeThreads.filter((thread) => classifyWorkThread(thread, now)?.group === "needsMe").length,
+    [homeThreads, now],
+  );
+  const managerWorking = useMemo(
+    () =>
+      allThreads.some(
+        (thread) =>
+          managerKeys.has(`${thread.environmentId}:${thread.id}`) &&
+          threadRuntimeIsActive(thread.runtime),
+      ),
+    [allThreads, managerKeys],
+  );
   const shortcut = shortcutLabelForCommand(keybindings, "manager.open");
   const narrow = useMediaQuery("max-lg");
-  const navigate = useNavigate();
+  const managerProfile = useManagerProfile();
+  const openManagerThreadPage = useOpenManagerThreadPage();
   const open = () => {
-    const separator = managerThreadKey?.indexOf(":") ?? -1;
-    if (!narrow || managerThreadKey === null || separator < 0) return openManagerHome();
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: {
-        environmentId: managerThreadKey.slice(0, separator),
-        threadId: managerThreadKey.slice(separator + 1),
-      },
-    });
+    if (!narrow) return openManagerHome();
+    void openManagerThreadPage(managerProfile);
   };
 
   return (

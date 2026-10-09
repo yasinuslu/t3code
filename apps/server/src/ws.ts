@@ -3296,7 +3296,7 @@ const makeWsRpcLayer = (
             "rpc.aggregate": "workspace",
           }),
         [WS_METHODS.brainstormOpen]: (input) =>
-          observeRpcEffect(WS_METHODS.brainstormOpen, brainstorm.open(input.spaceId), {
+          observeRpcEffect(WS_METHODS.brainstormOpen, brainstorm.open(input), {
             "rpc.aggregate": "workspace",
           }),
         [WS_METHODS.brainstormMutateTasks]: (input) =>

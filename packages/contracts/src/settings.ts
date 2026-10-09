@@ -1317,6 +1317,14 @@ export const ServerSettings = Schema.Struct({
    * that sets this, else on their primary one.
    */
   hostsManager: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * Code profiles whose managers this server runs, so each profile's manager
+   * can live on the machine that does that profile's work. A server that
+   * names profiles runs only those managers, whatever `hostsManager` says.
+   */
+  managerProfiles: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   backgroundActivity: BackgroundActivitySettings,
@@ -1686,6 +1694,7 @@ export const ServerSettingsPatch = Schema.Struct({
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   hostsManager: Schema.optionalKey(Schema.Boolean),
+  managerProfiles: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

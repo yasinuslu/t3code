@@ -14,12 +14,12 @@ const dependencies = [
 ];
 
 const SCOPE =
-  "In the manager chat (and any thread outside a brainstorm) it sees every space; in a space's brainstorm chat it is scoped to that space.";
+  "A profile's manager sees only its profile's space; a regular thread (and the single manager when no profile has a brain) sees every space.";
 
 const SpaceInput = Schema.optional(
   Schema.String.annotate({
     description:
-      "Space id, name or profile: whose brain the list lives in. The manager must pass it on every write; elsewhere it defaults to this chat's space, or in a regular thread to its project's space.",
+      "Space id, name or profile: whose brain the list lives in. A profile's manager may leave it out (its own profile). Elsewhere it defaults to this chat's space, or in a regular thread to its project's space.",
   }),
 );
 
@@ -32,7 +32,7 @@ const TaskReferenceInput = Schema.Union([Schema.Int, Schema.String]).annotate({
     "The task's number from list_tasks, or its title (exact, or a unique part of it). Numbers shift when tasks above are added or removed, so re-list after edits.",
 });
 
-const ThreadStatus = Schema.Literals([
+export const ThreadStatus = Schema.Literals([
   "working",
   "needs-approval",
   "needs-input",
@@ -106,7 +106,7 @@ const writeTool = <T extends Tool.Any>(tool: T, destructive = false): T =>
 
 const ManagerOverviewTool = readonlyTool(
   Tool.make("manager_overview", {
-    description: `Start here, and again after a restart or context compaction. Returns the manager's operating rules, whether this chat is the manager, every profile's brain with the file its goals and tasks live in, and the spaces. ${SCOPE}`,
+    description: `Start here, and again after a restart or context compaction. Returns the manager's operating rules, whether this chat is a manager, the profile brains it sees with the file their goals and tasks live in, and the spaces. ${SCOPE}`,
     success: Schema.Struct({
       isManager: Schema.Boolean,
       instructions: Schema.Array(Schema.String),
@@ -140,7 +140,7 @@ const ManagerOverviewTool = readonlyTool(
 
 const ListTasksTool = readonlyTool(
   Tool.make("list_tasks", {
-    description: `List goals and their tasks, with the status of the threads each task links to: for the manager every space's list, in a regular thread its project's space, unless space is given. Tasks above every goal are under Inbox. Done goals are left out unless includeDone. ${SCOPE}`,
+    description: `List goals and their tasks, with the status of the threads each task links to: for a profile's manager its profile's list, in a regular thread its project's space, unless space is given. Tasks above every goal are under Inbox. Done goals are left out unless includeDone. ${SCOPE}`,
     parameters: Schema.Struct({ space: SpaceInput, includeDone: Schema.optional(Schema.Boolean) }),
     success: Schema.Struct({ lists: Schema.Array(TaskListEntry) }),
     failure: BrainstormError,

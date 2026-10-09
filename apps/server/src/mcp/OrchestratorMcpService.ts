@@ -780,20 +780,22 @@ const make = Effect.gen(function* () {
   const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
   const managers = yield* ManagerScope.ManagerScope;
 
-  /** The project the caller reaches `threadId` in: its own, or for the manager that thread's. */
+  /** The project the caller reaches `threadId` in: its own, or for a manager that thread's. */
   const reachableProjectId = (
     scope: McpInvocationScope,
     parent: Pick<OrchestrationV2ThreadProjection, "thread">,
     threadId: ThreadId,
   ) =>
     Effect.gen(function* () {
-      if (threadId === scope.threadId || !(yield* managers.isManagerThread(scope.threadId))) {
-        return parent.thread.projectId;
-      }
+      if (threadId === scope.threadId) return parent.thread.projectId;
+      const reach = yield* managers.reachableProjectIds(scope.threadId);
+      if (reach === null) return parent.thread.projectId;
       const shell = yield* threadManagement
         .getThreadShell(threadId)
         .pipe(Effect.orElseSucceed(() => null));
-      return shell?.projectId ?? parent.thread.projectId;
+      return shell !== null && reach.has(shell.projectId)
+        ? shell.projectId
+        : parent.thread.projectId;
     });
 
   const codeProfiles = Option.getOrUndefined(yield* Effect.serviceOption(CodeProfiles));

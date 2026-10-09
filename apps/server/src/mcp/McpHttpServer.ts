@@ -51,6 +51,9 @@ import { PullRequestsToolkitHandlersLive } from "./toolkits/pullRequests/handler
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import { BrainstormToolkitHandlersLive } from "./toolkits/brainstorm/handlers.ts";
 import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
+import { PeersToolkitHandlersLive } from "./toolkits/peers/handlers.ts";
+import { PeersToolkit } from "./toolkits/peers/tools.ts";
+import * as PeerEnvironments from "../peers/PeerEnvironments.ts";
 import {
   DeviceScreenshotToolkitHandlersLive,
   DeviceStandardToolkitHandlersLive,
@@ -701,6 +704,11 @@ export const BrainstormToolkitRegistrationLive = McpServer.toolkit(BrainstormToo
   Layer.provide(BrainstormToolkitHandlersLive),
 );
 
+const PeersToolkitRegistrationLive = McpServer.toolkit(PeersToolkit).pipe(
+  Layer.provide(PeersToolkitHandlersLive),
+  Layer.provide(PeerEnvironments.layer),
+);
+
 const DeviceStandardToolkitRegistrationLive = McpServer.toolkit(DeviceStandardToolkit).pipe(
   Layer.provide(DeviceStandardToolkitHandlersLive),
 );
@@ -732,5 +740,6 @@ export const layer = Layer.mergeAll(
   WorktreeToolkitRegistrationLive,
   PullRequestsToolkitRegistrationLive,
   BrainstormToolkitRegistrationLive,
+  PeersToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));

@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema";
 import { ProjectId, RunId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
- * Brainstorm: the manager chat (the All space's chat, working in the default
+ * Brainstorm: the manager chats (one per code profile, each working in its
  * profile's knowledge base, "brain") and the goal and task lists kept as
  * markdown in each brain repository.
  *
@@ -38,6 +38,8 @@ export type BrainstormSyncSpacesInput = typeof BrainstormSyncSpacesInput.Type;
 
 export const BrainstormOpenInput = Schema.Struct({
   spaceId: TrimmedNonEmptyString,
+  /** With the All space: the code profile whose manager to open; unset, the default profile. */
+  profile: Schema.optional(TrimmedNonEmptyString),
 });
 export type BrainstormOpenInput = typeof BrainstormOpenInput.Type;
 
@@ -100,10 +102,12 @@ export const BrainstormTaskList = Schema.Struct({
 export type BrainstormTaskList = typeof BrainstormTaskList.Type;
 
 export const BrainstormState = Schema.Struct({
-  /** Brainstorm threads by space; the All space's is the manager thread. */
+  /** Brainstorm threads by space; the All space's is the manager when no profile has a brain. */
   threadIdsBySpaceId: Schema.Record(Schema.String, ThreadId),
+  /** Each code profile's manager thread, once opened; missing from older servers. */
+  managerThreadIdsByProfile: Schema.optional(Schema.Record(Schema.String, ThreadId)),
   /**
-   * Brainstorm chats clients hide from thread lists: every one but the manager,
+   * Brainstorm chats clients hide from thread lists: every one but the managers,
    * including ones for a brain a space no longer uses.
    */
   hiddenThreadIds: Schema.Array(ThreadId),

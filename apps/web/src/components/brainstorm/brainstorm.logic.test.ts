@@ -5,8 +5,11 @@ import { ALL_SPACE_ID, initialSpaceState, type Space } from "../../spaceStore";
 import {
   boardGoals,
   brainstormSpacesInput,
+  goalsOfSpace,
   membershipChangesToAdopt,
   resolveManagerEnvironmentId,
+  resolveManagerEnvironmentIds,
+  resolveManagerProfile,
 } from "./brainstorm.logic";
 
 describe("brainstormSpacesInput", () => {
@@ -111,11 +114,16 @@ describe("boardGoals", () => {
 describe("resolveManagerEnvironmentId", () => {
   const laptop = "laptop" as EnvironmentId;
   const desktop = "desktop" as EnvironmentId;
-  const configs = (hosts: Record<string, boolean>) =>
+  const configs = (hosts: Record<string, boolean | ReadonlyArray<string>>) =>
     new Map(
-      Object.entries(hosts).map(([id, hostsManager]) => [
+      Object.entries(hosts).map(([id, host]) => [
         id as EnvironmentId,
-        { settings: { hostsManager } } as unknown as ServerConfig,
+        {
+          settings:
+            typeof host === "boolean"
+              ? { hostsManager: host, managerProfiles: [] }
+              : { hostsManager: false, managerProfiles: host },
+        } as unknown as ServerConfig,
       ]),
     );
 
@@ -136,5 +144,73 @@ describe("resolveManagerEnvironmentId", () => {
       laptop,
     );
     expect(resolveManagerEnvironmentId(null, configs({}))).toBe(null);
+  });
+
+  it("opens a profile's manager on the machine that names it, even over the primary", () => {
+    const split = configs({ laptop: ["sn"], desktop: true });
+    expect(resolveManagerEnvironmentId(desktop, split, "sn")).toBe(laptop);
+    expect(resolveManagerEnvironmentId(desktop, split, "yu")).toBe(desktop);
+    expect(resolveManagerEnvironmentId(laptop, split, "yu")).toBe(desktop);
+  });
+
+  it("starts no second copy when a split profile's machine is not connected", () => {
+    const desktopOnly = configs({ desktop: ["yu"] });
+    expect(resolveManagerEnvironmentId(desktop, desktopOnly, "yu")).toBe(desktop);
+    expect(resolveManagerEnvironmentId(desktop, desktopOnly, "sn")).toBe(null);
+  });
+
+  it("lists every machine that runs a manager", () => {
+    expect(
+      resolveManagerEnvironmentIds(desktop, configs({ laptop: ["sn"], desktop: ["yu"] })),
+    ).toEqual([laptop, desktop]);
+    expect(resolveManagerEnvironmentIds(laptop, configs({ laptop: false }))).toEqual([laptop]);
+  });
+});
+
+describe("resolveManagerProfile", () => {
+  const profiles = ["sn", "yu"];
+  it("follows the active profile space, then the last pick, then the server's default", () => {
+    const base = {
+      profiles,
+      activeSpaceProfile: null,
+      lastManagerProfile: null,
+      serverDefaultProfile: "yu",
+    };
+    expect(resolveManagerProfile({ ...base, activeSpaceProfile: "sn" })).toBe("sn");
+    expect(resolveManagerProfile({ ...base, lastManagerProfile: "sn" })).toBe("sn");
+    expect(resolveManagerProfile(base)).toBe("yu");
+    // A profile that lost its brain is skipped.
+    expect(resolveManagerProfile({ ...base, activeSpaceProfile: "gone" })).toBe("yu");
+    expect(resolveManagerProfile({ ...base, serverDefaultProfile: null })).toBe("sn");
+  });
+
+  it("is null when no profile has a brain", () => {
+    expect(
+      resolveManagerProfile({
+        profiles: [],
+        activeSpaceProfile: "yu",
+        lastManagerProfile: "yu",
+        serverDefaultProfile: null,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("goalsOfSpace", () => {
+  const list = (spaceId: string, profile: string | null, goal: string): BrainstormTaskList => ({
+    spaceId,
+    spaceName: spaceId,
+    path: null,
+    profile,
+    goals: [{ number: 1, title: goal, done: false, notes: [] }],
+    tasks: [],
+  });
+  const lists = [list("server-yu", "yu", "Personal"), list("server-sn", "sn", "Work")];
+  it("matches a profile space by profile, whatever id the server gave it", () => {
+    const titles = (space: { id: string; profile: string | null } | null) =>
+      goalsOfSpace(lists, space).map((goal) => goal.title);
+    expect(titles({ id: "client-sn", profile: "sn" })).toEqual(["Work"]);
+    expect(titles({ id: ALL_SPACE_ID, profile: null })).toEqual(["Personal", "Work"]);
+    expect(titles(null)).toEqual(["Personal", "Work"]);
   });
 });

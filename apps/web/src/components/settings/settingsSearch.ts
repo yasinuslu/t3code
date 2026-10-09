@@ -299,6 +299,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["manager home always on machine server remote"],
   },
   {
+    id: "manager-profiles",
+    title: "Managers hosted here",
+    to: "/settings/general",
+    searchTerms: ["manager home code profile machine server remote split"],
+  },
+  {
     id: "auto-resume-limited-threads",
     title: "Auto-resume limited threads",
     to: "/settings/general",

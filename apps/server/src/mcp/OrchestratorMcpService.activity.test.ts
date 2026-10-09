@@ -458,7 +458,7 @@ it("readThread reaches a thread the user attached as context, but not one an age
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });
 
-it("only the manager thread acts on threads in other projects", async () => {
+it("only a manager thread acts on threads in other projects of its profile", async () => {
   const foreignProjectId = ProjectId.make("project-mcp-orchestrator-other");
   const foreignThreadId = ThreadId.make("thread-mcp-orchestrator-other");
   const projection = (threadId: ThreadId, project: ProjectId) =>
@@ -476,7 +476,8 @@ it("only the manager thread acts on threads in other projects", async () => {
       updatedAt: now,
     }) as unknown as OrchestrationV2ThreadProjection;
   const interrupted: Array<ProjectId> = [];
-  const services = (managerThreadId: ThreadId | null) =>
+  /** The calling thread as a manager reaching these projects, or as a regular thread. */
+  const services = (reach: ReadonlySet<string> | null) =>
     OrchestratorMcpService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -514,7 +515,8 @@ it("only the manager thread acts on threads in other projects", async () => {
             list: () => Effect.succeed([]),
           }),
           Layer.succeed(ManagerScope.ManagerScope, {
-            isManagerThread: (threadId) => Effect.succeed(threadId === managerThreadId),
+            reachableProjectIds: (threadId) =>
+              Effect.succeed(threadId === parentThreadId ? reach : null),
           }),
           NodeCrypto.layer,
         ),
@@ -533,6 +535,18 @@ it("only the manager thread acts on threads in other projects", async () => {
   expect(denied.code).toBe("thread_not_found");
   expect(interrupted).toEqual([]);
 
-  await interrupt.pipe(Effect.provide(services(parentThreadId)), Effect.runPromise);
+  // The manager of another profile does not reach it either.
+  const otherProfile = await interrupt.pipe(
+    Effect.flip,
+    Effect.provide(services(new Set([projectId]))),
+    Effect.runPromise,
+  );
+  expect(otherProfile.code).toBe("thread_not_found");
+  expect(interrupted).toEqual([]);
+
+  await interrupt.pipe(
+    Effect.provide(services(new Set([projectId, foreignProjectId]))),
+    Effect.runPromise,
+  );
   expect(interrupted).toEqual([foreignProjectId]);
 });

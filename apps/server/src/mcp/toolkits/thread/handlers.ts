@@ -108,13 +108,13 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
     }),
   t3_thread_search: (input) =>
     Effect.gen(function* () {
-      const { caller, manager } = yield* readCaller();
+      const { caller, reach } = yield* readCaller();
       const threadSearch = yield* ThreadSearch.ThreadSearch;
       const result = yield* threadSearch.search(input).pipe(Effect.mapError(unavailable));
       return {
-        matches: manager
-          ? result.matches
-          : result.matches.filter((match) => match.projectId === caller.projectId),
+        matches: result.matches.filter(
+          (match) => match.projectId === caller.projectId || reach?.has(match.projectId) === true,
+        ),
       };
     }),
   t3_thread_fork: (input) =>

@@ -20,7 +20,12 @@ import {
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { InHomeOverlayContext } from "../../homeOverlayStore";
-import { openManagerHome } from "../brainstorm/useOpenManagerThread";
+import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
+import {
+  openManagerHome,
+  selectManagerProfile,
+  useOpenManagerThreadPage,
+} from "../brainstorm/useOpenManagerThread";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -98,6 +103,7 @@ export const ChatHeader = memo(function ChatHeader({
   const onHome = useContext(InHomeOverlayContext);
   // The manager docked on Home: a narrow pane, so only its name and badge.
   const docked = onHome && isManager;
+  const openManagerThreadPage = useOpenManagerThreadPage();
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
@@ -275,6 +281,17 @@ export const ChatHeader = memo(function ChatHeader({
           <TooltipPopup side="bottom">Home: your work and the manager</TooltipPopup>
         </Tooltip>
       )}
+      {/* On its own page (narrow windows), a manager switches to another profile's here, ahead
+          of the breadcrumb so it never clips; Home has its own switcher. */}
+      {isManager && !docked ? (
+        <ManagerProfileSwitcher
+          className="shrink-0"
+          onSelect={(profile) => {
+            selectManagerProfile(profile);
+            void openManagerThreadPage(profile);
+          }}
+        />
+      ) : null}
       <WorkspaceBreadcrumb
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
