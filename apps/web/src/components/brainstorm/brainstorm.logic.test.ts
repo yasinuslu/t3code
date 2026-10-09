@@ -8,6 +8,7 @@ import {
   goalsOfSpace,
   membershipChangesToAdopt,
   resolveManagerEnvironmentId,
+  resolveManagerEnvironmentIds,
   resolveManagerProfile,
 } from "./brainstorm.logic";
 
@@ -113,11 +114,16 @@ describe("boardGoals", () => {
 describe("resolveManagerEnvironmentId", () => {
   const laptop = "laptop" as EnvironmentId;
   const desktop = "desktop" as EnvironmentId;
-  const configs = (hosts: Record<string, boolean>) =>
+  const configs = (hosts: Record<string, boolean | ReadonlyArray<string>>) =>
     new Map(
-      Object.entries(hosts).map(([id, hostsManager]) => [
+      Object.entries(hosts).map(([id, host]) => [
         id as EnvironmentId,
-        { settings: { hostsManager } } as unknown as ServerConfig,
+        {
+          settings:
+            typeof host === "boolean"
+              ? { hostsManager: host, managerProfiles: [] }
+              : { hostsManager: false, managerProfiles: host },
+        } as unknown as ServerConfig,
       ]),
     );
 
@@ -138,6 +144,26 @@ describe("resolveManagerEnvironmentId", () => {
       laptop,
     );
     expect(resolveManagerEnvironmentId(null, configs({}))).toBe(null);
+  });
+
+  it("opens a profile's manager on the machine that names it, even over the primary", () => {
+    const split = configs({ laptop: ["sn"], desktop: true });
+    expect(resolveManagerEnvironmentId(desktop, split, "sn")).toBe(laptop);
+    expect(resolveManagerEnvironmentId(desktop, split, "yu")).toBe(desktop);
+    expect(resolveManagerEnvironmentId(laptop, split, "yu")).toBe(desktop);
+  });
+
+  it("starts no second copy when a split profile's machine is not connected", () => {
+    const desktopOnly = configs({ desktop: ["yu"] });
+    expect(resolveManagerEnvironmentId(desktop, desktopOnly, "yu")).toBe(desktop);
+    expect(resolveManagerEnvironmentId(desktop, desktopOnly, "sn")).toBe(null);
+  });
+
+  it("lists every machine that runs a manager", () => {
+    expect(
+      resolveManagerEnvironmentIds(desktop, configs({ laptop: ["sn"], desktop: ["yu"] })),
+    ).toEqual([laptop, desktop]);
+    expect(resolveManagerEnvironmentIds(laptop, configs({ laptop: false }))).toEqual([laptop]);
   });
 });
 

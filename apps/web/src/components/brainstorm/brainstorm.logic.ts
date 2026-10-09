@@ -115,23 +115,47 @@ export function boardGoals(
 }
 
 /**
- * The environment that runs the manager: the primary one when it hosts the
- * manager (or nothing does), else the first connected one that does. Lets a
- * laptop open the manager on an always-on machine.
+ * The environment that runs `profile`'s manager, primary first: one that
+ * names the profile in `managerProfiles`, else one that hosts every manager
+ * (`hostsManager` with no names), else the primary. Lets a laptop open the
+ * manager on an always-on machine, and each profile's manager live where
+ * that profile's work runs. Null when the managers are split by profile and
+ * this one's machine is not connected, so a client never starts a second
+ * copy elsewhere.
  */
 export function resolveManagerEnvironmentId(
   primaryEnvironmentId: EnvironmentId | null,
   serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
+  profile: string | null = null,
 ): EnvironmentId | null {
-  if (
-    primaryEnvironmentId !== null &&
-    serverConfigs.get(primaryEnvironmentId)?.settings.hostsManager
-  )
-    return primaryEnvironmentId;
-  for (const [environmentId, config] of serverConfigs) {
-    if (config.settings.hostsManager) return environmentId;
-  }
-  return primaryEnvironmentId;
+  const ordered = [...serverConfigs].toSorted(
+    ([left], [right]) =>
+      Number(right === primaryEnvironmentId) - Number(left === primaryEnvironmentId),
+  );
+  const named = ordered.find(
+    ([, config]) => profile !== null && config.settings.managerProfiles.includes(profile),
+  );
+  if (named) return named[0];
+  const all = ordered.find(
+    ([, config]) => config.settings.hostsManager && config.settings.managerProfiles.length === 0,
+  );
+  if (all) return all[0];
+  const split = ordered.some(([, config]) => config.settings.managerProfiles.length > 0);
+  return split ? null : primaryEnvironmentId;
+}
+
+/** Every connected environment that runs a manager, else the primary one. */
+export function resolveManagerEnvironmentIds(
+  primaryEnvironmentId: EnvironmentId | null,
+  serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
+): EnvironmentId[] {
+  const hosts = [...serverConfigs]
+    .filter(
+      ([, config]) => config.settings.hostsManager || config.settings.managerProfiles.length > 0,
+    )
+    .map(([environmentId]) => environmentId);
+  if (hosts.length > 0) return hosts;
+  return primaryEnvironmentId === null ? [] : [primaryEnvironmentId];
 }
 
 /** Key of the single manager in the client's map when no profile has a brain. */

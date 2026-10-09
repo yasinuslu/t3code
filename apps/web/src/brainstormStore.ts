@@ -13,6 +13,14 @@ import { resolveStorage } from "./lib/storage";
 import { isInSpace, useProjectSpaceResolver, useSpaceStore } from "./spaceStore";
 import { useThreadShells } from "./state/entities";
 
+/** What one manager-hosting environment reports. */
+export interface EnvironmentManagers {
+  readonly managerThreadKeyByProfile: Readonly<Record<string, string>>;
+  readonly profiles: ReadonlyArray<string>;
+  readonly serverDefaultProfile: string | null;
+  readonly hiddenThreadKeys: ReadonlySet<string>;
+}
+
 interface BrainstormStore {
   /** `${environmentId}:${threadId}` of every brainstorm chat except the managers. */
   readonly hiddenThreadKeys: ReadonlySet<string>;
@@ -21,7 +29,7 @@ interface BrainstormStore {
    * (`SINGLE_MANAGER_KEY` for the one manager when no profile has a brain).
    */
   readonly managerThreadKeyByProfile: Readonly<Record<string, string>>;
-  /** Code profiles with a brain on the manager's machine; null until the server says. */
+  /** Code profiles with a brain on the managers' machines; null until a server says. */
   readonly profiles: ReadonlyArray<string> | null;
   /** The server's default profile, the manager to show before the user picks one. */
   readonly serverDefaultProfile: string | null;
@@ -29,12 +37,13 @@ interface BrainstormStore {
   readonly lastManagerProfile: string | null;
   /** Profile whose brain custom spaces, Other and All use; null: the server picks. */
   readonly defaultProfile: string | null;
-  readonly setHiddenThreadKeys: (keys: ReadonlySet<string>) => void;
-  readonly setManagers: (input: {
-    readonly managerThreadKeyByProfile: Readonly<Record<string, string>>;
-    readonly profiles: ReadonlyArray<string>;
-    readonly serverDefaultProfile: string | null;
-  }) => void;
+  /** Each manager-hosting environment's report; the fields above merge them. */
+  readonly managersByEnvironment: Readonly<Record<string, EnvironmentManagers>>;
+  /** Records (or with null, forgets) what one environment hosts. */
+  readonly setEnvironmentManagers: (
+    environmentId: string,
+    managers: EnvironmentManagers | null,
+  ) => void;
   readonly setManagerThreadKey: (profileKey: string, key: string) => void;
   readonly setLastManagerProfile: (profile: string) => void;
   readonly setDefaultProfile: (profile: string | null) => void;
@@ -47,6 +56,32 @@ const sameRecord = (
   Object.keys(left).length === Object.keys(right).length &&
   Object.entries(left).every(([key, value]) => right[key] === value);
 
+const sameSet = (left: ReadonlySet<string>, right: ReadonlySet<string>) =>
+  left.size === right.size && [...left].every((key) => right.has(key));
+
+const sameManagers = (left: EnvironmentManagers | undefined, right: EnvironmentManagers) =>
+  left !== undefined &&
+  sameRecord(left.managerThreadKeyByProfile, right.managerThreadKeyByProfile) &&
+  left.profiles.join("\n") === right.profiles.join("\n") &&
+  left.serverDefaultProfile === right.serverDefaultProfile &&
+  sameSet(left.hiddenThreadKeys, right.hiddenThreadKeys);
+
+/** The lists' view of every hosting environment's managers together. */
+function mergeManagers(byEnvironment: Readonly<Record<string, EnvironmentManagers>>) {
+  const reports = Object.values(byEnvironment);
+  return {
+    managerThreadKeyByProfile: Object.assign(
+      {},
+      ...reports.map((report) => report.managerThreadKeyByProfile),
+    ) as Record<string, string>,
+    profiles:
+      reports.length === 0 ? null : [...new Set(reports.flatMap((report) => report.profiles))],
+    serverDefaultProfile:
+      reports.find((report) => report.serverDefaultProfile !== null)?.serverDefaultProfile ?? null,
+    hiddenThreadKeys: new Set(reports.flatMap((report) => [...report.hiddenThreadKeys])),
+  };
+}
+
 export const useBrainstormStore = create<BrainstormStore>()(
   persist(
     (set) => ({
@@ -56,21 +91,18 @@ export const useBrainstormStore = create<BrainstormStore>()(
       serverDefaultProfile: null,
       lastManagerProfile: null,
       defaultProfile: null,
-      setHiddenThreadKeys: (keys) =>
-        set((state) =>
-          state.hiddenThreadKeys.size === keys.size &&
-          [...keys].every((key) => state.hiddenThreadKeys.has(key))
-            ? state
-            : { hiddenThreadKeys: keys },
-        ),
-      setManagers: (input) =>
-        set((state) =>
-          sameRecord(state.managerThreadKeyByProfile, input.managerThreadKeyByProfile) &&
-          state.profiles?.join("\n") === input.profiles.join("\n") &&
-          state.serverDefaultProfile === input.serverDefaultProfile
-            ? state
-            : input,
-        ),
+      managersByEnvironment: {},
+      setEnvironmentManagers: (environmentId, managers) =>
+        set((state) => {
+          const current = state.managersByEnvironment[environmentId];
+          if (managers === null ? current === undefined : sameManagers(current, managers)) {
+            return state;
+          }
+          const { [environmentId]: _previous, ...others } = state.managersByEnvironment;
+          const managersByEnvironment =
+            managers === null ? others : { ...others, [environmentId]: managers };
+          return { managersByEnvironment, ...mergeManagers(managersByEnvironment) };
+        }),
       setManagerThreadKey: (profileKey, key) =>
         set((state) => ({
           managerThreadKeyByProfile: { ...state.managerThreadKeyByProfile, [profileKey]: key },

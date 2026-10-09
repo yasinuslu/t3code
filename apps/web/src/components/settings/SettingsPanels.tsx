@@ -589,6 +589,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.hostsManager !== DEFAULT_UNIFIED_SETTINGS.hostsManager
         ? ["Host the manager"]
         : []),
+      ...(settings.managerProfiles.length > 0 ? ["Managers hosted here"] : []),
       ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
       ...(settings.persistComposerContextStrip !==
       DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip
@@ -710,6 +711,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.autoResumeLimitedThreads,
       settings.snoozeLimitedThreads,
       settings.hostsManager,
+      settings.managerProfiles,
       settings.sidebarProjectGroupingMode,
       settings.sidebarProjectSortOrder,
       settings.sidebarWorkingShelfEnabled,
@@ -818,6 +820,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       hostsManager: DEFAULT_UNIFIED_SETTINGS.hostsManager,
+      managerProfiles: DEFAULT_UNIFIED_SETTINGS.managerProfiles,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
@@ -2034,6 +2037,48 @@ function FontFamilySettingsRow({
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
 
+function ManagerProfilesInput({
+  value,
+  onCommit,
+}: {
+  value: ReadonlyArray<string>;
+  onCommit: (profiles: string[]) => void;
+}) {
+  const text = value.join(", ");
+  const [draft, setDraft] = useState(text);
+  useEffect(() => {
+    setDraft(text);
+  }, [text]);
+  const commit = () => {
+    const profiles = [
+      ...new Set(
+        draft
+          .split(",")
+          .map((profile) => profile.trim())
+          .filter((profile) => profile.length > 0),
+      ),
+    ];
+    if (profiles.join(", ") !== text) onCommit(profiles);
+  };
+
+  return (
+    <Input
+      size="sm"
+      className="w-full sm:w-40"
+      placeholder="All"
+      autoCapitalize="off"
+      autoComplete="off"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+      }}
+      aria-label="Managers hosted here"
+    />
+  );
+}
+
 function AutoSettleDaysInput({
   value,
   onCommit,
@@ -2378,6 +2423,18 @@ export function GeneralSettingsPanel() {
               checked={settings.hostsManager}
               onCheckedChange={(checked) => updateSettings({ hostsManager: Boolean(checked) })}
               aria-label="Host the manager"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("manager-profiles")}
+          description="Code profiles whose managers run on this machine, comma separated. Put each profile's manager on the machine that does its work; when set, this machine runs only these."
+          settingKeys={["managerProfiles"]}
+          control={
+            <ManagerProfilesInput
+              value={settings.managerProfiles}
+              onCommit={(managerProfiles) => updateSettings({ managerProfiles })}
             />
           }
         />

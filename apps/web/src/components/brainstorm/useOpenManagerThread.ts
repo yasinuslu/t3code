@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
@@ -9,9 +10,11 @@ import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
 import { useThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
+import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
 import { formatEnvironmentQueryError } from "../../state/query";
+import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { SINGLE_MANAGER_KEY } from "./brainstorm.logic";
+import { SINGLE_MANAGER_KEY, resolveManagerEnvironmentId } from "./brainstorm.logic";
 
 function parseThreadKey(key: string) {
   const separator = key.indexOf(":");
@@ -59,14 +62,14 @@ function useOpenManagerCommand() {
 
 /**
  * The manager thread Home shows (see `useManagerProfile`), created on first
- * use on the environment that hosts the managers (see
- * `managerEnvironmentIdAtom`). The server makes each profile's manager in
+ * use on the environment that hosts that profile's manager (see
+ * `resolveManagerEnvironmentId`). The server makes each profile's manager in
  * that profile's brain project and returns the same thread after that, so
  * this only asks when the client does not know it yet.
  */
 export function useEnsureManagerThread(): ManagerThreadState {
-  const environmentId = useManagerEnvironmentId();
   const profile = useManagerProfile();
+  const environmentId = useManagerEnvironmentId(profile);
   // Until the server lists its profiles, the manager to open is not known.
   const profilesKnown = useBrainstormStore((state) => state.profiles !== null);
   const managerThreadKey = useUsableManagerKey(environmentId, profile);
@@ -94,6 +97,13 @@ export function useEnsureManagerThread(): ManagerThreadState {
   if (managerThreadKey !== null) return { _tag: "Ready", ...parseThreadKey(managerThreadKey) };
   if (failure !== null && failure.profile === profile) {
     return { _tag: "Failed", message: failure.message };
+  }
+  // Managers are split by profile and this one's machine has not connected.
+  if (environmentId === null && profilesKnown) {
+    return {
+      _tag: "Failed",
+      message: `${profile === null ? "The" : `The ${profile}`} manager's machine is not connected; the manager runs there.`,
+    };
   }
   if (phase === "offline" || phase === "error")
     return {
@@ -126,11 +136,17 @@ export function selectManagerProfile(profile: string | null): void {
  * Home's docked manager. Creates the manager first when it is new.
  */
 export function useOpenManagerThreadPage() {
-  const environmentId = useManagerEnvironmentId();
+  const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
+  const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const openManager = useOpenManagerCommand();
   const navigate = useNavigate();
   return useCallback(
     async (profile: string | null) => {
+      const environmentId = resolveManagerEnvironmentId(
+        primaryEnvironmentId,
+        serverConfigs,
+        profile,
+      );
       // Before the server lists its profiles, which manager is meant is not known yet.
       if (environmentId === null || useBrainstormStore.getState().profiles === null) {
         return openManagerHome();
@@ -145,7 +161,7 @@ export function useOpenManagerThreadPage() {
       if (key === null) return openManagerHome();
       await navigate({ to: "/$environmentId/$threadId", params: parseThreadKey(key) });
     },
-    [environmentId, navigate, openManager],
+    [navigate, openManager, primaryEnvironmentId, serverConfigs],
   );
 }
 

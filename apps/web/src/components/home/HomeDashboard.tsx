@@ -85,7 +85,9 @@ export function HomeDashboard() {
   }, []);
   const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
-  const managerEnvironmentId = useManagerEnvironmentId();
+  const managerProfile = useManagerProfile();
+  // Goals come from the brain of the manager in view.
+  const managerEnvironmentId = useManagerEnvironmentId(managerProfile);
   const brainstorm = useEnvironmentQuery(
     managerEnvironmentId === null
       ? null
@@ -99,7 +101,6 @@ export function HomeDashboard() {
     [activeSpace, brainstorm],
   );
   const manager = useEnsureManagerThread();
-  const managerProfile = useManagerProfile();
   const openManagerThreadPage = useOpenManagerThreadPage();
   const projects = useProjects();
 
