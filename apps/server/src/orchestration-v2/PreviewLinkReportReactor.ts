@@ -31,7 +31,8 @@ interface CompletedRun {
  * Links the previews an agent hands over in its final message. When a run completes, the URLs
  * in that run's last assistant message are checked against the preview status protocol, and
  * each origin that answers with a state is linked to the thread as `source: "report"`. Hosts
- * that do not implement the protocol are ordinary links and stay unlinked.
+ * that do not implement the protocol are ordinary links and stay unlinked, and so do previews
+ * the host already removed.
  */
 export class PreviewLinkReportReactor extends Context.Service<
   PreviewLinkReportReactor,
@@ -74,7 +75,7 @@ const make = Effect.gen(function* () {
       (url) =>
         previews.probe(url).pipe(
           Effect.flatMap((state) =>
-            state === "unknown"
+            state === "unknown" || state === "gone"
               ? Effect.void
               : crypto.randomUUIDv4.pipe(
                   Effect.flatMap((uuid) =>

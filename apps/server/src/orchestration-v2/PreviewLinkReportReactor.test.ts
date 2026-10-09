@@ -157,6 +157,7 @@ describe("PreviewLinkReportReactor", () => {
               "Docs at https://docs.example.org/guide and (http://localhost:5173/).",
               "Again https://t3code-branch.pv.example.org/other",
               "Already linked https://linked.pv.example.org",
+              "The old one https://removed.pv.example.org is gone",
             ].join("\n"),
           ),
           assistantMessage("still typing https://draft.pv.example.org", true),
@@ -172,6 +173,7 @@ describe("PreviewLinkReportReactor", () => {
           "https://t3code-branch.pv.example.org": "stopped",
           "https://linked.pv.example.org": "running",
           "http://localhost:5173": "running",
+          "https://removed.pv.example.org": "gone",
         },
       });
       yield* completeRun(fixture).pipe(Effect.provide(fixture.layer));
@@ -181,6 +183,7 @@ describe("PreviewLinkReportReactor", () => {
         "https://t3code-branch.pv.example.org/settings",
         "https://docs.example.org/guide",
         "http://localhost:5173",
+        "https://removed.pv.example.org",
       ]);
       assert.deepEqual(
         fixture.linked.map(({ url, source, threadId }) => ({ url, source, threadId })),
