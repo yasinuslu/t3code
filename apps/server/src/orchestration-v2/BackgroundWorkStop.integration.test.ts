@@ -444,3 +444,203 @@ it.effect("Stop reaches background work an earlier provider thread still runs", 
     }),
   ),
 );
+
+// A Claude session leaves a background command on its roster, then the next
+// run fails before its provider turn starts (the workspace folder was gone).
+// That run has no turn of its own, and Stop must still clear the strip.
+it.effect("Stop clears a roster left behind when the latest run failed before starting", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const cwd = yield* checkpointWorkspace("background-work-stop-failed-open");
+      const adapter: ProviderAdapterV2Shape = {
+        instanceId,
+        driver,
+        getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
+        planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
+        openSession: () => Effect.die("no provider session is live in this test"),
+      };
+      yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const threadId = ThreadId.make("thread:background-work-stop-failed-open");
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("create"),
+          threadId,
+          projectId: ProjectId.make("project:background-work-stop-failed-open"),
+          title: "Background work stop after failed open",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: cwd,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        const now = yield* DateTime.now;
+        const providerThreadId = ProviderThreadId.make("provider-thread:released");
+        const run = (ordinal: number, status: "completed" | "failed") => {
+          const runId = RunId.make(`run:${ordinal}`);
+          const attemptId = RunAttemptId.make(`attempt:${ordinal}`);
+          const nodeId = NodeId.make(`node:${ordinal}`);
+          const providerTurnId = ProviderTurnId.make(`provider-turn:${ordinal}`);
+          const events: Array<OrchestrationV2DomainEvent> = [
+            {
+              id: EventId.make(`run:${ordinal}`),
+              type: "run.created",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: runId,
+                threadId,
+                ordinal,
+                providerInstanceId: instanceId,
+                modelSelection,
+                providerThreadId,
+                userMessageId: MessageId.make(`message:${ordinal}`),
+                rootNodeId: nodeId,
+                activeAttemptId: attemptId,
+                status,
+                requestedAt: now,
+                startedAt: now,
+                completedAt: now,
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            },
+            {
+              id: EventId.make(`node:${ordinal}`),
+              type: "node.updated",
+              threadId,
+              runId,
+              occurredAt: now,
+              payload: {
+                id: nodeId,
+                threadId,
+                runId,
+                parentNodeId: null,
+                rootNodeId: nodeId,
+                kind: "root_turn",
+                status,
+                countsForRun: true,
+                providerThreadId,
+                providerTurnId: status === "completed" ? providerTurnId : null,
+                nativeItemRef: null,
+                runtimeRequestId: null,
+                checkpointScopeId: null,
+                startedAt: now,
+                completedAt: now,
+              },
+            },
+            {
+              id: EventId.make(`attempt:${ordinal}`),
+              type: "run-attempt.created",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: attemptId,
+                runId,
+                attemptOrdinal: 1,
+                rootNodeId: nodeId,
+                providerInstanceId: instanceId,
+                providerThreadId,
+                providerTurnId: status === "completed" ? providerTurnId : null,
+                reason: "initial",
+                status,
+                startedAt: now,
+                completedAt: now,
+              },
+            },
+          ];
+          // Only a run that reached its provider has a provider turn.
+          if (status === "completed") {
+            events.push({
+              id: EventId.make(`provider-turn:${ordinal}`),
+              type: "provider-turn.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: providerTurnId,
+                providerThreadId,
+                nodeId,
+                runAttemptId: attemptId,
+                nativeTurnRef: null,
+                ordinal,
+                status: "completed",
+                startedAt: now,
+                completedAt: now,
+              },
+            });
+          }
+          return { runId, events };
+        };
+        const completedRun = run(1, "completed");
+        const failedRun = run(2, "failed");
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make("provider-thread:released"),
+              type: "provider-thread.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: providerThreadId,
+                driver,
+                providerInstanceId: instanceId,
+                providerSessionId: null,
+                appThreadId: threadId,
+                ownerNodeId: null,
+                nativeThreadRef: null,
+                nativeConversationHeadRef: null,
+                status: "not_loaded",
+                firstRunOrdinal: 1,
+                lastRunOrdinal: 2,
+                handoffIds: [],
+                forkedFrom: null,
+                pendingBackgroundTasks: [
+                  { taskId: "background-commit", kind: "command", description: "git commit" },
+                ],
+                createdAt: now,
+                updatedAt: now,
+              },
+            },
+            ...completedRun.events,
+            ...failedRun.events,
+          ],
+        });
+        const before = yield* orchestrator.getThreadShell(threadId);
+        assert.deepEqual(
+          before?.pendingBackgroundTasks?.map((task) => task.taskId),
+          ["background-commit"],
+        );
+
+        yield* orchestrator.dispatch({
+          type: "run.interrupt",
+          commandId: CommandId.make("stop-background-work"),
+          threadId,
+          runId: failedRun.runId,
+        });
+        yield* worker.drain();
+
+        const after = yield* orchestrator.getThreadShell(threadId);
+        assert.deepEqual(after?.pendingBackgroundTasks ?? [], []);
+        const projection = yield* orchestrator.getThreadProjection(threadId);
+        assert.deepEqual(projection.providerThreads[0]?.pendingBackgroundTasks ?? [], []);
+        // Stop never rewrites how the failed run ended.
+        assert.equal(
+          projection.runs.find((candidate) => candidate.id === failedRun.runId)?.status,
+          "failed",
+        );
+      }).pipe(
+        Effect.provide(
+          makeOrchestratorV2ReplayLayerWithRegistry(
+            { name: "background-work-stop-failed-open" },
+            ProviderAdapterRegistry.makeSingleLayer(adapter),
+            { runEffectWorker: false },
+          ),
+        ),
+      );
+    }),
+  ),
+);

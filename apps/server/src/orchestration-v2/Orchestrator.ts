@@ -8040,11 +8040,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           activeProviderThreadId: projection.thread.activeProviderThreadId,
           runs: projection.runs,
         }).length > 0;
-      const providerTurn = projection.providerTurns.findLast(
-        (candidate) =>
-          candidate.runAttemptId === run?.activeAttemptId &&
-          (candidate.status === "running" || hasBackgroundWork),
-      );
+      // A run that failed before its provider turn started (its session could
+      // not open) has no turn of its own. Stop then targets the provider
+      // thread's latest turn, which owns the work the strip still shows.
+      const providerTurn =
+        projection.providerTurns.findLast(
+          (candidate) =>
+            candidate.runAttemptId === run?.activeAttemptId &&
+            (candidate.status === "running" || hasBackgroundWork),
+        ) ??
+        (hasBackgroundWork
+          ? projection.providerTurns.findLast(
+              (candidate) => candidate.providerThreadId === providerThread?.id,
+            )
+          : undefined);
       if (run === undefined || rootNode === undefined || providerThread === undefined) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
