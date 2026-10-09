@@ -60,6 +60,8 @@ interface PointerGesture {
 
 interface Props {
   readonly threadRef: ScopedThreadRef;
+  /** Names the thread that owns the preview, since an agent may open it unasked. */
+  readonly threadTitle: string | null;
   readonly miniPlayer: PreviewMiniPlayerState;
 }
 
@@ -81,12 +83,13 @@ const RESIZE_HANDLES: ReadonlyArray<{
 ];
 
 /** Floats the thread's browser tab or device stream over chat. */
-export function ThreadPreviewMiniPlayer({ threadRef, miniPlayer }: Props) {
+export function ThreadPreviewMiniPlayer({ threadRef, threadTitle, miniPlayer }: Props) {
   const { source } = miniPlayer;
   return source.kind === "browser" ? (
     <BrowserMiniPlayer
       key={source.tabId}
       threadRef={threadRef}
+      threadTitle={threadTitle}
       tabId={source.tabId}
       miniPlayer={miniPlayer}
     />
@@ -94,13 +97,19 @@ export function ThreadPreviewMiniPlayer({ threadRef, miniPlayer }: Props) {
     <DeviceMiniPlayer
       key={previewMiniPlayerSourceKey(source)}
       threadRef={threadRef}
+      threadTitle={threadTitle}
       source={source}
       miniPlayer={miniPlayer}
     />
   );
 }
 
-function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly tabId: string }) {
+function BrowserMiniPlayer({
+  threadRef,
+  threadTitle,
+  tabId,
+  miniPlayer,
+}: Props & { readonly tabId: string }) {
   const previewState = useThreadPreviewState(threadRef);
   const snapshot = previewState.sessions[tabId] ?? null;
   const runtimeTabId = previewRuntimeTabId(threadRef, previewState.serverEpoch, tabId);
@@ -142,6 +151,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
   return (
     <MiniPlayerShell
       threadRef={threadRef}
+      threadTitle={threadTitle}
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
       label="Floating browser preview"
@@ -199,6 +209,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
 
 function DeviceMiniPlayer({
   threadRef,
+  threadTitle,
   source,
   miniPlayer,
 }: Props & { readonly source: Extract<PreviewMiniPlayerSource, { kind: "device" }> }) {
@@ -228,6 +239,7 @@ function DeviceMiniPlayer({
   return (
     <MiniPlayerShell
       threadRef={threadRef}
+      threadTitle={threadTitle}
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
       label="Floating device preview"
@@ -263,6 +275,7 @@ function DeviceMiniPlayer({
  */
 function MiniPlayerShell({
   threadRef,
+  threadTitle,
   miniPlayer,
   sourceSize,
   label,
@@ -273,6 +286,7 @@ function MiniPlayerShell({
   children,
 }: {
   readonly threadRef: ScopedThreadRef;
+  readonly threadTitle: string | null;
   readonly miniPlayer: PreviewMiniPlayerState;
   readonly sourceSize: PreviewMiniPlayerSize;
   readonly label: string;
@@ -388,69 +402,63 @@ function MiniPlayerShell({
             borderRadius: radius,
           }}
         >
+          {/* Always visible: an agent can open this unasked, so the owner and the
+              way out must not hide behind a hover. Dragging the pill moves the player. */}
           <div
-            className="group pointer-events-auto absolute z-[49] size-3 touch-none cursor-grab active:cursor-grabbing"
+            className="pointer-events-auto absolute z-[49] flex h-8 max-w-[calc(100%-1rem)] touch-none cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 shadow-lg/20 backdrop-blur-xl active:cursor-grabbing"
             style={{ right: pillInset, top: pillInset }}
             onPointerDown={(event) => beginGesture(event, null)}
             onPointerMove={handlePointerMove}
             onPointerUp={endGesture}
             onPointerCancel={endGesture}
           >
-            <div
-              role={recording ? "status" : undefined}
-              aria-label={recording ? "Recording preview" : undefined}
-              aria-hidden={!recording}
-              className="absolute right-0 top-0 size-2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-            >
+            {recording ? (
               <span
-                className={cn(
-                  "block size-2 rounded-full shadow-sm ring-1 ring-background/70",
-                  recording
-                    ? "bg-destructive motion-safe:animate-status-pulse"
-                    : "bg-foreground/25",
-                )}
-              />
-            </div>
-            <div className="pointer-events-none absolute right-0 top-0 flex h-8 cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 opacity-0 shadow-lg/20 backdrop-blur-xl transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 active:cursor-grabbing">
-              {recording ? (
-                <span aria-hidden className="flex size-6 shrink-0 items-center justify-center">
-                  <span className="size-2 rounded-full bg-destructive motion-safe:animate-status-pulse" />
-                </span>
-              ) : null}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Open preview in right panel"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={onOpenInPanel}
-                    />
-                  }
-                >
-                  <PanelRightIcon />
-                </TooltipTrigger>
-                <TooltipPopup side="top">Open in right panel</TooltipPopup>
-              </Tooltip>
-              {pillActions}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Close floating preview"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={close}
-                    />
-                  }
-                >
-                  <XIcon />
-                </TooltipTrigger>
-                <TooltipPopup side="top">Close floating preview</TooltipPopup>
-              </Tooltip>
-            </div>
+                role="status"
+                aria-label="Recording preview"
+                className="flex size-6 shrink-0 items-center justify-center"
+              >
+                <span className="size-2 rounded-full bg-destructive motion-safe:animate-status-pulse" />
+              </span>
+            ) : null}
+            {threadTitle ? (
+              <span className="min-w-0 truncate px-1.5 text-xs text-muted-foreground">
+                {threadTitle}
+              </span>
+            ) : null}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Open preview in right panel"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={onOpenInPanel}
+                  />
+                }
+              >
+                <PanelRightIcon />
+              </TooltipTrigger>
+              <TooltipPopup side="top">Open in right panel</TooltipPopup>
+            </Tooltip>
+            {pillActions}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Close floating preview"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={close}
+                  />
+                }
+              >
+                <XIcon />
+              </TooltipTrigger>
+              <TooltipPopup side="top">Close floating preview</TooltipPopup>
+            </Tooltip>
           </div>
 
           <div className="absolute inset-0 z-[47] rounded-[inherit] bg-muted shadow-2xl/35" />

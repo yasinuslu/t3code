@@ -11566,10 +11566,16 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             </div>
 
-            {activeThreadRef && activePreviewMiniPlayer && previewMiniPlayerVisible ? (
+            {/* Home covers this view but the floating player sits above Home's layer,
+                where it would hide the manager's composer, so it waits until Home closes. */}
+            {activeThreadRef &&
+            activePreviewMiniPlayer &&
+            previewMiniPlayerVisible &&
+            !coveredByHome ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(activePreviewMiniPlayer.source)}`}
                 threadRef={activeThreadRef}
+                threadTitle={activeThread?.title ?? null}
                 miniPlayer={activePreviewMiniPlayer}
               />
             ) : null}
