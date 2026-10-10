@@ -105,7 +105,9 @@ export function storageCleanupThreadIdle(thread: OrchestrationV2ThreadShell, now
     thread.activeRunId === null &&
     // Shell status is the latest run status, so a thread whose last turn ended is idle too.
     STORAGE_CLEANUP_IDLE_STATUSES.has(thread.status) &&
-    (thread.pendingBackgroundTasks?.length ?? 0) === 0 &&
+    // Settling stops a thread's background work, so a roster entry left on a settled
+    // thread is stale (a provider that never reported the command ending).
+    ((thread.pendingBackgroundTasks?.length ?? 0) === 0 || thread.settledOverride === "settled") &&
     thread.pendingRuntimeRequest === null &&
     !threadHasQueuedTurnStart(thread, now)
   );
@@ -221,13 +223,14 @@ export const make = Effect.gen(function* () {
    * mirror does not carry deletions).
    */
   const finishBranch = Effect.fn("StorageCleanup.finishBranch")(function* (input: {
-    readonly threadId: ThreadId;
+    /** Null for a worktree no thread uses: nothing to move. */
+    readonly threadId: ThreadId | null;
     readonly worktreePath: string;
     readonly branch: string;
     readonly workspaceRoot: string;
     readonly rebind: boolean;
   }) {
-    if (input.rebind) {
+    if (input.rebind && input.threadId !== null) {
       yield* engine
         .dispatch({
           type: "thread.metadata.update",
@@ -676,6 +679,65 @@ export const make = Effect.gen(function* () {
     );
   });
   /**
+   * A T3 worktree that no thread uses (its thread was deleted, or it was made by hand): the
+   * same checks as a thread's, then the worktree and its branch go, locally and on every remote.
+   */
+  const finishOrphan = Effect.fn("StorageCleanup.finishOrphan")(function* (
+    worktreePath: string,
+    into: string | null,
+  ) {
+    const refuse = (message: string) => Effect.fail(new WorktreeFinishError({ message }));
+    const root = yield* fs.realPath(config.worktreesDir);
+    if (!inside(root, worktreePath) || !(yield* fs.exists(worktreePath))) {
+      return yield* refuse(`No thread works in ${worktreePath}, and it is not a T3 worktree.`);
+    }
+    // A linked worktree has a .git file. Never remove a main checkout.
+    if ((yield* fs.stat(path.join(worktreePath, ".git"))).type !== "File") {
+      return yield* refuse(`${worktreePath} is not a linked worktree.`);
+    }
+    const status = yield* git.statusDetailsLocal(worktreePath);
+    const branch = status.branch;
+    if (!status.isRepo || branch === null) {
+      return yield* refuse(`${worktreePath} has no branch checked out.`);
+    }
+    if (status.hasWorkingTreeChanges) {
+      return yield* refuse(
+        `${worktreePath} has uncommitted changes. Commit or discard them first.`,
+      );
+    }
+    if (hasTerminal(worktreePath)) {
+      return yield* refuse(`A terminal is still open in ${worktreePath}.`);
+    }
+    const commonDir = yield* git.execute({
+      operation: "StorageCleanup.commonDir",
+      cwd: worktreePath,
+      args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    });
+    const workspaceRoot = path.dirname(commonDir.stdout.trim());
+    const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
+    const integrated = yield* mergedInto({
+      repositoryCwd: workspaceRoot,
+      worktreePath,
+      commit: head.commitSha,
+      base: into,
+    });
+    if (!integrated.merged) {
+      return yield* refuse(`${branch} is not merged into ${integrated.ref}. Merge it first.`);
+    }
+    // Tracked files are clean and merged; ignored build output and installs go with it.
+    yield* withWorkspaceLease(
+      worktreePath,
+      git.removeWorktree({ cwd: workspaceRoot, path: worktreePath, force: true }),
+    );
+    yield* gitManager.invalidateStatus(workspaceRoot);
+    yield* finishBranch({ threadId: null, worktreePath, branch, workspaceRoot, rebind: false });
+    return {
+      status: "finished",
+      message: `No thread used it. Worktree removed and branch ${branch} deleted.`,
+    } satisfies WorktreeFinishResult;
+  });
+
+  /**
    * Finishes a thread's worktree on request (`nep finish`, an agent's last
    * step): refuses uncommitted changes and work not yet merged into `into`
    * (default: a merged PR's base, else the default branch). Once the thread is
@@ -704,11 +766,8 @@ export const make = Effect.gen(function* () {
       }
       const thread = matches[0];
       if (thread === undefined) {
-        return yield* refuse(
-          input.threadId !== null
-            ? `Thread ${input.threadId} was not found.`
-            : `No thread works in ${requestedPath}.`,
-        );
+        if (requestedPath === null) return yield* refuse(`Thread ${input.threadId} was not found.`);
+        return yield* finishOrphan(requestedPath, input.into);
       }
       const project = snapshot.projects.find((entry) => entry.id === thread.projectId);
       if (project === undefined) return yield* refuse("The thread's project was not found.");
