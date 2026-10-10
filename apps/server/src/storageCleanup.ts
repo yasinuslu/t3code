@@ -542,10 +542,22 @@ export const make = Effect.gen(function* () {
           )
         )
           return;
+        // Finished work is removed with force: git refuses a worktree with submodules
+        // or ignored build output otherwise. Submodules must be clean too.
+        if (finishing) {
+          const deepStatus = yield* git.execute({
+            operation: "StorageCleanup.submoduleStatus",
+            cwd: worktreePath,
+            args: ["status", "--porcelain", "--ignore-submodules=none"],
+          });
+          if (deepStatus.stdout.trim() !== "") {
+            return yield* wait("uncommitted changes, including inside a submodule");
+          }
+        }
         yield* git.removeWorktree({
           cwd: project.workspaceRoot,
           path: worktreePath,
-          force: finishing && keepsIgnoredFiles,
+          force: finishing,
         });
         yield* gitManager.invalidateStatus(project.workspaceRoot);
         yield* Effect.logInfo("storage cleanup removed worktree", { threadId: thread.id });
@@ -579,7 +591,11 @@ export const make = Effect.gen(function* () {
       }).pipe(
         (effect) => withWorkspaceLease(worktreePath, effect),
         Effect.catch((error) =>
-          Effect.logDebug("storage cleanup skipped worktree", { threadId: thread.id, error }),
+          wait(`cleanup failed: ${error.message}`).pipe(
+            Effect.andThen(
+              Effect.logDebug("storage cleanup skipped worktree", { threadId: thread.id, error }),
+            ),
+          ),
         ),
       );
     }
@@ -748,6 +764,14 @@ export const make = Effect.gen(function* () {
     });
     if (!integrated.merged) {
       return yield* refuse(`${branch} is not merged into ${integrated.ref}. Merge it first.`);
+    }
+    const deepStatus = yield* git.execute({
+      operation: "StorageCleanup.submoduleStatus",
+      cwd: worktreePath,
+      args: ["status", "--porcelain", "--ignore-submodules=none"],
+    });
+    if (deepStatus.stdout.trim() !== "") {
+      return yield* refuse(`${worktreePath} has uncommitted changes inside a submodule.`);
     }
     // Tracked files are clean and merged; ignored build output and installs go with it.
     yield* withWorkspaceLease(
