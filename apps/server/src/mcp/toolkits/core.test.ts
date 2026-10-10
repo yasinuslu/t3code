@@ -30,6 +30,7 @@ import { WorktreeToolkit } from "./worktree/tools.ts";
 import { DeviceToolkit } from "./device/tools.ts";
 import { PullRequestsToolkit } from "./pullRequests/tools.ts";
 import { PreviewLinksToolkit } from "./previewLinks/tools.ts";
+import { ThreadStatusToolkit } from "./threadStatus/tools.ts";
 import {
   resolveT3McpToolDefinition,
   resolveT3McpToolPresentation,
@@ -52,6 +53,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     DeviceToolkit,
     PullRequestsToolkit,
     PreviewLinksToolkit,
+    ThreadStatusToolkit,
   ]) {
     for (const tool of Object.values(toolkit.tools)) {
       expect(names.has(tool.name)).toBe(false);

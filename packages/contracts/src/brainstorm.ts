@@ -56,6 +56,8 @@ export const BrainstormThreadReportInput = Schema.Struct({
   threadId: ThreadId,
   /** The run the client last saw; a new run is a new report. */
   runId: Schema.optional(Schema.NullOr(RunId)),
+  /** The status update the client last saw; a new one is a new report. */
+  statusUpdatedAt: Schema.optional(Schema.String),
 });
 export type BrainstormThreadReportInput = typeof BrainstormThreadReportInput.Type;
 

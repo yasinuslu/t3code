@@ -51,6 +51,8 @@ import { PullRequestsToolkitHandlersLive } from "./toolkits/pullRequests/handler
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import { PreviewLinksToolkitHandlersLive } from "./toolkits/previewLinks/handlers.ts";
 import { PreviewLinksToolkit } from "./toolkits/previewLinks/tools.ts";
+import { ThreadStatusHandlersLive } from "./toolkits/threadStatus/handlers.ts";
+import { ThreadStatusToolkit } from "./toolkits/threadStatus/tools.ts";
 import { BrainstormToolkitHandlersLive } from "./toolkits/brainstorm/handlers.ts";
 import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
 import { PeersToolkitHandlersLive } from "./toolkits/peers/handlers.ts";
@@ -706,6 +708,10 @@ const PreviewLinksToolkitRegistrationLive = McpServer.toolkit(PreviewLinksToolki
   Layer.provide(PreviewLinksToolkitHandlersLive),
 );
 
+const ThreadStatusToolkitRegistrationLive = McpServer.toolkit(ThreadStatusToolkit).pipe(
+  Layer.provide(ThreadStatusHandlersLive),
+);
+
 export const BrainstormToolkitRegistrationLive = McpServer.toolkit(BrainstormToolkit).pipe(
   Layer.provide(BrainstormToolkitHandlersLive),
 );
@@ -746,6 +752,7 @@ export const layer = Layer.mergeAll(
   WorktreeToolkitRegistrationLive,
   PullRequestsToolkitRegistrationLive,
   PreviewLinksToolkitRegistrationLive,
+  ThreadStatusToolkitRegistrationLive,
   BrainstormToolkitRegistrationLive,
   PeersToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,

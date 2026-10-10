@@ -24,6 +24,10 @@ threads from every connected machine are grouped:
 Each card shows the thread's state, project, profile and machine, then **Try it** for the dev
 servers and preview pages the thread points at, **Open thread**, and its pull requests. Under them
 are the first lines of the thread's latest report, its screenshots, and any open questions it asked.
+Click a screenshot to see all of the card's screenshots full size; arrow keys or a swipe move between
+them. Agents can keep the card current while they work with the `thread_status_update` tool, and its
+screenshots are stored with the thread, so they survive a deleted worktree. The same card sits at the
+top of the thread itself; collapse it to one line with its header.
 **Goals** from the active space's brain follow (every brain's under **All**), with their progress and
 open tasks.
 

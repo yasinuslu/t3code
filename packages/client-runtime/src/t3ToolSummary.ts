@@ -385,6 +385,13 @@ export function summarizeT3ToolCalls(
     case "link-preview":
       label = phrase("Linked", "link", quantity(selected.length, "preview"));
       break;
+    case "status-update":
+      label = phrase(
+        "Updated",
+        "update",
+        `the thread status${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
     case "unlink-preview":
       label = phrase("Unlinked", "unlink", quantity(selected.length, "preview"));
       break;

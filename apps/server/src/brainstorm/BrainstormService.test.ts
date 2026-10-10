@@ -112,6 +112,7 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
   readonly threads: ReadonlyArray<OrchestrationV2ThreadShell>;
   /** Assistant answers by run ordinal, oldest first; one thread is enough here. */
   readonly answersByRun?: ReadonlyArray<ReadonlyArray<{ text: string; streaming?: boolean }>>;
+  readonly statusReport?: { readonly text: string; readonly updatedAt: string };
 }) {
   const projects = yield* Ref.make(input.projects);
   const threads = yield* Ref.make(input.threads);
@@ -167,8 +168,14 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
         const runs = (input.answersByRun ?? []).map((_, index) => ({
           id: RunId.make(`run-${index + 1}`),
           ordinal: index + 1,
+          // Run n starts at hour n of the day.
+          requestedAt: at(`2026-10-06T0${index + 1}:00:00.000Z`),
+          startedAt: null,
         }));
-        if (fields.includes("runs")) return Effect.succeed({ thread: {}, runs } as never);
+        if (fields.includes("runs")) {
+          const thread = input.statusReport ? { statusReport: input.statusReport } : {};
+          return Effect.succeed({ thread, runs } as never);
+        }
         const run = runs.find((candidate) => filter?.messageRunIds?.includes(candidate.id));
         const answers = run ? (input.answersByRun?.[run.ordinal - 1] ?? []) : [];
         return Effect.succeed({
@@ -387,6 +394,36 @@ describe("BrainstormService threadReport", () => {
         runId: "run-2",
         text: "## Done\n- final report",
       });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("prefers the status the agent set during or after the reporting run", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        projects: [],
+        threads: [],
+        answersByRun: [[{ text: "first report" }], [{ text: "second report" }]],
+        statusReport: { text: "## Status\n- set in run 2", updatedAt: "2026-10-06T02:30:00.000Z" },
+      });
+      expect(yield* harness.brainstorm.threadReport(ThreadId.make("t"))).toEqual({
+        threadId: "t",
+        runId: "run-2",
+        text: "## Status\n- set in run 2",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("lets a newer run's answer replace an older status", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        projects: [],
+        threads: [],
+        answersByRun: [[{ text: "first report" }], [{ text: "second report" }]],
+        statusReport: { text: "set in run 1", updatedAt: "2026-10-06T01:30:00.000Z" },
+      });
+      expect((yield* harness.brainstorm.threadReport(ThreadId.make("t"))).text).toBe(
+        "second report",
+      );
     }).pipe(Effect.scoped),
   );
 

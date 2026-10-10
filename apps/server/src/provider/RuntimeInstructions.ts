@@ -6,6 +6,10 @@ const PREVIEW_LINKING_INSTRUCTIONS = `<preview_linking>
 When the t3-code MCP server exposes link_preview and you start or hand the user a preview of your work (a dev server or preview URL they can open), call link_preview with it so it shows on the thread. Linking again is safe.
 </preview_linking>`;
 
+const STATUS_UPDATE_INSTRUCTIONS = `<thread_status>
+When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, screenshots of the change by absolute path, and what the user owes, if anything. Each call replaces the last.
+</thread_status>`;
+
 /**
  * Shared runtime context; omit model and effort when the harness manages them dynamically.
  * `modelName` is the display name users see in the model picker; `model` is the slug.
@@ -24,7 +28,7 @@ export function buildRuntimeInstructions(runtime: {
     modelName && modelName !== model ? `${modelName} (model slug: ${model})` : model;
   const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${modelLabel}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
-  return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}\n\n${PREVIEW_LINKING_INSTRUCTIONS}`;
+  return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}\n\n${PREVIEW_LINKING_INSTRUCTIONS}\n\n${STATUS_UPDATE_INSTRUCTIONS}`;
 }
 
 function toSingleLine(value: string): string {
