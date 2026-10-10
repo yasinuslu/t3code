@@ -553,6 +553,15 @@ type MessagesTimelineRowContent =
       active: boolean;
     }
   | {
+      /** Toggle for the history before the latest compaction. */
+      kind: "compacted-history";
+      id: string;
+      /** When the compaction that ends this history happened. */
+      createdAt: string;
+      hiddenMessageCount: number;
+      expanded: boolean;
+    }
+  | {
       kind: "message";
       id: string;
       createdAt: string;
@@ -794,6 +803,47 @@ function timelineEntryStartsResponse(entry: TimelineEntry): boolean {
  */
 function lastResponseBoundaryIndex(timelineEntries: ReadonlyArray<TimelineEntry>): number {
   return timelineEntries.findLastIndex(timelineEntryStartsResponse);
+}
+
+export interface CompactionBoundary {
+  /** First entry that stays visible; everything before it is compacted history. */
+  readonly cutIndex: number;
+  readonly compactionEntryId: string;
+  readonly compactedAt: string;
+  readonly hiddenMessageCount: number;
+}
+
+/**
+ * Where the history before the latest settled compaction ends. The cut moves
+ * back to the prompt that started the compacting response, so a compaction
+ * inside a turn never splits that turn. Null when nothing precedes it.
+ */
+export function latestCompactionBoundary(
+  timelineEntries: ReadonlyArray<TimelineEntry>,
+): CompactionBoundary | null {
+  const compactionIndex = timelineEntries.findLastIndex(
+    (entry) =>
+      entry.kind === "work" &&
+      entry.entry.sourceActivityKind === "context-compaction" &&
+      entry.entry.toolLifecycleStatus === "completed",
+  );
+  if (compactionIndex < 0) return null;
+  const responseStart = timelineEntries.findLastIndex(
+    (entry, index) => index <= compactionIndex && timelineEntryStartsResponse(entry),
+  );
+  const cutIndex = responseStart < 0 ? compactionIndex : responseStart;
+  if (cutIndex === 0) return null;
+  const compaction = timelineEntries[compactionIndex]!;
+  let hiddenMessageCount = 0;
+  for (let index = 0; index < cutIndex; index += 1) {
+    if (timelineEntries[index]!.kind === "message") hiddenMessageCount += 1;
+  }
+  return {
+    cutIndex,
+    compactionEntryId: compaction.id,
+    compactedAt: compaction.createdAt,
+    hiddenMessageCount,
+  };
 }
 
 function deriveActiveVisualResponseRunIds(input: {
@@ -1209,10 +1259,32 @@ export function deriveMessagesTimelineRows(input: {
   liveAgentTaskIds?: ReadonlySet<string> | undefined;
   /** Live bootstrap progress. Renders a stage card under the first user message. */
   worktreeSetup?: WorktreeSetupSnapshot | null;
+  /** Show the history before the latest compaction instead of one summary row. */
+  compactedHistoryExpanded?: boolean;
 }): MessagesTimelineRow[] {
-  const timelineEntries = withoutSubagentDelegationRows(
+  const allTimelineEntries = withoutSubagentDelegationRows(
     settleSupersededReasoning(input.timelineEntries),
   );
+  const compactionBoundary = latestCompactionBoundary(allTimelineEntries);
+  const compactedHistoryExpanded = input.compactedHistoryExpanded === true;
+  const timelineEntries =
+    compactionBoundary === null || compactedHistoryExpanded
+      ? allTimelineEntries
+      : allTimelineEntries.slice(compactionBoundary.cutIndex);
+  const compactedHistoryRow: MessagesTimelineRow | null =
+    compactionBoundary === null
+      ? null
+      : {
+          kind: "compacted-history",
+          id: `compacted-history:${compactionBoundary.compactionEntryId}`,
+          createdAt: compactionBoundary.compactedAt,
+          hiddenMessageCount: compactionBoundary.hiddenMessageCount,
+          expanded: compactedHistoryExpanded,
+        };
+  // The toggle sits where the compacted history ends, so expanding it opens
+  // the history above the toggle and the current segment stays in place.
+  const compactedHistoryRowBeforeEntryId =
+    compactionBoundary === null ? null : allTimelineEntries[compactionBoundary.cutIndex]!.id;
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
     if (summary.assistantMessageId) {
@@ -1377,6 +1449,10 @@ export function deriveMessagesTimelineRows(input: {
     const timelineEntry = timelineEntries[index];
     if (!timelineEntry) {
       continue;
+    }
+
+    if (compactedHistoryRow !== null && timelineEntry.id === compactedHistoryRowBeforeEntryId) {
+      nextRows.push(compactedHistoryRow);
     }
 
     if (input.isWorking && index === activeTurnHeaderIndex) {
@@ -2011,6 +2087,15 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "context-compaction": {
       const bc = b as typeof a;
       return a.createdAt === bc.createdAt && a.label === bc.label && a.active === bc.active;
+    }
+
+    case "compacted-history": {
+      const bh = b as typeof a;
+      return (
+        a.createdAt === bh.createdAt &&
+        a.hiddenMessageCount === bh.hiddenMessageCount &&
+        a.expanded === bh.expanded
+      );
     }
 
     case "proposed-plan":
