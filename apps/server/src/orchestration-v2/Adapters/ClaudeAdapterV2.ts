@@ -7143,7 +7143,8 @@ export function makeClaudeAdapterV2(
             cwd: turnInput.runtimePolicy.cwd,
             attachmentsDir,
             settings: adapterOptions.settings,
-            environment: sessionEnvironment,
+            // Tools the agent runs (e.g. `nep t3 ship`) can address the thread that ran them.
+            environment: { ...sessionEnvironment, T3CODE_THREAD_ID: turnInput.threadId },
             hooks: { UserPromptSubmit: [{ hooks: [onUserPromptSubmit] }] },
             tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
             ...mcpOverrides,
