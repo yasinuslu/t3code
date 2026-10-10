@@ -137,6 +137,8 @@ export interface EnvironmentThreadShell {
   readonly branchPullRequest?: ThreadLinkedPullRequest | null;
   /** Previews (running builds) of this thread's work, oldest first; absent on client-built shells. */
   readonly previewLinks?: ReadonlyArray<ThreadPreviewLink>;
+  /** When the agent last set the thread's status report; absent until one does. */
+  readonly statusUpdatedAt?: string;
   /**
    * Server-tracked visited watermark. `undefined` means the environment's
    * server predates visited tracking and clients should fall back to any
@@ -243,6 +245,7 @@ export function presentThreadShell(
     linkedPullRequest: thread.linkedPullRequest ?? null,
     branchPullRequest: thread.branchPullRequest ?? null,
     previewLinks: thread.previewLinks ?? NO_PREVIEW_LINKS,
+    ...(thread.statusUpdatedAt === undefined ? {} : { statusUpdatedAt: thread.statusUpdatedAt }),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,
     activeProviderThreadId: thread.activeProviderThreadId,

@@ -21,6 +21,7 @@ const REPORT = `Code profiles are built, tested and pushed, and running in a dev
 ![yu badge](/home/me/shots/yu%20badge.png)
 [import scan](/home/me/shots/import-scan.png)
 [a doc](/home/me/notes.md)
+![Stage, before and after](attachment:thread-1-0b7badca-606b-48c8-9102-ec8261705fcf)
 
 \`\`\`sh
 curl http://localhost:9999/ignored
@@ -47,6 +48,10 @@ describe("digestThreadReport", () => {
     expect(digest.screenshots).toEqual([
       { path: "/home/me/shots/yu badge.png", alt: "yu badge" },
       { path: "/home/me/shots/import-scan.png", alt: "import scan" },
+      {
+        attachmentId: "thread-1-0b7badca-606b-48c8-9102-ec8261705fcf",
+        alt: "Stage, before and after",
+      },
     ]);
     expect(digest.questions).toEqual([
       'Fix the brief "auto" label after a fresh load?',

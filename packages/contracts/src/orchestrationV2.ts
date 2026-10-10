@@ -49,6 +49,7 @@ import {
   ThreadPullRequestWatch,
 } from "./threadPullRequest.ts";
 import { ThreadPreviewLink, ThreadPreviewLinkSource } from "./threadPreviewLink.ts";
+import { ThreadStatusReport } from "./threadStatusReport.ts";
 import {
   ProviderApprovalDecision,
   ProviderApprovalOption,
@@ -374,6 +375,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   /** Previews (running builds) of this thread's work; optional so older servers still decode. */
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
+  /** The status its agent last set (`thread_status_update`); absent until one does. */
+  statusReport: Schema.optional(ThreadStatusReport),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   lineage: OrchestrationV2AppThreadLineage,
@@ -1769,6 +1772,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   /** Previews (running builds) of this thread's work; optional so older servers still decode. */
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
+  /** When the agent last set the thread's status report; the text stays server-side. */
+  statusUpdatedAt: Schema.optional(IsoDateTime),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
@@ -2677,6 +2682,13 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     url: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.status-report.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    /** Replaces the previous report; its screenshots must already be stored attachments. */
+    text: TrimmedNonEmptyString,
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),

@@ -12,6 +12,8 @@ const MAX_ZOOM = 8;
 
 export interface ZoomableImageHandle {
   pan: (key: string) => boolean;
+  /** True while zoomed past fit, when a drag pans instead of turning the page. */
+  isZoomed: () => boolean;
 }
 
 /** Zooms around the pointer and keeps the whole image accessible by dragging or scrolling. */
@@ -56,6 +58,7 @@ export function ZoomableImage({
   useImperativeHandle(
     ref,
     () => ({
+      isZoomed: () => zoomRef.current > 1,
       pan(key) {
         const viewport = viewportRef.current;
         if (!viewport || zoomRef.current <= 1) return false;

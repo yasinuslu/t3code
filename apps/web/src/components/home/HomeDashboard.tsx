@@ -44,7 +44,13 @@ import {
   useEnsureManagerThread,
   useOpenManagerThreadPage,
 } from "../brainstorm/useOpenManagerThread";
-import { type Verdict, digestThreadReport, homeVerdict } from "./home.logic";
+import { type Verdict, homeVerdict } from "./home.logic";
+import {
+  ThreadReportBody,
+  ThreadReportLinks,
+  WORK_REASON_LOOK,
+  useThreadReport,
+} from "./ThreadReportCard";
 
 /** Time labels move on while the page stays open; a coarse tick is enough. */
 const CLOCK_TICK_MS = 30_000;
@@ -55,17 +61,6 @@ const CARD_GROUPS: ReadonlyArray<{ readonly group: WorkGroup; readonly title: st
   { group: "working", title: "Working" },
   { group: "review", title: "Ready for review" },
 ];
-
-const REASON: Readonly<Record<WorkReason, { readonly label: string; readonly dot: string }>> = {
-  approval: { label: "Waiting for your approval", dot: "bg-warning" },
-  input: { label: "Asked you a question", dot: "bg-warning" },
-  failed: { label: "Failed", dot: "bg-destructive" },
-  limited: { label: "Hit a usage limit", dot: "bg-destructive" },
-  working: { label: "Working", dot: "bg-info" },
-  waiting: { label: "Waiting on background work", dot: "bg-info/60" },
-  ready: { label: "Finished, not settled", dot: "bg-success" },
-  settled: { label: "Settled", dot: "bg-muted-foreground/50" },
-};
 
 const VERDICT_LOOK: Readonly<
   Record<Verdict["tone"], { readonly lead: string; readonly bar: string }>
@@ -253,7 +248,7 @@ function WorkCard(props: {
   readonly primaryEnvironmentId: EnvironmentId | null;
 }) {
   const { thread, reason, lastActivityAt } = props.item;
-  const look = REASON[reason];
+  const look = WORK_REASON_LOOK[reason];
   const projects = useProjects();
   const projectTitle =
     projects.find(
@@ -269,33 +264,7 @@ function WorkCard(props: {
     props.primaryEnvironmentId !== null && thread.environmentId !== props.primaryEnvironmentId
       ? (environment?.label ?? "another machine")
       : null;
-  const runId = thread.latestRun?.runId ?? null;
-  const report = useEnvironmentQuery(
-    runId === null
-      ? null
-      : brainstormEnvironment.threadReport({
-          environmentId: thread.environmentId,
-          input: { threadId: thread.id, runId },
-        }),
-  ).data;
-  const digest = useMemo(() => digestThreadReport(report?.text), [report?.text]);
-  const previews = useEnvironmentQuery(
-    previewEnvironment.list({
-      environmentId: thread.environmentId,
-      input: { threadId: thread.id },
-    }),
-  ).data;
-  const tryUrls = useMemo(() => {
-    const urls = new Set<string>();
-    for (const session of previews?.sessions ?? []) {
-      if (session.navStatus._tag !== "Idle") urls.add(session.navStatus.url);
-    }
-    for (const url of digest.tryUrls) urls.add(url);
-    return [...urls].slice(0, 2);
-  }, [digest.tryUrls, previews]);
-  const pullRequests = (thread.pullRequests ?? []).filter(
-    (pullRequest) => pullRequest.source !== "stack-dismissed",
-  );
+  const { digest, tryUrls, pullRequests } = useThreadReport(thread);
 
   return (
     <article
@@ -329,18 +298,7 @@ function WorkCard(props: {
           </Badge>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {tryUrls.map((url) => (
-          <Button
-            key={url}
-            size="sm"
-            variant="default"
-            render={<a href={url} target="_blank" rel="noopener noreferrer" />}
-          >
-            <PlayIcon />
-            Try it: {url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-          </Button>
-        ))}
+      <ThreadReportLinks tryUrls={tryUrls} pullRequests={pullRequests}>
         <Button
           size="sm"
           variant="outline"
@@ -354,79 +312,12 @@ function WorkCard(props: {
           <MessagesSquareIcon />
           Open thread
         </Button>
-        {pullRequests.map((pullRequest) => (
-          <Button
-            key={`${pullRequest.repository}#${pullRequest.number}`}
-            size="sm"
-            variant="ghost-muted"
-            render={<a href={pullRequest.url} target="_blank" rel="noopener noreferrer" />}
-          >
-            <ExternalLinkIcon />#{pullRequest.number}
-            {pullRequest.snapshot ? ` ${pullRequest.snapshot.state}` : ""}
-          </Button>
-        ))}
-      </div>
-      {digest.summary ? (
-        <p className="line-clamp-3 text-sm leading-relaxed">{digest.summary}</p>
-      ) : null}
-      {digest.bullets.length > 0 ? (
-        <ul className="list-disc space-y-0.5 ps-5 text-muted-foreground text-sm">
-          {digest.bullets.map((bullet) => (
-            <li key={bullet}>
-              <span className="line-clamp-2">{bullet}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {digest.screenshots.length > 0 ? (
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Screenshots">
-          {digest.screenshots.map((shot) => (
-            <ScreenshotThumb
-              key={shot.path}
-              environmentId={thread.environmentId}
-              threadId={thread.id}
-              path={shot.path}
-              alt={shot.alt}
-            />
-          ))}
-        </div>
-      ) : null}
-      {digest.questions.length > 0 ? (
-        <div className="rounded-md border-warning/60 border-s-3 bg-warning-surface px-3 py-2 text-sm">
-          {digest.questions.map((question) => (
-            <p key={question}>{question}</p>
-          ))}
-        </div>
-      ) : null}
+      </ThreadReportLinks>
+      <ThreadReportBody environmentId={thread.environmentId} threadId={thread.id} digest={digest} />
       {thread.branch ? (
         <p className="truncate font-mono text-muted-foreground text-xs">{thread.branch}</p>
       ) : null}
     </article>
-  );
-}
-
-/** A screenshot the thread's report points at, served from the thread's machine. */
-function ScreenshotThumb(props: {
-  readonly environmentId: EnvironmentId;
-  readonly threadId: EnvironmentThreadShell["id"];
-  readonly path: string;
-  readonly alt: string;
-}) {
-  const resource = useMemo(
-    () => ({ _tag: "media-file" as const, threadId: props.threadId, path: props.path }),
-    [props.path, props.threadId],
-  );
-  const asset = useAssetUrlState(props.environmentId, resource);
-  if (asset._tag !== "Success") return null;
-  return (
-    <a href={asset.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-      <img
-        src={asset.url}
-        alt={props.alt}
-        loading="lazy"
-        className="h-24 rounded-md border object-cover"
-      />
-    </a>
   );
 }
 
@@ -437,7 +328,10 @@ function DoneRow(props: { readonly item: WorkItem<EnvironmentThreadShell>; reado
       className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-sm"
       data-work-thread={thread.id}
     >
-      <span aria-hidden className={cn("size-2 shrink-0 rounded-full", REASON.settled.dot)} />
+      <span
+        aria-hidden
+        className={cn("size-2 shrink-0 rounded-full", WORK_REASON_LOOK.settled.dot)}
+      />
       <Link
         to="/$environmentId/$threadId"
         params={{ environmentId: thread.environmentId, threadId: thread.id }}

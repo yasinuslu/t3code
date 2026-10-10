@@ -1014,13 +1014,24 @@ export const make = Effect.gen(function* () {
   const threadReport: BrainstormService["Service"]["threadReport"] = (threadId) =>
     Effect.gen(function* () {
       const readFailed = failWith("Could not read the thread.");
-      const { runs } = yield* orchestrator
+      const { thread, runs } = yield* orchestrator
         .getThreadRecords(threadId, ["runs"])
         .pipe(Effect.mapError(readFailed));
       const recentRuns = runs
         .toSorted((left, right) => right.ordinal - left.ordinal)
         .slice(0, THREAD_REPORT_RUNS_BACK);
+      // A status the agent set during a run, or after it, outranks that run's last answer.
+      const status = thread.statusReport;
+      const statusAt = status ? Date.parse(status.updatedAt) : Number.NaN;
+      const statusReport = () => ({
+        threadId,
+        runId: recentRuns[0]?.id ?? null,
+        text: status?.text ?? null,
+      });
       for (const run of recentRuns) {
+        if (status && statusAt >= DateTime.toEpochMillis(run.startedAt ?? run.requestedAt)) {
+          return statusReport();
+        }
         const { messages } = yield* orchestrator
           .getThreadRecords(threadId, ["messages"], {
             messageRoles: ["assistant"],
@@ -1038,7 +1049,7 @@ export const make = Effect.gen(function* () {
           return { threadId, runId: run.id, text: last.text.slice(0, THREAD_REPORT_MAX_CHARS) };
         }
       }
-      return { threadId, runId: recentRuns[0]?.id ?? null, text: null };
+      return status ? statusReport() : { threadId, runId: recentRuns[0]?.id ?? null, text: null };
     });
 
   const managerInstructions: BrainstormService["Service"]["managerInstructions"] = (profile) =>

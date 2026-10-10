@@ -1369,6 +1369,9 @@ export function threadShellFromProjection(
     ...(projection.thread.previewLinks === undefined || projection.thread.previewLinks.length === 0
       ? {}
       : { previewLinks: projection.thread.previewLinks }),
+    ...(projection.thread.statusReport === undefined
+      ? {}
+      : { statusUpdatedAt: projection.thread.statusReport.updatedAt }),
     ...(projection.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: projection.thread.activeOrderKey }),
@@ -1609,6 +1612,9 @@ function shellFromState(input: {
     input.state.thread.previewLinks.length === 0
       ? {}
       : { previewLinks: input.state.thread.previewLinks }),
+    ...(input.state.thread.statusReport === undefined
+      ? {}
+      : { statusUpdatedAt: input.state.thread.statusReport.updatedAt }),
     ...(input.state.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: input.state.thread.activeOrderKey }),

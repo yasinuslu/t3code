@@ -8,12 +8,18 @@ export interface ThreadReportDigest {
   readonly bullets: ReadonlyArray<string>;
   /** Dev servers and previews the report points at (URLs with a port). */
   readonly tryUrls: ReadonlyArray<string>;
-  /** Local screenshots the report embeds or links, as absolute paths. */
-  readonly screenshots: ReadonlyArray<{ readonly path: string; readonly alt: string }>;
+  /** Screenshots the report embeds or links: absolute paths, or ones stored with the thread. */
+  readonly screenshots: ReadonlyArray<ReportScreenshot>;
   /** What the report asks of the user, from its questions section. */
   readonly questions: ReadonlyArray<string>;
 }
 
+/** A local file on the thread's machine, or a copy `thread_status_update` stored (`attachment:<id>`). */
+export type ReportScreenshot =
+  | { readonly path: string; readonly alt: string }
+  | { readonly attachmentId: string; readonly alt: string };
+
+const ATTACHMENT_REF = /^attachment:([\w-]+)$/;
 const MAX_BULLETS = 3;
 const MAX_TRY_URLS = 2;
 const MAX_SCREENSHOTS = 6;
@@ -161,12 +167,20 @@ export function digestThreadReport(text: string | null | undefined): ThreadRepor
     if (tryUrls.length === MAX_TRY_URLS) break;
   }
 
-  const screenshots: Array<{ path: string; alt: string }> = [];
+  const screenshots: ReportScreenshot[] = [];
+  const seen = new Set<string>();
   for (const match of prose.matchAll(/(!?)\[([^\]]*)\]\(<?([^)\s>]+)>?\)/g)) {
     const path = decodeURI(match[3] ?? "");
-    if (!path.startsWith("/") || !IMAGE_EXTENSION.test(path)) continue;
-    if (screenshots.some((shot) => shot.path === path)) continue;
-    screenshots.push({ path, alt: plainInline(match[2] ?? "") || (path.split("/").pop() ?? "") });
+    const attachmentId = ATTACHMENT_REF.exec(path)?.[1];
+    if (!attachmentId && (!path.startsWith("/") || !IMAGE_EXTENSION.test(path))) continue;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const alt = plainInline(match[2] ?? "");
+    screenshots.push(
+      attachmentId
+        ? { attachmentId, alt: alt || "Screenshot" }
+        : { path, alt: alt || (path.split("/").pop() ?? "") },
+    );
     if (screenshots.length === MAX_SCREENSHOTS) break;
   }
 

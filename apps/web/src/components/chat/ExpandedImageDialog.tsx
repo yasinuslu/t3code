@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
   type KeyboardEvent,
+  type TouchEvent,
 } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Image as ImageGlyph, Text as TextGlyph } from "lucide";
@@ -27,6 +28,8 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 import { composerFloatingLayerProps } from "./composerEventScope";
+
+const SWIPE_MIN_PX = 48;
 
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
@@ -107,6 +110,26 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     setImageOffset((current) => current + direction);
   }, []);
 
+  // A horizontal swipe turns the page on touch screens, unless the image is zoomed and pans.
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    swipeStartRef.current =
+      event.touches.length === 1 && touch && !zoomableImageRef.current?.isZoomed()
+        ? { x: touch.clientX, y: touch.clientY }
+        : null;
+  };
+  const onTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    const touch = event.changedTouches[0];
+    swipeStartRef.current = null;
+    if (!start || !touch || preview.images.length <= 1) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    navigateImage(dx < 0 ? 1 : -1);
+  };
+
   // The element that opened the preview gets focus back on close. Without
   // this a close button click leaves focus on the unmounted dialog, and the
   // composer that owned the opener reads that as a blur and rests.
@@ -182,6 +205,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         bottomStickOnMobile={false}
         className="row-start-1 max-h-[92vh] w-[92vw] max-w-[92vw] items-center overflow-visible [--media-width:92vw] [--media-height:min(86vh,calc(100vh-160px))] sm:[--media-width:calc(92vw-96px)]"
         onKeyDown={onKeyDown}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}
         onClick={(event) => {

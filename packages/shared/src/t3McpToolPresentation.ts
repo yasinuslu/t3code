@@ -59,6 +59,7 @@ export type T3McpToolSummaryAction =
   | "unwatch-pr"
   | "link-preview"
   | "unlink-preview"
+  | "status-update"
   | "browser"
   | "device";
 
@@ -108,6 +109,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "pull-request",
   ),
   link_preview: tool(["Link", "Linking", "Linked", "a preview"], "link-preview", "browser"),
+  thread_status_update: tool(
+    ["Update", "Updating", "Updated", "the thread status"],
+    "status-update",
+  ),
   unlink_preview: tool(
     ["Unlink", "Unlinking", "Unlinked", "a preview"],
     "unlink-preview",
