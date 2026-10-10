@@ -1,5 +1,6 @@
 import {
   CommandId,
+  isProviderNativeSubagentThread,
   OrchestrationV2AppThreadJson,
   OrchestrationV2ProviderSessionJson,
   WorktreeFinishError,
@@ -287,7 +288,12 @@ export const make = Effect.gen(function* () {
     const active = yield* projections.getShellSnapshot();
     const archived = yield* projections.getShellSnapshot({ location: "archive" });
     const projects = yield* projectStore.listShells();
-    return { projects, threads: [...active.threads, ...archived.threads] };
+    // A provider subagent's thread inherits its parent's worktree. It is part of the
+    // parent's work, not another thread using the checkout, so it never keeps it shared.
+    const threads = [...active.threads, ...archived.threads].filter(
+      (thread) => !isProviderNativeSubagentThread(thread),
+    );
+    return { projects, threads };
   });
 
   // Local threads under another project need not have a worktreePath of their own.
