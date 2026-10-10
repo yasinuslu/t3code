@@ -101,9 +101,16 @@ captures and log retention remain machine-wide.
 Worktrees can be removed after a chosen number of inactive days, after merging, or when they
 have no commits beyond the default branch. Only T3-managed worktrees are eligible. Active
 sessions, shared worktrees, uncommitted changes, and ignored files other than `node_modules`
-prevent removal. Branches and thread history stay; starting another turn recreates the checkout.
-Merge cleanup requires the commits to be included in the remote default branch, so squash merges
-may need the inactivity rule instead.
+prevent removal. Branches and thread history stay; starting another turn recreates the checkout,
+or, when its branch is gone, continues the thread in the project root with a note in the timeline.
+Merge cleanup requires the commits to be included in the branch the thread's linked pull request
+merged into (else the remote default branch), so squash merges may need the inactivity rule
+instead. A merged pull request settles its thread, and cleanup runs right after.
+
+Turn on **Delete merged branches** as well to finish merged work completely: once a merged
+worktree is removed, its thread moves to the project root, its idle session stops, and the branch
+is deleted locally and on every remote that has it. Ignored files such as build output no longer
+block removal of merged work.
 
 Enable **Delete worktrees with deleted threads** to remove safe worktrees after their last
 thread is deleted, including archived threads and worktrees left by earlier deletions. The
