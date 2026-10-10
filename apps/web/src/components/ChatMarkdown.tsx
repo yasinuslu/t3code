@@ -162,6 +162,7 @@ import {
   rewriteMarkdownFileUriHref,
   shouldOpenMarkdownFileLinkInBrowserByDefault,
   shouldOpenMarkdownFileLinkInEditor,
+  MARKDOWN_FILE_LINK_CLASS_NAME,
   type MarkdownFileLinkMeta,
 } from "../markdown-links";
 import { isMarkdownFileLinkLabel } from "@t3tools/client-runtime/markdown-links";
@@ -1354,8 +1355,6 @@ interface MarkdownFileLinkProps {
       reveal item to show. */
   revealLabel?: string | undefined;
 }
-
-const MARKDOWN_FILE_LINK_CLASS_NAME = "chat-markdown-file-link";
 
 function pathParentSegments(path: string): string[] {
   const normalized = path.replaceAll("\\", "/");

@@ -19,6 +19,9 @@ export { normalizeMarkdownLinkDestination };
 const MARKDOWN_LINK_HREF_PATTERN =
   /\[[^\]]*]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\s*\)/g;
 
+/** Marks a file chip: an anchor to a host path that opens in place and never navigates. */
+export const MARKDOWN_FILE_LINK_CLASS_NAME = "chat-markdown-file-link";
+
 export interface MarkdownFileLinkMeta {
   filePath: string;
   targetPath: string;

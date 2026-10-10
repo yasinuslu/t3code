@@ -6,6 +6,7 @@ import {
   closeHomeOverlay,
   useHomeOverlayStore,
 } from "../../homeOverlayStore";
+import { MARKDOWN_FILE_LINK_CLASS_NAME } from "../../markdown-links";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { isEditableFocused } from "../../lib/editableFocus";
 import { HomeDashboard } from "./HomeDashboard";
@@ -82,7 +83,9 @@ function HomeOverlayLayer() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // A link to the thread already underneath does not change the path.
+  // A link to the thread already underneath does not change the path. File
+  // chips are anchors to host paths that open in the manager's own panel, so
+  // they keep Home open.
   const onClickCapture = (event: MouseEvent) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
@@ -91,7 +94,8 @@ function HomeOverlayLayer() {
     if (
       anchor instanceof HTMLAnchorElement &&
       anchor.target !== "_blank" &&
-      anchor.origin === window.location.origin
+      anchor.origin === window.location.origin &&
+      !anchor.classList.contains(MARKDOWN_FILE_LINK_CLASS_NAME)
     ) {
       closeHomeOverlay();
     }
