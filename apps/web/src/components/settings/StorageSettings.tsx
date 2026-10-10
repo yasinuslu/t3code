@@ -226,7 +226,7 @@ export function StorageSettingsPanel() {
             <SettingsRow
               title="Delete merged worktrees"
               status={ruleStatus("worktreeOnMerge")}
-              description="Remove worktrees whose pull request is merged and whose commits are included in the default branch."
+              description="Remove worktrees whose pull request is merged and whose commits are included in the branch it merged into."
               serverScoped={!isProjectScope}
               control={
                 <Switch
@@ -236,6 +236,21 @@ export function StorageSettingsPanel() {
                 />
               }
             />
+            {!isProjectScope && (
+              <SettingsRow
+                title="Delete merged branches"
+                status={ruleStatus("branchOnMerge")}
+                description="When a merged worktree is removed, also delete its branch here and on every remote, and move its thread to the project root."
+                serverScoped
+                control={
+                  <Switch
+                    aria-label="Delete merged branches"
+                    checked={settings.branchOnMerge}
+                    onCheckedChange={(branchOnMerge) => update({ branchOnMerge })}
+                  />
+                }
+              />
+            )}
             <SettingsRow
               title="Delete unchanged worktrees"
               status={ruleStatus("worktreeUnchanged")}

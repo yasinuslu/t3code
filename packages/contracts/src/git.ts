@@ -174,6 +174,28 @@ export const VcsRemoveWorktreeInput = Schema.Struct({
 });
 export type VcsRemoveWorktreeInput = typeof VcsRemoveWorktreeInput.Type;
 
+/** Finish a thread's merged worktree: remove it, move the thread to the root, drop the branch. */
+export const WorktreeFinishInput = Schema.Struct({
+  /** The thread, or the worktree it is bound to (for callers outside a thread, such as a CLI). */
+  threadId: Schema.optional(ThreadId),
+  worktreePath: Schema.optional(TrimmedNonEmptyString),
+  /** The branch the work merged into; defaults to a merged PR's base, else the default branch. */
+  into: Schema.optional(TrimmedNonEmptyString),
+});
+export type WorktreeFinishInput = typeof WorktreeFinishInput.Type;
+
+export const WorktreeFinishResult = Schema.Struct({
+  status: Schema.Literals(["finished", "scheduled", "no-worktree"]),
+  message: Schema.String,
+});
+export type WorktreeFinishResult = typeof WorktreeFinishResult.Type;
+
+/** Refused: uncommitted changes, an unmerged branch, or no such thread. */
+export class WorktreeFinishError extends Schema.TaggedError<WorktreeFinishError>()(
+  "WorktreeFinishError",
+  { message: Schema.String },
+) {}
+
 export const VcsCreateRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   refName: TrimmedNonEmptyStringSchema,

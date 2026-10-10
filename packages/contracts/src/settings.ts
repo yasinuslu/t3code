@@ -1198,6 +1198,11 @@ export const StorageCleanupSettings = Schema.Struct({
   worktreeOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   worktreeOnDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   worktreeUnchanged: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * After a merged branch's worktree is removed, also delete the branch locally
+   * and on every remote that has it, and move its thread to the project root.
+   */
+  branchOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   browserArtifactsAfterDays: StorageRetentionDays.pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -1653,6 +1658,7 @@ export const ServerSettingsPatch = Schema.Struct({
       worktreeOnMerge: Schema.optionalKey(Schema.Boolean),
       worktreeOnDelete: Schema.optionalKey(Schema.Boolean),
       worktreeUnchanged: Schema.optionalKey(Schema.Boolean),
+      branchOnMerge: Schema.optionalKey(Schema.Boolean),
       browserArtifactsAfterDays: Schema.optionalKey(StorageRetentionDays),
       logsAfterDays: Schema.optionalKey(StorageRetentionDays),
     }),

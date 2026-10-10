@@ -153,6 +153,104 @@ it("does not commit running state when inherited background routing cannot be re
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });
 
+it("moves a thread whose worktree and branch are gone to the project root", async () => {
+  const threadId = ThreadId.make("thread_provider_turn_start_worktree_gone");
+  const runId = RunId.make("run_provider_turn_start_worktree_gone");
+  const attemptId = RunAttemptId.make("attempt_provider_turn_start_worktree_gone");
+  const rootNodeId = NodeId.make("node_provider_turn_start_worktree_gone");
+  const providerThreadId = ProviderThreadId.make("provider_thread_worktree_gone");
+  const providerSessionId = ProviderSessionId.make("provider_session_worktree_gone");
+  const messageId = MessageId.make("message_provider_turn_start_worktree_gone");
+  const checkpointScopeId = CheckpointScopeId.make("checkpoint_scope_worktree_gone");
+  const projection = {
+    thread: {
+      id: threadId,
+      projectId: ProjectId.make("project_provider_turn_start_worktree_gone"),
+      branch: "feature/merged",
+      worktreePath: "/tmp/removed-provider-turn-start-worktree",
+    },
+    runs: [
+      {
+        id: runId,
+        status: "starting",
+        rootNodeId,
+        activeAttemptId: attemptId,
+        providerThreadId,
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        userMessageId: messageId,
+        ordinal: 2,
+      },
+    ],
+    nodes: [{ id: rootNodeId, checkpointScopeId }],
+    attempts: [{ id: attemptId }],
+    providerThreads: [{ id: providerThreadId, providerSessionId }],
+    messages: [{ id: messageId, text: "Continue", attachments: [] }],
+    checkpointScopes: [{ id: checkpointScopeId }],
+    contextHandoffs: [],
+    contextTransfers: [],
+    turnItems: [],
+  } as unknown as OrchestrationV2ThreadProjection;
+  const written: Array<OrchestrationV2DomainEvent> = [];
+  const writeIfRunCurrent = vi.fn(
+    (input: { readonly events: ReadonlyArray<OrchestrationV2DomainEvent> }) => {
+      written.push(...input.events);
+      return Effect.succeed({ committed: true, storedEvents: [] } as never);
+    },
+  );
+  const release = vi.fn(() => Effect.void);
+  const resolve = vi.fn(() => Effect.die("stop after the runtime policy"));
+  const layer = ProviderTurnStart.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({}),
+        Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
+        IdAllocator.layer,
+        Layer.succeed(FileSystem.FileSystem, { exists: () => Effect.succeed(false) } as never),
+        Layer.mock(GitWorkflow.GitWorkflowService)({
+          pruneWorktrees: () => Effect.void,
+          // The merged branch was deleted, so git cannot check it out again.
+          createWorktree: () => Effect.die("invalid reference: feature/merged"),
+        }),
+        Layer.mock(ProjectService.ProjectService)({
+          getById: () =>
+            Effect.succeed(Option.some({ workspaceRoot: "/tmp/worktree-gone-project" } as never)),
+        }),
+        Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getTurnStartContext: () => Effect.succeed({ ...projection, hasConversation: true }),
+          getRuntimeRecoveryProjection: () =>
+            Effect.succeed({ ...projection, runs: [], turnItems: [] } as never),
+        }),
+        Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({ release }),
+        Layer.mock(ProviderAuthService.ProviderAuthService)({
+          tryHandlePromptCommand: () => Effect.succeed(false),
+        }),
+        Layer.mock(RunExecutionService.RunExecutionServiceV2)({}),
+        Layer.mock(RuntimePolicy.RuntimePolicyV2)({ resolve }),
+      ),
+    ),
+  );
+
+  await Effect.gen(function* () {
+    yield* (yield* ProviderTurnStart.ProviderTurnStartServiceV2)
+      .start({ threadId, runId })
+      .pipe(Effect.exit);
+
+    expect(release).toHaveBeenCalledWith(expect.objectContaining({ providerSessionId }));
+    const rebound = written.find((event) => event.type === "thread.metadata-updated");
+    expect(rebound?.payload).toMatchObject({ worktreePath: null, branch: null });
+    const notice = written.find(
+      (event) => event.type === "turn-item.updated" && event.payload.type === "system_notice",
+    );
+    expect(notice?.payload).toMatchObject({
+      message: expect.stringContaining("Worktree removed; running in project root"),
+    });
+    // The session opens in the project root, not the removed folder.
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ thread: expect.objectContaining({ worktreePath: null }) }),
+    );
+  }).pipe(Effect.provide(layer), Effect.runPromise);
+});
+
 function makeLocalCommandHarness(input: {
   readonly text: string;
   readonly previousNativeSession?: boolean;
