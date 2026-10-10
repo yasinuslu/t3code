@@ -176,6 +176,7 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
         modelSelection: thread.modelSelection,
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,
+        autoCompact: thread.autoCompact ?? null,
       };
     }),
   t3_thread_configure: (input) =>
@@ -184,16 +185,36 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
         threads,
         projection: { thread },
       } = yield* readWritableThread();
-      const type = modelSelectionCommandType(thread.providerInstanceId, input.modelSelection);
-      const result = yield* threads
-        .dispatch({
-          type,
-          threadId: thread.id,
-          commandId: yield* newCommandId(),
-          modelSelection: input.modelSelection,
-        })
-        .pipe(Effect.mapError(unavailable));
-      return { sequence: result.sequence };
+      if (input.modelSelection === undefined && input.autoCompact === undefined) {
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "Pass modelSelection, autoCompact, or both.",
+        });
+      }
+      let sequence = 0;
+      if (input.modelSelection !== undefined) {
+        const result = yield* threads
+          .dispatch({
+            type: modelSelectionCommandType(thread.providerInstanceId, input.modelSelection),
+            threadId: thread.id,
+            commandId: yield* newCommandId(),
+            modelSelection: input.modelSelection,
+          })
+          .pipe(Effect.mapError(unavailable));
+        sequence = result.sequence;
+      }
+      if (input.autoCompact !== undefined) {
+        const result = yield* threads
+          .dispatch({
+            type: "thread.metadata.update",
+            threadId: thread.id,
+            commandId: yield* newCommandId(),
+            autoCompact: input.autoCompact,
+          })
+          .pipe(Effect.mapError(unavailable));
+        sequence = result.sequence;
+      }
+      return { sequence };
     }),
   t3_pending_request_list: (input) =>
     Effect.gen(function* () {

@@ -356,6 +356,18 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
 );
 export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitRecoveryUpdate.Type;
 
+/**
+ * Regular compaction for a long-lived thread: while the thread is idle, the
+ * server sends the provider's own `/compact` once the context reaches
+ * `thresholdTokens`, or after `intervalHours` since the last compaction when
+ * the thread has had activity since.
+ */
+export const ThreadAutoCompact = Schema.Struct({
+  thresholdTokens: PositiveInt,
+  intervalHours: Schema.optional(PositiveInt),
+});
+export type ThreadAutoCompact = typeof ThreadAutoCompact.Type;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -406,6 +418,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+  /** Regular compaction; off when absent or null. */
+  autoCompact: Schema.optional(Schema.NullOr(ThreadAutoCompact)),
   // Fractional-index slot in the user-arranged pinned order. Optional so
   // payloads from pre-reorder servers still decode.
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -2668,6 +2682,8 @@ export const OrchestrationV2Command = Schema.Union([
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+    /** Turn regular compaction on (object) or off (null); absent leaves it unchanged. */
+    autoCompact: Schema.optional(Schema.NullOr(ThreadAutoCompact)),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.preview-link.link"),

@@ -7,6 +7,7 @@ import {
   OrchestrationV2ContextTransfer,
   TrimmedNonEmptyString,
   ModelSelection,
+  ThreadAutoCompact,
   RuntimeMode,
   ProviderInteractionMode,
   RuntimeRequestId,
@@ -173,13 +174,14 @@ const PendingRequestRespondTool = Tool.make("t3_pending_request_respond", {
 const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
   ...commandTool,
   description:
-    "Read a thread's provider/model selection and modes in the calling project. orchestrator_capabilities lists available providers and models.",
+    "Read a thread's provider/model selection, modes and regular compaction in the calling project. orchestrator_capabilities lists available providers and models.",
   parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
   success: Schema.Struct({
     threadId: ThreadId,
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
+    autoCompact: Schema.NullOr(ThreadAutoCompact),
   }),
 })
   .annotate(Tool.Readonly, true)
@@ -187,8 +189,11 @@ const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
 const ThreadConfigureTool = Tool.make("t3_thread_configure", {
   ...commandTool,
   description:
-    "Set this calling thread's provider, model and options with the existing selection command. This does not change permission modes or other threads. Use orchestrator_capabilities to choose a selection.",
-  parameters: Schema.Struct({ modelSelection: ModelSelection }),
+    "Set this calling thread's provider, model and options with the existing selection command, and/or its regular compaction. autoCompact: { thresholdTokens, intervalHours? } makes the server send the provider's own /compact while the thread is idle (5+ minutes after its last run, never during a turn) once the context reaches thresholdTokens, or intervalHours after the last compaction when there was activity since; null turns it off. Use it on long-lived threads (e.g. a manager: { thresholdTokens: 150000, intervalHours: 24 }) with providers that support /compact (Claude, Codex, OpenCode). This does not change permission modes or other threads. Use orchestrator_capabilities to choose a selection.",
+  parameters: Schema.Struct({
+    modelSelection: Schema.optional(ModelSelection),
+    autoCompact: Schema.optional(Schema.NullOr(ThreadAutoCompact)),
+  }),
 }).annotate(Tool.Destructive, true);
 
 const transferResult = Schema.Struct({ sequence: NonNegativeInt, targetThreadId: ThreadId });

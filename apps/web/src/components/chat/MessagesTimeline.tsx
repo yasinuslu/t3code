@@ -327,6 +327,7 @@ interface TimelineRowSharedState {
   }) => void;
   onToggleTurnFold: (runId: RunId) => void;
   onToggleAttemptFold: (attemptId: RunAttemptId) => void;
+  onToggleCompactedHistory: (anchorKey: string) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
   onFileDownload: (attachment: ChatFileAttachment) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
@@ -576,6 +577,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [expandedAttemptIds, setExpandedAttemptIds] = useState<ReadonlySet<RunAttemptId>>(
     () => rememberedPosition?.disclosures?.attempts ?? new Set(),
   );
+  const [compactedHistoryExpanded, setCompactedHistoryExpanded] = useState(false);
   const [positionedThreadKey, setPositionedThreadKey] = useState<string | null>(() =>
     rememberedPosition?.atEnd === false ? null : listIdentityKey,
   );
@@ -600,10 +602,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setExpandedRunIds(paintedExpandedRunIds);
     setExpandedWorkGroupIds(paintedExpandedWorkGroupIds);
     setExpandedAttemptIds(paintedExpandedAttemptIds);
+    setCompactedHistoryExpanded(false);
   }
   const citationThreadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
   const openPullRequest = useOpenPrLink(citationThreadRef ?? undefined);
   const expandCitedRun = useCallback((runId: RunId) => {
+    setCompactedHistoryExpanded(true);
     setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
   }, []);
   // Nested tool state shares the bounded thread-position cache.
@@ -708,6 +712,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [expandedWorkGroupIds, suspendEndScrollMaintenanceForDisclosure],
   );
+  const onToggleCompactedHistory = useCallback(
+    (anchorKey: string) => {
+      suspendEndScrollMaintenanceForDisclosure(anchorKey);
+      setCompactedHistoryExpanded((expanded) => !expanded);
+    },
+    [suspendEndScrollMaintenanceForDisclosure],
+  );
   const onToggleAttemptFold = useCallback(
     (attemptId: RunAttemptId) => {
       suspendEndScrollMaintenanceForDisclosure(`attempt-fold:${attemptId}`);
@@ -774,6 +785,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         turnDiffSummaries,
         supportsConversationRollback,
         worktreeSetup,
+        compactedHistoryExpanded,
       },
       previous?.threadKey === listIdentityKey && previous.workspaceRoot === workspaceRoot
         ? previous.projection
@@ -797,6 +809,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     turnDiffSummaries,
     supportsConversationRollback,
     worktreeSetup,
+    compactedHistoryExpanded,
   ]);
   const rows = useStableRows(rawRows, listIdentityKey);
   // Run status/timestamps churn on every stream event; the shared row context
@@ -1177,6 +1190,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRollbackCheckpoint,
       onToggleTurnFold,
       onToggleAttemptFold,
+      onToggleCompactedHistory,
       onToggleWorkGroup,
       onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
       onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
@@ -1212,6 +1226,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRollbackCheckpoint,
       onToggleTurnFold,
       onToggleAttemptFold,
+      onToggleCompactedHistory,
       onToggleWorkGroup,
       suspendEndScrollMaintenanceForDisclosure,
       onCancelWorktreeSetup,
@@ -1251,6 +1266,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       latestRun?.runId,
     ],
   );
+  // Older pages load into the compacted history, so they wait until it is open.
+  const compactedHistoryCollapsed = rows.some(
+    (row) => row.kind === "compacted-history" && !row.expanded,
+  );
   const listHeader = useMemo(() => {
     const leadingContent =
       parentThreadLink === null ? (
@@ -1275,11 +1294,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return (
       <>
         {parentThreadLink === null ? leadingContent : null}
-        {historyControls ? <TimelineHistoryControl {...historyControls} /> : null}
+        {historyControls && !compactedHistoryCollapsed ? (
+          <TimelineHistoryControl {...historyControls} />
+        ) : null}
         {parentThreadLink !== null ? leadingContent : null}
       </>
     );
-  }, [historyControls, onOpenThread, parentThreadLink, topFadeEnabled]);
+  }, [compactedHistoryCollapsed, historyControls, onOpenThread, parentThreadLink, topFadeEnabled]);
 
   const canvas = useChatCanvas();
   const registerTimeline = canvas?.registerTimeline;
@@ -1774,7 +1795,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         // they sit closer to the work that follows them.
         isWorkLogRow || isSubagentGroup
           ? undefined
-          : row.kind === "turn-fold" || row.kind === "working"
+          : row.kind === "turn-fold" || row.kind === "compacted-history" || row.kind === "working"
             ? "pb-1.5"
             : (row.kind === "message" &&
                   row.message.role === "assistant" &&
@@ -1823,6 +1844,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
       {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
+      {row.kind === "compacted-history" ? <CompactedHistoryTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -2460,6 +2482,35 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>
+        <MorphIcon className="size-3.5" icon={row.expanded ? ChevronDown : ChevronRight} />
+      </button>
+      <TimelineRowTimestamp
+        createdAt={row.createdAt}
+        timestampFormat={ctx.timestampFormat}
+        className="ms-auto"
+      />
+    </div>
+  );
+}
+
+function CompactedHistoryTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "compacted-history" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const count = `${row.hiddenMessageCount} earlier ${row.hiddenMessageCount === 1 ? "message" : "messages"}`;
+  return (
+    <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pb-2 pe-0.5 pt-1">
+      <button
+        type="button"
+        aria-expanded={row.expanded}
+        data-scroll-anchor-ignore
+        onClick={() => ctx.onToggleCompactedHistory(row.id)}
+        className="flex cursor-pointer select-none items-center gap-1.5 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      >
+        <Minimize2Icon aria-hidden="true" className="size-3" />
+        <span>{row.expanded ? `Hide ${count}` : `${count}, compacted`}</span>
         <MorphIcon className="size-3.5" icon={row.expanded ? ChevronDown : ChevronRight} />
       </button>
       <TimelineRowTimestamp
