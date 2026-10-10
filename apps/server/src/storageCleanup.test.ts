@@ -87,6 +87,19 @@ describe("V2 storage cleanup eligibility", () => {
     },
   );
 
+  it("lets a settled thread's stale background command go, but not an unsettled one's", () => {
+    const pendingBackgroundTasks = [{ taskId: "poll", kind: "command" as const }];
+    expect(storageCleanupThreadIdle({ ...candidate(), pendingBackgroundTasks }, NOW_MS)).toBe(
+      false,
+    );
+    expect(
+      storageCleanupThreadIdle(
+        { ...candidate(), pendingBackgroundTasks, settledOverride: "settled" },
+        NOW_MS,
+      ),
+    ).toBe(true);
+  });
+
   it("retains an active run even if the shell status is idle", () => {
     expect(
       storageCleanupThreadIdle({ ...candidate(), activeRunId: RunId.make("run") }, NOW_MS),
