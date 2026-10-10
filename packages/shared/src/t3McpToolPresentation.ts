@@ -57,6 +57,8 @@ export type T3McpToolSummaryAction =
   | "list-prs"
   | "watch-pr"
   | "unwatch-pr"
+  | "link-preview"
+  | "unlink-preview"
   | "browser"
   | "device";
 
@@ -104,6 +106,12 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Stop watching", "Stopping watching", "Stopped watching", "a pull request"],
     "unwatch-pr",
     "pull-request",
+  ),
+  link_preview: tool(["Link", "Linking", "Linked", "a preview"], "link-preview", "browser"),
+  unlink_preview: tool(
+    ["Unlink", "Unlinking", "Unlinked", "a preview"],
+    "unlink-preview",
+    "browser",
   ),
   orchestrator_capabilities: tool(
     ["Get", "Getting", "Got", "orchestration capabilities"],

@@ -43,6 +43,7 @@ import { ReviewCommentComposerSheet } from "./features/review/ReviewCommentCompo
 import { ReviewSheet } from "./features/review/ReviewSheet";
 import { ThreadTerminalRouteScreen } from "./features/terminal/ThreadTerminalRouteScreen";
 import { DevicePreviewRouteScreen } from "./features/devices/DevicePreviewRouteScreen";
+import { ThreadPreviewLinkRouteScreen } from "./features/preview-links/ThreadPreviewLinkRouteScreen";
 import { GitBranchesSheet } from "./features/threads/git/GitBranchesSheet";
 import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
@@ -703,6 +704,16 @@ const RootStackConfig = createNativeStackNavigator({
         gestureEnabled: false,
         autoHideHomeIndicator: true,
         navigationBarHidden: true,
+      },
+    }),
+    // A thread's preview link in a WebView. The screen draws its own toolbar;
+    // full screen keeps the page's scroll clear of a sheet's dismiss gesture.
+    ThreadPreviewLink: createNativeStackScreen({
+      screen: ThreadPreviewLinkRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/preview`,
+      options: {
+        headerShown: false,
+        presentation: Platform.OS === "android" ? "card" : "fullScreenModal",
       },
     }),
     ThreadReview: createNativeStackScreen({

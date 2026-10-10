@@ -253,6 +253,7 @@ import {
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button, InlineButton } from "./ui/button";
+import { ThreadPreviewLinks } from "./preview/ThreadPreviewLinkChip";
 import {
   Combobox,
   ComboboxEmpty,
@@ -1687,6 +1688,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         onOpenPullRequest={handlePrClick}
       />
     ) : null;
+  const handlePreviewBeforeOpen = useCallback(() => {
+    if (!props.isActive) onThreadActivate(threadRef);
+  }, [onThreadActivate, props.isActive, threadRef]);
+  const previewLinksChip =
+    thread.previewLinks && thread.previewLinks.length > 0 ? (
+      <ThreadPreviewLinks
+        threadRef={threadRef}
+        links={thread.previewLinks}
+        display="latest"
+        onBeforeOpen={handlePreviewBeforeOpen}
+      />
+    ) : null;
   const terminalStatusIcon = terminalStatus ? (
     <span
       role="img"
@@ -1813,6 +1826,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               remain visible AND clickable while the row is hovered. Only
               the time/jump label yields to the settle affordance. */}
             {prBadge}
+            {previewLinksChip}
             {sortable?.isDragging ? (
               dragDestination
             ) : (
@@ -2143,6 +2157,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               )}
               {terminalStatusIcon}
               {prBadge}
+              {previewLinksChip}
               {diff ? (
                 <span className="shrink-0 font-mono">
                   <span className="text-diff-addition-foreground">+{diff.insertions}</span>{" "}

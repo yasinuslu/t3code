@@ -36,6 +36,7 @@ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr } from "../../state/use-thread-pr";
+import { ThreadPreviewLinkChip } from "../preview-links/ThreadPreviewLinkChip";
 import { useSwipeRowDormant } from "../home/swipe-row-activation";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
@@ -1059,6 +1060,24 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : (
           <View className="flex-1" />
         )}
+        {thread.previewLinks !== undefined && thread.previewLinks.length > 0 ? (
+          <ThreadPreviewLinkChip
+            environmentId={thread.environmentId}
+            threadId={thread.id}
+            links={thread.previewLinks}
+            variant="row"
+            mutedTextClassName={
+              selected
+                ? selectedThreadRowColors.mutedForegroundClassName
+                : rowAppearance.mutedForegroundClassName
+            }
+            mutedIconTintClassName={
+              selected
+                ? selectedThreadRowColors.mutedIconTintClassName
+                : rowAppearance.mutedIconTintClassName
+            }
+          />
+        ) : null}
         {pr ? (
           <View className="flex-row items-center gap-1" accessibilityLabel={pr.accessibilityLabel}>
             <SymbolView

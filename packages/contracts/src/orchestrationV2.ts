@@ -48,6 +48,7 @@ import {
   ThreadPullRequestStack,
   ThreadPullRequestWatch,
 } from "./threadPullRequest.ts";
+import { ThreadPreviewLink, ThreadPreviewLinkSource } from "./threadPreviewLink.ts";
 import {
   ProviderApprovalDecision,
   ProviderApprovalOption,
@@ -371,6 +372,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   pullRequests: Schema.optional(Schema.Array(ThreadPullRequestLink)),
   /** Pull request discovered from the thread's current branch. */
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  /** Previews (running builds) of this thread's work; optional so older servers still decode. */
+  previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   lineage: OrchestrationV2AppThreadLineage,
@@ -1764,6 +1767,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   pullRequests: Schema.optional(Schema.Array(ThreadPullRequestLink)),
   /** Pull request discovered from the thread's current branch. */
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  /** Previews (running builds) of this thread's work; optional so older servers still decode. */
+  previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
@@ -2658,6 +2663,20 @@ export const OrchestrationV2Command = Schema.Union([
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.preview-link.link"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    url: TrimmedNonEmptyString,
+    label: Schema.optional(TrimmedNonEmptyString),
+    source: ThreadPreviewLinkSource,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.preview-link.unlink"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    url: TrimmedNonEmptyString,
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),
