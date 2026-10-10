@@ -174,6 +174,8 @@ export const make = Effect.gen(function* () {
   // Threads whose agent or user asked to finish them (`finish` below). Their
   // worktree is removed once the thread is idle, without waiting for a PR rule.
   const finishRequests = new Map<string, { readonly into: string | null }>();
+  // Why the sweep last passed over a requested worktree, so `finish` can say what it waits for.
+  const finishWaits = new Map<string, string>();
   let finishCommandCount = 0;
   const finishCommandId = (threadId: string, step: string) =>
     Clock.currentTimeMillis.pipe(
@@ -352,26 +354,36 @@ export const make = Effect.gen(function* () {
       const settings = resolveWorktreeCleanup(serverSettings, thread.projectId);
       const requested = finishRequests.get(thread.id);
       if (!worktreeCleanupEnabled(settings) && requested === undefined) continue;
+      const wait = (reason: string) =>
+        Effect.sync(() => {
+          if (requested !== undefined) finishWaits.set(thread.id, reason);
+        });
       const worktreePath = path.resolve(thread.worktreePath!);
       const deleted = "workspaceRoot" in thread;
       const project = deleted
         ? { workspaceRoot: thread.workspaceRoot }
         : snapshot.projects.find((entry) => entry.id === thread.projectId);
-      if (
-        project === undefined ||
-        (!deleted && !storageCleanupThreadIdle(thread, now)) ||
-        hasTerminal(worktreePath)
-      )
+      if (project === undefined) continue;
+      if (!deleted && !storageCleanupThreadIdle(thread, now)) {
+        yield* wait("the thread is still busy (a turn, a queued message or background work)");
         continue;
+      }
+      if (hasTerminal(worktreePath)) {
+        yield* wait("a terminal is still open in the worktree");
+        continue;
+      }
       yield* Effect.gen(function* () {
         if (!inside(root, worktreePath) || !(yield* fs.exists(worktreePath))) return;
         if ((yield* fs.realPath(worktreePath)) !== worktreePath) return;
-        if (yield* containsProjectRoot(worktreePath, [project, ...snapshot.projects])) return;
+        if (yield* containsProjectRoot(worktreePath, [project, ...snapshot.projects])) {
+          return yield* wait("a project lives inside the worktree");
+        }
         // A linked worktree has a .git file. Never remove a main checkout.
         if ((yield* fs.stat(path.join(worktreePath, ".git"))).type !== "File") return;
         const status = yield* git.statusDetailsLocal(worktreePath);
-        if (!status.isRepo || status.branch !== thread.branch || status.hasWorkingTreeChanges)
-          return;
+        if (!status.isRepo || status.branch !== thread.branch || status.hasWorkingTreeChanges) {
+          return yield* wait("the worktree changed (uncommitted changes or another branch)");
+        }
         const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
         const ignored = yield* git.execute({
           operation: "StorageCleanup.ignoredFiles",
@@ -408,7 +420,7 @@ export const make = Effect.gen(function* () {
             commit: head.commitSha,
             base,
           });
-          if (!integrated.merged) return;
+          if (!integrated.merged) return yield* wait(`not merged into ${integrated.ref}`);
           merged = requested !== undefined || linkedBase !== null;
           eligible = settings.worktreeUnchanged || merged;
           if (!eligible && settings.worktreeOnMerge && thread.branch !== null) {
@@ -431,7 +443,8 @@ export const make = Effect.gen(function* () {
           (entry) =>
             entry.worktreePath !== null && path.resolve(entry.worktreePath) === worktreePath,
         );
-        if (hasTerminal(worktreePath)) return;
+        if (hasTerminal(worktreePath))
+          return yield* wait("a terminal is still open in the worktree");
         if (deleted) {
           if (
             latest.length > 0 ||
@@ -451,8 +464,13 @@ export const make = Effect.gen(function* () {
           latest[0]!.id !== thread.id ||
           !storageCleanupThreadIdle(latest[0]!, now) ||
           storageCleanupActivityAt(latest[0]!) !== storageCleanupActivityAt(thread)
-        )
-          return;
+        ) {
+          return yield* wait(
+            latest.length !== 1
+              ? `${latest.length} threads use the worktree`
+              : "the thread changed during the check",
+          );
+        }
         // Sessions can outlive their run and can be shared across app threads.
         const sessionRows = yield* sql<{ payload_json: string }>`
           SELECT payload_json FROM orchestration_v2_projection_provider_sessions
@@ -532,6 +550,7 @@ export const make = Effect.gen(function* () {
         yield* gitManager.invalidateStatus(project.workspaceRoot);
         yield* Effect.logInfo("storage cleanup removed worktree", { threadId: thread.id });
         finishRequests.delete(thread.id);
+        finishWaits.delete(thread.id);
         // Unfinished work keeps branch and path: ProviderTurnStartService
         // recreates the checkout from that branch when the thread is resumed.
         // A finish request settles the thread, whose work is done.
@@ -839,11 +858,13 @@ export const make = Effect.gen(function* () {
       yield* worker.drain;
       // The settle a live session needs runs the sweep once more.
       yield* worker.drain;
+      const waitingFor = finishWaits.get(thread.id);
       return finishRequests.has(thread.id)
         ? ({
             status: "scheduled",
-            message:
-              "Checks passed. The worktree is removed and the thread settled once its current turn ends.",
+            message: `Checks passed. The worktree is removed and the thread settled once ${
+              waitingFor === undefined ? "its current turn ends" : `this clears: ${waitingFor}`
+            }.`,
           } satisfies WorktreeFinishResult)
         : ({
             status: "finished",
