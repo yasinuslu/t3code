@@ -3434,6 +3434,7 @@ const makeWsRpcLayer = (
               threadId: input.threadId ?? null,
               worktreePath: input.worktreePath ?? null,
               into: input.into ?? null,
+              minIdleMs: input.minIdleMs ?? null,
             }),
             { "rpc.aggregate": "vcs" },
           ),

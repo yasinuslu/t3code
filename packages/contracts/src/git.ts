@@ -181,6 +181,8 @@ export const WorktreeFinishInput = Schema.Struct({
   worktreePath: Schema.optional(TrimmedNonEmptyString),
   /** The branch the work merged into; defaults to a merged PR's base, else the default branch. */
   into: Schema.optional(TrimmedNonEmptyString),
+  /** For sweeps: refuse unless the thread is settled or has been inactive this long. */
+  minIdleMs: Schema.optional(NonNegativeInt),
 });
 export type WorktreeFinishInput = typeof WorktreeFinishInput.Type;
 

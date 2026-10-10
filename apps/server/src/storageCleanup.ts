@@ -35,6 +35,7 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "./config.ts";
 import * as GitManager from "./git/GitManager.ts";
+import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "./orchestration-v2/ProjectionStore.ts";
@@ -87,13 +88,23 @@ function sameProjectWorktreePolicies(left: ServerSettings, right: ServerSettings
   );
 }
 
+const STORAGE_CLEANUP_IDLE_STATUSES = new Set<OrchestrationV2ThreadShell["status"]>([
+  "idle",
+  "completed",
+  "interrupted",
+  "failed",
+  "cancelled",
+  "rolled_back",
+]);
+
 /** Live sessions keep their cwd even when no turn is currently running. */
 export function storageCleanupThreadIdle(thread: OrchestrationV2ThreadShell, now: number): boolean {
   return (
     thread.branch !== null &&
     thread.worktreePath !== null &&
     thread.activeRunId === null &&
-    (thread.status === "idle" || thread.status === "failed") &&
+    // Shell status is the latest run status, so a thread whose last turn ended is idle too.
+    STORAGE_CLEANUP_IDLE_STATUSES.has(thread.status) &&
     (thread.pendingBackgroundTasks?.length ?? 0) === 0 &&
     thread.pendingRuntimeRequest === null &&
     !threadHasQueuedTurnStart(thread, now)
@@ -122,6 +133,7 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
   const terminals = yield* TerminalManager.TerminalManager;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -440,14 +452,14 @@ export const make = Effect.gen(function* () {
         const sessions = yield* Effect.forEach(sessionRows, (row) =>
           decodeCleanupSession(row.payload_json),
         );
-        if (
-          sessions.some((session) => {
-            const cwd = path.resolve(session.cwd);
-            return cwd === worktreePath || inside(worktreePath, cwd);
-          })
-        ) {
-          // A finished thread's idle session still sits in the worktree. Settling
-          // detaches it, and the settle event runs this sweep again.
+        const worktreeSessions = sessions.filter((session) => {
+          const cwd = path.resolve(session.cwd);
+          return cwd === worktreePath || inside(worktreePath, cwd);
+        });
+        if (worktreeSessions.length > 0) {
+          if (!finishing) return;
+          // Finished work: settle a requested thread (which detaches its session),
+          // then stop the idle session now instead of after its idle timeout.
           if (requested !== undefined && latest[0]?.settledOverride !== "settled") {
             yield* engine.dispatch({
               type: "thread.settle",
@@ -455,7 +467,16 @@ export const make = Effect.gen(function* () {
               threadId: thread.id,
             });
           }
-          return;
+          yield* Effect.forEach(
+            worktreeSessions,
+            (session) =>
+              providerSessions.release({
+                providerSessionId: session.id,
+                reason: "manual_shutdown",
+                detail: "The thread's worktree was finished.",
+              }),
+            { discard: true },
+          );
         }
         const finalStatus = yield* git.statusDetailsLocal(worktreePath);
         if (
@@ -504,6 +525,20 @@ export const make = Effect.gen(function* () {
         finishRequests.delete(thread.id);
         // Unfinished work keeps branch and path: ProviderTurnStartService
         // recreates the checkout from that branch when the thread is resumed.
+        // A finish request settles the thread, whose work is done.
+        if (requested !== undefined && latest[0]?.settledOverride !== "settled") {
+          yield* engine
+            .dispatch({
+              type: "thread.settle",
+              commandId: yield* finishCommandId(thread.id, "settle"),
+              threadId: thread.id,
+            })
+            .pipe(
+              Effect.catch((error) =>
+                Effect.logWarning("worktree finish settle failed", { error }),
+              ),
+            );
+        }
         if (finishing && thread.branch !== null) {
           yield* finishBranch({
             threadId: thread.id,
@@ -652,6 +687,7 @@ export const make = Effect.gen(function* () {
       readonly threadId: ThreadId | null;
       readonly worktreePath: string | null;
       readonly into: string | null;
+      readonly minIdleMs: number | null;
     }) {
       const refuse = (message: string) => Effect.fail(new WorktreeFinishError({ message }));
       const snapshot = yield* readThreads();
@@ -681,6 +717,15 @@ export const make = Effect.gen(function* () {
           status: "no-worktree",
           message: "The thread already works in the project root.",
         } satisfies WorktreeFinishResult;
+      }
+      if (input.minIdleMs !== null && thread.settledOverride !== "settled") {
+        const now = yield* Clock.currentTimeMillis;
+        if (
+          !storageCleanupThreadIdle(thread, now) ||
+          storageCleanupActivityAt(thread) > now - input.minIdleMs
+        ) {
+          return yield* refuse("The thread is not settled and was active recently.");
+        }
       }
       const worktreePath = path.resolve(thread.worktreePath);
       if (!(yield* fs.exists(worktreePath))) {
