@@ -54,8 +54,11 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
   { key: "mod+shift+f", command: "projectSearch.toggle", when: "!terminalFocus" },
   { key: "mod+u", command: "usage.open", when: "!terminalFocus" },
-  // Same physical chord everywhere, like the surface chords above.
+  // `ctrl+alt+m` was the original chord and stays as an alias. `mod+e` comes
+  // after it so the UI advertises the one-handed chord. It skips the terminal,
+  // where Ctrl+E is the shell's end-of-line.
   { key: "ctrl+alt+m", command: "manager.open" },
+  { key: "mod+e", command: "manager.open", when: "!terminalFocus" },
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
   { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },

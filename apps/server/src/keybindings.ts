@@ -127,6 +127,11 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
       when: "composerFocus && draftThreadRoute",
     },
   },
+  {
+    id: "manager.open:mod+e",
+    alongside: { key: "ctrl+alt+m", command: "manager.open" },
+    rule: { key: "mod+e", command: "manager.open", when: "!terminalFocus" },
+  },
 ];
 
 function keybindingShortcutContext(rule: KeybindingRule): string | null {

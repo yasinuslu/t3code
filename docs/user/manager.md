@@ -6,7 +6,7 @@ for real decisions. Each code profile has its own manager.
 
 ## Getting Home
 
-Press `ctrl+alt+m` from anywhere. The same keys are the way back from any thread. You can also click
+Press `mod+e` (`ctrl+alt+m` also works, even in a focused terminal). The same keys are the way back from any thread. You can also click
 **Home** at the top of the sidebar or the compass at the start of a thread's header, or choose **Go
 home** in the command palette. Home opens with the manager's composer focused. Change the shortcut in
 **Settings → Keybindings** under **Manager: Open**.

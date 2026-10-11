@@ -41,8 +41,8 @@ in Settings.
 
 ## Home
 
-`ctrl+alt+m` goes to [Home](./manager.md), with the manager's composer focused, from anywhere in
-the app. It uses `ctrl` on every platform, like the right-panel chords.
+`mod+e` goes to [Home](./manager.md), with the manager's composer focused, from anywhere in
+the app except a focused terminal. `ctrl+alt+m` does the same everywhere, terminal included.
 
 ## Copy pull request references
 

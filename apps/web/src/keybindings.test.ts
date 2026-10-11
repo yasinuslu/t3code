@@ -252,6 +252,29 @@ describe("home (manager) shortcut", () => {
     }
   });
 
+  it("goes Home with one-handed mod+e and advertises it, but leaves the terminal its Ctrl+E", () => {
+    const platforms = [
+      { platform: "MacIntel", press: event({ key: "e", metaKey: true }), label: "⌘E" },
+      { platform: "Linux", press: event({ key: "e", ctrlKey: true }), label: "Ctrl+E" },
+    ];
+    for (const { platform, press, label } of platforms) {
+      assert.strictEqual(
+        resolveShortcutCommand(press, DEFAULT_RESOLVED_KEYBINDINGS, { platform }),
+        "manager.open",
+      );
+      assert.isNull(
+        resolveShortcutCommand(press, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: true },
+        }),
+      );
+      assert.strictEqual(
+        shortcutLabelForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "manager.open", platform),
+        label,
+      );
+    }
+  });
+
   it("does not share its chords with any other default", () => {
     const chords = new Set(["ctrl+alt+m"]);
     const owners = DEFAULT_RESOLVED_KEYBINDINGS.filter(({ shortcut }) =>
