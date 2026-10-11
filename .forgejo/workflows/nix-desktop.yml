@@ -1,0 +1,59 @@
+# The x86_64-linux leg of the desktop Nix build, on the forge (git.burmese-shiner.ts.net, nika's
+# host runner). The aarch64-darwin leg stays in .github/workflows/nix-desktop.yml on GitHub's
+# macOS runners until the forge has a macOS runner (joyboy, forge phase 2).
+#
+# THIS IS THE ONLY FORGE WORKFLOW IN THIS REPO. With .forgejo/workflows/ present the forge
+# ignores .github/workflows/ (upstream's jobs for pingdotgg's blacksmith runners).
+#
+# Same build as the GitHub leg, see its comments: no checkout, the flake URL is built so the
+# store path is exactly the one `github:yasinuslu/t3code` resolves to on the machines, and the
+# result goes to the attic cache (ATTIC_TOKEN is a forge repo secret, a push token minted for
+# forge-ci). The build runs on nika's own nix daemon, so nika gets the path straight away.
+name: Nix desktop build (linux)
+
+on:
+  push:
+    branches: [yu-v2]
+  workflow_dispatch:
+
+concurrency:
+  group: nix-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ATTIC_ENDPOINT: https://nix-cache.nepjua.org/
+  ATTIC_CACHE: nepjua
+
+jobs:
+  build:
+    runs-on: nix
+    timeout-minutes: 120
+    steps:
+      # `origin` pushes to the forge and GitHub at once and the mirror follows within seconds,
+      # but the flake URL is a GitHub tarball: wait until GitHub has the commit.
+      - name: Wait for the commit on GitHub
+        run: |
+          for _ in $(seq 60); do
+            curl -sf -o /dev/null "https://api.github.com/repos/yasinuslu/t3code/commits/$GITHUB_SHA" && exit 0
+            sleep 5
+          done
+          echo "commit $GITHUB_SHA not on GitHub after 5 min"
+          exit 1
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          nix build --print-build-logs --no-link --print-out-paths \
+            "github:yasinuslu/t3code/${GITHUB_SHA}#packages.x86_64-linux.default" \
+            > "$RUNNER_TEMP/out-paths.txt"
+          cat "$RUNNER_TEMP/out-paths.txt"
+
+      - name: Publish to the attic cache
+        env:
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+        run: |
+          set -euo pipefail
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/attic-config"
+          nix run nixpkgs#attic-client -- login "$ATTIC_CACHE" "$ATTIC_ENDPOINT" "$ATTIC_TOKEN"
+          xargs nix run nixpkgs#attic-client -- push "$ATTIC_CACHE" < "$RUNNER_TEMP/out-paths.txt"
+          rm -rf "$XDG_CONFIG_HOME"

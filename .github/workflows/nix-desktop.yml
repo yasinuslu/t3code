@@ -3,7 +3,9 @@
 # binary cache, so that `nixos-rebuild` / `darwin-rebuild` SUBSTITUTE the desktop app
 # instead of compiling electron locally for ten-plus minutes on every bump.
 #
-# THIS IS THE ONLY WORKFLOW IN THIS REPO THAT SHOULD BE ENABLED. Everything else under
+# THIS IS THE ONLY WORKFLOW IN THIS REPO THAT SHOULD BE ENABLED, AND ONLY FOR macOS. The
+# x86_64-linux leg runs on the forge (.forgejo/workflows/nix-desktop.yml, nika): GitHub runs
+# only what no self-hosted runner can do yet. Everything else under
 # .github/workflows/ belongs to pingdotgg/t3code and expects their paid `blacksmith-*`
 # runners and their secrets; they are disabled per-workflow through the GitHub API rather
 # than deleted, so upstream merges never conflict. `nep t3code ci-guard` re-disables any
@@ -48,8 +50,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
-            system: x86_64-linux
           - runner: macos-latest
             system: aarch64-darwin
     env:
