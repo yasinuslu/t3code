@@ -9,8 +9,13 @@ import {
   type OrchestrationProjectShell,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
+  MessageId,
+  NodeId,
   ProjectId,
   ProviderInstanceId,
+  ProviderThreadId,
+  ProviderTurnId,
+  RunAttemptId,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -328,6 +333,71 @@ describe("BrainstormService managers", () => {
       const prompt = ManagerRole.withManagerRole("hi", own ?? []);
       expect(prompt).toMatch(/^<t3_code_manager_role>[\s\S]*<user_request>\nhi\n<\/user_request>$/);
       expect(ManagerRole.withManagerRole("/compact", own ?? [])).toBe("/compact");
+
+      const providerThreadId = ProviderThreadId.make("pt-1");
+      const run1 = {
+        id: RunId.make("r-1"),
+        ordinal: 1,
+        rootNodeId: NodeId.make("n-1"),
+        userMessageId: MessageId.make("m-compact"),
+      };
+      const run2 = {
+        id: RunId.make("r-2"),
+        ordinal: 2,
+        rootNodeId: NodeId.make("n-2"),
+        userMessageId: MessageId.make("m-hi"),
+      };
+      const attempt1 = { id: RunAttemptId.make("a-1"), runId: run1.id };
+      const attempt2 = { id: RunAttemptId.make("a-2"), runId: run2.id };
+      const turn1 = {
+        id: ProviderTurnId.make("turn-1"),
+        providerThreadId,
+        runAttemptId: attempt1.id,
+        nodeId: run1.rootNodeId,
+      };
+      const turn2 = {
+        id: ProviderTurnId.make("turn-2"),
+        providerThreadId,
+        runAttemptId: attempt2.id,
+        nodeId: run2.rootNodeId,
+      };
+      const compactionMessageIds = new Set(["m-compact"]);
+
+      // On turn 1 (first turn, /compact): not yet delivered
+      expect(
+        ManagerRole.hasDeliveredRole({
+          providerTurns: [],
+          providerThreadId,
+          attempts: [attempt1],
+          runs: [run1],
+          compactionMessageIds,
+          currentRunOrdinal: 1,
+        }),
+      ).toBe(false);
+
+      // On turn 2 (after /compact): not yet delivered because turn 1 was compaction
+      expect(
+        ManagerRole.hasDeliveredRole({
+          providerTurns: [turn1],
+          providerThreadId,
+          attempts: [attempt1, attempt2],
+          runs: [run1, run2],
+          compactionMessageIds,
+          currentRunOrdinal: 2,
+        }),
+      ).toBe(false);
+
+      // On turn 3 (after "hi"): delivered!
+      expect(
+        ManagerRole.hasDeliveredRole({
+          providerTurns: [turn1, turn2],
+          providerThreadId,
+          attempts: [attempt1, attempt2],
+          runs: [run1, run2],
+          compactionMessageIds,
+          currentRunOrdinal: 3,
+        }),
+      ).toBe(true);
     }).pipe(Effect.scoped),
   );
 

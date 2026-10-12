@@ -1013,11 +1013,27 @@ export const layer: Layer.Layer<
       const routableSubagents = projection.subagents.filter((subagent) =>
         RunExecutionService.canRouteRelatedSubagent(subagent.status),
       );
-      // The manager starts every native provider session knowing its role.
-      const firstProviderTurn = !projection.providerTurns.some(
-        (turn) => turn.providerThreadId === providerThread.id,
+      const compactionMessageIds = new Set(
+        projection.messages
+          .filter(
+            (candidate) =>
+              candidate.attachments.length === 0 &&
+              candidate.text.trim().toLowerCase() === "/compact",
+          )
+          .map((candidate) => candidate.id),
       );
-      const managerInstructions = firstProviderTurn
+      // The manager starts every native provider session knowing its role.
+      // Compaction turns skip instructions, so deliver on the first
+      // conversational turn of each native provider thread.
+      const shouldDeliverManagerInstructions = !ManagerRole.hasDeliveredRole({
+        providerTurns: projection.providerTurns,
+        providerThreadId: providerThread.id,
+        attempts: projection.attempts,
+        runs: projection.runs,
+        compactionMessageIds,
+        currentRunOrdinal: run.ordinal,
+      });
+      const managerInstructions = shouldDeliverManagerInstructions
         ? yield* managerRole.instructionsFor(projection.thread.id)
         : null;
       const userText = ManagerRole.withManagerRole(
@@ -1038,15 +1054,7 @@ export const layer: Layer.Layer<
       const restartCancelledWork = pendingRestartCancelledBackgroundWork({
         runs: projection.runs,
         providerTurns: projection.providerTurns,
-        compactionMessageIds: new Set(
-          projection.messages
-            .filter(
-              (candidate) =>
-                candidate.attachments.length === 0 &&
-                candidate.text.trim().toLowerCase() === "/compact",
-            )
-            .map((candidate) => candidate.id),
-        ),
+        compactionMessageIds,
         run,
         attempts: projection.attempts,
       });

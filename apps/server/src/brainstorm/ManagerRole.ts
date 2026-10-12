@@ -8,7 +8,14 @@
  * built below BrainstormService and cannot depend on it, so BrainstormService
  * registers how to recognise the manager here and the turn start asks.
  */
-import type { ThreadId } from "@t3tools/contracts";
+import type {
+  NodeId,
+  OrchestrationV2ProviderTurn,
+  OrchestrationV2Run,
+  OrchestrationV2RunAttempt,
+  ProviderThreadId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
@@ -41,6 +48,35 @@ export function profileScopeInstruction(profile: string): string {
 export const MANAGER_RULES_FILE = "MANAGER.md";
 
 /** The manager's first-turn context, wrapped so it cannot pass for the user's words. */
+
+/**
+ * Whether this provider thread has already had its manager role delivered.
+ * Compaction turns do not carry manager instructions, so they do not count
+ * as having delivered the role.
+ */
+export function hasDeliveredRole(input: {
+  readonly providerTurns: ReadonlyArray<
+    Pick<OrchestrationV2ProviderTurn, "providerThreadId" | "runAttemptId" | "nodeId">
+  >;
+  readonly providerThreadId: ProviderThreadId;
+  readonly attempts: ReadonlyArray<Pick<OrchestrationV2RunAttempt, "id" | "runId">>;
+  readonly runs: ReadonlyArray<
+    Pick<OrchestrationV2Run, "id" | "ordinal" | "rootNodeId" | "userMessageId">
+  >;
+  readonly compactionMessageIds: ReadonlySet<string>;
+  readonly currentRunOrdinal: number;
+}): boolean {
+  return input.providerTurns.some((turn) => {
+    if (turn.providerThreadId !== input.providerThreadId) return false;
+    const attempt = input.attempts.find((a) => a.id === turn.runAttemptId);
+    const run = attempt
+      ? input.runs.find((r) => r.id === attempt.runId)
+      : input.runs.find((r) => r.rootNodeId === turn.nodeId);
+    if (!run || run.ordinal >= input.currentRunOrdinal) return false;
+    return !input.compactionMessageIds.has(run.userMessageId);
+  });
+}
+
 export function withManagerRole(text: string, instructions: ReadonlyArray<string>): string {
   // Native slash commands (`/compact`) must stay at the start of the prompt.
   if (instructions.length === 0 || text.trimStart().startsWith("/")) return text;
