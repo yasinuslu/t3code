@@ -78,3 +78,12 @@ export function findPreviewTabForUrl(
   }
   return sameOrigin;
 }
+
+/** The full list behind the "+N": newest first, ties keep their linked order. */
+export function previewLinksNewestFirst(
+  links: ReadonlyArray<ThreadPreviewLink>,
+): ReadonlyArray<ThreadPreviewLink> {
+  return [...links].sort((a, b) =>
+    a.linkedAt < b.linkedAt ? 1 : a.linkedAt > b.linkedAt ? -1 : 0,
+  );
+}

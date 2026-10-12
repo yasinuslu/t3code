@@ -4,8 +4,8 @@ import type {
   ThreadPreviewLinkState,
 } from "@t3tools/contracts";
 import { previewLinkLabel } from "@t3tools/client-runtime/state/preview-links";
-import { MonitorIcon } from "lucide-react";
-import { useCallback, useMemo, type MouseEvent } from "react";
+import { MonitorIcon, XIcon } from "lucide-react";
+import { useCallback, useMemo, type MouseEvent, type SyntheticEvent } from "react";
 
 import { cn } from "~/lib/utils";
 import { usePreviewLinkStates } from "~/state/previewLinks";
@@ -13,10 +13,12 @@ import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 
 import { InlineButton } from "../ui/button";
+import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   latestPreviewLink,
   previewLinkStatePresentation,
+  previewLinksNewestFirst,
   type PreviewLinkStatePresentation,
 } from "./threadPreviewLinkChip.logic";
 import { showThreadPreviewLinkContextMenu } from "./threadPreviewLinkContextMenu";
@@ -29,42 +31,41 @@ const DOT_CLASS_NAME: Record<NonNullable<PreviewLinkStatePresentation["dot"]>, s
   failed: "bg-destructive",
 };
 
+type OpenLink = (url: string, state: ThreadPreviewLinkState) => void;
+type RemoveLink = (url: string) => void;
+
+/** The chips sit inside clickable rows; nothing they do may activate or drag the row. */
+const stopRow = (event: SyntheticEvent) => event.stopPropagation();
+
 /**
- * A thread's preview links as chips. `latest` (sidebar rows) shows the newest link with a "+N"
- * for the rest; `all` (chat header) shows every link. Mount it only when the thread has links,
- * so threads without previews never subscribe to preview status.
+ * A thread's preview links: the newest as a chip, the rest behind a "+N" that opens a list of
+ * every link. Mount it only when the thread has links, so threads without previews never
+ * subscribe to preview status. Only the chip's link is polled; the list polls while open.
  */
 export function ThreadPreviewLinks({
   threadRef,
   links,
-  display,
   onBeforeOpen,
 }: {
   readonly threadRef: ScopedThreadRef;
   readonly links: ReadonlyArray<ThreadPreviewLink>;
-  readonly display: "latest" | "all";
   /** Runs before opening, e.g. a sidebar row activating its thread so the panel shows. */
   readonly onBeforeOpen?: (() => void) | undefined;
 }) {
-  // Rows only poll the link they show.
-  const shown = useMemo(() => {
-    if (display === "all") return links.map((link) => ({ link, others: 0 }));
-    const latest = latestPreviewLink(links);
-    return latest ? [latest] : [];
-  }, [display, links]);
-  const urls = useMemo(() => shown.map(({ link }) => link.url), [shown]);
+  const latest = useMemo(() => latestPreviewLink(links), [links]);
+  const urls = useMemo(() => (latest ? [latest.link.url] : []), [latest]);
   const states = usePreviewLinkStates(threadRef.environmentId, urls);
   const openLink = useOpenThreadPreviewLink();
   const unlink = useAtomCommand(threadEnvironment.unlinkPreview, { reportFailure: true });
-  const open = useCallback(
-    (url: string, state: ThreadPreviewLinkState) => {
+  const open = useCallback<OpenLink>(
+    (url, state) => {
       if (state !== "gone") onBeforeOpen?.();
       void openLink(threadRef, url, state);
     },
     [onBeforeOpen, openLink, threadRef],
   );
-  const remove = useCallback(
-    (url: string) => {
+  const remove = useCallback<RemoveLink>(
+    (url) => {
       void unlink({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, url },
@@ -72,31 +73,123 @@ export function ThreadPreviewLinks({
     },
     [threadRef, unlink],
   );
+  if (!latest) return null;
 
-  return shown.map(({ link, others }) => (
-    <ThreadPreviewLinkChip
-      key={link.url}
-      link={link}
-      state={states.get(link.url) ?? "unknown"}
-      others={others}
-      onOpen={open}
-      onRemove={remove}
-    />
-  ));
+  return (
+    <>
+      <ThreadPreviewLinkChip
+        link={latest.link}
+        state={states.get(latest.link.url) ?? "unknown"}
+        onOpen={open}
+        onRemove={remove}
+      />
+      {latest.others > 0 ? (
+        <Popover>
+          <PopoverTrigger
+            render={
+              <InlineButton
+                tone="muted"
+                aria-label={`${latest.others} more previews`}
+                onPointerDown={stopRow}
+                onClick={stopRow}
+              />
+            }
+          >
+            <span className="font-normal text-xs tabular-nums">+{latest.others}</span>
+          </PopoverTrigger>
+          <PopoverPopup side="bottom" align="start" width="lg" padding="compact">
+            <PopoverTitle className="sr-only">Linked previews</PopoverTitle>
+            <ThreadPreviewLinkList
+              threadRef={threadRef}
+              links={links}
+              onOpen={open}
+              onRemove={remove}
+            />
+          </PopoverPopup>
+        </Popover>
+      ) : null}
+    </>
+  );
+}
+
+/** Every linked preview, newest first, each with its status, a way to open it and a way out. */
+export function ThreadPreviewLinkList({
+  threadRef,
+  links,
+  onOpen,
+  onRemove,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly links: ReadonlyArray<ThreadPreviewLink>;
+  readonly onOpen: OpenLink;
+  readonly onRemove: RemoveLink;
+}) {
+  const ordered = useMemo(() => previewLinksNewestFirst(links), [links]);
+  const urls = useMemo(() => ordered.map((link) => link.url), [ordered]);
+  const states = usePreviewLinkStates(threadRef.environmentId, urls);
+  return (
+    <ul className="flex flex-col" onPointerDown={stopRow} onClick={stopRow}>
+      {ordered.map((link) => {
+        const state = states.get(link.url) ?? "unknown";
+        const label = previewLinkLabel(link);
+        const presentation = previewLinkStatePresentation(state);
+        return (
+          <li key={link.url} className="flex min-w-0 items-center gap-1">
+            <button
+              type="button"
+              aria-label={[`Open preview ${label}`, presentation.label].filter(Boolean).join(", ")}
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+              onClick={() => onOpen(link.url, state)}
+            >
+              <MonitorIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span
+                  className={cn(
+                    "truncate text-sm",
+                    presentation.removed && "line-through opacity-60",
+                  )}
+                >
+                  {label}
+                </span>
+                <span className="truncate text-muted-foreground text-xs">{link.url}</span>
+              </span>
+              {presentation.label ? (
+                <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs">
+                  {presentation.dot ? (
+                    <span
+                      aria-hidden
+                      className={cn("size-1.5 rounded-full", DOT_CLASS_NAME[presentation.dot])}
+                    />
+                  ) : null}
+                  {presentation.label}
+                </span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove preview ${label}`}
+              className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:outline-none"
+              onClick={() => onRemove(link.url)}
+            >
+              <XIcon aria-hidden className="size-3.5" />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function ThreadPreviewLinkChip({
   link,
   state,
-  others,
   onOpen,
   onRemove,
 }: {
   readonly link: ThreadPreviewLink;
   readonly state: ThreadPreviewLinkState;
-  readonly others: number;
-  readonly onOpen: (url: string, state: ThreadPreviewLinkState) => void;
-  readonly onRemove: (url: string) => void;
+  readonly onOpen: OpenLink;
+  readonly onRemove: RemoveLink;
 }) {
   const label = previewLinkLabel(link);
   const presentation = previewLinkStatePresentation(state);
@@ -115,13 +208,7 @@ function ThreadPreviewLinkChip({
       onRemove: () => onRemove(link.url),
     });
   };
-  const ariaLabel = [
-    `Preview ${label}`,
-    presentation.label,
-    others > 0 ? `and ${others} more` : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const ariaLabel = [`Preview ${label}`, presentation.label].filter(Boolean).join(", ");
   return (
     <Tooltip>
       <TooltipTrigger
@@ -129,7 +216,7 @@ function ThreadPreviewLinkChip({
           <InlineButton
             tone="muted"
             aria-label={ariaLabel}
-            onPointerDown={(event) => event.stopPropagation()}
+            onPointerDown={stopRow}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
           />
@@ -142,7 +229,6 @@ function ThreadPreviewLinkChip({
           >
             {label}
           </span>
-          {others > 0 ? <span className="tabular-nums">+{others}</span> : null}
           {presentation.dot ? (
             <span
               aria-hidden

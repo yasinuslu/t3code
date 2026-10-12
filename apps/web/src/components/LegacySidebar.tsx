@@ -776,7 +776,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             <ThreadPreviewLinks
               threadRef={threadRef}
               links={thread.previewLinks}
-              display="latest"
               onBeforeOpen={() => {
                 if (!isActive) void navigateToThread(threadRef);
               }}
