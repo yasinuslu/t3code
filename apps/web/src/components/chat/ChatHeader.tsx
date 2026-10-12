@@ -416,13 +416,13 @@ export const ChatHeader = memo(function ChatHeader({
   );
 });
 
-/** Every preview linked to the thread. Its own component so the header does not subscribe to the thread shell. */
+/** The thread's preview chip and "+N" list. Its own component so the header does not subscribe to the thread shell. */
 function ChatHeaderPreviewLinks({ threadRef }: { threadRef: ScopedThreadRef }) {
   const links = useThreadShell(threadRef)?.previewLinks;
   if (!links || links.length === 0) return null;
   return (
     <div className="flex min-w-0 shrink items-center gap-2">
-      <ThreadPreviewLinks threadRef={threadRef} links={links} display="all" />
+      <ThreadPreviewLinks threadRef={threadRef} links={links} />
     </div>
   );
 }

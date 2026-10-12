@@ -1696,7 +1696,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <ThreadPreviewLinks
         threadRef={threadRef}
         links={thread.previewLinks}
-        display="latest"
         onBeforeOpen={handlePreviewBeforeOpen}
       />
     ) : null;
