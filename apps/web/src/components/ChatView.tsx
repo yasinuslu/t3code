@@ -610,6 +610,7 @@ import {
 import { useAssetUrls } from "../assets/assetUrls";
 import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "@t3tools/shared/composerContextReferences";
 import { recallableComposerPrompt } from "./chat/composerPromptHistory";
+import { ThreadStatusCard } from "./chat/ThreadStatusCard";
 import { observeResize } from "~/lib/observeResize";
 
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -1711,6 +1712,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const serverThreadProjection = useThreadProjection(routeThreadDetailRef);
   const serverProjection = serverThreadProjection?.projection ?? null;
+  const activeStatusReport = serverProjection?.thread.statusReport;
   const reportedModelSelection = serverProjection
     ? deriveReportedModelSelection(serverProjection)
     : null;
@@ -11436,6 +11438,13 @@ export default function ChatView(props: ChatViewProps) {
               : {})}
           />
         </header>
+        {activeStatusReport && activeThreadRef && !paintOnlyDisplayedTimeline ? (
+          <ThreadStatusCard
+            report={activeStatusReport}
+            threadRef={activeThreadRef}
+            cwd={gitCwd ?? undefined}
+          />
+        ) : null}
 
         {/* Main content area with optional plan sidebar */}
         <div className="relative flex min-h-0 min-w-0 flex-1">

@@ -80,6 +80,7 @@ import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
+import { threadStatusReportAttachmentIds } from "./threadStatusReportImages.ts";
 import {
   isThreadHistoryUserTurn,
   isConversationHistoryItem,
@@ -4740,8 +4741,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         AND type = 'dynamic_tool'
         AND (payload_json LIKE '%htmlRender%' OR payload_json LIKE ${`%${MCP_APP_OUTPUT_KEY}%`})
     `,
+        // Screenshots the thread's status report shows.
+        sql<{ text: string | null }>`
+      SELECT json_extract(payload_json, '$.statusReport.text') AS text
+      FROM orchestration_v2_projection_threads
+      WHERE thread_id = ${threadId}
+    `,
       ]).pipe(
-        Effect.map(([messages, renders]) => [
+        Effect.map(([messages, renders, reports]) => [
           ...new Set([
             ...messages.map((row) => row.id),
             ...threadHtmlRenderAttachmentIds(
@@ -4754,6 +4761,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 };
               }),
             ),
+            ...reports.flatMap((row) => threadStatusReportAttachmentIds(threadId, row.text)),
           ]),
         ]),
         Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
@@ -6255,6 +6263,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   item.type === "dynamic_tool" ? [item] : [],
                 ),
               ),
+              ...threadStatusReportAttachmentIds(threadId, projection.thread.statusReport?.text),
             ]),
           ]),
         ),

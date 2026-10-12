@@ -1561,6 +1561,14 @@ function ChatMarkdownVideo(props: {
   );
 }
 
+const ATTACHMENT_IMAGE_SRC = /^attachment:([A-Za-z0-9_-]{1,256})$/;
+
+/** `attachment:<id>` names an image in the environment's attachment store, such as a
+    screenshot an agent put in its thread's status report. */
+function attachmentImageId(src: string): string | null {
+  return ATTACHMENT_IMAGE_SRC.exec(src)?.[1] ?? null;
+}
+
 /** Environment-hosted media loads through an exact-file signed asset URL. */
 export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props: {
   readonly environmentId: EnvironmentId;
@@ -2467,7 +2475,8 @@ function useChatMarkdownState({
     ];
     return buildFileLinkParentSuffixByPath(filePaths);
   }, [inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
-  const markdownUrlTransform = useCallback((href: string) => {
+  const markdownUrlTransform = useCallback((href: string, key: string) => {
+    if (key === "src" && attachmentImageId(href) !== null) return href;
     if (parseAssistantCitationHref(href)) return href;
     if (parseComposerContextHref(href)) return href;
     if (parseThreadLinkHref(href)) return href;
@@ -3228,6 +3237,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const copyMarkdown = markdownImageCopy(altText, srcString, authoredTitle);
     const { className, style: _style, width, height, ...imageProps } = props;
     const authoredSizeStyle = authoredImageSizeStyle(width, height);
+    const attachmentId = attachmentImageId(srcString);
+    if (attachmentId !== null && environmentId !== null) {
+      return (
+        <ChatMarkdownAssetImage
+          environmentId={environmentId}
+          resource={{ _tag: "attachment", attachmentId }}
+          alt={altText}
+          copyMarkdown={copyMarkdown}
+          standalone={standalone}
+          className={className}
+          style={authoredSizeStyle}
+          imageProps={imageProps}
+          onImageExpand={imageExpand}
+        />
+      );
+    }
     const imageSource = classifyMarkdownImageSource(classifiedSrc, imageBaseDir ?? cwd);
     const kind = mediaKindFromPath(classifiedSrc) ?? "image";
     const directUri = imageSource._tag === "Direct" ? imageSource.uri : null;

@@ -14,6 +14,7 @@ import {
   RunAttemptId,
   RunId,
   RuntimeRequestId,
+  THREAD_STATUS_REPORT_MAX_CHARS,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -622,5 +623,58 @@ it.effect("keeps delegated child pull-request links independent of the parent", 
     const parentAfterChildLink = yield* projections.getThreadProjection(parentThreadId);
     assert.deepEqual(parentAfterChildLink.thread.linkedPullRequest, parentPullRequest);
     assert.deepEqual(parentAfterChildLink.thread.pullRequests, parent.thread.pullRequests);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("sets a thread's status report without counting it as thread activity", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:status-report");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-status-report"),
+      threadId,
+      projectId: ProjectId.make("project:status-report"),
+      title: "Status",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const created = yield* projections.getThreadProjection(threadId);
+
+    const first = yield* orchestrator.dispatch({
+      type: "thread.status-report.set",
+      commandId: CommandId.make("status-report-1"),
+      threadId,
+      text: "Working on the stage.",
+    });
+    assert.deepEqual(
+      first.storedEvents.map((stored) => stored.event.type),
+      ["thread.metadata-updated"],
+    );
+    yield* orchestrator.dispatch({
+      type: "thread.status-report.set",
+      commandId: CommandId.make("status-report-2"),
+      threadId,
+      text: "Done.",
+    });
+    const replaced = yield* projections.getThreadProjection(threadId);
+    assert.equal(replaced.thread.statusReport?.text, "Done.");
+    assert.isString(replaced.thread.statusReport?.updatedAt);
+    assert.deepEqual(replaced.thread.updatedAt, created.thread.updatedAt);
+
+    yield* orchestrator.dispatch({
+      type: "thread.status-report.set",
+      commandId: CommandId.make("status-report-3"),
+      threadId,
+      text: "x".repeat(THREAD_STATUS_REPORT_MAX_CHARS + 10),
+    });
+    const truncated = yield* projections.getThreadProjection(threadId);
+    assert.equal(truncated.thread.statusReport?.text.length, THREAD_STATUS_REPORT_MAX_CHARS);
   }).pipe(Effect.provide(layerTest)),
 );

@@ -53,6 +53,7 @@ import {
   ThreadPullRequestStack,
   ThreadPullRequestWatch,
 } from "./threadPullRequest.ts";
+import { ThreadStatusReport } from "./threadStatusReport.ts";
 import {
   ProviderApprovalDecision,
   ProviderApprovalOption,
@@ -378,6 +379,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   pullRequests: Schema.optional(Schema.Array(ThreadPullRequestLink)),
   /** Pull request discovered from the thread's current branch. */
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  /** The status its agent last set (`thread_status_update`); absent until one does. */
+  statusReport: Schema.optional(ThreadStatusReport),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   lineage: OrchestrationV2AppThreadLineage,
@@ -2843,6 +2846,13 @@ export const OrchestrationV2Command = Schema.Union([
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.status-report.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    /** Replaces the previous report; its screenshots must already be stored attachments. */
+    text: TrimmedNonEmptyString,
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),

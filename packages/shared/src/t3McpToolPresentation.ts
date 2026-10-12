@@ -61,6 +61,7 @@ export type T3McpToolSummaryAction =
   | "unwatch-pr"
   | "write-pr-guides"
   | "read-pr-guide"
+  | "status-update"
   | "browser"
   | "device"
   | "html-preview"
@@ -120,6 +121,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Read", "Reading", "Read", "a review guide"],
     "read-pr-guide",
     "pull-request",
+  ),
+  thread_status_update: tool(
+    ["Update", "Updating", "Updated", "the thread status"],
+    "status-update",
   ),
   orchestrator_capabilities: tool(
     ["Get", "Getting", "Got", "orchestration capabilities"],

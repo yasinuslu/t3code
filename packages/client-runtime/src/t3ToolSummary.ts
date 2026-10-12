@@ -379,6 +379,13 @@ export function summarizeT3ToolCalls(
     case "link-pr":
       label = phrase("Linked", "link", quantity(selected.length, "pull request"));
       break;
+    case "status-update":
+      label = phrase(
+        "Updated",
+        "update",
+        `the thread status${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
     case "unlink-pr":
       label = phrase("Unlinked", "unlink", quantity(selected.length, "pull request"));
       break;
