@@ -1242,6 +1242,13 @@ export default function FilePreviewPanel({
               alt={relativePath}
               workspaceMutationId={workspaceMutationId}
             />
+          ) : relativePath && file.isMissing && file.data === null ? (
+            // An agent may announce a report before writing it; the asset URL
+            // would only say the preview failed, so name the real state.
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center text-xs leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Not written yet</span>
+              <span>This file does not exist on disk yet. It will appear here once it is written.</span>
+            </div>
           ) : relativePath && renderBrowserFile && absolutePath ? (
             <WorkspaceBrowserPreview
               key={absolutePath}
