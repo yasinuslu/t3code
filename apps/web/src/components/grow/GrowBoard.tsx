@@ -6,12 +6,10 @@
  */
 import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon, PlayIcon } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
-import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { ThreadReportBody, WORK_REASON_LOOK, useThreadReport } from "../home/ThreadReportCard";
-import { Badge } from "../ui/badge";
+import { ThreadReportBody, useThreadReport } from "../home/ThreadReportCard";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -27,171 +25,107 @@ import {
   type GrowBoard,
   type GrowBoardCard,
 } from "./grow.logic";
+import { GrowNavSkeleton, GrowRow, StageHeader, useGrowNav } from "./GrowNav";
 import { SavedField, StageActions, type UpdateCard } from "./GrowParts";
 
-/** The kanban columns and the Shelf; `header` sits above them (the switch, the manager). */
+/**
+ * The kanban columns and the Shelf; `header` sits above them (the switch, the
+ * manager). With `nav` this is the navigation zone of Board mode: arrows, h/j/k/l
+ * and the other keys act on the selected card (see GrowNav).
+ */
 export function GrowColumns(props: {
   readonly board: GrowBoard;
-  readonly now: number;
   readonly selected: string | null;
   readonly onSelect: (key: string) => void;
   /** Wide windows: a card's Play opens its prototype in Threads mode. */
   readonly onPlay?: (key: string) => void;
   readonly header?: ReactNode;
+  /** False until the cards have loaded; the columns are not drawn before. */
+  readonly ready?: boolean;
+  readonly canPlay?: boolean;
 }) {
   const { board, selected } = props;
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    root.current
-      ?.querySelector('[data-grow-selected="true"]')
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selected]);
+  const nav = useGrowNav<HTMLDivElement>({
+    mode: "board",
+    board,
+    selected: selected ?? "",
+    canPlay: props.canPlay ?? false,
+    enabled: selected !== null,
+  });
   return (
-    <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3 pb-4" data-grow-board="">
-      {props.header}
-      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-1">
-        {GROW_COLUMN_STAGES.map((stage) => {
-          const column = GROW_STAGE_DEFS[stage];
-          return (
-            <section
-              key={stage}
-              aria-label={column.title}
-              data-grow-column={stage}
-              className={cn(
-                "flex min-h-0 w-68 min-w-68 flex-1 flex-col gap-2 rounded-xl border p-2",
-                column.yourTurn ? "border-warning/50 bg-warning-surface/40" : "bg-card/40",
-              )}
-            >
-              <h2 className="flex items-baseline gap-2 px-1 font-medium text-sm">
-                <span className={column.yourTurn ? "text-warning-foreground" : undefined}>
-                  {column.title}
-                </span>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {board[stage].length}
-                </span>
-              </h2>
-              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-                {board[stage].length === 0 ? (
-                  <p className="px-1 text-muted-foreground text-xs">{column.empty}</p>
-                ) : (
-                  board[stage].map((card) => (
-                    <GrowCardView
-                      key={card.key}
-                      card={card}
-                      now={props.now}
-                      selected={card.key === selected}
-                      onOpen={() => props.onSelect(card.key)}
-                      {...(props.onPlay ? { onPlay: () => props.onPlay?.(card.key) } : {})}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-      <section
-        aria-label={GROW_STAGE_DEFS.shelved.title}
-        data-grow-column="shelved"
-        className="shrink-0 px-1"
-      >
-        <h2 className="mb-1 flex items-baseline gap-2 font-medium text-sm">
-          Shelf
-          <span className="text-muted-foreground text-xs tabular-nums">{board.shelved.length}</span>
-        </h2>
-        {board.shelved.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{GROW_STAGE_DEFS.shelved.empty}</p>
-        ) : (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {board.shelved.map((card) => (
-              <Button
-                key={card.key}
-                size="sm"
-                variant={card.key === selected ? "default" : "outline"}
-                className="max-w-60"
-                data-grow-selected={card.key === selected ? "true" : undefined}
-                onClick={() => props.onSelect(card.key)}
-              >
-                <span className="truncate">{card.thread.title}</span>
-              </Button>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function GrowCardView(props: {
-  readonly card: GrowBoardCard;
-  readonly now: number;
-  readonly selected: boolean;
-  readonly onOpen: () => void;
-  readonly onPlay?: () => void;
-}) {
-  const { card } = props;
-  const lessons = card.card?.lessons.length ?? 0;
-  const pullRequest = card.thread.pullRequests.find(
-    (candidate) => candidate.source !== "stack-dismissed",
-  );
-  return (
-    <article
-      className={cn(
-        "relative flex min-w-0 flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-card-foreground",
-        props.selected ? "border-primary ring-2 ring-primary/40" : "",
-      )}
-      data-grow-card={card.thread.id}
-      data-grow-selected={props.selected ? "true" : undefined}
+    <div
+      ref={nav.ref}
+      onKeyDown={nav.onKeyDown}
+      className="flex min-h-0 flex-1 flex-col gap-2 pb-4"
+      data-grow-board=""
+      data-grow-zone=""
     >
-      <button
-        type="button"
-        className="min-w-0 text-start font-medium text-sm outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-ring"
-        onClick={props.onOpen}
-      >
-        <span className="line-clamp-2">{card.thread.title}</span>
-      </button>
-      {card.card?.became ? (
-        <p className="line-clamp-2 text-muted-foreground text-xs">{card.card.became}</p>
-      ) : null}
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        {card.reason !== "settled" ? (
-          <Badge variant="outline" size="sm">
-            <span
-              aria-hidden
-              className={cn("size-1.5 rounded-full", WORK_REASON_LOOK[card.reason].dot)}
-            />
-            {WORK_REASON_LOOK[card.reason].label}
-          </Badge>
-        ) : null}
-        {lessons > 0 ? (
-          <Badge variant="secondary" size="sm">
-            {lessons === 1 ? "1 lesson" : `${lessons} lessons`}
-          </Badge>
-        ) : null}
-        {pullRequest ? (
-          <Badge variant="outline" size="sm">
-            #{pullRequest.number}
-            {pullRequest.snapshot ? ` ${pullRequest.snapshot.state}` : ""}
-          </Badge>
-        ) : null}
-        <span className="ms-auto text-muted-foreground text-xs tabular-nums">
-          {formatRelativeTimeLabel(card.lastActivityAt)}
-        </span>
-      </div>
-      {card.playUrl ? (
-        <Button
-          size="xs"
-          className="relative z-10 self-start"
-          variant={card.stage === "play" ? "default" : "outline"}
-          {...(props.onPlay
-            ? { onClick: props.onPlay }
-            : { render: <a href={card.playUrl} target="_blank" rel="noopener noreferrer" /> })}
-        >
-          <PlayIcon />
-          Play
-        </Button>
-      ) : null}
-    </article>
+      {props.header}
+      {props.ready === false ? (
+        <GrowNavSkeleton />
+      ) : (
+        <>
+          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-1">
+            {GROW_COLUMN_STAGES.map((stage) => {
+              const column = GROW_STAGE_DEFS[stage];
+              return (
+                <section
+                  key={stage}
+                  aria-label={column.title}
+                  data-grow-column={stage}
+                  className={cn(
+                    "flex min-h-0 w-64 min-w-64 flex-1 flex-col gap-2 rounded-xl border p-2",
+                    column.yourTurn ? "border-warning/50 bg-warning-surface/40" : "bg-card/40",
+                  )}
+                >
+                  <StageHeader stage={stage} count={board[stage].length} />
+                  <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+                    {board[stage].length === 0 ? (
+                      <p className="px-1 text-muted-foreground text-xs">{column.empty}</p>
+                    ) : (
+                      board[stage].map((card) => (
+                        <GrowRow
+                          key={card.key}
+                          card={card}
+                          variant="card"
+                          selected={card.key === selected}
+                          onSelect={props.onSelect}
+                          {...(props.onPlay ? { onPlay: props.onPlay } : {})}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          <section
+            aria-label={GROW_STAGE_DEFS.shelved.title}
+            data-grow-column="shelved"
+            className="flex shrink-0 flex-col gap-1"
+          >
+            <StageHeader stage="shelved" count={board.shelved.length} />
+            {board.shelved.length === 0 ? (
+              <p className="px-1 text-muted-foreground text-xs">{GROW_STAGE_DEFS.shelved.empty}</p>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {board.shelved.map((card) => (
+                  <div key={card.key} className="w-64 shrink-0">
+                    <GrowRow
+                      card={card}
+                      variant="card"
+                      selected={card.key === selected}
+                      onSelect={props.onSelect}
+                      {...(props.onPlay ? { onPlay: props.onPlay } : {})}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </div>
   );
 }
 

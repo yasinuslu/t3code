@@ -7,7 +7,7 @@ When the t3-code MCP server exposes link_preview and you start or hand the user 
 </preview_linking>`;
 
 const STATUS_UPDATE_INSTRUCTIONS = `<thread_status>
-When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, screenshots of the change by absolute path, and what the user owes, if anything. Each call replaces the last. When it exposes grow_update and your prototype is something the user can click, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons".
+When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, screenshots of the change by absolute path, and what the user owes, if anything. Each call replaces the last. When it exposes grow_update and your thread has something the user can open, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons". Every thread ends in something the owner can open and play with: for an app it is the running preview, for work without an interface it is an HTML page that demonstrates it (a report, demo or pitch, with video or screenshots when useful), linked as the thread's preview like any other. A standalone prototype (not a branch of an existing app) is a small clean Bun project, server plus client, that starts with "bun install" and "bun dev"; a feature of an existing app uses that app's own stack and preview.
 </thread_status>`;
 
 /**

@@ -823,6 +823,8 @@ type ChatViewProps =
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
+      /** False: never move focus to the composer on its own (Grow keeps it in its rail). */
+      autoFocusComposer?: boolean;
       routeKind: "server";
       draftId?: never;
     }
@@ -832,6 +834,7 @@ type ChatViewProps =
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
+      autoFocusComposer?: boolean;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -1542,6 +1545,7 @@ export default function ChatView(props: ChatViewProps) {
     onDiffPanelOpen,
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
+    autoFocusComposer = true,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
@@ -4554,7 +4558,10 @@ export default function ChatView(props: ChatViewProps) {
     [draftId, routeThreadKey, routeThreadRef, serverThread],
   );
 
+  // The composer handle is shared app-wide (command palette context), so a view hidden under
+  // Home must not focus "its" composer: the handle may point at the one Home shows.
   const focusComposer = useCallback(() => {
+    if (coveredByHomeRef.current) return;
     composerRef.current?.focusAtEnd();
   }, [composerRef]);
   const canInterruptRunningThread = deriveCanInterruptRunningThread(
@@ -4575,13 +4582,12 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
   }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
-  useEffect(
-    () =>
-      subscribeSnapShotComposerFocus(() => {
-        if (!coveredByHomeRef.current) focusComposer();
-      }),
-    [focusComposer],
-  );
+  useEffect(() => {
+    if (!autoFocusComposer) return;
+    return subscribeSnapShotComposerFocus(() => {
+      if (!coveredByHomeRef.current) focusComposer();
+    });
+  }, [autoFocusComposer, focusComposer]);
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -6658,14 +6664,14 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThreadKey]);
 
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!autoFocusComposer || !activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
       focusComposer();
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, autoFocusComposer, focusComposer, terminalUiState.terminalOpen]);
 
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The
@@ -6673,7 +6679,14 @@ export default function ChatView(props: ChatViewProps) {
   // terminal is a surface and is recognized by the predicate instead. Mobile is left alone so
   // returning to the app does not raise the keyboard.
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
+    if (
+      !autoFocusComposer ||
+      !activeThread?.id ||
+      terminalUiState.terminalOpen ||
+      isMobileViewport
+    ) {
+      return;
+    }
     let frame: number | null = null;
     const onWindowFocus = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -6692,7 +6705,13 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("focus", onWindowFocus);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, isMobileViewport, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    autoFocusComposer,
+    focusComposer,
+    isMobileViewport,
+    terminalUiState.terminalOpen,
+  ]);
 
   useEffect(() => {
     if (!activeThread?.id) return;

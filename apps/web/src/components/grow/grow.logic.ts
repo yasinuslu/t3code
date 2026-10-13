@@ -146,14 +146,36 @@ const epochMs = (value: string) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+/** The project a thread belongs to, `envId:projectId`; the project filter's value. */
+export const growProjectKey = (
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "projectId">,
+) => `${thread.environmentId}:${thread.projectId}`;
+
+/**
+ * Managers (current and former) and brainstorm chats are made by the server on
+ * the user's behalf; no other thread has that origin, so it marks them for good,
+ * unlike the store's set of current managers.
+ */
+const isServerMadeThread = (thread: Pick<EnvironmentThreadShell, "createdBy" | "creationSource">) =>
+  thread.creationSource === "server" && thread.createdBy === "user";
+
+export interface GrowBoardOptions {
+  /** Keys (`envId:threadId`) that are never cards: the managers, of every space. */
+  readonly excluded?: ReadonlySet<string>;
+  /** Only this project's threads; null or absent: all. */
+  readonly project?: string | null;
+}
+
 /**
  * Every thread becomes a card. Unlike the work overview, long-settled threads
  * stay on the board (as settled), so In use and the Shelf can show them.
+ * Managers are never cards, whichever space or machine they belong to.
  */
 export function buildGrowBoard(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   cards: ReadonlyMap<string, GrowCard>,
   now: number,
+  options: GrowBoardOptions = {},
 ): GrowBoard {
   const columns: Record<GrowStage, GrowBoardCard[]> = {
     idea: [],
@@ -168,7 +190,10 @@ export function buildGrowBoard(
     if (
       thread.archivedAt !== null ||
       thread.deletedAt !== null ||
-      thread.lineage.relationshipToParent === "subagent"
+      thread.lineage.relationshipToParent === "subagent" ||
+      isServerMadeThread(thread) ||
+      options.excluded?.has(growCardKey(thread)) === true ||
+      (options.project != null && growProjectKey(thread) !== options.project)
     ) {
       continue;
     }
@@ -188,6 +213,15 @@ export function buildGrowBoard(
   }
   columns.done = columns.done.slice(0, IN_USE_LIMIT);
   return columns;
+}
+
+/** The projects that have at least one card, in first-seen order. */
+export function growBoardProjects(board: GrowBoard): ReadonlyArray<string> {
+  return [
+    ...new Set(
+      GROW_STAGES.flatMap((stage) => board[stage].map((card) => growProjectKey(card.thread))),
+    ),
+  ];
 }
 
 /** Every card in rail order: stages in board order, Shelf last, newest first within a stage. */
@@ -211,4 +245,38 @@ export function growStepSelection(board: GrowBoard, selected: string, direction:
   const keys = [GROW_MANAGER_KEY, ...growRailOrder(board).map((card) => card.key)];
   const index = Math.max(0, keys.indexOf(selected));
   return keys[Math.min(keys.length - 1, Math.max(0, index + direction))] ?? GROW_MANAGER_KEY;
+}
+
+export type GrowDirection = "up" | "down" | "left" | "right";
+
+/**
+ * Arrow stepping over the board: the non-empty columns left to right with the
+ * Shelf as the last one. Up and down stay in a column (up from its first card
+ * of the first column goes to the manager); left and right move to the next
+ * column keeping the row where it can. From the manager, down or right enters
+ * the first column. A selection that left the board counts as the manager.
+ */
+export function growBoardStep(
+  board: GrowBoard,
+  selected: string,
+  direction: GrowDirection,
+): string {
+  const columns = [...GROW_COLUMN_STAGES, "shelved" as const]
+    .map((stage) => board[stage])
+    .filter((column) => column.length > 0);
+  const first = columns[0]?.[0]?.key;
+  const column = columns.findIndex((cards) => cards.some((card) => card.key === selected));
+  if (column < 0) {
+    return (direction === "down" || direction === "right" ? first : undefined) ?? GROW_MANAGER_KEY;
+  }
+  const cards = columns[column] ?? [];
+  const row = cards.findIndex((card) => card.key === selected);
+  if (direction === "up" || direction === "down") {
+    if (direction === "up" && row === 0 && column === 0) return GROW_MANAGER_KEY;
+    const next = Math.min(cards.length - 1, Math.max(0, row + (direction === "down" ? 1 : -1)));
+    return cards[next]?.key ?? selected;
+  }
+  const target = columns[column + (direction === "right" ? 1 : -1)];
+  if (target === undefined) return selected;
+  return target[Math.min(row, target.length - 1)]?.key ?? selected;
 }

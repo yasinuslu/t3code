@@ -1,23 +1,21 @@
 /**
- * The pieces of Grow's Threads mode: the switch between Threads and Board, the
- * rail of every card with the manager pinned above it, and the selected
- * thread as a "thing" to play with and understand. Switching is instant; only
- * the selected thread's prototype is mounted.
+ * The pieces of Grow's Threads mode: the rail of every card with the manager
+ * pinned above it, and the selected thread as a "thing" to play with and
+ * understand. Switching is instant; only the selected thread's prototype is
+ * mounted.
+ *
+ * The played thing can be anything the owner can open: a running app, or an
+ * HTML page that shows the work (a report, demo or pitch, with video,
+ * screenshots or a recording). Everything here treats it as a page in an
+ * iframe, nothing more.
  */
 import { GROW_STAGES } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, MessagesSquareIcon, PlayIcon, RotateCwIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
-import { useManagerProfile } from "../../brainstormStore";
-import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import {
-  ThreadReportBody,
-  ThreadReportLinks,
-  WORK_REASON_LOOK,
-  useThreadReport,
-} from "../home/ThreadReportCard";
+import { ThreadReportBody, ThreadReportLinks, useThreadReport } from "../home/ThreadReportCard";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -29,144 +27,75 @@ import {
   type GrowBoardCard,
 } from "./grow.logic";
 import { type GrowThingTab, useGrowStore } from "./grow.store";
+import {
+  GrowHeader,
+  GrowNavSkeleton,
+  GrowRow,
+  ManagerRow,
+  StageHeader,
+  useGrowNav,
+} from "./GrowNav";
 import { SavedField, StageActions, type UpdateCard } from "./GrowParts";
 
-/** Same place and size in both left-side modes, so it never jumps. */
-export function LeftSwitch() {
-  const leftMode = useGrowStore((store) => store.leftMode);
-  const setLeftMode = useGrowStore((store) => store.setLeftMode);
-  return (
-    <ToggleGroup
-      aria-label="Left side"
-      className="self-start"
-      value={[leftMode]}
-      onValueChange={(next) => {
-        const value = next[0];
-        if (value === "threads" || value === "board") setLeftMode(value);
-      }}
-    >
-      <Toggle value="threads">Threads</Toggle>
-      <Toggle value="board">Board</Toggle>
-    </ToggleGroup>
-  );
-}
-
-export function useManagerLabel(): string {
-  const profile = useManagerProfile();
-  return profile === null ? "Manager" : `Manager: ${profile}`;
-}
-
-/** Selects the manager; highlighted while selected. */
-export function ManagerButton(props: { readonly selected: boolean }) {
+export function Rail(props: {
+  readonly board: GrowBoard;
+  readonly selected: string;
+  readonly projects: ReadonlyArray<string>;
+  readonly ready: boolean;
+  readonly canPlay: boolean;
+}) {
   const select = useGrowStore((store) => store.select);
-  const label = useManagerLabel();
-  return (
-    <Button
-      size="sm"
-      variant={props.selected ? "default" : "outline"}
-      aria-pressed={props.selected}
-      aria-current={props.selected ? "true" : undefined}
-      data-grow-manager=""
-      className="self-start"
-      onClick={() => select(GROW_MANAGER_KEY)}
-    >
-      <MessagesSquareIcon />
-      {label}
-    </Button>
-  );
-}
-
-export function Rail(props: { readonly board: GrowBoard; readonly selected: string }) {
-  const select = useGrowStore((store) => store.select);
-  const rail = useRef<HTMLElement>(null);
-  const { selected } = props;
-  useEffect(() => {
-    rail.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
-  }, [selected]);
+  const play = useGrowStore((store) => store.play);
+  const nav = useGrowNav<HTMLElement>({
+    mode: "threads",
+    board: props.board,
+    selected: props.selected,
+    canPlay: props.canPlay,
+  });
   return (
     <nav
-      ref={rail}
+      ref={nav.ref}
+      onKeyDown={nav.onKeyDown}
       aria-label="Cards"
-      className="flex min-h-0 w-68 flex-col gap-2 border-e pe-2 pb-3"
+      data-grow-zone=""
+      className="flex min-h-0 w-60 flex-col gap-2 border-e pe-2 pb-3"
     >
-      <LeftSwitch />
-      <ManagerButton selected={selected === GROW_MANAGER_KEY} />
+      <GrowHeader projects={props.projects} />
+      <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-        {GROW_STAGES.map((stage) => {
-          const cards = props.board[stage];
-          if (cards.length === 0) return null;
-          const def = GROW_STAGE_DEFS[stage];
-          return (
-            <section key={stage} aria-label={def.title} className="flex flex-col gap-0.5">
-              <h2 className="flex items-baseline gap-2 px-1 font-medium text-xs">
-                <span className={def.yourTurn ? "text-warning-foreground" : undefined}>
-                  {def.title}
-                </span>
-                <span className="text-muted-foreground tabular-nums">{cards.length}</span>
-              </h2>
-              {cards.map((card) => (
-                <RailRow
-                  key={card.key}
-                  card={card}
-                  focused={card.key === selected}
-                  onFocus={() => select(card.key)}
-                />
-              ))}
-            </section>
-          );
-        })}
+        {!props.ready ? (
+          <GrowNavSkeleton />
+        ) : (
+          GROW_STAGES.map((stage) => {
+            const cards = props.board[stage];
+            if (cards.length === 0) return null;
+            return (
+              <section
+                key={stage}
+                aria-label={GROW_STAGE_DEFS[stage].title}
+                className="flex flex-col gap-0.5"
+              >
+                <StageHeader stage={stage} count={cards.length} />
+                {cards.map((card) => (
+                  <GrowRow
+                    key={card.key}
+                    card={card}
+                    variant="rail"
+                    selected={card.key === props.selected}
+                    onSelect={select}
+                    onPlay={play}
+                  />
+                ))}
+              </section>
+            );
+          })
+        )}
       </div>
-      <p className="px-1 text-muted-foreground text-xs">
-        j/k threads · m manager · b board · p play · o overview · Esc board. Click outside the
-        prototype first.
-      </p>
     </nav>
   );
 }
 
-function RailRow(props: {
-  readonly card: GrowBoardCard;
-  readonly focused: boolean;
-  readonly onFocus: () => void;
-}) {
-  const { card } = props;
-  const lessons = card.card?.lessons.length ?? 0;
-  return (
-    <button
-      type="button"
-      aria-current={props.focused ? "true" : undefined}
-      data-grow-rail-row={card.thread.id}
-      className={cn(
-        "flex min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-start text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        props.focused ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
-      )}
-      onClick={props.onFocus}
-    >
-      <span className="truncate font-medium">{card.thread.title}</span>
-      <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
-        {card.stage === "play" ? (
-          <Badge variant="default" size="sm">
-            Play
-          </Badge>
-        ) : card.reason !== "settled" ? (
-          <span className="flex min-w-0 items-center gap-1">
-            <span
-              aria-hidden
-              className={cn("size-1.5 shrink-0 rounded-full", WORK_REASON_LOOK[card.reason].dot)}
-            />
-            <span className="truncate">{WORK_REASON_LOOK[card.reason].label}</span>
-          </span>
-        ) : null}
-        {lessons > 0 ? (
-          <span className="ms-auto shrink-0 tabular-nums">
-            {lessons === 1 ? "1 lesson" : `${lessons} lessons`}
-          </span>
-        ) : null}
-      </span>
-    </button>
-  );
-}
-
+/** The selected thread's playable (any page the owner can open) and its overview. */
 export function Thing(props: { readonly card: GrowBoardCard; readonly update: UpdateCard }) {
   const { card, update } = props;
   const { thread } = card;

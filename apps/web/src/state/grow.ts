@@ -21,6 +21,17 @@ const growCardsAtom = Atom.make((get) => {
   return cards as ReadonlyMap<string, GrowCard>;
 }).pipe(Atom.withLabel("web-grow-cards"));
 
+/** Whether any environment has reported its cards yet; before that the board would flash. */
+const growLoadedAtom = Atom.make((get) =>
+  get(environmentSummaries.connectedEnvironmentIdsAtom).some((environmentId) =>
+    Option.isSome(AsyncResult.value(get(growEnvironment.state({ environmentId, input: {} })))),
+  ),
+).pipe(Atom.withLabel("web-grow-loaded"));
+
+export function useGrowLoaded(): boolean {
+  return useAtomValue(growLoadedAtom);
+}
+
 export function useGrowCards(): ReadonlyMap<string, GrowCard> {
   return useAtomValue(growCardsAtom);
 }

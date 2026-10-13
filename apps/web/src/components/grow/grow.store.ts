@@ -15,7 +15,10 @@ interface GrowStore {
   previousThread: string | null;
   /** The user's pick; null until they pick, then the thread's default (Play if playable) applies. */
   thingTab: GrowThingTab | null;
+  /** Project filter (`envId:projectId`); null: all projects. Filters rail and board. */
+  project: string | null;
   setLeftMode: (mode: GrowLeftMode) => void;
+  setProject: (project: string | null) => void;
   select: (key: string) => void;
   /** The manager, or from the manager back to the previous thread. */
   toggleManager: () => void;
@@ -32,6 +35,8 @@ export const useGrowStore = create<GrowStore>()(
       selected: GROW_MANAGER_KEY,
       previousThread: null,
       thingTab: null,
+      project: null,
+      setProject: (project) => set({ project }),
       setLeftMode: (leftMode) => set({ leftMode }),
       select: (key) =>
         set((state) => ({
@@ -52,7 +57,8 @@ export const useGrowStore = create<GrowStore>()(
       // v2: round 2 stored a different shape; that state is ignored.
       name: "t3code:grow-focus:v2",
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ leftMode, selected, previousThread, thingTab }) => ({
+      partialize: ({ leftMode, selected, previousThread, thingTab, project }) => ({
+        project,
         leftMode,
         selected,
         previousThread,

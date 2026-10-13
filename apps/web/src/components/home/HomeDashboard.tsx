@@ -173,7 +173,7 @@ export function HomeDashboard() {
             <GrowWorkspace
               threads={threads}
               now={now}
-              managerPane={<ManagerPane manager={manager} />}
+              managerPane={<ManagerPane manager={manager} autoFocusComposer={false} />}
             />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
@@ -260,7 +260,11 @@ function VerdictBanner(props: { readonly verdict: Verdict }) {
 }
 
 /** The manager thread docked beside the cards, as the real thread view. */
-function ManagerPane(props: { readonly manager: ReturnType<typeof useEnsureManagerThread> }) {
+function ManagerPane(props: {
+  readonly manager: ReturnType<typeof useEnsureManagerThread>;
+  /** Grow keeps focus in its list; Classic lets the composer take it. */
+  readonly autoFocusComposer?: boolean;
+}) {
   const { manager } = props;
   return (
     <section
@@ -275,6 +279,7 @@ function ManagerPane(props: { readonly manager: ReturnType<typeof useEnsureManag
           threadId={manager.threadId}
           routeKind="server"
           reserveTitleBarControlInset={false}
+          autoFocusComposer={props.autoFocusComposer ?? true}
         />
       ) : manager._tag === "Failed" ? (
         <p className="m-4 text-destructive-foreground text-sm">{manager.message}</p>
