@@ -362,7 +362,7 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
   {},
 ) {
   override get message(): string {
-    return "Claude is still running background agents or commands, and this model or setting change would end them. Wait for them to finish, or press Stop, then send the message again.";
+    return "Claude is still running background agents or commands, and this permission or tool setting change would end them. Wait for them to finish, or press Stop, then send the message again.";
   }
 }
 
@@ -2772,6 +2772,8 @@ interface ClaudeLiveQueryContext {
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
   readonly selectionKey: string;
+  // The model the process runs now; setModel changes it without a restart.
+  apiModelId: string;
   readonly closed: Deferred.Deferred<void, never>;
   // Whether this CLI process echoes a prompt's uuid on the first frame of
   // the turn answering it ("early") or only on its result. Learned from the
@@ -3085,6 +3087,11 @@ export function makeClaudeAdapterV2(
         const steeredTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const queryContext = yield* Ref.make<ClaudeLiveQueryContext | null>(null);
         const openedNativeThreads = yield* Ref.make(new Set<string>());
+        // Session ids this runtime allocated that no prompt has reached yet.
+        // The CLI writes no transcript before the first prompt, so these are
+        // created, never resumed, even on a provider thread with earlier
+        // turns (a fresh native session after a failed resume).
+        const unpromptedNativeThreads = yield* Ref.make(new Set<string>());
         const latestPlanByKind = yield* Ref.make(new Map<string, OrchestrationV2PlanArtifact>());
         const planIdsByNativeItem = yield* Ref.make(
           new Map<string, OrchestrationV2PlanArtifact["id"]>(),
@@ -7086,6 +7093,12 @@ export function makeClaudeAdapterV2(
             existing.queryPolicyKey === queryPolicyKey &&
             existing.selectionKey === compiledSelection.queryIdentity
           ) {
+            // A switch made live during background work may have left the
+            // process on another model than its opening selection.
+            if (existing.apiModelId !== compiledSelection.apiModelId) {
+              yield* existing.query.setModel(compiledSelection.apiModelId);
+              existing.apiModelId = compiledSelection.apiModelId;
+            }
             // Claude can switch its own mode mid-session (EnterPlanMode), and
             // a denied ExitPlanMode leaves it there. Put the live process back
             // in the thread's mode before the next prompt.
@@ -7097,17 +7110,34 @@ export function makeClaudeAdapterV2(
           }
 
           // Background agents and shells run inside the CLI process, so a
-          // new selection would kill them and lose their results. Refuse until
-          // they finish or the user presses Stop, which closes the process.
-          // Another native thread on this session is one the app thread has
-          // left (Claude sessions serve one app thread), so it is replaced.
+          // replacement would kill them and lose their results. A different
+          // model selection keeps the process: the model switches live and
+          // the remaining options apply on the first turn after the work
+          // ends. Clients and agents send equivalent selections in different
+          // shapes (an explicit default option or none), so refusing here
+          // failed ordinary messages. Only a tool or permission policy change,
+          // which a live process cannot take, is refused until the work ends
+          // or the user presses Stop. Another native thread on this session
+          // is one the app thread has left (Claude sessions serve one app
+          // thread), so it is replaced.
           if (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
             !existing.stopping &&
             (yield* liveProcessRunsBackgroundWork(existing))
           ) {
-            return yield* new ClaudeBackgroundWorkBlocksQueryReplacementError();
+            if (existing.queryPolicyKey !== queryPolicyKey) {
+              return yield* new ClaudeBackgroundWorkBlocksQueryReplacementError();
+            }
+            if (existing.apiModelId !== compiledSelection.apiModelId) {
+              yield* existing.query.setModel(compiledSelection.apiModelId);
+              existing.apiModelId = compiledSelection.apiModelId;
+            }
+            if (existing.permissionMode !== existing.openedPermissionMode) {
+              yield* existing.query.setPermissionMode(existing.openedPermissionMode);
+              existing.permissionMode = existing.openedPermissionMode;
+            }
+            return existing;
           }
 
           // openQuery owns one live process. Closing it for another native
@@ -7133,8 +7163,10 @@ export function makeClaudeAdapterV2(
           // it; reopening with a fixed session id makes the CLI fail fast with
           // "Session ID ... is already in use".
           const hasPersistedProviderTurn = turnInput.providerTurnOrdinal > 1;
+          const unprompted = (yield* Ref.get(unpromptedNativeThreads)).has(nativeThreadId);
           const shouldResume =
-            resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn;
+            resumeSessionAt !== undefined ||
+            (!unprompted && (openedWithResume || hasPersistedProviderTurn));
           const queryOptions = makeClaudeQueryOptions({
             modelSelection: turnInput.modelSelection,
             nativeThreadId,
@@ -7207,6 +7239,7 @@ export function makeClaudeAdapterV2(
             query: querySession,
             queryPolicyKey,
             selectionKey: compiledSelection.queryIdentity,
+            apiModelId: compiledSelection.apiModelId,
             closed,
             promptEchoMode: "unknown",
             openedPermissionMode: queryOptions.permissionMode,
@@ -7365,6 +7398,15 @@ export function makeClaudeAdapterV2(
               // Counted only here, so a turn that failed to start does not age reports.
               yield* startUserTurnForWakeReports(nativeThreadId);
               yield* querySession.query.offer(userMessage);
+              // A first "/compact" may leave no transcript to resume.
+              yield* Ref.update(unpromptedNativeThreads, (current) => {
+                if (!current.has(nativeThreadId) || turnInput.message.text === "/compact") {
+                  return current;
+                }
+                const updated = new Set(current);
+                updated.delete(nativeThreadId);
+                return updated;
+              });
               return;
             }
             const drained = yield* Ref.modify(wakeBuffers, (current) => {
@@ -7678,6 +7720,9 @@ export function makeClaudeAdapterV2(
             function* (threadInput: ProviderAdapter.ProviderAdapterV2EnsureThreadInput) {
               const createdAt = yield* DateTime.now;
               const nativeThreadId = yield* queryRunner.allocateSessionId;
+              yield* Ref.update(unpromptedNativeThreads, (current) =>
+                new Set(current).add(nativeThreadId),
+              );
               return makeProviderThread({
                 idAllocator,
                 providerInstanceId: adapterOptions.instanceId,
@@ -7798,6 +7843,9 @@ export function makeClaudeAdapterV2(
 
               if (rollbackInput.target.type === "thread_start") {
                 const resetNativeThreadId = yield* queryRunner.allocateSessionId;
+                yield* Ref.update(unpromptedNativeThreads, (current) =>
+                  new Set(current).add(resetNativeThreadId),
+                );
                 return {
                   providerThread: {
                     ...makeProviderThread({

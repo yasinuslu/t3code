@@ -49,6 +49,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { SpawnExecutableResolution } from "@t3tools/shared/shell";
 
 import { attachmentRelativePath } from "../../attachmentStore.ts";
+import { compileClaudeModelSelection } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { PreviewControlsToolkit } from "../../mcp/toolkits/previewControls/tools.ts";
@@ -1783,7 +1784,12 @@ describe("ClaudeAdapterV2 native fork", () => {
 });
 
 describe("ClaudeAdapterV2 native session identity", () => {
-  const openTurnWithOrdinal = (providerTurnOrdinal: number) =>
+  // `ensuredByEarlierInstance` builds the provider thread on another session
+  // instance, as when the native session was created before an idle release.
+  const openTurnWithOrdinal = (
+    providerTurnOrdinal: number,
+    options: { readonly ensuredByEarlierInstance?: boolean } = {},
+  ) =>
     Effect.scoped(
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -1827,7 +1833,18 @@ describe("ClaudeAdapterV2 native session identity", () => {
           modelSelection: CLAUDE_TEST_MODEL_SELECTION,
           runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
         });
-        const providerThread = yield* runtime.ensureThread({
+        const ensuringRuntime =
+          options.ensuredByEarlierInstance === true
+            ? yield* adapter.openSession({
+                threadId,
+                providerSessionId: ProviderSessionId.make(
+                  "provider-session-claude-identity-earlier",
+                ),
+                modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+                runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+              })
+            : runtime;
+        const providerThread = yield* ensuringRuntime.ensureThread({
           threadId,
           modelSelection: CLAUDE_TEST_MODEL_SELECTION,
           runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
@@ -1861,11 +1878,23 @@ describe("ClaudeAdapterV2 native session identity", () => {
     "resumes the native session on a fresh session instance when prior provider turns exist",
     () =>
       Effect.gen(function* () {
-        const openedQueries = yield* openTurnWithOrdinal(2);
+        const openedQueries = yield* openTurnWithOrdinal(2, { ensuredByEarlierInstance: true });
         assert.equal(openedQueries.length, 1);
         assert.equal(openedQueries[0]?.options.resume, "native-session-identity");
         assert.equal(openedQueries[0]?.options.sessionId, undefined);
       }),
+  );
+
+  // A failed resume makes the orchestrator bind a fresh native session to a
+  // provider thread with earlier turns. Resuming that never-created session
+  // fails with "No conversation found" on every later turn.
+  it.effect("creates a freshly bound native session even when prior provider turns exist", () =>
+    Effect.gen(function* () {
+      const openedQueries = yield* openTurnWithOrdinal(5);
+      assert.equal(openedQueries.length, 1);
+      assert.equal(openedQueries[0]?.options.sessionId, "native-session-identity");
+      assert.equal(openedQueries[0]?.options.resume, undefined);
+    }),
   );
 });
 
@@ -7595,169 +7624,232 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  it.effect("refuses a model change that would kill a running background subagent", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const SUBAGENT_TASK_ID = "task-model-change-running-subagent";
-        const SUBAGENT_TOOL_USE_ID = "toolu-model-change-running-subagent";
-        const fileSystem = yield* FileSystem.FileSystem;
-        const idAllocator = yield* IdAllocator.IdAllocatorV2;
-        const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-claude-v2-model-change-running-subagent-",
-        });
-        const processQueues: Array<Queue.Queue<SDKMessage>> = [];
-        const events: Array<ProviderAdapterV2Event> = [];
-        const adapter = ClaudeAdapterV2.makeClaudeAdapterV2({
-          instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
-          settings: DEFAULT_CLAUDE_SETTINGS,
-          environment: {},
-          attachmentsDir,
-          fileSystem,
-          path: yield* Path.Path,
-          idAllocator,
-          continuationRequests: { offer: () => Effect.void },
-          queryRunner: {
-            allocateSessionId: Effect.succeed(WAKE_NATIVE_SESSION),
-            open: () =>
-              Effect.gen(function* () {
-                const sdkMessages = yield* Queue.unbounded<SDKMessage>();
-                processQueues.push(sdkMessages);
-                return {
-                  messages: Stream.fromQueue(sdkMessages),
-                  offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  setPermissionMode: () => Effect.void,
-                  interrupt: Effect.void,
-                  close: Queue.shutdown(sdkMessages),
-                };
-              }),
-            forkSession: () => Effect.die("unused forkSession"),
-            subagentLaunchToolUseId: () => Effect.succeed(null),
-            assertComplete: Effect.void,
-          },
-        });
-        const threadId = ThreadId.make("thread-claude-model-change-running-subagent");
-        const runtime = yield* adapter.openSession({
-          threadId,
-          providerSessionId: ProviderSessionId.make(
-            "provider-session-claude-model-change-running-subagent",
-          ),
-          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
-        });
-        const providerThread = yield* runtime.ensureThread({
-          threadId,
-          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
-        });
-        yield* runtime.events.pipe(
-          Stream.runForEach((event) =>
-            Effect.sync(() => {
-              events.push(event);
-            }),
-          ),
-          Effect.forkScoped,
-        );
-        const terminals = () => events.filter((event) => event.type === "turn.terminal");
-        const now = yield* DateTime.now;
-
-        yield* runtime.startTurn(
-          makeClaudeTestTurnInput({
+  it.effect(
+    "switches the model live while a background subagent runs, and refuses only a policy change",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const SUBAGENT_TASK_ID = "task-model-change-running-subagent";
+          const SUBAGENT_TOOL_USE_ID = "toolu-model-change-running-subagent";
+          const fileSystem = yield* FileSystem.FileSystem;
+          const idAllocator = yield* IdAllocator.IdAllocatorV2;
+          const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
+            prefix: "t3-claude-v2-model-change-running-subagent-",
+          });
+          const processQueues: Array<Queue.Queue<SDKMessage>> = [];
+          const setModelCalls: Array<string> = [];
+          const events: Array<ProviderAdapterV2Event> = [];
+          const adapter = ClaudeAdapterV2.makeClaudeAdapterV2({
+            instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+            settings: DEFAULT_CLAUDE_SETTINGS,
+            environment: {},
+            attachmentsDir,
+            fileSystem,
+            path: yield* Path.Path,
+            idAllocator,
+            continuationRequests: { offer: () => Effect.void },
+            queryRunner: {
+              allocateSessionId: Effect.succeed(WAKE_NATIVE_SESSION),
+              open: () =>
+                Effect.gen(function* () {
+                  const sdkMessages = yield* Queue.unbounded<SDKMessage>();
+                  processQueues.push(sdkMessages);
+                  return {
+                    messages: Stream.fromQueue(sdkMessages),
+                    offer: () => Effect.void,
+                    setModel: (model) =>
+                      Effect.sync(() => {
+                        setModelCalls.push(model);
+                      }),
+                    setPermissionMode: () => Effect.void,
+                    interrupt: Effect.void,
+                    close: Queue.shutdown(sdkMessages),
+                  };
+                }),
+              forkSession: () => Effect.die("unused forkSession"),
+              subagentLaunchToolUseId: () => Effect.succeed(null),
+              assertComplete: Effect.void,
+            },
+          });
+          const threadId = ThreadId.make("thread-claude-model-change-running-subagent");
+          const runtime = yield* adapter.openSession({
             threadId,
-            providerThread,
-            now,
-            attemptId: RunAttemptId.make("attempt-claude-model-change-running-subagent-a"),
-            text: "Spawn a background subagent and stop.",
-            attachments: [],
-          }),
-        );
-        const firstProcess = processQueues[0]!;
-        yield* Queue.offer(
-          firstProcess,
-          claudeSdkFrame({
-            type: "system",
-            subtype: "task_started",
-            task_id: SUBAGENT_TASK_ID,
-            tool_use_id: SUBAGENT_TOOL_USE_ID,
-            description: "Background research",
-            subagent_type: "general-purpose",
-            task_type: "local_agent",
-            prompt: "Research, then report.",
-            uuid: "00000000-0000-4000-8000-000000000901",
-            session_id: WAKE_NATIVE_SESSION,
-          }),
-        );
-        yield* Queue.offer(
-          firstProcess,
-          makeResultFrame({
-            uuid: "00000000-0000-4000-8000-000000000902",
-            result: "Spawned the subagent in the background.",
-          }),
-        );
-        yield* awaitUntil(() => terminals().length === 1, "first turn terminal");
-        const settledTurn = terminals()[0]!;
+            providerSessionId: ProviderSessionId.make(
+              "provider-session-claude-model-change-running-subagent",
+            ),
+            modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+            runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+          });
+          const providerThread = yield* runtime.ensureThread({
+            threadId,
+            modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+            runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+          });
+          yield* runtime.events.pipe(
+            Stream.runForEach((event) =>
+              Effect.sync(() => {
+                events.push(event);
+              }),
+            ),
+            Effect.forkScoped,
+          );
+          const terminals = () => events.filter((event) => event.type === "turn.terminal");
+          const now = yield* DateTime.now;
 
-        // The subagent runs inside the first CLI process. Another model needs
-        // another process, so the turn must not start and close this one.
-        const alternateModel = {
-          ...CLAUDE_TEST_MODEL_SELECTION,
-          model: "claude-haiku-4-5-20251001",
-        } satisfies ModelSelection;
-        const switchTurn = (attempt: string) =>
-          runtime.startTurn(
+          yield* runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId,
+              providerThread,
+              now,
+              attemptId: RunAttemptId.make("attempt-claude-model-change-running-subagent-a"),
+              text: "Spawn a background subagent and stop.",
+              attachments: [],
+            }),
+          );
+          const firstProcess = processQueues[0]!;
+          yield* Queue.offer(
+            firstProcess,
+            claudeSdkFrame({
+              type: "system",
+              subtype: "task_started",
+              task_id: SUBAGENT_TASK_ID,
+              tool_use_id: SUBAGENT_TOOL_USE_ID,
+              description: "Background research",
+              subagent_type: "general-purpose",
+              task_type: "local_agent",
+              prompt: "Research, then report.",
+              uuid: "00000000-0000-4000-8000-000000000901",
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+          );
+          yield* Queue.offer(
+            firstProcess,
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-000000000902",
+              result: "Spawned the subagent in the background.",
+            }),
+          );
+          yield* awaitUntil(() => terminals().length === 1, "first turn terminal");
+          const settledTurn = terminals()[0]!;
+
+          // The subagent runs inside the first CLI process. A different model
+          // switches that process live instead of replacing it, so the message
+          // is delivered and the subagent keeps running.
+          const alternateModel = {
+            ...CLAUDE_TEST_MODEL_SELECTION,
+            model: "claude-haiku-4-5-20251001",
+          } satisfies ModelSelection;
+          const switchTurn = (attempt: string, providerTurnOrdinal: number) =>
+            runtime.startTurn(
+              makeClaudeTestTurnInput({
+                threadId,
+                providerThread: { ...providerThread, status: "active" },
+                now,
+                attemptId: RunAttemptId.make(attempt),
+                text: "Switch model while the subagent runs.",
+                attachments: [],
+                providerTurnOrdinal,
+                modelSelection: alternateModel,
+              }),
+            );
+          yield* switchTurn("attempt-claude-model-change-running-subagent-b", 2);
+          assert.lengthOf(processQueues, 1);
+          assert.deepEqual(setModelCalls, [compileClaudeModelSelection(alternateModel).apiModelId]);
+          yield* Queue.offer(
+            firstProcess,
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-000000000904",
+              result: "Answered on the live process.",
+            }),
+          );
+          yield* awaitUntil(() => terminals().length === 2, "live switch turn terminal");
+
+          // Switching back matches the opening selection, but the process now
+          // runs the other model, so it is switched back live too.
+          yield* runtime.startTurn(
             makeClaudeTestTurnInput({
               threadId,
               providerThread: { ...providerThread, status: "active" },
               now,
-              attemptId: RunAttemptId.make(attempt),
-              text: "Switch model while the subagent runs.",
+              attemptId: RunAttemptId.make("attempt-claude-model-change-running-subagent-back"),
+              text: "Back to the first model.",
               attachments: [],
-              providerTurnOrdinal: 2,
-              modelSelection: alternateModel,
+              providerTurnOrdinal: 3,
             }),
           );
-        const refused = yield* switchTurn("attempt-claude-model-change-running-subagent-b").pipe(
-          Effect.flip,
-        );
-        assert.equal(
-          makeProviderFailure({ cause: refused, class: "provider_error" }).message,
-          new ClaudeAdapterV2.ClaudeBackgroundWorkBlocksQueryReplacementError().message,
-        );
-        assert.lengthOf(processQueues, 1);
+          assert.lengthOf(processQueues, 1);
+          assert.deepEqual(setModelCalls, [
+            compileClaudeModelSelection(alternateModel).apiModelId,
+            compileClaudeModelSelection(CLAUDE_TEST_MODEL_SELECTION).apiModelId,
+          ]);
+          yield* Queue.offer(
+            firstProcess,
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-000000000905",
+              result: "Back on the first model.",
+            }),
+          );
+          yield* awaitUntil(() => terminals().length === 3, "switch back turn terminal");
 
-        // Stop ends the background work, so the switch may replace the process.
-        yield* runtime.interruptTurn({
-          providerThread,
-          providerTurnId: settledTurn.providerTurnId,
-          requestRuntimeRestart: true,
-        });
-        yield* switchTurn("attempt-claude-model-change-running-subagent-c");
-        assert.lengthOf(processQueues, 2);
+          // A permission policy change cannot reach a live process. It is
+          // refused while the subagent runs instead of killing it.
+          const refused = yield* runtime
+            .startTurn(
+              makeClaudeTestTurnInput({
+                threadId,
+                providerThread: { ...providerThread, status: "active" },
+                now,
+                attemptId: RunAttemptId.make("attempt-claude-model-change-running-subagent-policy"),
+                text: "Ask before every tool.",
+                attachments: [],
+                providerTurnOrdinal: 4,
+                modelSelection: alternateModel,
+                runtimePolicy: ProviderAdapterV2RuntimePolicy.make({
+                  ...CLAUDE_TEST_RUNTIME_POLICY,
+                  runtimeMode: "approval-required",
+                }),
+              }),
+            )
+            .pipe(Effect.flip);
+          assert.equal(
+            makeProviderFailure({ cause: refused, class: "provider_error" }).message,
+            new ClaudeAdapterV2.ClaudeBackgroundWorkBlocksQueryReplacementError().message,
+          );
+          assert.lengthOf(processQueues, 1);
 
-        // The stopped subagent never reports its end, so it must not block
-        // later changes on the replacement process either.
-        yield* Queue.offer(
-          processQueues[1]!,
-          makeResultFrame({
-            uuid: "00000000-0000-4000-8000-000000000903",
-            result: "Switched model.",
-          }),
-        );
-        yield* awaitUntil(() => terminals().length === 2, "switched turn terminal");
-        yield* runtime.startTurn(
-          makeClaudeTestTurnInput({
-            threadId,
-            providerThread: { ...providerThread, status: "active" },
-            now,
-            attemptId: RunAttemptId.make("attempt-claude-model-change-running-subagent-d"),
-            text: "Switch back.",
-            attachments: [],
-            providerTurnOrdinal: 3,
-          }),
-        );
-        assert.lengthOf(processQueues, 3);
-      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
-    ),
+          // Stop ends the background work, so the switch may replace the process.
+          yield* runtime.interruptTurn({
+            providerThread,
+            providerTurnId: settledTurn.providerTurnId,
+            requestRuntimeRestart: true,
+          });
+          yield* switchTurn("attempt-claude-model-change-running-subagent-c", 5);
+          assert.lengthOf(processQueues, 2);
+
+          // The stopped subagent never reports its end, so it must not block
+          // later changes on the replacement process either.
+          yield* Queue.offer(
+            processQueues[1]!,
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-000000000903",
+              result: "Switched model.",
+            }),
+          );
+          yield* awaitUntil(() => terminals().length === 4, "switched turn terminal");
+          yield* runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId,
+              providerThread: { ...providerThread, status: "active" },
+              now,
+              attemptId: RunAttemptId.make("attempt-claude-model-change-running-subagent-d"),
+              text: "Switch back.",
+              attachments: [],
+              providerTurnOrdinal: 3,
+            }),
+          );
+          assert.lengthOf(processQueues, 3);
+        }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+      ),
   );
 
   it.effect(
@@ -7865,23 +7957,20 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             ...CLAUDE_TEST_MODEL_SELECTION,
             model: "claude-haiku-4-5-20251001",
           } satisfies ModelSelection;
-          const failedStart = yield* runtime
-            .startTurn(
-              makeClaudeTestTurnInput({
-                threadId,
-                providerThread: { ...providerThread, status: "active" },
-                now,
-                attemptId: RunAttemptId.make("attempt-claude-replace-open-fail-b"),
-                text: "Replace process but fail open.",
-                attachments: [],
-                providerTurnOrdinal: 2,
-                modelSelection: alternateModel,
-              }),
-            )
-            .pipe(Effect.exit);
-          assert.isTrue(Exit.isFailure(failedStart));
-          // The shell runs in the first process, so it is never closed and
-          // no replacement is opened.
+          yield* runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId,
+              providerThread: { ...providerThread, status: "active" },
+              now,
+              attemptId: RunAttemptId.make("attempt-claude-replace-open-fail-b"),
+              text: "Switch model while the shell runs.",
+              attachments: [],
+              providerTurnOrdinal: 2,
+              modelSelection: alternateModel,
+            }),
+          );
+          // The shell runs in the first process, so the turn runs there:
+          // it is never closed and no replacement is opened.
           assert.equal(openCount, 1);
           assert.isTrue(yield* hasPendingBackgroundWork);
         }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),

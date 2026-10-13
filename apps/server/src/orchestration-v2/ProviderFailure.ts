@@ -65,6 +65,27 @@ function causeMessage(cause: unknown): string | undefined {
   return message;
 }
 
+/**
+ * Whether the provider refused a turn before taking any input, so history
+ * handed with it certainly did not reach the native conversation.
+ */
+export function isProviderTurnRefusedBeforeInput(cause: unknown): boolean {
+  const seen = new Set<unknown>();
+  for (let depth = 0; depth < 16 && cause != null && !seen.has(cause); depth++) {
+    seen.add(cause);
+    if (Cause.isCause(cause)) {
+      cause = Cause.squash(cause);
+      continue;
+    }
+    if (typeof cause !== "object") return false;
+    if (Reflect.get(cause, "_tag") === "ClaudeBackgroundWorkBlocksQueryReplacementError") {
+      return true;
+    }
+    cause = Reflect.get(cause, "cause");
+  }
+  return false;
+}
+
 function stringField(value: unknown, key: "message" | "code"): string | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   try {

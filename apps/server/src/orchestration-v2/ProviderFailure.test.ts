@@ -12,6 +12,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
 import {
+  isProviderTurnRefusedBeforeInput,
   makeProviderFailure,
   makeProviderFailureTurnItem,
   MAX_PROVIDER_FAILURE_CODE_LENGTH,
@@ -20,6 +21,33 @@ import {
 import * as IdAllocator from "./IdAllocator.ts";
 import { ContextHandoffBudgetError } from "./ContextHandoffDelivery.ts";
 import { ProviderAdapterTurnStartError } from "./ProviderAdapter.ts";
+import {
+  ClaudeAgentSdkQueryRunnerError,
+  ClaudeBackgroundWorkBlocksQueryReplacementError,
+} from "./Adapters/ClaudeAdapterV2.ts";
+
+// A refusal took no input, so the turn start restores its history handoffs
+// instead of leaving them pending (which discards the native conversation).
+it("tells a turn refused before input from other start failures", () => {
+  const startError = (cause: unknown) =>
+    new ProviderAdapterTurnStartError({
+      driver: ProviderDriverKind.make("claudeAgent"),
+      threadId: ThreadId.make("thread-refused"),
+      providerThreadId: ProviderThreadId.make("provider-thread-refused"),
+      runId: RunId.make("run-refused"),
+      cause,
+    });
+  assert.isTrue(
+    isProviderTurnRefusedBeforeInput(
+      Cause.fail(startError(new ClaudeBackgroundWorkBlocksQueryReplacementError())),
+    ),
+  );
+  assert.isFalse(
+    isProviderTurnRefusedBeforeInput(
+      startError(new ClaudeAgentSdkQueryRunnerError({ method: "offer", cause: "closed" })),
+    ),
+  );
+});
 
 it("redacts credentials and URL secrets from provider failures", () => {
   const failure = makeProviderFailure({
