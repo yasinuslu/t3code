@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Idea Board (prototype)</title>
+    <style>
+      :root {
+        --bg: #111214;
+        --panel: #18191c;
+        --card: #212327;
+        --card-hover: #282b30;
+        --line: #2e3136;
+        --text: #e8e6e1;
+        --muted: #8f9197;
+        --you: #f2b84b;
+        --agent: #6aa7ff;
+        --good: #6fcf8e;
+        --shelf: #7b7d84;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        display: flex;
+        flex-direction: column;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .tag {
+        font-size: 11px;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        border-radius: 99px;
+        padding: 1px 8px;
+      }
+      .waiting {
+        color: var(--you);
+        font-weight: 600;
+      }
+      .spacer {
+        flex: 1;
+      }
+      .tabs {
+        display: flex;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .tabs button {
+        background: none;
+        border: 0;
+        padding: 5px 12px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .tabs button.on {
+        background: var(--card);
+        color: var(--text);
+      }
+      .ghost {
+        background: none;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 5px 10px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .ghost:hover {
+        color: var(--text);
+      }
+      form.add {
+        display: flex;
+        gap: 8px;
+        padding: 12px 20px 0;
+      }
+      form.add input {
+        flex: 1;
+        max-width: 560px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 12px;
+        outline: none;
+      }
+      form.add input:focus,
+      textarea:focus,
+      .field input:focus {
+        border-color: var(--you);
+      }
+      main {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .board {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(190px, 1fr));
+        gap: 10px;
+        padding: 14px 20px;
+        overflow-x: auto;
+      }
+      .col {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .col.you {
+        border-color: color-mix(in srgb, var(--you) 45%, var(--line));
+      }
+      .col.over {
+        outline: 2px dashed var(--you);
+        outline-offset: -4px;
+      }
+      .col h2 {
+        margin: 0;
+        padding: 10px 12px 2px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 650;
+        display: flex;
+        justify-content: space-between;
+      }
+      .col h2 span {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .col .who {
+        padding: 0 12px 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .col.you .who {
+        color: var(--you);
+      }
+      .cards {
+        padding: 0 8px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+      }
+      .card:hover {
+        background: var(--card-hover);
+      }
+      .card .title {
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      .card .sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 4px;
+      }
+      .card .row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+        align-items: center;
+      }
+      .chip {
+        font-size: 11px;
+        border-radius: 99px;
+        padding: 1px 8px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .chip.play {
+        color: #1b1403;
+        background: var(--you);
+        border-color: var(--you);
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .chip.agent {
+        color: var(--agent);
+        border-color: color-mix(in srgb, var(--agent) 40%, var(--line));
+      }
+      .chip.good {
+        color: var(--good);
+        border-color: color-mix(in srgb, var(--good) 40%, var(--line));
+      }
+      .next {
+        margin-top: 8px;
+        width: 100%;
+        background: none;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 5px 8px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .next:hover {
+        border-color: var(--you);
+        color: var(--you);
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 12px;
+        padding: 6px 4px;
+      }
+      .shelf {
+        border-top: 1px solid var(--line);
+        padding: 10px 20px 14px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .shelf b {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--shelf);
+      }
+      .shelf button {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      /* lessons view */
+      .lessons {
+        padding: 18px 20px;
+        overflow-y: auto;
+        max-width: 820px;
+      }
+      .lesson {
+        border-left: 2px solid var(--you);
+        padding: 2px 0 2px 12px;
+        margin: 0 0 16px;
+      }
+      .lesson p {
+        margin: 0 0 4px;
+        font-size: 15px;
+      }
+      .lesson a {
+        color: var(--muted);
+        font-size: 12px;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      /* drawer */
+      .scrim {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+      }
+      aside {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(480px, 100vw);
+        background: var(--panel);
+        border-left: 1px solid var(--line);
+        padding: 20px;
+        overflow-y: auto;
+      }
+      aside h3 {
+        margin: 0 0 4px;
+        font-size: 19px;
+        line-height: 1.25;
+      }
+      aside .close {
+        float: right;
+      }
+      .steps {
+        display: flex;
+        gap: 4px;
+        margin: 12px 0 18px;
+      }
+      .steps i {
+        flex: 1;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--line);
+      }
+      .steps i.done {
+        background: var(--you);
+      }
+      .field {
+        margin-bottom: 16px;
+      }
+      .field label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .field input,
+      textarea {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        outline: none;
+        resize: vertical;
+      }
+      .cta {
+        border: 1px solid var(--you);
+        background: color-mix(in srgb, var(--you) 14%, transparent);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 18px;
+      }
+      .cta p {
+        margin: 0 0 10px;
+      }
+      .btns {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        background: var(--you);
+        color: #1b1403;
+        border: 0;
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .btn.alt {
+        background: none;
+        color: var(--text);
+        border: 1px solid var(--line);
+        font-weight: 500;
+      }
+      .btn.alt:hover {
+        border-color: var(--you);
+      }
+      details {
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      details summary {
+        cursor: pointer;
+      }
+      details code {
+        color: var(--text);
+      }
+      .sim {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+      @media (max-width: 900px) {
+        .board {
+          grid-template-columns: repeat(6, 240px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Idea Board</h1>
+      <span class="tag">prototype, fake data, saved in this browser</span>
+      <span id="waiting" class="waiting"></span>
+      <span class="spacer"></span>
+      <div class="tabs">
+        <button id="tab-board" class="on">Board</button>
+        <button id="tab-lessons">Lessons</button>
+      </div>
+      <button class="ghost" id="reset" title="Throw away your changes and restore the seed ideas">Reset</button>
+    </header>
+    <form class="add" id="add">
+      <input id="new-idea" placeholder="A new idea, in one line. Enter to drop it on the board." autocomplete="off" />
+    </form>
+    <main id="main"></main>
+    <div id="drawer"></div>
+
+    <script>
+      const STAGES = [
+        { id: "idea", name: "Idea", who: "parked, costs nothing" },
+        { id: "exploring", name: "Exploring", who: "an agent is prototyping" },
+        { id: "play", name: "Play", who: "your turn: poke at it", you: true },
+        { id: "learned", name: "Learned", who: "your turn: regroup", you: true },
+        { id: "building", name: "Building on main", who: "an agent builds it for real" },
+        { id: "done", name: "In use", who: "shipped, the loop closed" },
+      ];
+      const KEY = "idea-board-proto-v1";
+
+      const SEED = [
+        {
+          id: "goals",
+          title: "Goals and tasks in T3",
+          stage: "shelved",
+          became: "A per-space checklist in tasks.md with MCP tools.",
+          lessons: [
+            "A checklist tracks output. My loop is about learning, and a checkbox has no place for that.",
+            "The storage and the MCP tools are fine. What was missing is the stages and the regroup step.",
+          ],
+          decision: "Pivot",
+          thread: "several",
+        },
+        {
+          id: "board",
+          parent: "goals",
+          title: "AI-native kanban built on idea, prototype, learn, regroup",
+          stage: "play",
+          became: "This page: a clickable board with fake data, no T3 wiring yet.",
+          link: location.href,
+          thread: "proto/idea-board",
+          branch: "proto/idea-board",
+          lessons: [],
+        },
+        {
+          id: "balance",
+          title: "Music Manager: a balance loop that tunes the economy by playing it",
+          stage: "exploring",
+          thread: "mcp:62be800b",
+          branch: "exploration thread",
+          lessons: [],
+        },
+        {
+          id: "failover",
+          title: "Threads move to another account when one hits its usage limit",
+          stage: "building",
+          became: "T3 balances threads across provider accounts and fails over on its own.",
+          lessons: ["Failover belongs inside T3, not in nep. Keep the two loosely coupled."],
+          decision: "Adopt",
+          thread: "yu-v2",
+          branch: "yu-v2",
+        },
+        {
+          id: "namaz",
+          title: "Risale: a guided namaz session",
+          stage: "idea",
+          lessons: [],
+          note: "Waits for the text library and the anchors to land first.",
+        },
+        {
+          id: "thumb",
+          title: "Mouse thumb buttons switch the manager profile",
+          stage: "done",
+          became: "Shipped on Home.",
+          lessons: [],
+          decision: "Adopt",
+        },
+      ];
+
+      let ideas = load();
+      let view = "board";
+      let openId = null;
+
+      function load() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(KEY));
+          if (Array.isArray(saved)) return saved;
+        } catch {}
+        return structuredClone(SEED);
+      }
+      function save() {
+        localStorage.setItem(KEY, JSON.stringify(ideas));
+      }
+      const byId = (id) => ideas.find((i) => i.id === id);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const slug = (s) =>
+        s
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 28) || "idea";
+
+      // The loop's transitions. Agent steps are simulated here; in T3 they would be MCP calls.
+      function explore(i) {
+        i.stage = "exploring";
+        i.branch = "proto/" + slug(i.title);
+        i.thread = "new thread";
+      }
+      function agentFinished(i) {
+        i.stage = "play";
+        i.link = i.link || "https://t3code-" + (i.branch || "proto").replace("/", "-") + ".pv.nepjua.org";
+        i.became = i.became || "";
+      }
+      function decide(i, decision) {
+        i.decision = decision;
+        if (decision === "Adopt") {
+          i.stage = "building";
+          i.thread = "implementation thread";
+        } else if (decision === "Shelve") {
+          i.stage = "shelved";
+        } else {
+          i.stage = "shelved";
+          const child = {
+            id: "i" + Date.now(),
+            parent: i.id,
+            title: "",
+            stage: "idea",
+            lessons: [],
+          };
+          ideas.unshift(child);
+          openId = child.id;
+        }
+      }
+
+      function nextAction(i) {
+        switch (i.stage) {
+          case "idea":
+            return ["Explore it", () => explore(i)];
+          case "exploring":
+            return ["Agent finished (simulate)", () => agentFinished(i)];
+          case "building":
+            return ["Merged (simulate)", () => (i.stage = "done")];
+          default:
+            return null;
+        }
+      }
+
+      function cardHtml(i) {
+        const parent = i.parent && byId(i.parent);
+        const next = nextAction(i);
+        const chips = [];
+        if (i.stage === "play" && i.link) chips.push(`<a class="chip play" href="${esc(i.link)}" target="_blank" data-stop>▶ Play</a>`);
+        if (i.stage === "exploring" || i.stage === "building") chips.push(`<span class="chip agent">agent working</span>`);
+        if (i.lessons.length) chips.push(`<span class="chip good">${i.lessons.length} lesson${i.lessons.length > 1 ? "s" : ""}</span>`);
+        if (parent) chips.push(`<span class="chip">from: ${esc(parent.title.slice(0, 22))}${parent.title.length > 22 ? "…" : ""}</span>`);
+        return `<div class="card" draggable="true" data-id="${i.id}">
+          <div class="title">${esc(i.title) || "<em>Untitled idea</em>"}</div>
+          ${i.became ? `<div class="sub">${esc(i.became)}</div>` : i.note ? `<div class="sub">${esc(i.note)}</div>` : ""}
+          ${chips.length ? `<div class="row">${chips.join("")}</div>` : ""}
+          ${next ? `<button class="next" data-next="${i.id}">${next[0]}</button>` : ""}
+        </div>`;
+      }
+
+      function render() {
+        const waiting = ideas.filter((i) => i.stage === "play" || i.stage === "learned").length;
+        document.getElementById("waiting").textContent = waiting ? `${waiting} waiting on you` : "Nothing waits on you";
+        document.getElementById("tab-board").className = view === "board" ? "on" : "";
+        document.getElementById("tab-lessons").className = view === "lessons" ? "on" : "";
+        const main = document.getElementById("main");
+        if (view === "lessons") {
+          const all = ideas.flatMap((i) => i.lessons.map((l) => ({ l, i })));
+          main.innerHTML = `<div class="lessons">${
+            all.length
+              ? all
+                  .map(
+                    ({ l, i }) =>
+                      `<div class="lesson"><p>${esc(l)}</p><a data-open="${i.id}">${esc(i.title)}${i.decision ? " · " + i.decision : ""}</a></div>`,
+                  )
+                  .join("")
+              : `<p class="empty">No lessons yet. Play with something and write down what you learned.</p>`
+          }</div>`;
+        } else {
+          const shelved = ideas.filter((i) => i.stage === "shelved");
+          main.innerHTML =
+            `<div class="board">${STAGES.map((s) => {
+              const list = ideas.filter((i) => i.stage === s.id);
+              return `<section class="col ${s.you ? "you" : ""}" data-stage="${s.id}">
+                <h2>${s.name}<span>${list.length}</span></h2>
+                <div class="who">${s.who}</div>
+                <div class="cards">${list.map(cardHtml).join("") || `<div class="empty">Empty</div>`}</div>
+              </section>`;
+            }).join("")}</div>` +
+            `<div class="shelf"><b>Shelf</b>${
+              shelved.map((i) => `<button data-open="${i.id}">${esc(i.title)} · ${i.lessons.length} lessons</button>`).join("") ||
+              `<span class="empty">Shelved ideas keep their lessons here.</span>`
+            }</div>`;
+        }
+        renderDrawer();
+      }
+
+      function renderDrawer() {
+        const el = document.getElementById("drawer");
+        const i = openId && byId(openId);
+        if (!i) return (el.innerHTML = "");
+        const parent = i.parent && byId(i.parent);
+        const children = ideas.filter((c) => c.parent === i.id);
+        const order = STAGES.findIndex((s) => s.id === i.stage);
+        const stageName = i.stage === "shelved" ? "Shelved" : STAGES[order].name;
+        let cta = "";
+        if (i.stage === "idea")
+          cta = `<p>Parked. Exploring spawns an agent thread on its own branch to build a small playable version.</p>
+            <div class="btns"><button class="btn" data-act="explore">Explore it</button></div>`;
+        if (i.stage === "exploring")
+          cta = `<p>An agent is prototyping. When it has something you can touch, the card moves to Play with the link.</p>
+            <div class="btns"><button class="btn alt" data-act="finished">Agent finished (simulate)</button></div>`;
+        if (i.stage === "play")
+          cta = `<p>Your turn. Poke at it, then write what you learned below. One line per lesson is enough.</p>
+            <div class="btns">${i.link ? `<a class="btn" href="${esc(i.link)}" target="_blank">▶ Open the playable</a>` : ""}
+            <button class="btn alt" data-act="learned">I played, lessons are in</button>
+            <button class="btn alt" data-act="again">Another round</button></div>`;
+        if (i.stage === "learned")
+          cta = `<p>Regroup. With these lessons, what happens to the idea?</p>
+            <div class="btns"><button class="btn" data-act="Adopt">Adopt into main</button>
+            <button class="btn alt" data-act="Pivot">Pivot into a new idea</button>
+            <button class="btn alt" data-act="Shelve">Shelve, keep the lessons</button></div>`;
+        if (i.stage === "building")
+          cta = `<p>Adopted. An agent builds it for real on main, carrying the lessons as its brief.</p>
+            <div class="btns"><button class="btn alt" data-act="merged">Merged (simulate)</button></div>`;
+        if (i.stage === "shelved")
+          cta = `<p>Shelved${i.decision === "Pivot" ? ", pivoted into a new idea" : ""}. The lessons stay.</p>
+            <div class="btns"><button class="btn alt" data-act="revive">Bring it back as an idea</button></div>`;
+        el.innerHTML = `<div class="scrim" data-close></div><aside>
+          <button class="ghost close" data-close>Close</button>
+          <div class="chip" style="display:inline-block;margin-bottom:8px">${stageName}${i.decision ? " · " + i.decision : ""}</div>
+          <div class="field"><input data-f="title" value="${esc(i.title)}" placeholder="The idea in one line" style="font-size:17px;font-weight:600" /></div>
+          <div class="steps">${STAGES.map((_, n) => `<i class="${order >= 0 && n <= order ? "done" : ""}"></i>`).join("")}</div>
+          ${cta ? `<div class="cta">${cta}</div>` : ""}
+          ${parent ? `<div class="field"><label>Grew out of</label><a class="btn alt" data-open="${parent.id}">${esc(parent.title)}</a>
+            ${parent.lessons.length ? `<div class="sim">Carried lessons: ${parent.lessons.map(esc).join(" / ")}</div>` : ""}</div>` : ""}
+          <div class="field"><label>What it became</label><textarea data-f="became" rows="2" placeholder="One line. Often not what the idea started as.">${esc(i.became)}</textarea></div>
+          <div class="field"><label>Lessons (one per line)</label><textarea data-f="lessons" rows="5" placeholder="What did playing with it teach you? A bad idea with a good by-product counts.">${esc(i.lessons.join("\n"))}</textarea></div>
+          ${children.length ? `<div class="field"><label>Led to</label><div class="btns">${children.map((c) => `<a class="btn alt" data-open="${c.id}">${esc(c.title) || "Untitled idea"}</a>`).join("")}</div></div>` : ""}
+          <details><summary>Technical detail</summary>
+            <p>Thread: <code>${esc(i.thread || "none yet")}</code><br />Branch: <code>${esc(i.branch || "none yet")}</code><br />Playable: <code>${esc(i.link || "none yet")}</code></p>
+            <div class="field"><label>Playable link</label><input data-f="link" value="${esc(i.link)}" placeholder="https://" /></div>
+            <button class="ghost" data-act="delete">Delete this idea</button>
+          </details>
+        </aside>`;
+        if (!i.title) el.querySelector('[data-f="title"]').focus();
+      }
+
+      function act(i, name) {
+        if (name === "explore") explore(i);
+        else if (name === "finished") agentFinished(i);
+        else if (name === "learned") i.stage = "learned";
+        else if (name === "again") i.stage = "exploring";
+        else if (name === "merged") i.stage = "done";
+        else if (name === "revive") {
+          i.stage = "idea";
+          delete i.decision;
+        } else if (name === "delete") {
+          ideas = ideas.filter((x) => x !== i);
+          openId = null;
+        } else decide(i, name);
+      }
+
+      document.addEventListener("click", (e) => {
+        const t = e.target;
+        if (t.closest("[data-stop]")) return;
+        const nextBtn = t.closest("[data-next]");
+        if (nextBtn) {
+          const i = byId(nextBtn.dataset.next);
+          nextAction(i)[1]();
+        } else if (t.closest("[data-act]")) {
+          act(byId(openId), t.closest("[data-act]").dataset.act);
+        } else if (t.closest("[data-open]")) {
+          openId = t.closest("[data-open]").dataset.open;
+        } else if (t.closest("[data-close]")) {
+          openId = null;
+        } else if (t.closest(".card")) {
+          openId = t.closest(".card").dataset.id;
+        } else if (t.id === "tab-board" || t.id === "tab-lessons") {
+          view = t.id.slice(4);
+        } else if (t.id === "reset") {
+          if (!confirm("Restore the seed ideas and drop your changes?")) return;
+          ideas = structuredClone(SEED);
+          openId = null;
+        } else return;
+        save();
+        render();
+      });
+
+      // Field edits save without re-rendering the drawer, so typing keeps its caret.
+      document.addEventListener("input", (e) => {
+        const f = e.target.dataset?.f;
+        const i = openId && byId(openId);
+        if (!f || !i) return;
+        if (f === "lessons")
+          i.lessons = e.target.value
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+        else i[f] = e.target.value;
+        save();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && openId) {
+          openId = null;
+          render();
+        }
+      });
+
+      document.getElementById("add").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const input = document.getElementById("new-idea");
+        const title = input.value.trim();
+        if (!title) return;
+        ideas.unshift({ id: "i" + Date.now(), title, stage: "idea", lessons: [] });
+        input.value = "";
+        view = "board";
+        save();
+        render();
+      });
+
+      // Drag a card to any column.
+      document.addEventListener("dragstart", (e) => {
+        const card = e.target.closest?.(".card");
+        if (card) e.dataTransfer.setData("text/plain", card.dataset.id);
+      });
+      document.addEventListener("dragover", (e) => {
+        const col = e.target.closest?.(".col");
+        if (!col) return;
+        e.preventDefault();
+        col.classList.add("over");
+      });
+      document.addEventListener("dragleave", (e) => e.target.closest?.(".col")?.classList.remove("over"));
+      document.addEventListener("drop", (e) => {
+        const col = e.target.closest?.(".col");
+        const i = byId(e.dataTransfer.getData("text/plain"));
+        if (!col || !i) return;
+        e.preventDefault();
+        i.stage = col.dataset.stage;
+        save();
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>
