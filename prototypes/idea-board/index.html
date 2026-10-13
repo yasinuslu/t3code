@@ -448,16 +448,14 @@
       .frame {
         flex: 1;
         min-height: 0;
-        display: grid;
-        place-items: center;
-        padding: 16px;
+        padding: 12px;
         background: #0c0d0e;
       }
       .frame iframe {
-        width: min(390px, 100%);
-        height: min(720px, 100%);
+        width: 100%;
+        height: 100%;
         border: 1px solid var(--line);
-        border-radius: 22px;
+        border-radius: 10px;
         background: #fff;
       }
       .frame .none {
@@ -469,6 +467,15 @@
         border-left: 1px solid var(--line);
         padding: 14px;
         overflow-y: auto;
+      }
+      .mainview {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 1fr 260px;
+      }
+      .know p {
+        margin: 0 0 8px;
       }
       .know label {
         display: block;
@@ -529,19 +536,20 @@
   </head>
   <body>
     <header>
-      <h1>Sprout <small>idea board</small></h1>
-      <span class="tag">prototype · fictional product · saved in this browser</span>
+      <h1>Tally <small>idea board</small></h1>
+      <span class="tag">prototype · one fictional app, features evolve on branches · saved in this browser</span>
       <span id="waiting" class="waiting"></span>
       <span class="spacer"></span>
       <div class="tabs">
         <button id="tab-board" class="on">Board</button>
         <button id="tab-lessons">Lessons</button>
+        <button id="tab-main" title="The app as it is on main">Main</button>
       </div>
       <button class="ghost" id="reset" title="Throw away your changes and restore the seed ideas">Reset</button>
     </header>
     <div class="new">
       <form class="composer" id="new">
-        <textarea id="new-text" rows="1" placeholder="Got an idea for Sprout? Say it like you would to a teammate. It becomes a thread."></textarea>
+        <textarea id="new-text" rows="1" placeholder="A feature idea for Tally? Say it like you would to a teammate. It becomes a thread and a branch."></textarea>
         <button class="send">Start</button>
       </form>
     </div>
@@ -549,178 +557,207 @@
     <div id="thread"></div>
 
     <script>
-      const PRODUCT = "Sprout, a mobile app that helps people keep their houseplants alive";
+      const PRODUCT = "Tally, a small web app freelancers use to track time per client project";
       const STAGES = [
         { id: "idea", name: "Idea", who: "parked, costs nothing" },
         { id: "exploring", name: "Exploring", who: "you and the agent are shaping it" },
         { id: "play", name: "Play", who: "your turn: poke at it", you: true },
         { id: "learned", name: "Regroup", who: "your turn: decide", you: true },
-        { id: "building", name: "Building on main", who: "an agent builds it for real" },
-        { id: "done", name: "In use", who: "shipped, the loop closed" },
+        { id: "building", name: "Building on main", who: "being merged for real" },
+        { id: "done", name: "In use", who: "on main, the loop closed" },
       ];
-      const KEY = "idea-board-proto-v2";
+      const KEY = "idea-board-proto-v3";
 
-      // Seed prototypes share one phone-sized shell.
-      const shell = (body, script = "") => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{margin:0;font:15px system-ui;background:#f4f1ea;color:#23301f}h1{font-size:20px;margin:0;padding:20px 16px 8px}
-.p{background:#fff;margin:10px 12px;padding:12px 14px;border-radius:14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px #0001}
-.p b{display:block}.p small{color:#6c7a66}.p div{flex:1}.e{font-size:28px}
-button{font:inherit;border:0;border-radius:10px;padding:8px 12px;background:#2f6b3c;color:#fff;cursor:pointer}button.off{background:#dfe6dc;color:#55624f}
-.big{margin:16px 12px;padding:22px;border-radius:18px;background:#2f6b3c;color:#fff;text-align:center}.big b{font-size:44px;display:block}</style>
-${body}<script>${script}<\/script>`;
+      // The existing app. Seed branches are the same source with a feature switched on.
+      const app = (f = {}) => `<!doctype html>
+<html><head><meta charset="utf-8"><title>Tally</title><style>
+body{margin:0;font:14px system-ui;background:#f6f7f9;color:#1c2330}
+header{display:flex;justify-content:space-between;padding:14px 20px;background:#fff;border-bottom:1px solid #e3e6ec}
+header b{font-size:16px}
+main{max-width:720px;margin:0 auto;padding:20px}
+.bar{display:flex;gap:8px;align-items:center;background:#fff;border:1px solid #e3e6ec;border-radius:10px;padding:12px;margin-bottom:12px}
+.bar.warn{background:#fff7e0;border-color:#f0d58a}
+input,select,button{font:inherit;padding:7px 10px;border:1px solid #cfd5df;border-radius:7px;background:#fff}
+input,.bar>span{flex:1}
+#clock{flex:none;font:600 20px ui-monospace,monospace;min-width:92px;text-align:right}
+button{cursor:pointer}button.go{background:#2456e6;color:#fff;border-color:#2456e6}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7485;margin:20px 0 8px}
+.row{display:flex;gap:12px;background:#fff;border:1px solid #e3e6ec;border-radius:8px;padding:10px 12px;margin-bottom:6px}
+.row span{flex:1}.row i{font-style:normal;color:#6b7485}.row b{font-family:ui-monospace,monospace}
+.hint{color:#6b7485;font-size:12px;margin:-4px 2px 12px}
+</style></head><body>
+<header><b>Tally</b><span>This week <b id="week"></b></span></header>
+<main>${f.idle ? `
+<div class="bar warn" id="idle" style="display:none"><span>You were away for 12 minutes while the timer ran.</span><button onclick="idle('kept')">Keep</button><button onclick="idle('discarded')">Discard</button><button onclick="idle('split into a new entry')">Split</button></div>` : ""}${f.quick ? `
+<div class="bar"><input id="q" placeholder="Quick entry: 1h30 acme fix login" onkeydown="if(event.key==='Enter')quick()"><button onclick="quick()">Add</button></div>` : ""}
+<div class="bar"><select id="project"><option>Acme</option><option>Northwind</option><option>Internal</option></select>
+<input id="desc" placeholder="What are you working on?"><span id="clock">0:00:00</span><button class="go" id="toggle" onclick="toggle()">Start</button></div>${f.space ? `
+<p class="hint">Space starts and stops the timer.</p>` : ""}${f.idle ? `
+<p class="hint" id="idleMsg"><button onclick="document.getElementById('idle').style.display='flex'">Simulate coming back after 12 minutes away</button></p>` : ""}
+<h2>Today</h2><div id="list"></div>
+</main>
+<script>
+var entries=[{d:"Fix login redirect",p:"Acme",m:95},{d:"Standup",p:"Internal",m:15},{d:"Invoice export",p:"Northwind",m:140}];
+var weekBase=1130,started=null,tick=null;
+function fmt(m){return Math.floor(m/60)+"h "+("0"+m%60).slice(-2)+"m"}
+function render(){var h="",sum=0;entries.forEach(function(e){sum+=e.m;h+='<div class="row"><span>'+e.d+'</span><i>'+e.p+'</i><b>'+fmt(e.m)+'</b></div>'});
+document.getElementById("list").innerHTML=h;document.getElementById("week").textContent=fmt(weekBase+sum)}
+function toggle(){var b=document.getElementById("toggle");
+if(started){clearInterval(tick);var s=Math.round((Date.now()-started)/1000);
+entries.unshift({d:document.getElementById("desc").value||"Untitled",p:document.getElementById("project").value,m:Math.max(1,Math.round(s/60))});
+started=null;b.textContent="Start";document.getElementById("clock").textContent="0:00:00";document.getElementById("desc").value="";render()}
+else{started=Date.now();b.textContent="Stop";tick=setInterval(function(){var s=Math.floor((Date.now()-started)/1000);
+document.getElementById("clock").textContent=Math.floor(s/3600)+":"+("0"+Math.floor(s/60)%60).slice(-2)+":"+("0"+s%60).slice(-2)},500)}}${f.quick ? `
+function quick(){var q=document.getElementById("q"),parts=q.value.trim().split(" "),t=parts.shift()||"";
+var h=t.indexOf("h")>=0?parseInt(t)||0:0,mm=parseInt(t.split("h").pop())||0,p=parts.shift();
+if(!p||!parts.length||!(h||mm)){q.style.borderColor="#d33";return}
+entries.unshift({d:parts.join(" "),p:p.charAt(0).toUpperCase()+p.slice(1),m:h*60+mm});q.value="";q.style.borderColor="";render()}` : ""}${f.idle ? `
+function idle(what){document.getElementById("idle").style.display="none";document.getElementById("idleMsg").textContent="12 minutes "+what+"."}` : ""}${f.space ? `
+document.addEventListener("keydown",function(e){if(e.code==="Space"&&e.target.tagName!=="INPUT"){e.preventDefault();toggle()}});` : ""}
+render();
+<\/script></body></html>`;
 
-      const PROTO = {
-        fixed: shell(`<h1>Today</h1>
-<div class="p"><span class="e">🌿</span><div><b>Monstera</b><small>Every 7 days · due today</small></div><button onclick="done(this)">Watered</button></div>
-<div class="p"><span class="e">🌵</span><div><b>Cactus</b><small>Every 21 days · due today</small></div><button onclick="done(this)">Watered</button></div>
-<div class="p"><span class="e">🪴</span><div><b>Calathea</b><small>Every 4 days · due in 2 days</small></div><button class="off">Not yet</button></div>`,
-          `function done(b){b.textContent="Done";b.className="off";b.previousElementSibling.querySelector("small").textContent="Next reminder on schedule"}`),
-        learning: shell(`<h1>Today</h1>
-<div class="p"><span class="e">🌿</span><div><b>Monstera</b><small id="m">You usually water every 9 days · due today</small></div><button onclick="done(this,'m',9)">Watered</button></div>
-<div class="p"><span class="e">🌵</span><div><b>Cactus</b><small id="c">You usually water every 26 days · due in 3 days</small></div><button onclick="early(this,'c')">Water early</button></div>
-<div class="p"><span class="e">🪴</span><div><b>Calathea</b><small id="k">You usually water every 4 days · due today</small></div><button onclick="done(this,'k',4)">Watered</button></div>`,
-          `function done(b,id,d){b.textContent="Done";b.className="off";document.getElementById(id).textContent="Next in about "+d+" days"}
-function early(b,id){b.textContent="Done";b.className="off";document.getElementById(id).textContent="Noted. Shortening your rhythm to 24 days"}`),
-        streak: shell(`<div class="big"><b id="n">12</b>day watering streak 🔥</div>
-<div class="p"><span class="e">🌵</span><div><b>Cactus</b><small>Watered yesterday</small></div><button onclick="w()">Water now</button></div>
-<div class="p"><span class="e">🌿</span><div><b>Monstera</b><small>Watered 2 days ago</small></div><button onclick="w()">Water now</button></div>
-<p style="padding:0 16px;color:#6c7a66">Water any plant today to keep your streak.</p>`,
-          `function w(){var n=document.getElementById("n");n.textContent=+n.textContent+1}`),
-      };
+      const seed = () => ({
+        main: {
+          rev: 1,
+          html: app(),
+          log: ["Timer with project and description", "Today's entries", "Week total in the header"],
+        },
+        ideas: [
+          {
+            id: "quick",
+            title: "Log time by typing one line: 1h30 acme fix login",
+            stage: "play",
+            base: 1,
+            became: "A quick-entry field above the timer that parses duration, project and description.",
+            lessons: ["I log most of my time after the fact. The timer alone does not cover how I work."],
+            versions: [{ html: app({ quick: true }), note: "Quick-entry field above the timer" }],
+            chat: [
+              { role: "user", text: "Half my entries are things I already did. Starting a timer for those is silly. Let me type one line instead." },
+              { role: "agent", text: "Added a quick-entry field above the timer on a branch. Type 1h30 acme fix login and press Enter; the order is duration, project, description.", built: 1 },
+            ],
+          },
+          {
+            id: "idle",
+            title: "Idle detection: ask what to do with time I was away",
+            stage: "learned",
+            base: 1,
+            became: "A banner when you come back, with Keep, Discard and Split.",
+            lessons: [
+              "Keep and Discard are enough. Split made me stop and think in the middle of work.",
+              "It has to ask the moment I come back. As a later notification it would be noise.",
+            ],
+            versions: [{ html: app({ idle: true }), note: "Banner with Keep, Discard, Split" }],
+            chat: [
+              { role: "user", text: "I leave the timer running over lunch all the time. Catch that." },
+              { role: "agent", text: "There is a banner now that appears when you return after being away. Real idle detection needs the desktop shell, so the branch has a button that simulates coming back.", built: 1 },
+              { role: "user", text: "Split is too much. I just want keep or throw away." },
+              { role: "agent", text: "Noted as a lesson. I can drop Split in the next version, or you can regroup with it as is." },
+            ],
+          },
+          {
+            id: "rates",
+            title: "Billing rates and currencies per client",
+            stage: "shelved",
+            decision: "Pivot",
+            became: "A settings page with rate, currency and tax per client.",
+            lessons: [
+              "Rates pulled in currencies, taxes and invoices. That is a second product.",
+              "The one thing I actually needed from it was rounding to billable blocks.",
+            ],
+            versions: [],
+            chat: [],
+          },
+          {
+            id: "round",
+            parent: "rates",
+            title: "Round entries to 15-minute blocks per client",
+            stage: "idea",
+            lessons: [],
+            versions: [],
+            chat: [],
+          },
+          {
+            id: "invoice",
+            title: "Weekly invoice preview straight from the entries",
+            stage: "exploring",
+            lessons: [],
+            versions: [],
+            chat: [
+              { role: "user", text: "End of the week I copy all this into an invoice by hand. Show me the invoice." },
+              { role: "agent", text: "Before I build: one invoice per client for the week, or one line per entry? That decides whether this is a summary view or an export." },
+            ],
+          },
+          {
+            id: "space",
+            title: "Space starts and stops the timer",
+            stage: "building",
+            decision: "Adopt",
+            base: 1,
+            became: "A global shortcut, ignored while typing in a field.",
+            lessons: ["It must not fire while I type a description. That bit me in the first version."],
+            versions: [{ html: app({ space: true }), note: "Space toggles the timer outside inputs" }],
+            chat: [{ role: "note", text: "Adopted. Waiting to be merged into main." }],
+          },
+          {
+            id: "week",
+            title: "Week total in the header",
+            stage: "done",
+            decision: "Adopt",
+            became: "Always visible, updates as entries land.",
+            lessons: ["I check the weekly number far more than the daily one."],
+            versions: [],
+            chat: [],
+          },
+        ],
+      });
 
-      const SEED = [
-        {
-          id: "remind",
-          title: "Reminders that learn from when you actually water",
-          stage: "play",
-          became: "Reminders follow your real rhythm per plant instead of a fixed schedule.",
-          lessons: ["A fixed 7-day schedule felt like nagging. People skipped it and then ignored the app."],
-          versions: [
-            { html: PROTO.fixed, note: "Fixed schedule per plant" },
-            { html: PROTO.learning, note: "Schedule follows your own rhythm" },
-          ],
-          chat: [
-            { role: "user", text: "Reminders are dumb right now. What if they learned from when I actually water?" },
-            { role: "agent", text: "Started with the plain version so we have a baseline: a fixed schedule per plant and a Watered button.", built: 1 },
-            { role: "user", text: "This is exactly the nagging I hate. I water the cactus when I remember, not every 21 days." },
-            { role: "agent", text: "Then the schedule should come from you. In v2 each plant shows your usual rhythm, and watering early shortens it. Try Water early on the cactus.", built: 2 },
-          ],
-        },
-        {
-          id: "streak",
-          title: "Watering streaks, like a language app",
-          stage: "learned",
-          became: "A streak counter that goes up every time you water anything.",
-          lessons: [
-            "The streak rewards watering, not healthy plants. I watered a cactus two days in a row just to keep it.",
-            "The big number felt good. Worth keeping the feeling, on a different metric.",
-          ],
-          versions: [{ html: PROTO.streak, note: "Streak counter on the home screen" }],
-          chat: [
-            { role: "user", text: "Add streaks. Every habit app has them and they work." },
-            { role: "agent", text: "Here is the simplest one: water any plant today and the streak grows. Tap Water now a few times and see how it feels.", built: 1 },
-            { role: "user", text: "It feels great and it is wrong. I am overwatering to protect a number." },
-            { role: "agent", text: "Noted as a lesson. The pull is real, the metric is harmful. A streak on days all plants were on track might keep the feeling without the damage." },
-          ],
-        },
-        {
-          id: "swap",
-          title: "A plant swap marketplace between neighbours",
-          stage: "shelved",
-          decision: "Pivot",
-          became: "A map of nearby listings with chat.",
-          lessons: [
-            "Nobody wants to list a plant. Everybody has cuttings they would happily give to a friend.",
-            "Location and chat are a second product. Too big for what we learn from it.",
-          ],
-          versions: [],
-          chat: [],
-        },
-        {
-          id: "cutting",
-          parent: "swap",
-          title: "Gift a cutting: a share link for one plant with its care card",
-          stage: "idea",
-          lessons: [],
-          versions: [],
-          chat: [],
-        },
-        {
-          id: "leaf",
-          title: "Snap a sick leaf, get told what is wrong",
-          stage: "exploring",
-          lessons: [],
-          versions: [],
-          chat: [
-            { role: "user", text: "People panic when a leaf turns yellow. Photo in, diagnosis out?" },
-            { role: "agent", text: "Before I build: is the goal a diagnosis, or one thing to do today? Those are different screens." },
-          ],
-        },
-        {
-          id: "light",
-          title: "Light meter: point the camera at a spot, see which plants fit",
-          stage: "building",
-          decision: "Adopt",
-          became: "A three-level reading (low, medium, bright) instead of lux numbers.",
-          lessons: ["Nobody knows what 800 lux means. Three words were enough to pick a plant."],
-          versions: [],
-          chat: [],
-        },
-        {
-          id: "first",
-          title: "Add your first plant in ten seconds",
-          stage: "done",
-          decision: "Adopt",
-          became: "Pick from six common plants on first launch; everything else comes later.",
-          lessons: ["Asking for the species up front lost people. A picture grid did not."],
-          versions: [],
-          chat: [],
-        },
-      ];
-
-      let ideas = load();
+      let { main, ideas } = load();
       let view = "board";
       let openId = null;
-      let shownVersion = null; // index into the open idea's versions; null follows the latest
+      let shownVersion = null; // index into the open idea's versions, -1 for main; null follows the latest
       let busy = null; // { id, text, building } while the agent answers
 
       function load() {
         try {
           const saved = JSON.parse(localStorage.getItem(KEY));
-          if (Array.isArray(saved)) return saved;
+          if (saved?.main && Array.isArray(saved.ideas)) return saved;
         } catch {}
-        return structuredClone(SEED);
+        return seed();
       }
       function save() {
-        localStorage.setItem(KEY, JSON.stringify(ideas));
+        localStorage.setItem(KEY, JSON.stringify({ main, ideas }));
       }
       const byId = (id) => ideas.find((i) => i.id === id);
       const esc = (s) =>
         String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       const lastAgent = (i) => i.chat.length && i.chat[i.chat.length - 1].role === "agent";
       const needsYou = (i) => i.stage === "play" || i.stage === "learned" || (i.stage === "exploring" && lastAgent(i) && busy?.id !== i.id);
+      const live = (i) => ["exploring", "play", "learned", "building"].includes(i.stage);
+      // A branch is behind when main gained a merge after the branch was cut.
+      const behind = (i) => live(i) && i.versions.length > 0 && i.base !== main.rev;
 
       /* ---------- the agent ---------- */
 
-      function systemPrompt(i) {
+      function systemPrompt(i, rebase) {
         const parent = i.parent && byId(i.parent);
         const latest = i.versions[i.versions.length - 1];
-        return `You are the prototyping agent for one idea on a product team's idea board. The product: ${PRODUCT}.
-You talk with the product owner in a chat thread about this one idea and iterate on a tiny playable prototype of it.
+        return `You are a developer agent working on one feature idea inside an existing app. The app: ${PRODUCT}. The whole app is one HTML file. The feature lives on its own branch: you change the app's source so the product owner can play with the feature inside the real app, then you iterate from their feedback in this chat.
 
 Rules:
-- Reply in the language the user writes in. Be brief and concrete: 1 to 4 plain sentences, no headings, no lists, no flattery.
-- If the user only asks a question, answer it and build nothing.
-- When the user wants to see something, or gives feedback on the prototype, build or revise it: after your sentences, output ONE complete self-contained HTML document in a single \`\`\`html fenced block. Inline CSS and JS only, no external files, fonts or images (emoji are fine). It is a phone-sized app screen with fake data that reacts to taps. Keep it under 120 lines. Always the whole document, never a diff. Say in your sentences what changed and what to try.
+- Reply in the language the user writes in. Be brief and concrete: 1 to 4 plain sentences, no headings, no lists, no flattery. Talk like a developer to the product owner.
+- If the user only asks a question, answer it and change nothing.
+- When the user wants to see something or gives feedback, change the app: after your sentences, output the COMPLETE modified app as one HTML document in a single \`\`\`html fenced block. Start from the source given below, keep everything that already works and the existing look, and change only what this feature needs. Inline CSS and JS only, no external files. Never a diff, always the whole file. Say in your sentences what changed and what to try.
 - When the user tells you something they learned, liked, disliked or were surprised by, record it on its own line: LESSON: <one sentence, in their words and language>
-- When the idea has turned into something different from its title, add on its own line: BECAME: <one line>
+- When the feature has turned into something different from its title, add on its own line: BECAME: <one line>
 - Put LESSON and BECAME lines before the html block.
 
-The idea: ${i.title}
+The feature idea: ${i.title}
 ${i.became ? "What it has become so far: " + i.became : ""}
 ${i.lessons.length ? "Lessons so far:\n- " + i.lessons.join("\n- ") : ""}
 ${parent ? `This idea grew out of "${parent.title}". Lessons carried over:\n- ${parent.lessons.join("\n- ")}` : ""}
-${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.html}\n\`\`\`` : "No prototype exists yet."}`;
+${latest ? `The branch's current source (v${i.versions.length}):\n\`\`\`html\n${latest.html}\n\`\`\`` : `No branch yet. The app on main:\n\`\`\`html\n${main.html}\n\`\`\``}
+${rebase ? `Main has changed since this branch was cut. Rebase: start from the main below and re-apply this branch's feature on top of it, so the result has everything main has plus the feature.\n\`\`\`html\n${main.html}\n\`\`\`` : ""}`;
       }
 
       function parseReply(raw) {
@@ -751,19 +788,18 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
         return { text, lessons, became, html, building };
       }
 
-      async function ask(i, userText) {
-        i.chat.push({ role: "user", text: userText });
+      async function ask(i, userText, rebase = false) {
+        i.chat.push(rebase ? { role: "note", text: userText } : { role: "user", text: userText });
         if (i.stage === "idea") i.stage = "exploring";
         busy = { id: i.id, text: "", building: false };
         save();
         render();
-        const messages = [
-          { role: "system", content: systemPrompt(i) },
-          ...i.chat.filter((m) => m.role !== "note").slice(-12).map((m) => ({
-            role: m.role === "user" ? "user" : "assistant",
-            content: m.text + (m.built ? `\n[built prototype v${m.built}]` : ""),
-          })),
-        ];
+        const history = i.chat.filter((m) => m.role !== "note").slice(-12).map((m) => ({
+          role: m.role === "user" ? "user" : "assistant",
+          content: m.text + (m.built ? `\n[changed the app: branch v${m.built}]` : ""),
+        }));
+        if (rebase) history.push({ role: "user", content: "Rebase this branch on the current main." });
+        const messages = [{ role: "system", content: systemPrompt(i, rebase) }, ...history];
         let raw = "";
         try {
           const res = await fetch("/api/chat", {
@@ -789,17 +825,18 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
                 raw += JSON.parse(data).choices?.[0]?.delta?.content ?? "";
               } catch {}
             }
-            const live = parseReply(raw);
-            busy.text = live.text;
-            busy.building = live.building ? raw.length : false;
+            const partial = parseReply(raw);
+            busy.text = partial.text;
+            busy.building = partial.building ? raw.length : false;
             patchLive();
           }
           const reply = parseReply(raw);
-          const msg = { role: "agent", text: reply.text || (reply.html ? "Built a new version." : "(no answer)") };
+          const msg = { role: "agent", text: reply.text || (reply.html ? "Changed the app." : "(no answer)") };
           if (reply.html) {
-            i.versions.push({ html: reply.html, note: firstSentence(msg.text) });
+            if (!i.versions.length || rebase) i.base = main.rev;
+            i.versions.push({ html: reply.html, note: rebase ? "Rebased on main" : firstSentence(msg.text) });
             msg.built = i.versions.length;
-            i.stage = "play";
+            if (i.stage === "exploring" || i.stage === "learned") i.stage = "play";
             if (openId === i.id) shownVersion = null;
           }
           for (const l of reply.lessons) if (!i.lessons.includes(l)) i.lessons.push(l);
@@ -820,14 +857,15 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
         const note = (text) => i.chat.push({ role: "note", text });
         if (name === "regroup") i.stage = "learned";
         else if (name === "more") i.stage = i.versions.length ? "play" : "exploring";
+        else if (name === "rebase") ask(i, "Main moved on. Rebasing this branch on it.", true);
         else if (name === "Adopt") {
           i.stage = "building";
           i.decision = "Adopt";
-          note("Adopted. In T3 this opens an implementation thread on main, briefed with what it became and the lessons. (Simulated here.)");
+          note("Adopted. In T3 an implementation thread now redoes this properly on main, briefed with what it became and the lessons. Here, Merge puts the branch's code into main as it is.");
         } else if (name === "Shelve") {
           i.stage = "shelved";
           i.decision = "Shelve";
-          note("Shelved. The lessons stay on the board.");
+          note("Shelved. The branch is dropped, the lessons stay on the board.");
         } else if (name === "Pivot") {
           i.stage = "shelved";
           i.decision = "Pivot";
@@ -836,9 +874,14 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
           ideas.unshift(child);
           openId = child.id;
           shownVersion = null;
-        } else if (name === "shipped") {
+        } else if (name === "merge") {
+          const latest = i.versions[i.versions.length - 1];
+          if (latest) {
+            main = { rev: main.rev + 1, html: latest.html, log: [...main.log, i.title] };
+            i.base = main.rev;
+          }
           i.stage = "done";
-          note("Merged and in use. (Simulated here.)");
+          note("Merged. This is main now, and every other open branch is one merge behind.");
         } else if (name === "revive") {
           i.stage = i.versions.length ? "play" : "idea";
           delete i.decision;
@@ -853,10 +896,10 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
       function cardHtml(i) {
         const parent = i.parent && byId(i.parent);
         const chips = [];
-        if (busy?.id === i.id) chips.push(`<span class="chip agent">agent ${busy.building ? "building" : "replying"}</span>`);
-        else if (i.stage === "building") chips.push(`<span class="chip agent">agent building</span>`);
+        if (busy?.id === i.id) chips.push(`<span class="chip agent">agent ${busy.building ? "coding" : "replying"}</span>`);
         else if (i.stage === "exploring" && lastAgent(i)) chips.push(`<span class="chip play">asks you</span>`);
-        if (i.versions.length) chips.push(`<span class="chip ${i.stage === "play" ? "play" : ""}">▶ v${i.versions.length}</span>`);
+        if (i.versions.length && i.stage !== "done") chips.push(`<span class="chip ${i.stage === "play" ? "play" : ""}">▶ branch v${i.versions.length}</span>`);
+        if (behind(i)) chips.push(`<span class="chip agent">behind main</span>`);
         if (i.lessons.length) chips.push(`<span class="chip good">${i.lessons.length} lesson${i.lessons.length > 1 ? "s" : ""}</span>`);
         if (parent) chips.push(`<span class="chip">from: ${esc(parent.title.slice(0, 20))}…</span>`);
         const last = i.chat.filter((m) => m.role !== "note").at(-1);
@@ -871,19 +914,23 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
       function render() {
         const waiting = ideas.filter(needsYou).length;
         document.getElementById("waiting").textContent = waiting ? `${waiting} waiting on you` : "Nothing waits on you";
-        document.getElementById("tab-board").className = view === "board" ? "on" : "";
-        document.getElementById("tab-lessons").className = view === "lessons" ? "on" : "";
-        const main = document.getElementById("main");
-        if (view === "lessons") {
+        for (const tab of ["board", "lessons", "main"]) document.getElementById("tab-" + tab).className = view === tab ? "on" : "";
+        const el = document.getElementById("main");
+        if (view === "main") {
+          el.innerHTML = `<div class="mainview"><div class="frame"><iframe sandbox="allow-scripts" title="Tally on main"></iframe></div>
+            <div class="know"><label>On main, in order</label>${main.log.map((l) => `<p>${esc(l)}</p>`).join("")}
+            <p class="empty">This is the app everything branches from. Adopted ideas land here.</p></div></div>`;
+          el.querySelector("iframe").srcdoc = main.html;
+        } else if (view === "lessons") {
           const all = ideas.flatMap((i) => i.lessons.map((l) => ({ l, i })));
-          main.innerHTML = `<div class="lessons">${
+          el.innerHTML = `<div class="lessons">${
             all
               .map(({ l, i }) => `<div class="lesson"><p>${esc(l)}</p><a data-open="${i.id}">${esc(i.title)}${i.decision ? " · " + i.decision : ""}</a></div>`)
               .join("") || `<p class="empty">No lessons yet.</p>`
           }</div>`;
         } else {
           const shelved = ideas.filter((i) => i.stage === "shelved");
-          main.innerHTML =
+          el.innerHTML =
             `<div class="board">${STAGES.map((s) => {
               const list = ideas.filter((i) => i.stage === s.id);
               return `<section class="col ${s.you ? "you" : ""}" data-stage="${s.id}">
@@ -901,10 +948,10 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
       }
 
       const msgHtml = (m) =>
-        `<div class="msg ${m.role}">${esc(m.text)}${m.built ? `<button class="built" data-version="${m.built - 1}">▶ Built v${m.built}, open it</button>` : ""}</div>`;
+        `<div class="msg ${m.role}">${esc(m.text)}${m.built ? `<button class="built" data-version="${m.built - 1}">▶ Branch v${m.built}, open it</button>` : ""}</div>`;
 
       function liveHtml() {
-        const status = busy.building ? `Building the prototype… ${busy.building} characters written` : busy.text ? "" : "Thinking… the local model can take a minute to wake up";
+        const status = busy.building ? `Changing the app… ${busy.building} characters written` : busy.text ? "" : "Thinking… the local model can take a minute to wake up";
         return `${esc(busy.text)}${status ? `<span style="display:block;color:var(--agent);font-size:12px">${status}</span>` : ""}`;
       }
       function patchLive() {
@@ -925,40 +972,39 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
         const version = i.versions[vIndex];
         const working = busy?.id === i.id;
         const blocked = busy && !working;
-        let actions = "";
-        if (i.stage === "play") actions = `<button class="btn" data-act="regroup">Done playing, regroup</button>`;
+        let actions = behind(i) && !busy ? `<button class="btn alt" data-act="rebase">Rebase on main</button>` : "";
+        if (i.stage === "play") actions += `<button class="btn" data-act="regroup">Done playing, regroup</button>`;
         if (i.stage === "learned")
-          actions = `<button class="btn" data-act="Adopt">Adopt into main</button><button class="btn alt" data-act="Pivot">Pivot into a new idea</button>
+          actions += `<button class="btn" data-act="Adopt">Adopt into main</button><button class="btn alt" data-act="Pivot">Pivot into a new idea</button>
             <button class="btn alt" data-act="Shelve">Shelve, keep lessons</button><button class="btn alt" data-act="more">Keep iterating</button>`;
-        if (i.stage === "building") actions = `<button class="btn alt" data-act="shipped">Merged (simulate)</button>`;
-        if (i.stage === "shelved") actions = `<button class="btn alt" data-act="revive">Bring it back</button>`;
+        if (i.stage === "building") actions += `<button class="btn" data-act="merge">Merge into main</button>`;
+        if (i.stage === "shelved") actions += `<button class="btn alt" data-act="revive">Bring it back</button>`;
         el.innerHTML = `<div class="thread">
           <div class="bar">
             <button class="ghost" data-close>← Board</button>
-            <input data-f="title" value="${esc(i.title)}" placeholder="The idea in one line" />
+            <input data-f="title" value="${esc(i.title)}" placeholder="The feature idea in one line" />
             <span class="chip">${stageName}${i.decision ? " · " + i.decision : ""}</span>
             ${actions}
           </div>
           <div class="panes">
             <div class="chat">
               <div class="msgs" id="msgs">
-                ${i.chat.map(msgHtml).join("") || `<div class="msg note">${parent ? "A fresh idea that carries the lessons of its parent. Say what it is." : "No conversation yet. Tell the agent what you imagine, or ask it to build a first version."}</div>`}
+                ${i.chat.map(msgHtml).join("") || `<div class="msg note">${parent ? "A fresh idea that carries the lessons of its parent. Say what it is." : "No conversation yet. Describe the feature, or ask the agent to try a first version in the app."}</div>`}
                 ${working ? `<div class="msg agent" id="live">${liveHtml()}</div>` : ""}
               </div>
               ${blocked ? `<div class="hint">The agent is busy in another thread. The local model takes one at a time.</div>` : ""}
               <form class="composer" id="talk">
-                <textarea id="say" rows="1" placeholder="${i.versions.length ? "Say what you noticed, ask about it, or ask for a change" : "Talk about the idea, or ask for a first version"}"></textarea>
+                <textarea id="say" rows="1" placeholder="${i.versions.length ? "Say what you noticed, ask about it, or ask for a change" : "Talk the feature through, or ask for a first version"}"></textarea>
                 <button class="send" ${busy ? "disabled" : ""}>Send</button>
               </form>
             </div>
             <div class="stage">
               <div class="versions">
+                <button class="${version ? "" : "on"}" data-version="-1">main</button>
                 ${i.versions.map((v, n) => `<button class="${n === vIndex ? "on" : ""}" data-version="${n}">v${n + 1}</button>`).join("")}
-                <span>${version ? esc(version.note) : "No playable yet"}</span>
+                <span>${version ? esc(version.note) : i.versions.length ? "The app without this feature" : "The app on main. The feature shows up here once the agent builds it."}</span>
               </div>
-              <div class="frame">
-                ${version ? `<iframe sandbox="allow-scripts" title="Prototype v${vIndex + 1}"></iframe>` : `<div class="none">Nothing to play with yet. The first version shows up here when the agent builds one.</div>`}
-              </div>
+              <div class="frame"><iframe sandbox="allow-scripts" title="${version ? "Branch v" + (vIndex + 1) : "Tally on main"}"></iframe></div>
             </div>
             <div class="know">
               ${parent ? `<div class="from">Grew out of <a data-open="${parent.id}">${esc(parent.title)}</a>${parent.lessons.length ? `<br />Carried: ${parent.lessons.map(esc).join(" / ")}` : ""}</div>` : ""}
@@ -967,13 +1013,13 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
               <label>Lessons (one per line)</label>
               <textarea data-f="lessons" rows="9" placeholder="The agent writes down what you say you learned. Edit freely.">${esc(i.lessons.join("\n"))}</textarea>
               <details><summary>Technical detail</summary>
-                <p>Agent: local model on nika, nothing leaves the machine. Each version is one generated HTML file. No real thread, branch or preview behind it yet.</p>
+                <p>Branch cut from main r${i.base ?? main.rev}; main is at r${main.rev}. Each version is the whole app's source, rewritten by the local model on nika. No git branch or T3 thread behind it yet.</p>
                 <button class="ghost" data-act="delete">Delete this idea</button>
               </details>
             </div>
           </div>
         </div>`;
-        if (version) el.querySelector("iframe").srcdoc = version.html;
+        el.querySelector("iframe").srcdoc = version ? version.html : main.html;
         const msgs = el.querySelector("#msgs");
         msgs.scrollTop = msgs.scrollHeight;
         const say = el.querySelector("#say");
@@ -996,10 +1042,10 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
         else if (t.closest("[data-open]")) open(t.closest("[data-open]").dataset.open);
         else if (t.closest("[data-close]")) openId = null;
         else if (t.closest(".card")) open(t.closest(".card").dataset.id);
-        else if (t.id === "tab-board" || t.id === "tab-lessons") view = t.id.slice(4);
+        else if (t.id?.startsWith("tab-")) view = t.id.slice(4);
         else if (t.id === "reset") {
-          if (!confirm("Restore the seed ideas and drop your changes?")) return;
-          ideas = structuredClone(SEED);
+          if (!confirm("Restore the seed app and ideas, and drop your changes?")) return;
+          ({ main, ideas } = seed());
           openId = null;
         } else return;
         save();
@@ -1074,6 +1120,6 @@ ${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.htm
       });
 
       render();
-    </script>
+</script>
   </body>
 </html>
