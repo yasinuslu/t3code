@@ -53,6 +53,11 @@
         font-weight: 650;
         letter-spacing: -0.01em;
       }
+      h1 small {
+        color: var(--muted);
+        font-weight: 400;
+        font-size: 13px;
+      }
       .tag {
         font-size: 11px;
         color: var(--muted);
@@ -95,24 +100,43 @@
       .ghost:hover {
         color: var(--text);
       }
-      form.add {
+      .composer {
         display: flex;
         gap: 8px;
-        padding: 12px 20px 0;
-      }
-      form.add input {
-        flex: 1;
-        max-width: 560px;
+        align-items: flex-end;
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 8px 12px;
-        outline: none;
+        border-radius: 12px;
+        padding: 8px 8px 8px 12px;
       }
-      form.add input:focus,
-      textarea:focus,
-      .field input:focus {
+      .composer:focus-within {
         border-color: var(--you);
+      }
+      .composer textarea {
+        flex: 1;
+        background: none;
+        border: 0;
+        outline: none;
+        resize: none;
+        max-height: 140px;
+        padding: 4px 0;
+      }
+      .send {
+        background: var(--you);
+        color: #1b1403;
+        border: 0;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .send:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .new {
+        padding: 12px 20px 0;
+        max-width: 720px;
       }
       main {
         flex: 1;
@@ -180,8 +204,6 @@
         border-radius: 10px;
         padding: 10px;
         cursor: pointer;
-        text-align: left;
-        width: 100%;
       }
       .card:hover {
         background: var(--card-hover);
@@ -194,6 +216,17 @@
         color: var(--muted);
         font-size: 12px;
         margin-top: 4px;
+      }
+      .card .last {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 6px;
+        padding-left: 8px;
+        border-left: 2px solid var(--line);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
       }
       .card .row {
         display: flex;
@@ -215,7 +248,6 @@
         background: var(--you);
         border-color: var(--you);
         font-weight: 600;
-        text-decoration: none;
       }
       .chip.agent {
         color: var(--agent);
@@ -224,20 +256,6 @@
       .chip.good {
         color: var(--good);
         border-color: color-mix(in srgb, var(--good) 40%, var(--line));
-      }
-      .next {
-        margin-top: 8px;
-        width: 100%;
-        background: none;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 5px 8px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-      .next:hover {
-        border-color: var(--you);
-        color: var(--you);
       }
       .empty {
         color: var(--muted);
@@ -266,7 +284,6 @@
         cursor: pointer;
         color: var(--muted);
       }
-      /* lessons view */
       .lessons {
         padding: 18px 20px;
         overflow-y: auto;
@@ -287,91 +304,40 @@
         cursor: pointer;
         text-decoration: underline;
       }
-      /* drawer */
-      .scrim {
+
+      /* an idea's thread: chat, the playable, what we know */
+      .thread {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-      }
-      aside {
-        position: fixed;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: min(480px, 100vw);
-        background: var(--panel);
-        border-left: 1px solid var(--line);
-        padding: 20px;
-        overflow-y: auto;
-      }
-      aside h3 {
-        margin: 0 0 4px;
-        font-size: 19px;
-        line-height: 1.25;
-      }
-      aside .close {
-        float: right;
-      }
-      .steps {
-        display: flex;
-        gap: 4px;
-        margin: 12px 0 18px;
-      }
-      .steps i {
-        flex: 1;
-        height: 4px;
-        border-radius: 2px;
-        background: var(--line);
-      }
-      .steps i.done {
-        background: var(--you);
-      }
-      .field {
-        margin-bottom: 16px;
-      }
-      .field label {
-        display: block;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--muted);
-        margin-bottom: 4px;
-      }
-      .field input,
-      textarea {
-        width: 100%;
         background: var(--bg);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 8px 10px;
-        outline: none;
-        resize: vertical;
-      }
-      .cta {
-        border: 1px solid var(--you);
-        background: color-mix(in srgb, var(--you) 14%, transparent);
-        border-radius: 10px;
-        padding: 12px;
-        margin-bottom: 18px;
-      }
-      .cta p {
-        margin: 0 0 10px;
-      }
-      .btns {
         display: flex;
-        gap: 8px;
+        flex-direction: column;
+      }
+      .thread .bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
         flex-wrap: wrap;
+      }
+      .thread .bar input {
+        flex: 1;
+        min-width: 200px;
+        background: none;
+        border: 0;
+        outline: none;
+        font-size: 16px;
+        font-weight: 650;
       }
       .btn {
         background: var(--you);
         color: #1b1403;
         border: 0;
         border-radius: 8px;
-        padding: 7px 12px;
+        padding: 6px 12px;
         font-weight: 600;
         cursor: pointer;
-        text-decoration: none;
-        display: inline-block;
       }
       .btn.alt {
         background: none;
@@ -382,6 +348,159 @@
       .btn.alt:hover {
         border-color: var(--you);
       }
+      .panes {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(320px, 400px) 1fr 260px;
+      }
+      .chat {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border-right: 1px solid var(--line);
+      }
+      .msgs {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .msg {
+        max-width: 92%;
+        padding: 8px 11px;
+        border-radius: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .msg.user {
+        align-self: flex-end;
+        background: #33373e;
+      }
+      .msg.agent {
+        align-self: flex-start;
+        background: var(--panel);
+        border: 1px solid var(--line);
+      }
+      .msg.note {
+        align-self: center;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+        padding: 2px 8px;
+      }
+      .msg .built {
+        display: block;
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--you);
+        cursor: pointer;
+        background: none;
+        border: 0;
+        padding: 0;
+      }
+      .chat .composer {
+        margin: 0 12px 12px;
+      }
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+        padding: 0 14px 8px;
+      }
+      .stage {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+      }
+      .versions {
+        display: flex;
+        gap: 6px;
+        padding: 10px 14px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        overflow-x: auto;
+      }
+      .versions button {
+        background: none;
+        border: 1px solid var(--line);
+        border-radius: 99px;
+        padding: 2px 10px;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .versions button.on {
+        background: var(--you);
+        border-color: var(--you);
+        color: #1b1403;
+        font-weight: 600;
+      }
+      .versions span {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .frame {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: #0c0d0e;
+      }
+      .frame iframe {
+        width: min(390px, 100%);
+        height: min(720px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: #fff;
+      }
+      .frame .none {
+        color: var(--muted);
+        max-width: 320px;
+        text-align: center;
+      }
+      .know {
+        border-left: 1px solid var(--line);
+        padding: 14px;
+        overflow-y: auto;
+      }
+      .know label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 4px;
+      }
+      .know textarea {
+        width: 100%;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        outline: none;
+        resize: vertical;
+        margin-bottom: 16px;
+      }
+      .know textarea:focus {
+        border-color: var(--you);
+      }
+      .know .from {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+      .know .from a {
+        color: var(--text);
+        cursor: pointer;
+        text-decoration: underline;
+      }
       details {
         border-top: 1px solid var(--line);
         padding-top: 12px;
@@ -391,15 +510,17 @@
       details summary {
         cursor: pointer;
       }
-      details code {
-        color: var(--text);
-      }
-      .sim {
-        font-size: 11px;
-        color: var(--muted);
-        margin-top: 8px;
-      }
-      @media (max-width: 900px) {
+      @media (max-width: 1000px) {
+        .panes {
+          grid-template-columns: 1fr;
+          grid-auto-rows: minmax(360px, auto);
+          overflow-y: auto;
+        }
+        .chat,
+        .know {
+          border: 0;
+          border-bottom: 1px solid var(--line);
+        }
         .board {
           grid-template-columns: repeat(6, 240px);
         }
@@ -408,8 +529,8 @@
   </head>
   <body>
     <header>
-      <h1>Idea Board</h1>
-      <span class="tag">prototype, fake data, saved in this browser</span>
+      <h1>Sprout <small>idea board</small></h1>
+      <span class="tag">prototype · fictional product · saved in this browser</span>
       <span id="waiting" class="waiting"></span>
       <span class="spacer"></span>
       <div class="tabs">
@@ -418,85 +539,150 @@
       </div>
       <button class="ghost" id="reset" title="Throw away your changes and restore the seed ideas">Reset</button>
     </header>
-    <form class="add" id="add">
-      <input id="new-idea" placeholder="A new idea, in one line. Enter to drop it on the board." autocomplete="off" />
-    </form>
+    <div class="new">
+      <form class="composer" id="new">
+        <textarea id="new-text" rows="1" placeholder="Got an idea for Sprout? Say it like you would to a teammate. It becomes a thread."></textarea>
+        <button class="send">Start</button>
+      </form>
+    </div>
     <main id="main"></main>
-    <div id="drawer"></div>
+    <div id="thread"></div>
 
     <script>
+      const PRODUCT = "Sprout, a mobile app that helps people keep their houseplants alive";
       const STAGES = [
         { id: "idea", name: "Idea", who: "parked, costs nothing" },
-        { id: "exploring", name: "Exploring", who: "an agent is prototyping" },
+        { id: "exploring", name: "Exploring", who: "you and the agent are shaping it" },
         { id: "play", name: "Play", who: "your turn: poke at it", you: true },
-        { id: "learned", name: "Learned", who: "your turn: regroup", you: true },
+        { id: "learned", name: "Regroup", who: "your turn: decide", you: true },
         { id: "building", name: "Building on main", who: "an agent builds it for real" },
         { id: "done", name: "In use", who: "shipped, the loop closed" },
       ];
-      const KEY = "idea-board-proto-v1";
+      const KEY = "idea-board-proto-v2";
+
+      // Seed prototypes share one phone-sized shell.
+      const shell = (body, script = "") => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;font:15px system-ui;background:#f4f1ea;color:#23301f}h1{font-size:20px;margin:0;padding:20px 16px 8px}
+.p{background:#fff;margin:10px 12px;padding:12px 14px;border-radius:14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 2px #0001}
+.p b{display:block}.p small{color:#6c7a66}.p div{flex:1}.e{font-size:28px}
+button{font:inherit;border:0;border-radius:10px;padding:8px 12px;background:#2f6b3c;color:#fff;cursor:pointer}button.off{background:#dfe6dc;color:#55624f}
+.big{margin:16px 12px;padding:22px;border-radius:18px;background:#2f6b3c;color:#fff;text-align:center}.big b{font-size:44px;display:block}</style>
+${body}<script>${script}<\/script>`;
+
+      const PROTO = {
+        fixed: shell(`<h1>Today</h1>
+<div class="p"><span class="e">🌿</span><div><b>Monstera</b><small>Every 7 days · due today</small></div><button onclick="done(this)">Watered</button></div>
+<div class="p"><span class="e">🌵</span><div><b>Cactus</b><small>Every 21 days · due today</small></div><button onclick="done(this)">Watered</button></div>
+<div class="p"><span class="e">🪴</span><div><b>Calathea</b><small>Every 4 days · due in 2 days</small></div><button class="off">Not yet</button></div>`,
+          `function done(b){b.textContent="Done";b.className="off";b.previousElementSibling.querySelector("small").textContent="Next reminder on schedule"}`),
+        learning: shell(`<h1>Today</h1>
+<div class="p"><span class="e">🌿</span><div><b>Monstera</b><small id="m">You usually water every 9 days · due today</small></div><button onclick="done(this,'m',9)">Watered</button></div>
+<div class="p"><span class="e">🌵</span><div><b>Cactus</b><small id="c">You usually water every 26 days · due in 3 days</small></div><button onclick="early(this,'c')">Water early</button></div>
+<div class="p"><span class="e">🪴</span><div><b>Calathea</b><small id="k">You usually water every 4 days · due today</small></div><button onclick="done(this,'k',4)">Watered</button></div>`,
+          `function done(b,id,d){b.textContent="Done";b.className="off";document.getElementById(id).textContent="Next in about "+d+" days"}
+function early(b,id){b.textContent="Done";b.className="off";document.getElementById(id).textContent="Noted. Shortening your rhythm to 24 days"}`),
+        streak: shell(`<div class="big"><b id="n">12</b>day watering streak 🔥</div>
+<div class="p"><span class="e">🌵</span><div><b>Cactus</b><small>Watered yesterday</small></div><button onclick="w()">Water now</button></div>
+<div class="p"><span class="e">🌿</span><div><b>Monstera</b><small>Watered 2 days ago</small></div><button onclick="w()">Water now</button></div>
+<p style="padding:0 16px;color:#6c7a66">Water any plant today to keep your streak.</p>`,
+          `function w(){var n=document.getElementById("n");n.textContent=+n.textContent+1}`),
+      };
 
       const SEED = [
         {
-          id: "goals",
-          title: "Goals and tasks in T3",
-          stage: "shelved",
-          became: "A per-space checklist in tasks.md with MCP tools.",
-          lessons: [
-            "A checklist tracks output. My loop is about learning, and a checkbox has no place for that.",
-            "The storage and the MCP tools are fine. What was missing is the stages and the regroup step.",
-          ],
-          decision: "Pivot",
-          thread: "several",
-        },
-        {
-          id: "board",
-          parent: "goals",
-          title: "AI-native kanban built on idea, prototype, learn, regroup",
+          id: "remind",
+          title: "Reminders that learn from when you actually water",
           stage: "play",
-          became: "This page: a clickable board with fake data, no T3 wiring yet.",
-          link: location.href,
-          thread: "proto/idea-board",
-          branch: "proto/idea-board",
-          lessons: [],
+          became: "Reminders follow your real rhythm per plant instead of a fixed schedule.",
+          lessons: ["A fixed 7-day schedule felt like nagging. People skipped it and then ignored the app."],
+          versions: [
+            { html: PROTO.fixed, note: "Fixed schedule per plant" },
+            { html: PROTO.learning, note: "Schedule follows your own rhythm" },
+          ],
+          chat: [
+            { role: "user", text: "Reminders are dumb right now. What if they learned from when I actually water?" },
+            { role: "agent", text: "Started with the plain version so we have a baseline: a fixed schedule per plant and a Watered button.", built: 1 },
+            { role: "user", text: "This is exactly the nagging I hate. I water the cactus when I remember, not every 21 days." },
+            { role: "agent", text: "Then the schedule should come from you. In v2 each plant shows your usual rhythm, and watering early shortens it. Try Water early on the cactus.", built: 2 },
+          ],
         },
         {
-          id: "balance",
-          title: "Music Manager: a balance loop that tunes the economy by playing it",
-          stage: "exploring",
-          thread: "mcp:62be800b",
-          branch: "exploration thread",
-          lessons: [],
+          id: "streak",
+          title: "Watering streaks, like a language app",
+          stage: "learned",
+          became: "A streak counter that goes up every time you water anything.",
+          lessons: [
+            "The streak rewards watering, not healthy plants. I watered a cactus two days in a row just to keep it.",
+            "The big number felt good. Worth keeping the feeling, on a different metric.",
+          ],
+          versions: [{ html: PROTO.streak, note: "Streak counter on the home screen" }],
+          chat: [
+            { role: "user", text: "Add streaks. Every habit app has them and they work." },
+            { role: "agent", text: "Here is the simplest one: water any plant today and the streak grows. Tap Water now a few times and see how it feels.", built: 1 },
+            { role: "user", text: "It feels great and it is wrong. I am overwatering to protect a number." },
+            { role: "agent", text: "Noted as a lesson. The pull is real, the metric is harmful. A streak on days all plants were on track might keep the feeling without the damage." },
+          ],
         },
         {
-          id: "failover",
-          title: "Threads move to another account when one hits its usage limit",
-          stage: "building",
-          became: "T3 balances threads across provider accounts and fails over on its own.",
-          lessons: ["Failover belongs inside T3, not in nep. Keep the two loosely coupled."],
-          decision: "Adopt",
-          thread: "yu-v2",
-          branch: "yu-v2",
+          id: "swap",
+          title: "A plant swap marketplace between neighbours",
+          stage: "shelved",
+          decision: "Pivot",
+          became: "A map of nearby listings with chat.",
+          lessons: [
+            "Nobody wants to list a plant. Everybody has cuttings they would happily give to a friend.",
+            "Location and chat are a second product. Too big for what we learn from it.",
+          ],
+          versions: [],
+          chat: [],
         },
         {
-          id: "namaz",
-          title: "Risale: a guided namaz session",
+          id: "cutting",
+          parent: "swap",
+          title: "Gift a cutting: a share link for one plant with its care card",
           stage: "idea",
           lessons: [],
-          note: "Waits for the text library and the anchors to land first.",
+          versions: [],
+          chat: [],
         },
         {
-          id: "thumb",
-          title: "Mouse thumb buttons switch the manager profile",
-          stage: "done",
-          became: "Shipped on Home.",
+          id: "leaf",
+          title: "Snap a sick leaf, get told what is wrong",
+          stage: "exploring",
           lessons: [],
+          versions: [],
+          chat: [
+            { role: "user", text: "People panic when a leaf turns yellow. Photo in, diagnosis out?" },
+            { role: "agent", text: "Before I build: is the goal a diagnosis, or one thing to do today? Those are different screens." },
+          ],
+        },
+        {
+          id: "light",
+          title: "Light meter: point the camera at a spot, see which plants fit",
+          stage: "building",
           decision: "Adopt",
+          became: "A three-level reading (low, medium, bright) instead of lux numbers.",
+          lessons: ["Nobody knows what 800 lux means. Three words were enough to pick a plant."],
+          versions: [],
+          chat: [],
+        },
+        {
+          id: "first",
+          title: "Add your first plant in ten seconds",
+          stage: "done",
+          decision: "Adopt",
+          became: "Pick from six common plants on first launch; everything else comes later.",
+          lessons: ["Asking for the species up front lost people. A picture grid did not."],
+          versions: [],
+          chat: [],
         },
       ];
 
       let ideas = load();
       let view = "board";
       let openId = null;
+      let shownVersion = null; // index into the open idea's versions; null follows the latest
+      let busy = null; // { id, text, building } while the agent answers
 
       function load() {
         try {
@@ -511,76 +697,179 @@
       const byId = (id) => ideas.find((i) => i.id === id);
       const esc = (s) =>
         String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-      const slug = (s) =>
-        s
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")
-          .slice(0, 28) || "idea";
+      const lastAgent = (i) => i.chat.length && i.chat[i.chat.length - 1].role === "agent";
+      const needsYou = (i) => i.stage === "play" || i.stage === "learned" || (i.stage === "exploring" && lastAgent(i) && busy?.id !== i.id);
 
-      // The loop's transitions. Agent steps are simulated here; in T3 they would be MCP calls.
-      function explore(i) {
-        i.stage = "exploring";
-        i.branch = "proto/" + slug(i.title);
-        i.thread = "new thread";
+      /* ---------- the agent ---------- */
+
+      function systemPrompt(i) {
+        const parent = i.parent && byId(i.parent);
+        const latest = i.versions[i.versions.length - 1];
+        return `You are the prototyping agent for one idea on a product team's idea board. The product: ${PRODUCT}.
+You talk with the product owner in a chat thread about this one idea and iterate on a tiny playable prototype of it.
+
+Rules:
+- Reply in the language the user writes in. Be brief and concrete: 1 to 4 plain sentences, no headings, no lists, no flattery.
+- If the user only asks a question, answer it and build nothing.
+- When the user wants to see something, or gives feedback on the prototype, build or revise it: after your sentences, output ONE complete self-contained HTML document in a single \`\`\`html fenced block. Inline CSS and JS only, no external files, fonts or images (emoji are fine). It is a phone-sized app screen with fake data that reacts to taps. Keep it under 120 lines. Always the whole document, never a diff. Say in your sentences what changed and what to try.
+- When the user tells you something they learned, liked, disliked or were surprised by, record it on its own line: LESSON: <one sentence, in their words and language>
+- When the idea has turned into something different from its title, add on its own line: BECAME: <one line>
+- Put LESSON and BECAME lines before the html block.
+
+The idea: ${i.title}
+${i.became ? "What it has become so far: " + i.became : ""}
+${i.lessons.length ? "Lessons so far:\n- " + i.lessons.join("\n- ") : ""}
+${parent ? `This idea grew out of "${parent.title}". Lessons carried over:\n- ${parent.lessons.join("\n- ")}` : ""}
+${latest ? `Current prototype (v${i.versions.length}):\n\`\`\`html\n${latest.html}\n\`\`\`` : "No prototype exists yet."}`;
       }
-      function agentFinished(i) {
-        i.stage = "play";
-        i.link = i.link || "https://t3code-" + (i.branch || "proto").replace("/", "-") + ".pv.nepjua.org";
-        i.became = i.became || "";
+
+      function parseReply(raw) {
+        let text = raw.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+        const lessons = [];
+        let became = null;
+        let html = null;
+        let building = false;
+        const fence = text.indexOf("```html");
+        if (fence >= 0) {
+          const rest = text.slice(fence + 7);
+          const end = rest.indexOf("```");
+          building = end < 0;
+          if (end >= 0) html = rest.slice(0, end).trim();
+          text = text.slice(0, fence) + (end >= 0 ? rest.slice(end + 3) : "");
+        }
+        text = text
+          .split("\n")
+          .filter((line) => {
+            const m = line.match(/^\s*\**(LESSON|BECAME)\**:\**\s*(.+)$/);
+            if (!m) return true;
+            if (m[1] === "LESSON") lessons.push(m[2].trim());
+            else became = m[2].trim();
+            return false;
+          })
+          .join("\n")
+          .trim();
+        return { text, lessons, became, html, building };
       }
-      function decide(i, decision) {
-        i.decision = decision;
-        if (decision === "Adopt") {
+
+      async function ask(i, userText) {
+        i.chat.push({ role: "user", text: userText });
+        if (i.stage === "idea") i.stage = "exploring";
+        busy = { id: i.id, text: "", building: false };
+        save();
+        render();
+        const messages = [
+          { role: "system", content: systemPrompt(i) },
+          ...i.chat.filter((m) => m.role !== "note").slice(-12).map((m) => ({
+            role: m.role === "user" ? "user" : "assistant",
+            content: m.text + (m.built ? `\n[built prototype v${m.built}]` : ""),
+          })),
+        ];
+        let raw = "";
+        try {
+          const res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ messages }),
+          });
+          if (!res.ok) throw new Error("unavailable");
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith("data:")) continue;
+              const data = line.slice(5).trim();
+              if (data === "[DONE]") continue;
+              try {
+                raw += JSON.parse(data).choices?.[0]?.delta?.content ?? "";
+              } catch {}
+            }
+            const live = parseReply(raw);
+            busy.text = live.text;
+            busy.building = live.building ? raw.length : false;
+            patchLive();
+          }
+          const reply = parseReply(raw);
+          const msg = { role: "agent", text: reply.text || (reply.html ? "Built a new version." : "(no answer)") };
+          if (reply.html) {
+            i.versions.push({ html: reply.html, note: firstSentence(msg.text) });
+            msg.built = i.versions.length;
+            i.stage = "play";
+            if (openId === i.id) shownVersion = null;
+          }
+          for (const l of reply.lessons) if (!i.lessons.includes(l)) i.lessons.push(l);
+          if (reply.became) i.became = reply.became;
+          i.chat.push(msg);
+        } catch {
+          i.chat.push({ role: "note", text: "The agent could not be reached (it runs on the local model on nika). Send again to retry." });
+        }
+        busy = null;
+        save();
+        render();
+      }
+      const firstSentence = (s) => (s.match(/^[^.!?\n]+[.!?]?/) || [""])[0].slice(0, 90);
+
+      /* ---------- loop transitions ---------- */
+
+      function act(i, name) {
+        const note = (text) => i.chat.push({ role: "note", text });
+        if (name === "regroup") i.stage = "learned";
+        else if (name === "more") i.stage = i.versions.length ? "play" : "exploring";
+        else if (name === "Adopt") {
           i.stage = "building";
-          i.thread = "implementation thread";
-        } else if (decision === "Shelve") {
+          i.decision = "Adopt";
+          note("Adopted. In T3 this opens an implementation thread on main, briefed with what it became and the lessons. (Simulated here.)");
+        } else if (name === "Shelve") {
           i.stage = "shelved";
-        } else {
+          i.decision = "Shelve";
+          note("Shelved. The lessons stay on the board.");
+        } else if (name === "Pivot") {
           i.stage = "shelved";
-          const child = {
-            id: "i" + Date.now(),
-            parent: i.id,
-            title: "",
-            stage: "idea",
-            lessons: [],
-          };
+          i.decision = "Pivot";
+          note("Pivoted into a new idea that carries these lessons.");
+          const child = { id: "i" + Date.now(), parent: i.id, title: "", stage: "idea", lessons: [], versions: [], chat: [] };
           ideas.unshift(child);
           openId = child.id;
+          shownVersion = null;
+        } else if (name === "shipped") {
+          i.stage = "done";
+          note("Merged and in use. (Simulated here.)");
+        } else if (name === "revive") {
+          i.stage = i.versions.length ? "play" : "idea";
+          delete i.decision;
+        } else if (name === "delete") {
+          ideas = ideas.filter((x) => x !== i);
+          openId = null;
         }
       }
 
-      function nextAction(i) {
-        switch (i.stage) {
-          case "idea":
-            return ["Explore it", () => explore(i)];
-          case "exploring":
-            return ["Agent finished (simulate)", () => agentFinished(i)];
-          case "building":
-            return ["Merged (simulate)", () => (i.stage = "done")];
-          default:
-            return null;
-        }
-      }
+      /* ---------- rendering ---------- */
 
       function cardHtml(i) {
         const parent = i.parent && byId(i.parent);
-        const next = nextAction(i);
         const chips = [];
-        if (i.stage === "play" && i.link) chips.push(`<a class="chip play" href="${esc(i.link)}" target="_blank" data-stop>▶ Play</a>`);
-        if (i.stage === "exploring" || i.stage === "building") chips.push(`<span class="chip agent">agent working</span>`);
+        if (busy?.id === i.id) chips.push(`<span class="chip agent">agent ${busy.building ? "building" : "replying"}</span>`);
+        else if (i.stage === "building") chips.push(`<span class="chip agent">agent building</span>`);
+        else if (i.stage === "exploring" && lastAgent(i)) chips.push(`<span class="chip play">asks you</span>`);
+        if (i.versions.length) chips.push(`<span class="chip ${i.stage === "play" ? "play" : ""}">▶ v${i.versions.length}</span>`);
         if (i.lessons.length) chips.push(`<span class="chip good">${i.lessons.length} lesson${i.lessons.length > 1 ? "s" : ""}</span>`);
-        if (parent) chips.push(`<span class="chip">from: ${esc(parent.title.slice(0, 22))}${parent.title.length > 22 ? "…" : ""}</span>`);
+        if (parent) chips.push(`<span class="chip">from: ${esc(parent.title.slice(0, 20))}…</span>`);
+        const last = i.chat.filter((m) => m.role !== "note").at(-1);
         return `<div class="card" draggable="true" data-id="${i.id}">
           <div class="title">${esc(i.title) || "<em>Untitled idea</em>"}</div>
-          ${i.became ? `<div class="sub">${esc(i.became)}</div>` : i.note ? `<div class="sub">${esc(i.note)}</div>` : ""}
+          ${i.became ? `<div class="sub">${esc(i.became)}</div>` : ""}
+          ${last && ["exploring", "play", "learned"].includes(i.stage) ? `<div class="last">${last.role === "user" ? "You: " : ""}${esc(last.text)}</div>` : ""}
           ${chips.length ? `<div class="row">${chips.join("")}</div>` : ""}
-          ${next ? `<button class="next" data-next="${i.id}">${next[0]}</button>` : ""}
         </div>`;
       }
 
       function render() {
-        const waiting = ideas.filter((i) => i.stage === "play" || i.stage === "learned").length;
+        const waiting = ideas.filter(needsYou).length;
         document.getElementById("waiting").textContent = waiting ? `${waiting} waiting on you` : "Nothing waits on you";
         document.getElementById("tab-board").className = view === "board" ? "on" : "";
         document.getElementById("tab-lessons").className = view === "lessons" ? "on" : "";
@@ -588,14 +877,9 @@
         if (view === "lessons") {
           const all = ideas.flatMap((i) => i.lessons.map((l) => ({ l, i })));
           main.innerHTML = `<div class="lessons">${
-            all.length
-              ? all
-                  .map(
-                    ({ l, i }) =>
-                      `<div class="lesson"><p>${esc(l)}</p><a data-open="${i.id}">${esc(i.title)}${i.decision ? " · " + i.decision : ""}</a></div>`,
-                  )
-                  .join("")
-              : `<p class="empty">No lessons yet. Play with something and write down what you learned.</p>`
+            all
+              .map(({ l, i }) => `<div class="lesson"><p>${esc(l)}</p><a data-open="${i.id}">${esc(i.title)}${i.decision ? " · " + i.decision : ""}</a></div>`)
+              .join("") || `<p class="empty">No lessons yet.</p>`
           }</div>`;
         } else {
           const shelved = ideas.filter((i) => i.stage === "shelved");
@@ -613,93 +897,107 @@
               `<span class="empty">Shelved ideas keep their lessons here.</span>`
             }</div>`;
         }
-        renderDrawer();
+        renderThread();
       }
 
-      function renderDrawer() {
-        const el = document.getElementById("drawer");
+      const msgHtml = (m) =>
+        `<div class="msg ${m.role}">${esc(m.text)}${m.built ? `<button class="built" data-version="${m.built - 1}">▶ Built v${m.built}, open it</button>` : ""}</div>`;
+
+      function liveHtml() {
+        const status = busy.building ? `Building the prototype… ${busy.building} characters written` : busy.text ? "" : "Thinking… the local model can take a minute to wake up";
+        return `${esc(busy.text)}${status ? `<span style="display:block;color:var(--agent);font-size:12px">${status}</span>` : ""}`;
+      }
+      function patchLive() {
+        const el = document.getElementById("live");
+        if (!el) return;
+        el.innerHTML = liveHtml();
+        el.parentElement.scrollTop = el.parentElement.scrollHeight;
+      }
+
+      function renderThread() {
+        const el = document.getElementById("thread");
         const i = openId && byId(openId);
         if (!i) return (el.innerHTML = "");
+        const draft = el.querySelector("#say")?.value ?? "";
         const parent = i.parent && byId(i.parent);
-        const children = ideas.filter((c) => c.parent === i.id);
-        const order = STAGES.findIndex((s) => s.id === i.stage);
-        const stageName = i.stage === "shelved" ? "Shelved" : STAGES[order].name;
-        let cta = "";
-        if (i.stage === "idea")
-          cta = `<p>Parked. Exploring spawns an agent thread on its own branch to build a small playable version.</p>
-            <div class="btns"><button class="btn" data-act="explore">Explore it</button></div>`;
-        if (i.stage === "exploring")
-          cta = `<p>An agent is prototyping. When it has something you can touch, the card moves to Play with the link.</p>
-            <div class="btns"><button class="btn alt" data-act="finished">Agent finished (simulate)</button></div>`;
-        if (i.stage === "play")
-          cta = `<p>Your turn. Poke at it, then write what you learned below. One line per lesson is enough.</p>
-            <div class="btns">${i.link ? `<a class="btn" href="${esc(i.link)}" target="_blank">▶ Open the playable</a>` : ""}
-            <button class="btn alt" data-act="learned">I played, lessons are in</button>
-            <button class="btn alt" data-act="again">Another round</button></div>`;
+        const stageName = i.stage === "shelved" ? "Shelved" : STAGES.find((s) => s.id === i.stage).name;
+        const vIndex = shownVersion ?? i.versions.length - 1;
+        const version = i.versions[vIndex];
+        const working = busy?.id === i.id;
+        const blocked = busy && !working;
+        let actions = "";
+        if (i.stage === "play") actions = `<button class="btn" data-act="regroup">Done playing, regroup</button>`;
         if (i.stage === "learned")
-          cta = `<p>Regroup. With these lessons, what happens to the idea?</p>
-            <div class="btns"><button class="btn" data-act="Adopt">Adopt into main</button>
-            <button class="btn alt" data-act="Pivot">Pivot into a new idea</button>
-            <button class="btn alt" data-act="Shelve">Shelve, keep the lessons</button></div>`;
-        if (i.stage === "building")
-          cta = `<p>Adopted. An agent builds it for real on main, carrying the lessons as its brief.</p>
-            <div class="btns"><button class="btn alt" data-act="merged">Merged (simulate)</button></div>`;
-        if (i.stage === "shelved")
-          cta = `<p>Shelved${i.decision === "Pivot" ? ", pivoted into a new idea" : ""}. The lessons stay.</p>
-            <div class="btns"><button class="btn alt" data-act="revive">Bring it back as an idea</button></div>`;
-        el.innerHTML = `<div class="scrim" data-close></div><aside>
-          <button class="ghost close" data-close>Close</button>
-          <div class="chip" style="display:inline-block;margin-bottom:8px">${stageName}${i.decision ? " · " + i.decision : ""}</div>
-          <div class="field"><input data-f="title" value="${esc(i.title)}" placeholder="The idea in one line" style="font-size:17px;font-weight:600" /></div>
-          <div class="steps">${STAGES.map((_, n) => `<i class="${order >= 0 && n <= order ? "done" : ""}"></i>`).join("")}</div>
-          ${cta ? `<div class="cta">${cta}</div>` : ""}
-          ${parent ? `<div class="field"><label>Grew out of</label><a class="btn alt" data-open="${parent.id}">${esc(parent.title)}</a>
-            ${parent.lessons.length ? `<div class="sim">Carried lessons: ${parent.lessons.map(esc).join(" / ")}</div>` : ""}</div>` : ""}
-          <div class="field"><label>What it became</label><textarea data-f="became" rows="2" placeholder="One line. Often not what the idea started as.">${esc(i.became)}</textarea></div>
-          <div class="field"><label>Lessons (one per line)</label><textarea data-f="lessons" rows="5" placeholder="What did playing with it teach you? A bad idea with a good by-product counts.">${esc(i.lessons.join("\n"))}</textarea></div>
-          ${children.length ? `<div class="field"><label>Led to</label><div class="btns">${children.map((c) => `<a class="btn alt" data-open="${c.id}">${esc(c.title) || "Untitled idea"}</a>`).join("")}</div></div>` : ""}
-          <details><summary>Technical detail</summary>
-            <p>Thread: <code>${esc(i.thread || "none yet")}</code><br />Branch: <code>${esc(i.branch || "none yet")}</code><br />Playable: <code>${esc(i.link || "none yet")}</code></p>
-            <div class="field"><label>Playable link</label><input data-f="link" value="${esc(i.link)}" placeholder="https://" /></div>
-            <button class="ghost" data-act="delete">Delete this idea</button>
-          </details>
-        </aside>`;
+          actions = `<button class="btn" data-act="Adopt">Adopt into main</button><button class="btn alt" data-act="Pivot">Pivot into a new idea</button>
+            <button class="btn alt" data-act="Shelve">Shelve, keep lessons</button><button class="btn alt" data-act="more">Keep iterating</button>`;
+        if (i.stage === "building") actions = `<button class="btn alt" data-act="shipped">Merged (simulate)</button>`;
+        if (i.stage === "shelved") actions = `<button class="btn alt" data-act="revive">Bring it back</button>`;
+        el.innerHTML = `<div class="thread">
+          <div class="bar">
+            <button class="ghost" data-close>← Board</button>
+            <input data-f="title" value="${esc(i.title)}" placeholder="The idea in one line" />
+            <span class="chip">${stageName}${i.decision ? " · " + i.decision : ""}</span>
+            ${actions}
+          </div>
+          <div class="panes">
+            <div class="chat">
+              <div class="msgs" id="msgs">
+                ${i.chat.map(msgHtml).join("") || `<div class="msg note">${parent ? "A fresh idea that carries the lessons of its parent. Say what it is." : "No conversation yet. Tell the agent what you imagine, or ask it to build a first version."}</div>`}
+                ${working ? `<div class="msg agent" id="live">${liveHtml()}</div>` : ""}
+              </div>
+              ${blocked ? `<div class="hint">The agent is busy in another thread. The local model takes one at a time.</div>` : ""}
+              <form class="composer" id="talk">
+                <textarea id="say" rows="1" placeholder="${i.versions.length ? "Say what you noticed, ask about it, or ask for a change" : "Talk about the idea, or ask for a first version"}"></textarea>
+                <button class="send" ${busy ? "disabled" : ""}>Send</button>
+              </form>
+            </div>
+            <div class="stage">
+              <div class="versions">
+                ${i.versions.map((v, n) => `<button class="${n === vIndex ? "on" : ""}" data-version="${n}">v${n + 1}</button>`).join("")}
+                <span>${version ? esc(version.note) : "No playable yet"}</span>
+              </div>
+              <div class="frame">
+                ${version ? `<iframe sandbox="allow-scripts" title="Prototype v${vIndex + 1}"></iframe>` : `<div class="none">Nothing to play with yet. The first version shows up here when the agent builds one.</div>`}
+              </div>
+            </div>
+            <div class="know">
+              ${parent ? `<div class="from">Grew out of <a data-open="${parent.id}">${esc(parent.title)}</a>${parent.lessons.length ? `<br />Carried: ${parent.lessons.map(esc).join(" / ")}` : ""}</div>` : ""}
+              <label>What it became</label>
+              <textarea data-f="became" rows="3" placeholder="One line. The agent fills this in as the idea shifts.">${esc(i.became)}</textarea>
+              <label>Lessons (one per line)</label>
+              <textarea data-f="lessons" rows="9" placeholder="The agent writes down what you say you learned. Edit freely.">${esc(i.lessons.join("\n"))}</textarea>
+              <details><summary>Technical detail</summary>
+                <p>Agent: local model on nika, nothing leaves the machine. Each version is one generated HTML file. No real thread, branch or preview behind it yet.</p>
+                <button class="ghost" data-act="delete">Delete this idea</button>
+              </details>
+            </div>
+          </div>
+        </div>`;
+        if (version) el.querySelector("iframe").srcdoc = version.html;
+        const msgs = el.querySelector("#msgs");
+        msgs.scrollTop = msgs.scrollHeight;
+        const say = el.querySelector("#say");
+        say.value = draft;
         if (!i.title) el.querySelector('[data-f="title"]').focus();
+        else say.focus();
       }
 
-      function act(i, name) {
-        if (name === "explore") explore(i);
-        else if (name === "finished") agentFinished(i);
-        else if (name === "learned") i.stage = "learned";
-        else if (name === "again") i.stage = "exploring";
-        else if (name === "merged") i.stage = "done";
-        else if (name === "revive") {
-          i.stage = "idea";
-          delete i.decision;
-        } else if (name === "delete") {
-          ideas = ideas.filter((x) => x !== i);
-          openId = null;
-        } else decide(i, name);
+      /* ---------- events ---------- */
+
+      function open(id) {
+        openId = id;
+        shownVersion = null;
       }
 
       document.addEventListener("click", (e) => {
         const t = e.target;
-        if (t.closest("[data-stop]")) return;
-        const nextBtn = t.closest("[data-next]");
-        if (nextBtn) {
-          const i = byId(nextBtn.dataset.next);
-          nextAction(i)[1]();
-        } else if (t.closest("[data-act]")) {
-          act(byId(openId), t.closest("[data-act]").dataset.act);
-        } else if (t.closest("[data-open]")) {
-          openId = t.closest("[data-open]").dataset.open;
-        } else if (t.closest("[data-close]")) {
-          openId = null;
-        } else if (t.closest(".card")) {
-          openId = t.closest(".card").dataset.id;
-        } else if (t.id === "tab-board" || t.id === "tab-lessons") {
-          view = t.id.slice(4);
-        } else if (t.id === "reset") {
+        if (t.closest("[data-version]")) shownVersion = Number(t.closest("[data-version]").dataset.version);
+        else if (t.closest("[data-act]")) act(byId(openId), t.closest("[data-act]").dataset.act);
+        else if (t.closest("[data-open]")) open(t.closest("[data-open]").dataset.open);
+        else if (t.closest("[data-close]")) openId = null;
+        else if (t.closest(".card")) open(t.closest(".card").dataset.id);
+        else if (t.id === "tab-board" || t.id === "tab-lessons") view = t.id.slice(4);
+        else if (t.id === "reset") {
           if (!confirm("Restore the seed ideas and drop your changes?")) return;
           ideas = structuredClone(SEED);
           openId = null;
@@ -708,36 +1006,49 @@
         render();
       });
 
-      // Field edits save without re-rendering the drawer, so typing keeps its caret.
+      // Field edits save without re-rendering, so typing keeps its caret.
       document.addEventListener("input", (e) => {
-        const f = e.target.dataset?.f;
+        const t = e.target;
+        if (t.tagName === "TEXTAREA" && t.closest(".composer")) {
+          t.style.height = "auto";
+          t.style.height = t.scrollHeight + "px";
+        }
+        const f = t.dataset?.f;
         const i = openId && byId(openId);
         if (!f || !i) return;
-        if (f === "lessons")
-          i.lessons = e.target.value
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean);
-        else i[f] = e.target.value;
+        if (f === "lessons") i.lessons = t.value.split("\n").map((l) => l.trim()).filter(Boolean);
+        else i[f] = t.value;
         save();
       });
+
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && openId) {
           openId = null;
           render();
         }
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.target.closest?.(".composer")) {
+          e.preventDefault();
+          e.target.closest("form").requestSubmit();
+        }
       });
 
-      document.getElementById("add").addEventListener("submit", (e) => {
+      document.addEventListener("submit", (e) => {
         e.preventDefault();
-        const input = document.getElementById("new-idea");
-        const title = input.value.trim();
-        if (!title) return;
-        ideas.unshift({ id: "i" + Date.now(), title, stage: "idea", lessons: [] });
-        input.value = "";
-        view = "board";
-        save();
-        render();
+        const box = e.target.querySelector("textarea");
+        const text = box.value.trim();
+        if (!text || busy) return;
+        box.value = "";
+        if (e.target.id === "new") {
+          const idea = { id: "i" + Date.now(), title: firstSentence(text), stage: "idea", lessons: [], versions: [], chat: [] };
+          ideas.unshift(idea);
+          view = "board";
+          open(idea.id);
+          ask(idea, text);
+        } else {
+          const i = byId(openId);
+          if (!i.title) i.title = firstSentence(text);
+          ask(i, text);
+        }
       });
 
       // Drag a card to any column.
