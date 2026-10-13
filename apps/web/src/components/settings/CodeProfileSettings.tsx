@@ -289,7 +289,7 @@ function BalancedAccountsRow({
   return (
     <SettingsRow
       title="Accounts"
-      description="Other providers are used in this order once every account of a thread's own provider is limited."
+      description="Accounts of a thread's own provider share new threads by preference; Manual only is never picked for you. Other providers follow in this order once those are limited."
       control={
         <div className="w-44 max-w-full">
           <Select
@@ -342,13 +342,6 @@ function BalancedAccountsRow({
                     <span className="shrink-0 text-xs text-muted-foreground">disabled</span>
                   ) : null}
                 </span>
-                <AccountPreferenceSelect
-                  account={account}
-                  label={name}
-                  onChange={(weight) =>
-                    onChange(setBalancedAccountWeight(profile, account.instanceId, weight))
-                  }
-                />
                 {showModel ? (
                   <AccountModelSelect
                     account={account}
@@ -358,6 +351,13 @@ function BalancedAccountsRow({
                     }
                   />
                 ) : null}
+                <AccountPreferenceSelect
+                  account={account}
+                  label={name}
+                  onChange={(weight) =>
+                    onChange(setBalancedAccountWeight(profile, account.instanceId, weight))
+                  }
+                />
                 <div className="flex shrink-0 items-center">
                   <Button
                     type="button"
@@ -647,6 +647,7 @@ export function CodeProfileEditor({
             />
             <SettingsRow
               title="Also move the manager thread"
+              description="Off, the manager thread stays on its account when it hits a limit."
               control={
                 <Switch
                   checked={profile.accountBalancing.includeManager}
