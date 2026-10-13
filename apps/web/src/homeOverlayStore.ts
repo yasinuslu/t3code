@@ -11,16 +11,36 @@ interface HomeOverlayStore {
   readonly toggle: () => void;
 }
 
+// Home covers a thread's URL, so a reload would land on that thread. The tab
+// remembers that Home was open and reopens it.
+const OPEN_KEY = "t3code:home-open";
+const wasOpen = () => {
+  try {
+    return window.sessionStorage.getItem(OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+const reopened = typeof window !== "undefined" && wasOpen();
+
 export const useHomeOverlayStore = create<HomeOverlayStore>()((set) => ({
-  open: false,
+  open: reopened,
   setOpen: (open) => set({ open }),
   toggle: () => set((state) => ({ open: !state.open })),
 }));
 
 export const openHomeOverlay = () => useHomeOverlayStore.getState().setOpen(true);
 
-let openedOnStartup = false;
-let startupHopsUntil = 0;
+let openedOnStartup = reopened;
+let startupHopsUntil = reopened ? Date.now() + 8000 : 0;
+
+useHomeOverlayStore.subscribe((state) => {
+  try {
+    window.sessionStorage.setItem(OPEN_KEY, state.open ? "1" : "0");
+  } catch {
+    // Storage can be unavailable; Home then simply does not survive a reload.
+  }
+});
 
 /** Within seconds of opening on startup, the app is still hopping to its landing page. */
 export const inStartupHops = () => Date.now() < startupHopsUntil;
