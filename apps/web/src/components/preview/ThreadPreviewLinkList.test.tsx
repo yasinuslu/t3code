@@ -17,7 +17,11 @@ vi.mock("~/state/previewLinks", () => ({
 }));
 vi.mock("~/state/threads", () => ({ threadEnvironment: { unlinkPreview: {} } }));
 vi.mock("~/state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
-vi.mock("./useOpenThreadPreviewLink", () => ({ useOpenThreadPreviewLink: () => vi.fn() }));
+const openPreviewLinkExternally = vi.fn();
+vi.mock("./useOpenThreadPreviewLink", () => ({
+  useOpenThreadPreviewLink: () => vi.fn(),
+  openPreviewLinkExternally: (url: string) => openPreviewLinkExternally(url),
+}));
 
 import { ThreadPreviewLinkList } from "./ThreadPreviewLinkChip";
 
@@ -70,5 +74,40 @@ describe("ThreadPreviewLinkList", () => {
     expect(onOpen).toHaveBeenCalledWith("https://a.example", "stopped");
     act(() => buttons[3]!.props.onClick());
     expect(onRemove).toHaveBeenCalledWith("https://c.example");
+  });
+
+  it("opens a row in the system browser on middle-click, except a removed preview", () => {
+    act(() => {
+      renderer = create(
+        <ThreadPreviewLinkList
+          threadRef={threadRef}
+          links={links}
+          onOpen={vi.fn()}
+          onRemove={vi.fn()}
+        />,
+      );
+    });
+    const buttons = renderer!.root.findAllByType("button");
+    const middle = (index: number) => {
+      const event = { button: 1, preventDefault: vi.fn(), stopPropagation: vi.fn() };
+      act(() => buttons[index]!.props.onMouseDown(event));
+      act(() => buttons[index]!.props.onAuxClick(event));
+      return event;
+    };
+
+    const event = middle(0);
+    expect(openPreviewLinkExternally).toHaveBeenCalledExactlyOnceWith("https://b.example");
+    // mousedown cancels autoscroll, auxclick cancels the paste and keeps the row from activating.
+    expect(event.preventDefault).toHaveBeenCalledTimes(2);
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+
+    openPreviewLinkExternally.mockClear();
+    middle(2);
+    expect(openPreviewLinkExternally).not.toHaveBeenCalled();
+
+    const right = { button: 2, preventDefault: vi.fn(), stopPropagation: vi.fn() };
+    act(() => buttons[0]!.props.onAuxClick(right));
+    expect(openPreviewLinkExternally).not.toHaveBeenCalled();
+    expect(right.preventDefault).not.toHaveBeenCalled();
   });
 });
