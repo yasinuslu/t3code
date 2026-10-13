@@ -130,15 +130,6 @@ export function Thing(props: { readonly card: GrowBoardCard; readonly update: Up
       <div className="flex min-w-0 items-center gap-2">
         <Badge variant="outline">{GROW_STAGE_DEFS[card.stage].title}</Badge>
         <span className="ms-auto flex shrink-0 items-center gap-1">
-          {card.playUrl ? (
-            <Button
-              size="xs"
-              render={<a href={card.playUrl} target="_blank" rel="noopener noreferrer" />}
-            >
-              <PlayIcon />
-              Play
-            </Button>
-          ) : null}
           <Button
             size="icon-xs"
             variant="ghost-muted"

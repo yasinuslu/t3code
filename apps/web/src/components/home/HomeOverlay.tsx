@@ -75,7 +75,7 @@ function HomeOverlayLayer() {
       // Grow is the default screen: Esc there never throws the user out of it.
       if (document.querySelector('[data-home-view="grow"]') !== null) return;
       const openPopup = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].some(
-        (element) => element.closest("[inert]") === null,
+        (element) => element.closest("[inert]") === null && element.getClientRects().length > 0,
       );
       if (openPopup) return;
       const target = event.target instanceof Element ? event.target : null;

@@ -72,7 +72,9 @@ function returnToList(event: KeyboardEvent) {
     ...document.querySelectorAll(
       '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
     ),
-  ].some((element) => element.closest("[inert]") === null);
+  ]
+    // A closed select keeps its listbox mounted; only a popup on screen counts.
+    .some((element) => element.closest("[inert]") === null && element.getClientRects().length > 0);
   if (popup) return;
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -172,7 +174,18 @@ export function GrowWorkspace(props: {
   const storedWidths = useGrowStore((store) => store.widths);
   const windowWidth = useWindowWidth();
   // The stored widths are preferences; what is laid out always fits the window.
-  const widths = growLayoutWidths(storedWidths, windowWidth, {
+  // Until the prototype pane is dragged, it takes a share of a wide window.
+  const preferred =
+    storedWidths.thing === GROW_PANE_SIZES.thing.initial
+      ? {
+          ...storedWidths,
+          thing: Math.min(
+            GROW_PANE_SIZES.thing.max,
+            Math.max(storedWidths.thing, Math.round(windowWidth * 0.42)),
+          ),
+        }
+      : storedWidths;
+  const widths = growLayoutWidths(preferred, windowWidth, {
     rail: GROW_PANE_SIZES.rail.min,
     thing: GROW_PANE_SIZES.thing.min,
     boardChat: GROW_PANE_SIZES.boardChat.min,
