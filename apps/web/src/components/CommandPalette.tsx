@@ -83,6 +83,7 @@ import { useAtomValue } from "@effect/atom-react";
 
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { openManagerHome } from "./brainstorm/useOpenManagerThread";
+import { APP_MODES, setAppMode } from "../appMode";
 import { toggleHomeOverlay } from "../homeOverlayStore";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -2268,6 +2269,28 @@ function OpenCommandPaletteDialog(props: {
     shortcutCommand: "manager.open",
     run: async () => openManagerHome(),
   });
+
+  for (const entry of APP_MODES) {
+    actionItems.push({
+      kind: "action",
+      value: `action:mode-${entry.mode}`,
+      searchTerms: [
+        "mode",
+        "switch",
+        "view",
+        "grow",
+        "manager",
+        "classic",
+        "normal",
+        "threads",
+        "t3",
+      ],
+      title: `Switch to ${entry.label} mode`,
+      icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: entry.command,
+      run: async () => setAppMode(entry.mode),
+    });
+  }
 
   actionItems.push({
     kind: "action",

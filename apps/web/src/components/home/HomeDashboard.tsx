@@ -17,19 +17,12 @@ import {
 } from "@t3tools/client-runtime/state/work-overview";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import {
-  CompassIcon,
-  EllipsisIcon,
-  ExternalLinkIcon,
-  MessagesSquareIcon,
-  PlayIcon,
-} from "lucide-react";
+import { CompassIcon, ExternalLinkIcon, MessagesSquareIcon, PlayIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import * as Schema from "effect/Schema";
 
 import { useAssetUrlState } from "../../assets/assetUrls";
 import { useHomeThreadShells, useManagerProfile } from "../../brainstormStore";
-import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useHomeView, useRememberedScroll } from "../../appMode";
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { useSpaceStore } from "../../spaceStore";
@@ -43,8 +36,6 @@ import ChatView from "../ChatView";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { closeHomeOverlay } from "../../homeOverlayStore";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
 import {
@@ -67,9 +58,6 @@ import {
 } from "./ThreadReportCard";
 
 /** Time labels move on while the page stays open; a coarse tick is enough. */
-// v2: Grow is the default view; the old stored "list" and "board" values are ignored.
-const HOME_VIEW_KEY = "t3code:home-view:v2";
-const HomeView = Schema.Literals(["grow", "classic"]);
 const CLOCK_TICK_MS = 30_000;
 const OPEN_TASKS_SHOWN = 3;
 
@@ -97,7 +85,8 @@ export function HomeDashboard() {
   }, []);
   const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
-  const [view, setView] = useLocalStorage(HOME_VIEW_KEY, "grow", HomeView);
+  const view = useHomeView();
+  const classicScrollRef = useRememberedScroll("classic:list");
   const managerProfile = useManagerProfile();
   // Goals come from the brain of the manager in view.
   const managerEnvironmentId = useManagerEnvironmentId(managerProfile);
@@ -166,22 +155,6 @@ export function HomeDashboard() {
                 <MessagesSquareIcon />
                 {managerProfile === null ? "Manager" : `${managerProfile} manager`}
               </Button>
-              {/* Grow is Home; the old card list is one low-key step away. */}
-              <Menu>
-                <MenuTrigger
-                  render={
-                    <Button size="icon-xs" variant="ghost-muted" aria-label="More" title="More" />
-                  }
-                >
-                  <EllipsisIcon />
-                </MenuTrigger>
-                <MenuPopup align="end">
-                  <MenuItem onClick={() => setView(view === "grow" ? "classic" : "grow")}>
-                    {view === "grow" ? "Classic list" : "Grow"}
-                  </MenuItem>
-                  <MenuItem onClick={closeHomeOverlay}>Close Home</MenuItem>
-                </MenuPopup>
-              </Menu>
             </div>
           </WorkspacePageHeader>
           {view === "grow" ? (
@@ -191,7 +164,10 @@ export function HomeDashboard() {
               managerPane={<ManagerPane manager={manager} autoFocusComposer={false} embedded />}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
+            <div
+              ref={classicScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10"
+            >
               <VerdictBanner verdict={verdict} />
               {CARD_GROUPS.map(({ group, title }) =>
                 overview[group].length === 0 ? null : (

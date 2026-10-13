@@ -23,6 +23,17 @@ const wasOpen = () => {
 };
 const reopened = typeof window !== "undefined" && wasOpen();
 
+// Across restarts the app remembers the last mode: Home open or closed. A fresh
+// start opens Home unless the user last left it closed (Normal mode).
+const LAST_OPEN_KEY = "t3code:home-last-open";
+const lastWasClosed = () => {
+  try {
+    return window.localStorage.getItem(LAST_OPEN_KEY) === "0";
+  } catch {
+    return false;
+  }
+};
+
 export const useHomeOverlayStore = create<HomeOverlayStore>()((set) => ({
   open: reopened,
   setOpen: (open) => set({ open }),
@@ -37,6 +48,7 @@ let startupHopsUntil = reopened ? Date.now() + 8000 : 0;
 useHomeOverlayStore.subscribe((state) => {
   try {
     window.sessionStorage.setItem(OPEN_KEY, state.open ? "1" : "0");
+    window.localStorage.setItem(LAST_OPEN_KEY, state.open ? "1" : "0");
   } catch {
     // Storage can be unavailable; Home then simply does not survive a reload.
   }
@@ -52,6 +64,7 @@ export const inStartupHops = () => Date.now() < startupHopsUntil;
 export function openHomeOnStartup() {
   if (openedOnStartup) return;
   openedOnStartup = true;
+  if (lastWasClosed()) return;
   startupHopsUntil = Date.now() + 8000;
   openHomeOverlay();
 }

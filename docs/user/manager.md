@@ -11,6 +11,16 @@ Press `mod+e` (`ctrl+alt+m` also works, even in a focused terminal). The same ke
 home** in the command palette. Home opens with the manager's composer focused. Change the shortcut in
 **Settings → Keybindings** under **Manager: Open**.
 
+## Modes
+
+The switch at the top centre of the window moves between **Grow** (the idea board), **Manager**
+(the card list with the manager docked) and **T3** (the thread list and chat, with Home closed). It
+sits in the same place in every mode. Each mode keeps its place: the selected card, scroll
+positions, and the thread you had open. The app reopens in the mode you left it in.
+
+`ctrl+alt+1`, `ctrl+alt+2` and `ctrl+alt+3` pick Grow, Manager and T3; `ctrl+alt+0` cycles them.
+Change them in **Settings → Keybindings** under **Mode**.
+
 ## The work cards
 
 A banner at the top says in one line what needs you, or what is moving. Below it, the active space's

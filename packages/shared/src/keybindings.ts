@@ -59,6 +59,12 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // where Ctrl+E is the shell's end-of-line.
   { key: "ctrl+alt+m", command: "manager.open" },
   { key: "mod+e", command: "manager.open", when: "!terminalFocus" },
+  // The three app modes. `ctrl` rather than `mod`, like the panel chords above, so the
+  // chord is the same physical keys everywhere; 0 cycles Grow, Classic, Normal.
+  { key: "ctrl+alt+1", command: "mode.grow" },
+  { key: "ctrl+alt+2", command: "mode.classic" },
+  { key: "ctrl+alt+3", command: "mode.normal" },
+  { key: "ctrl+alt+0", command: "mode.cycle" },
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
   { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },

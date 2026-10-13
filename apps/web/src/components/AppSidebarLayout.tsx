@@ -34,6 +34,7 @@ import {
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
 import { HomeOverlay } from "./home/HomeOverlay";
 import { useHomeOverlayStore } from "../homeOverlayStore";
+import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
 import LegacyThreadSidebar from "./LegacySidebar";
 import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
@@ -347,6 +348,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         {children}
         <HomeOverlay />
         <SidebarControl />
+        <ModeSwitch />
+        <ModeShortcuts />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />
       </SidebarProvider>

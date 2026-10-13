@@ -14,6 +14,7 @@ import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, MessagesSquareIcon, PlayIcon, RotateCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { useRememberedScroll } from "../../appMode";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { ThreadReportBody, ThreadReportLinks, useThreadReport } from "../home/ThreadReportCard";
 import { Badge } from "../ui/badge";
@@ -49,6 +50,7 @@ export function Rail(props: {
 }) {
   const select = useGrowStore((store) => store.select);
   const play = useGrowStore((store) => store.play);
+  const railScrollRef = useRememberedScroll("grow:rail");
   const nav = useGrowNav<HTMLElement>({
     mode: "threads",
     board: props.board,
@@ -70,6 +72,7 @@ export function Rail(props: {
         <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
       </div>
       <div
+        ref={railScrollRef}
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
         style={{ scrollbarGutter: "stable" }}
       >
@@ -270,8 +273,9 @@ function Overview(props: { readonly card: GrowBoardCard; readonly update: Update
   const { thread } = card;
   const { digest, pullRequests } = useThreadReport(thread);
   const stored = card.card;
+  const scrollRef = useRememberedScroll(`grow:overview:${card.key}`);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pe-2">
+    <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pe-2">
       <SavedField
         label="What it became"
         placeholder="Not written yet. What did this idea turn into?"

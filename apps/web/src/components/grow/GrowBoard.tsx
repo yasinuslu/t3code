@@ -8,6 +8,7 @@ import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon, PlayIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useRememberedScroll } from "../../appMode";
 import { cn } from "../../lib/utils";
 import { ThreadReportBody, useThreadReport } from "../home/ThreadReportCard";
 import { Button } from "../ui/button";
@@ -47,6 +48,7 @@ export function GrowColumns(props: {
   readonly empty?: ReactNode;
 }) {
   const { board, selected } = props;
+  const boardScrollRef = useRememberedScroll("grow:board");
   const nav = useGrowNav<HTMLDivElement>({
     mode: "board",
     board,
@@ -72,7 +74,10 @@ export function GrowColumns(props: {
         <>
           {/* One row, every stage with Shelf last; the columns share the width and only
               scroll sideways when they cannot fit, with the scrollbar at the board's edge. */}
-          <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto scroll-px-3 pb-1">
+          <div
+            ref={boardScrollRef}
+            className="flex min-h-0 flex-1 gap-2 overflow-x-auto scroll-px-3 pb-1"
+          >
             {[...GROW_COLUMN_STAGES, "shelved" as const].map((stage) => {
               const column = GROW_STAGE_DEFS[stage];
               return (
@@ -86,7 +91,10 @@ export function GrowColumns(props: {
                   )}
                 >
                   <StageHeader stage={stage} count={board[stage].length} />
-                  <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden">
+                  <BoardColumnList
+                    stage={stage}
+                    className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden"
+                  >
                     {board[stage].length === 0 ? (
                       <p className="px-1 text-muted-foreground text-xs">{column.empty}</p>
                     ) : (
@@ -101,13 +109,27 @@ export function GrowColumns(props: {
                         />
                       ))
                     )}
-                  </div>
+                  </BoardColumnList>
                 </section>
               );
             })}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** One stage's scrolling list; remembers where it was scrolled while Home is closed. */
+function BoardColumnList(props: {
+  readonly stage: string;
+  readonly className: string;
+  readonly children: ReactNode;
+}) {
+  const ref = useRememberedScroll(`grow:column:${props.stage}`);
+  return (
+    <div ref={ref} className={props.className}>
+      {props.children}
     </div>
   );
 }
