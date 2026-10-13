@@ -105,11 +105,12 @@ function ProjectFilter(props: { readonly projects: ReadonlyArray<string> }) {
 const KEY_HELP: ReadonlyArray<readonly [string, string]> = [
   ["j k  or  Up Down", "Move through the list"],
   ["h l  or  Left Right", "Across board columns"],
-  ["Enter, i  or  l", "Type to this thread"],
-  ["Esc", "Back here from typing, or close Home"],
+  ["Ctrl+h  /  Ctrl+l", "Pane to the left / right: list, chat, prototype"],
+  ["Enter  or  i", "Type to this thread"],
+  ["Esc", "Back to the list from anywhere, or close Home"],
   ["b", "Threads or Board"],
   ["m", "Manager, and back"],
-  ["p  /  o", "Play / Overview"],
+  ["p  /  o", "Play / Overview (h l in the prototype pane)"],
 ];
 
 function KeyboardHelp() {
@@ -296,7 +297,7 @@ export function GrowNavSkeleton() {
   );
 }
 
-const composerEditor = () =>
+export const composerEditor = () =>
   document.querySelector<HTMLElement>('[data-grow-chat] [data-testid="composer-editor"]');
 
 /** Moves focus to the zone's selected row. */
@@ -389,21 +390,11 @@ export function useGrowNav<T extends HTMLElement>(options: {
               ? "right"
               : null;
     if (direction !== null) {
-      // Right keeps going into the chat: at once in the rail, past the last column on the board.
-      const intoChat = () => {
-        const editor = composerEditor();
-        if (!editor) return false;
-        editor.focus();
-        return used();
-      };
       if (mode === "board") {
-        const next = growBoardStep(board, selected, direction);
-        if (direction === "right" && next === selected) return intoChat();
-        store.select(next);
+        store.select(growBoardStep(board, selected, direction));
         return used();
       }
-      if (direction === "right") return intoChat();
-      if (direction === "left") return false;
+      if (direction === "left" || direction === "right") return false;
       store.select(growStepSelection(board, selected, direction === "down" ? 1 : -1));
       return used();
     }

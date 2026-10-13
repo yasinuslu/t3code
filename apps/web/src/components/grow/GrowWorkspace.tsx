@@ -18,7 +18,7 @@ import { useGrowCards, useGrowLoaded } from "../../state/grow";
 import ChatView from "../ChatView";
 import { GrowCardDialog, GrowColumns } from "./GrowBoard";
 import { Rail, Thing } from "./GrowFocus";
-import { GrowHeader, ManagerRow, focusSelectedRow } from "./GrowNav";
+import { GrowHeader, ManagerRow, composerEditor, focusSelectedRow } from "./GrowNav";
 import { useGrowUpdate } from "./GrowParts";
 import {
   GROW_MANAGER_KEY,
@@ -53,6 +53,55 @@ function returnToList(event: KeyboardEvent) {
   focusSelectedRow(document.querySelector<HTMLElement>("[data-grow-zone]"));
 }
 
+const focusThingTab = () =>
+  document
+    .querySelector<HTMLElement>("[data-grow-thing] [data-slot=toggle][data-pressed]")
+    ?.focus({ preventScroll: true });
+
+/**
+ * Ctrl+h and Ctrl+l walk the panes, list, chat, prototype, from anywhere in
+ * Grow including a composer. In the prototype pane focus rests on its tabs,
+ * where h/l and p/o pick Play or Overview. Capture phase, like Esc above.
+ */
+function walkPanes(event: KeyboardEvent) {
+  if (event.isComposing || event.metaKey || event.altKey || event.shiftKey) return;
+  const focused = document.activeElement;
+  if (focused === null || focused.closest("[data-grow-mode]") === null) return;
+  const pane =
+    focused.closest("[data-grow-thing]") !== null
+      ? "thing"
+      : focused.closest("[data-grow-chat]") !== null
+        ? "chat"
+        : "list";
+  const used = () => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  if (event.ctrlKey) {
+    if (event.key === "h") {
+      if (pane === "thing") composerEditor()?.focus();
+      else focusSelectedRow(document.querySelector<HTMLElement>("[data-grow-zone]"));
+      used();
+    } else if (event.key === "l") {
+      if (pane === "list") composerEditor()?.focus();
+      else focusThingTab();
+      used();
+    }
+    return;
+  }
+  if (pane !== "thing" || focused.closest("[data-slot=toggle]") === null) return;
+  const tab =
+    event.key === "h" || event.key === "p"
+      ? "play"
+      : event.key === "l" || event.key === "o"
+        ? "overview"
+        : null;
+  if (tab === null) return;
+  useGrowStore.getState().setThingTab(tab);
+  used();
+  window.requestAnimationFrame(focusThingTab);
+}
+
 export function GrowWorkspace(props: {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly now: number;
@@ -85,7 +134,11 @@ export function GrowWorkspace(props: {
   useEffect(() => {
     if (!wide) return;
     window.addEventListener("keydown", returnToList, true);
-    return () => window.removeEventListener("keydown", returnToList, true);
+    window.addEventListener("keydown", walkPanes, true);
+    return () => {
+      window.removeEventListener("keydown", returnToList, true);
+      window.removeEventListener("keydown", walkPanes, true);
+    };
   }, [wide]);
   const leftMode = useGrowStore((store) => store.leftMode);
   const storedSelection = useGrowStore((store) => store.selected);
