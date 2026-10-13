@@ -105,7 +105,7 @@ function ProjectFilter(props: { readonly projects: ReadonlyArray<string> }) {
 const KEY_HELP: ReadonlyArray<readonly [string, string]> = [
   ["j k  or  Up Down", "Move through the list"],
   ["h l  or  Left Right", "Across board columns"],
-  ["Enter  or  i", "Type to this thread"],
+  ["Enter, i  or  l", "Type to this thread"],
   ["Esc", "Back here from typing, or close Home"],
   ["b", "Threads or Board"],
   ["m", "Manager, and back"],
@@ -378,11 +378,21 @@ export function useGrowNav<T extends HTMLElement>(options: {
               ? "right"
               : null;
     if (direction !== null) {
+      // Right keeps going into the chat: at once in the rail, past the last column on the board.
+      const intoChat = () => {
+        const editor = composerEditor();
+        if (!editor) return false;
+        editor.focus();
+        return used();
+      };
       if (mode === "board") {
-        store.select(growBoardStep(board, selected, direction));
+        const next = growBoardStep(board, selected, direction);
+        if (direction === "right" && next === selected) return intoChat();
+        store.select(next);
         return used();
       }
-      if (direction === "left" || direction === "right") return false;
+      if (direction === "right") return intoChat();
+      if (direction === "left") return false;
       store.select(growStepSelection(board, selected, direction === "down" ? 1 : -1));
       return used();
     }
