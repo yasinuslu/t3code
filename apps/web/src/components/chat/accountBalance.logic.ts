@@ -1,5 +1,11 @@
-import type { CodeProfile, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
-import { balancedAccountGroup } from "@t3tools/shared/accountBalancing";
+import type {
+  CodeProfile,
+  ModelSelection,
+  ProviderInstanceId,
+  ServerProvider,
+} from "@t3tools/contracts";
+import { balancedAccountGroup, rankBalancedAccounts } from "@t3tools/shared/accountBalancing";
+import { exhaustedLimitWindow } from "@t3tools/shared/usageLimits";
 
 /** Which account of a provider runs a draft thread's first turn. Unset means auto. */
 export type AccountSelection = "auto" | "manual";
@@ -44,4 +50,43 @@ export function accountBalanceForLaunch(input: {
   return input.accountSelection !== "manual" && newThreadAccountGroup(input) !== null
     ? "auto"
     : undefined;
+}
+
+/**
+ * The selection a message is sent with: `selection` unless its account is
+ * known to be out of quota for the model and another account of the same
+ * provider has room, which then runs the turn instead. The thread's own
+ * account is preferred, so a stale pick falls back to where the thread is.
+ * `from` is the limited account, set only when the selection changed.
+ */
+export function sendSelectionAvoidingLimit(input: {
+  readonly selection: ModelSelection;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  /** The account the thread currently runs on, when it has started. */
+  readonly threadInstanceId?: ProviderInstanceId | undefined;
+  readonly now?: number;
+}): { readonly selection: ModelSelection; readonly from: ServerProvider | null } {
+  const now = input.now ?? Date.now();
+  const unchanged = { selection: input.selection, from: null };
+  const current = input.providers.find(
+    (provider) => provider.instanceId === input.selection.instanceId,
+  );
+  if (!current || !exhaustedLimitWindow(current.usageLimits, input.selection.model, now)) {
+    return unchanged;
+  }
+  const { ranked } = rankBalancedAccounts({
+    accounts: input.providers
+      .filter((provider) => provider.driver === current.driver)
+      .map((provider) => ({ instanceId: provider.instanceId })),
+    providers: input.providers,
+    selection: input.selection,
+    observedLimits: new Map(),
+    exclude: new Set([current.instanceId]),
+    now,
+  });
+  const sameProvider = ranked.filter((account) => account.sameDriver);
+  const next =
+    sameProvider.find((account) => account.instance.instanceId === input.threadInstanceId) ??
+    sameProvider[0];
+  return next ? { selection: next.selection, from: current } : unchanged;
 }
