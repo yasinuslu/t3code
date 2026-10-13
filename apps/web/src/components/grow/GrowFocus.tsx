@@ -12,7 +12,7 @@
 import { GROW_STAGES } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, MessagesSquareIcon, PlayIcon, RotateCwIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { ThreadReportBody, ThreadReportLinks, useThreadReport } from "../home/ThreadReportCard";
@@ -65,11 +65,14 @@ export function Rail(props: {
       className="flex min-h-0 w-full flex-1 flex-col gap-2 border-e pe-2 pb-3"
     >
       <GrowHeader projects={props.projects} search={props.search} />
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-        {/* Opaque, so rows scrolling under the manager do not show through. */}
-        <div className="sticky top-0 z-20 border-b bg-background pb-1">
-          <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
-        </div>
+      {/* A fixed band above the list, so scrolling never tucks a row under it. */}
+      <div className="border-b pb-2">
+        <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
+      </div>
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
+        style={{ scrollbarGutter: "stable" }}
+      >
         {!props.ready ? (
           <GrowNavSkeleton />
         ) : GROW_STAGES.every((stage) => props.board[stage].length === 0) ? (
@@ -125,9 +128,7 @@ export function Thing(props: { readonly card: GrowBoardCard; readonly update: Up
     >
       <h2 className="line-clamp-2 min-w-0 font-semibold text-base">{thread.title}</h2>
       <div className="flex min-w-0 items-center gap-2">
-        <Badge variant="outline" size="sm">
-          {GROW_STAGE_DEFS[card.stage].title}
-        </Badge>
+        <Badge variant="outline">{GROW_STAGE_DEFS[card.stage].title}</Badge>
         <span className="ms-auto flex shrink-0 items-center gap-1">
           {card.playUrl ? (
             <Button
@@ -180,8 +181,33 @@ export function Thing(props: { readonly card: GrowBoardCard; readonly update: Up
   );
 }
 
+/**
+ * True while the prototype's iframe holds keyboard focus. Its keys cannot be
+ * seen from here (it is another origin), but the page's window loses focus to
+ * it, and any focus coming back into the page ends it.
+ */
+function useIframeHasKeyboard(): boolean {
+  const [trapped, setTrapped] = useState(false);
+  useEffect(() => {
+    const onBlur = () =>
+      // The frame becomes the active element right after the blur.
+      window.setTimeout(() => setTrapped(document.activeElement?.tagName === "IFRAME"), 0);
+    const onBack = () => setTrapped(false);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onBack);
+    document.addEventListener("focusin", onBack);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onBack);
+      document.removeEventListener("focusin", onBack);
+    };
+  }, []);
+  return trapped;
+}
+
 function PlayPane(props: { readonly links: NonNullable<GrowBoardCard["thread"]["previewLinks"]> }) {
   const [index, setIndex] = useState(0);
+  const trapped = useIframeHasKeyboard();
   const [reload, setReload] = useState(0);
   const link = props.links[index] ?? props.links[0];
   if (!link) return null;
@@ -222,6 +248,20 @@ function PlayPane(props: { readonly links: NonNullable<GrowBoardCard["thread"]["
           <ExternalLinkIcon />
         </Button>
       </div>
+      {trapped ? (
+        <Button
+          variant="outline"
+          size="xs"
+          className="w-full"
+          onClick={() =>
+            document
+              .querySelector<HTMLElement>("[data-grow-thing] [data-slot=toggle][data-pressed]")
+              ?.focus()
+          }
+        >
+          The prototype has the keyboard. Click here to get back
+        </Button>
+      ) : null}
       <iframe
         key={`${link.url}:${reload}`}
         src={link.url}

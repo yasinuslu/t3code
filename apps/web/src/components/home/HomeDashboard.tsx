@@ -43,6 +43,7 @@ import ChatView from "../ChatView";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+import { closeHomeOverlay } from "../../homeOverlayStore";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
@@ -125,6 +126,7 @@ export function HomeDashboard() {
   return (
     <div
       data-home-dashboard-root=""
+      data-home-view={view}
       className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background"
     >
       {/* Cards sort by profile; phones may not have shown the sidebar that detects them. */}
@@ -177,6 +179,7 @@ export function HomeDashboard() {
                   <MenuItem onClick={() => setView(view === "grow" ? "classic" : "grow")}>
                     {view === "grow" ? "Classic list" : "Grow"}
                   </MenuItem>
+                  <MenuItem onClick={closeHomeOverlay}>Close Home</MenuItem>
                 </MenuPopup>
               </Menu>
             </div>

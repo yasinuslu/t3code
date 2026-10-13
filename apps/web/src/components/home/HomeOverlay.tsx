@@ -72,6 +72,8 @@ function HomeOverlayLayer() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      // Grow is the default screen: Esc there never throws the user out of it.
+      if (document.querySelector('[data-home-view="grow"]') !== null) return;
       const openPopup = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].some(
         (element) => element.closest("[inert]") === null,
       );

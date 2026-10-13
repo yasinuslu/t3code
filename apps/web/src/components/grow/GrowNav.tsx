@@ -235,7 +235,10 @@ const KEY_HELP: ReadonlyArray<readonly [string, string]> = [
   ],
   ["Enter", "Type to this thread"],
   ["/", "Search the list (Enter picks the first match)"],
-  ["Esc", "Back to the list from anywhere; on the list it clears the search, then closes Home"],
+  [
+    "Esc",
+    "Back to the list from anywhere; on the list it clears the search (it never closes Home)",
+  ],
   ["i", "Board"],
   ["o", "Threads list"],
   ["m", "Manager, and back"],
@@ -294,7 +297,7 @@ const rowLook = (selected: boolean, variant: "rail" | "card") =>
       : "hover:bg-accent/50",
   );
 const ITEM_BUTTON =
-  "flex min-w-0 flex-1 flex-col gap-0.5 text-start outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring";
+  "flex min-w-0 flex-1 scroll-my-2 flex-col gap-0.5 text-start outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring";
 
 /** The manager as a pinned row, the same row as a card's. */
 export function ManagerRow(props: {
@@ -366,11 +369,20 @@ export function GrowRow(props: {
           event.currentTarget.focus();
         }}
       >
-        <span className="line-clamp-2 font-medium">{card.thread.title}</span>
+        <span
+          className={cn("font-medium", props.variant === "card" ? "line-clamp-3" : "line-clamp-2")}
+        >
+          {card.thread.title}
+        </span>
         {props.variant === "card" && (card.card?.became ?? "").trim() !== "" ? (
           <span className="line-clamp-2 text-muted-foreground text-xs">{card.card?.became}</span>
         ) : null}
-        <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
+        <span
+          className={cn(
+            "flex min-w-0 items-center gap-x-1.5 text-muted-foreground text-xs",
+            props.variant === "card" && "flex-wrap",
+          )}
+        >
           <span
             aria-label={look.label}
             title={look.label}

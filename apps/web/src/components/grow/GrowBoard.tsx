@@ -70,8 +70,10 @@ export function GrowColumns(props: {
         props.empty
       ) : (
         <>
-          <div className="flex min-h-0 flex-1 items-start gap-3 overflow-x-auto scroll-px-3 pe-3 pb-1">
-            {GROW_COLUMN_STAGES.map((stage) => {
+          {/* One row, every stage with Shelf last; the columns share the width and only
+              scroll sideways when they cannot fit, with the scrollbar at the board's edge. */}
+          <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto scroll-px-3 pb-1">
+            {[...GROW_COLUMN_STAGES, "shelved" as const].map((stage) => {
               const column = GROW_STAGE_DEFS[stage];
               return (
                 <section
@@ -79,12 +81,12 @@ export function GrowColumns(props: {
                   aria-label={column.title}
                   data-grow-column={stage}
                   className={cn(
-                    "flex max-h-full min-h-32 w-64 min-w-64 flex-col gap-2 rounded-xl border p-2",
+                    "flex min-h-0 min-w-44 flex-1 basis-0 flex-col gap-2 rounded-xl border p-1.5",
                     column.yourTurn ? "border-warning/50 bg-warning-surface/40" : "bg-card/40",
                   )}
                 >
                   <StageHeader stage={stage} count={board[stage].length} />
-                  <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+                  <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden">
                     {board[stage].length === 0 ? (
                       <p className="px-1 text-muted-foreground text-xs">{column.empty}</p>
                     ) : (
@@ -104,30 +106,6 @@ export function GrowColumns(props: {
               );
             })}
           </div>
-          <section
-            aria-label={GROW_STAGE_DEFS.shelved.title}
-            data-grow-column="shelved"
-            className="flex shrink-0 flex-col gap-1"
-          >
-            <StageHeader stage="shelved" count={board.shelved.length} />
-            {board.shelved.length === 0 ? (
-              <p className="px-1 text-muted-foreground text-xs">{GROW_STAGE_DEFS.shelved.empty}</p>
-            ) : (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {board.shelved.map((card) => (
-                  <div key={card.key} className="w-64 shrink-0">
-                    <GrowRow
-                      card={card}
-                      variant="card"
-                      selected={card.key === selected}
-                      onSelect={props.onSelect}
-                      {...(props.onPlay ? { onPlay: props.onPlay } : {})}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
         </>
       )}
     </div>

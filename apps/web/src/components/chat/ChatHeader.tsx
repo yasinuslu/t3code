@@ -59,6 +59,8 @@ interface ChatHeaderProps {
   isServerThread: boolean;
   activeProject: EnvironmentProject | null;
   rightPanelOpen: boolean;
+  /** Inside Grow: the title takes the free width, no project breadcrumb or preview chip, no room kept for panel toggles. */
+  embedded?: boolean;
   /** The provider profile the thread runs on, for drivers that report one. */
   providerConfigDir?: ThreadProviderConfigDir | null;
   onNewThreadInProject: () => void;
@@ -93,6 +95,7 @@ export const ChatHeader = memo(function ChatHeader({
   isServerThread,
   activeProject,
   rightPanelOpen,
+  embedded = false,
   providerConfigDir = null,
   onNewThreadInProject,
   onOpenProjectSettings,
@@ -104,7 +107,7 @@ export const ChatHeader = memo(function ChatHeader({
   // Docked on Home, the manager needs no way back to where it already is.
   const onHome = useContext(InHomeOverlayContext);
   // The manager docked on Home: a narrow pane, so only its name and badge.
-  const docked = onHome && isManager;
+  const docked = (onHome && isManager) || embedded;
   const openManagerThreadPage = useOpenManagerThreadPage();
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
@@ -261,7 +264,7 @@ export const ChatHeader = memo(function ChatHeader({
     <div
       className={cn(
         "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : "pr-24",
+        embedded ? "pr-3" : rightPanelOpen ? "pr-10" : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >

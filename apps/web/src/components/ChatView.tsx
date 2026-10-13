@@ -7455,6 +7455,7 @@ export default function ChatView(props: ChatViewProps) {
     : null;
   const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (
+      embedded ||
       !activeThread ||
       !activeContextWindow ||
       resumeCompactionKey === null ||
@@ -7512,6 +7513,7 @@ export default function ChatView(props: ChatViewProps) {
     compactDisabledReason,
     composerRef,
     dismissedResumeCompactionKeys,
+    embedded,
     nativeResumeCompactionDismissed,
     nowMinute,
     pendingUserInputs.length,
@@ -11112,6 +11114,7 @@ export default function ChatView(props: ChatViewProps) {
             activeThreadTitle={activeThread.title}
             activeProject={activeProject ?? null}
             rightPanelOpen={inlineRightPanelOwnsTitleBar}
+            embedded={embedded}
             providerConfigDir={providerConfigDir}
             onNewThreadInProject={handleNewThreadInActiveProject}
             {...(activeDraftLogicalProjectKey
@@ -11664,7 +11667,7 @@ export default function ChatView(props: ChatViewProps) {
               </AlertDialogPopup>
             </AlertDialog>
 
-            <ThreadDetailsPanel {...threadDetailsPanelProps} />
+            {embedded ? null : <ThreadDetailsPanel {...threadDetailsPanelProps} />}
 
             {pullRequestDialogState ? (
               <PullRequestThreadDialog
