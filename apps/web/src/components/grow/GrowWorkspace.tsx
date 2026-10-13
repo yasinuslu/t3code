@@ -30,16 +30,18 @@ import {
 import { useGrowStore } from "./grow.store";
 
 /**
- * Esc inside a chat's composer goes back to the list, unless the composer or a
- * popup used it itself. Listens on the document in the bubble phase: after the
- * composer's own handling (so `defaultPrevented` says it was used) and before
- * Home's window listener, which would close Home.
+ * Esc is the one way out: with focus anywhere in Grow outside the list (a
+ * composer, a field, a button in the chat or the thing), it goes back to the
+ * list. An open popup or composer menu gets the first Esc. Runs in the capture
+ * phase on the window so nothing inside the chat can swallow it, and before
+ * Home's listener, which closes Home only once focus is back on the list.
  */
 function returnToList(event: KeyboardEvent) {
-  if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+  if (event.key !== "Escape" || event.isComposing) return;
   if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-  const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest('[data-grow-chat] [data-testid="composer-editor"]') == null) return;
+  const focused = document.activeElement;
+  if (focused === null || focused.closest("[data-grow-mode]") === null) return;
+  if (focused.closest("[data-grow-zone]") !== null) return;
   const popup = [
     ...document.querySelectorAll(
       '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
@@ -47,7 +49,7 @@ function returnToList(event: KeyboardEvent) {
   ].some((element) => element.closest("[inert]") === null);
   if (popup) return;
   event.preventDefault();
-  event.stopPropagation();
+  event.stopImmediatePropagation();
   focusSelectedRow(document.querySelector<HTMLElement>("[data-grow-zone]"));
 }
 
@@ -82,8 +84,8 @@ export function GrowWorkspace(props: {
   const wide = useMediaQuery("lg");
   useEffect(() => {
     if (!wide) return;
-    document.addEventListener("keydown", returnToList);
-    return () => document.removeEventListener("keydown", returnToList);
+    window.addEventListener("keydown", returnToList, true);
+    return () => window.removeEventListener("keydown", returnToList, true);
   }, [wide]);
   const leftMode = useGrowStore((store) => store.leftMode);
   const storedSelection = useGrowStore((store) => store.selected);
