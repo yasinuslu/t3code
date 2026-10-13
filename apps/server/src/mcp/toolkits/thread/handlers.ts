@@ -184,7 +184,7 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
       const {
         threads,
         projection: { thread },
-      } = yield* readWritableThread();
+      } = yield* readWritableThread(input.threadId);
       if (input.modelSelection === undefined && input.autoCompact === undefined) {
         return yield* new OrchestratorMcpFailure({
           code: "invalid_request",

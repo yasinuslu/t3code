@@ -2311,6 +2311,19 @@ describe("orchestrator MCP toolkit", () => {
             ).pipe(Effect.orDie);
             expect(repeatedInterrupt.status).toBe("interrupted");
 
+            // Another thread of the calling project moves to a different provider in place.
+            const configureOtherCall = yield* invoke("t3_thread_configure", {
+              threadId: activeThread.threadId,
+              modelSelection: claudeSelection,
+            });
+            expect(configureOtherCall.isError).toBe(false);
+            const configuredOther = yield* orchestrator.getThreadShell(activeThread.threadId);
+            expect(configuredOther?.providerInstanceId).toBe(claudeInstanceId);
+            expect(configuredOther?.modelSelection).toEqual(claudeSelection);
+            expect((yield* orchestrator.getThreadShell(parentThreadId))?.providerInstanceId).toBe(
+              codexInstanceId,
+            );
+
             const foreignThreadId = ThreadId.make("thread:mcp-foreign-project");
             yield* orchestrator.dispatch({
               type: "thread.create",
@@ -2334,6 +2347,16 @@ describe("orchestrator MCP toolkit", () => {
               code: "thread_not_found",
             });
             expect((yield* orchestrator.getThreadShell(foreignThreadId))?.pinnedAt).toBeNull();
+            const foreignConfigureCall = yield* invoke("t3_thread_configure", {
+              threadId: foreignThreadId,
+              modelSelection: claudeSelection,
+            });
+            expect(foreignConfigureCall.structuredContent).toMatchObject({
+              code: "thread_not_found",
+            });
+            expect((yield* orchestrator.getThreadShell(foreignThreadId))?.providerInstanceId).toBe(
+              codexInstanceId,
+            );
 
             const foreignReadCall = yield* invoke("t3_thread_read", {
               threadId: foreignThreadId,
