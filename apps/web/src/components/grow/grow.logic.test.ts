@@ -13,6 +13,7 @@ import {
   growLayoutWidths,
   growCardKey,
   growEffectiveSelection,
+  growPlayReport,
   growRailOrder,
   growStepSelection,
 } from "./grow.logic";
@@ -245,5 +246,45 @@ describe("growLayoutWidths", () => {
   it("keeps the board beside its chat", () => {
     expect(growLayoutWidths(stored, 1000, mins).boardChat).toBe(560);
     expect(growLayoutWidths({ ...stored, boardChat: 900 }, 1000, mins).boardChat).toBe(560);
+  });
+});
+
+describe("growPlayReport", () => {
+  const pr = (source = "agent") => [{ number: 7, url: "https://git/pr/7", source, snapshot: null }];
+  const board = buildGrowBoard(
+    [
+      shell("previewed", { previewLinks: [{ url: "https://p.example/a", source: "report" }] }),
+      shell("with-pr", { pullRequests: pr() }),
+      shell("dismissed-pr", { pullRequests: pr("stack-dismissed") }),
+      shell("old-stuck", { createdAt: "2026-10-10T10:00:00.000Z" }),
+      shell("new-stuck", { createdAt: "2026-10-13T11:00:00.000Z" }),
+      shell("empty-end", { settledOverride: "settled" }),
+      shell("done-with-pr", { settledOverride: "settled", pullRequests: pr() }),
+    ],
+    new Map(),
+    NOW,
+    { inUseLimit: Number.POSITIVE_INFINITY },
+  );
+  const report = growPlayReport(board);
+
+  it("counts what made something to open, a preview, report link or pull request", () => {
+    expect(report.played.map(({ card }) => card.thread.id).sort()).toEqual([
+      "done-with-pr",
+      "previewed",
+      "with-pr",
+    ]);
+    expect(report.played.find(({ card }) => card.thread.id === "with-pr")?.openable.label).toBe(
+      "PR #7",
+    );
+    expect(report.total).toBe(7);
+  });
+
+  it("lists open threads without anything, longest first, apart from the ended ones", () => {
+    expect(report.stuck.map((card) => card.thread.id)).toEqual([
+      "old-stuck",
+      "dismissed-pr",
+      "new-stuck",
+    ]);
+    expect(report.ended.map((card) => card.thread.id)).toEqual(["empty-end"]);
   });
 });

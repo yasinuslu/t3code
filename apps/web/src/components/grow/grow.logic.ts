@@ -207,6 +207,8 @@ export interface GrowBoardOptions {
   readonly excluded?: ReadonlySet<string>;
   /** Only this project's threads; null or absent: all. */
   readonly project?: string | null;
+  /** How many In use cards to keep; the play report passes `Infinity` to count them all. */
+  readonly inUseLimit?: number;
 }
 
 /**
@@ -254,8 +256,71 @@ export function buildGrowBoard(
       (left, right) => epochMs(right.lastActivityAt) - epochMs(left.lastActivityAt),
     );
   }
-  columns.done = columns.done.slice(0, IN_USE_LIMIT);
+  columns.done = columns.done.slice(0, options.inUseLimit ?? IN_USE_LIMIT);
   return columns;
+}
+
+/**
+ * The board as it is drawn: one built without an In use limit, cut to it. The
+ * `keep` card (the selection, which the play report can reach among the
+ * older ones) stays so that picking it shows it.
+ */
+export function limitInUse(board: GrowBoard, keep: string): GrowBoard {
+  if (board.done.length <= IN_USE_LIMIT) return board;
+  const kept = board.done.slice(0, IN_USE_LIMIT);
+  const extra = board.done.slice(IN_USE_LIMIT).find((card) => card.key === keep);
+  return { ...board, done: extra === undefined ? kept : [...kept, extra] };
+}
+
+/** What a thread made that the owner can open: its first preview or report link, else its first pull request. */
+export interface GrowOpenable {
+  readonly url: string;
+  readonly label: string;
+}
+
+export function growOpenableOf(thread: EnvironmentThreadShell): GrowOpenable | null {
+  const preview = thread.previewLinks?.[0];
+  if (preview !== undefined) {
+    return { url: preview.url, label: preview.label ?? preview.url.replace(/^https?:\/\//, "") };
+  }
+  const pullRequest = thread.pullRequests.find((link) => link.source !== "stack-dismissed");
+  return pullRequest === undefined
+    ? null
+    : { url: pullRequest.url, label: `PR #${pullRequest.number}` };
+}
+
+export interface GrowPlayedCard {
+  readonly card: GrowBoardCard;
+  readonly openable: GrowOpenable;
+}
+
+/**
+ * Whether threads produce something to open, read off a board built without
+ * the In use limit: the cards with a preview, report link or pull request
+ * (`played`), the open ones still without one (`stuck`, longest first), and
+ * the ones that ended, settled or shelved, without (`ended`).
+ */
+export interface GrowPlayReport {
+  readonly total: number;
+  readonly played: ReadonlyArray<GrowPlayedCard>;
+  readonly stuck: ReadonlyArray<GrowBoardCard>;
+  readonly ended: ReadonlyArray<GrowBoardCard>;
+}
+
+export function growPlayReport(board: GrowBoard): GrowPlayReport {
+  const played: GrowPlayedCard[] = [];
+  const stuck: GrowBoardCard[] = [];
+  const ended: GrowBoardCard[] = [];
+  for (const stage of GROW_STAGES) {
+    for (const card of board[stage]) {
+      const openable = growOpenableOf(card.thread);
+      if (openable !== null) played.push({ card, openable });
+      else if (stage === "done" || stage === "shelved") ended.push(card);
+      else stuck.push(card);
+    }
+  }
+  stuck.sort((left, right) => epochMs(left.thread.createdAt) - epochMs(right.thread.createdAt));
+  return { total: played.length + stuck.length + ended.length, played, stuck, ended };
 }
 
 /** The projects that have at least one card, in first-seen order. */

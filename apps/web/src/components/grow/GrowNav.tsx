@@ -47,10 +47,12 @@ import {
   type GrowBoard,
   type GrowBoardCard,
   type GrowDirection,
+  type GrowPlayReport,
   growBoardStep,
   growStepSelection,
 } from "./grow.logic";
 import { type GrowLeftMode, useGrowStore } from "./grow.store";
+import { PlayReportButton } from "./GrowReport";
 
 const ALL_PROJECTS = "all";
 
@@ -61,6 +63,13 @@ export interface GrowSearch {
   readonly firstKey: string | null;
 }
 
+/** The play report chip's inputs; `onPick` shows the thread a report line named. */
+export interface GrowHeaderReport {
+  readonly data: GrowPlayReport;
+  readonly now: number;
+  readonly onPick: (key: string) => void;
+}
+
 /**
  * Same in both modes: Threads | Board switch, project filter and keyboard help
  * on one line, the search field under it.
@@ -68,6 +77,7 @@ export interface GrowSearch {
 export function GrowHeader(props: {
   readonly projects: ReadonlyArray<string>;
   readonly search: GrowSearch;
+  readonly report: GrowHeaderReport;
   /** Below lg there is only the board: no mode switch, no keys to explain. */
   readonly narrow?: boolean;
 }) {
@@ -76,6 +86,11 @@ export function GrowHeader(props: {
       <div className="flex min-w-0 items-center gap-2">
         {props.narrow ? null : <LeftSwitch />}
         <ProjectFilter projects={props.projects} />
+        <PlayReportButton
+          report={props.report.data}
+          now={props.report.now}
+          onPick={props.report.onPick}
+        />
         {props.narrow ? null : <KeyboardHelp />}
       </div>
       <SearchField search={props.search} />
