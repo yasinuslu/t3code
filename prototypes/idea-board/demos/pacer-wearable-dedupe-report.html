@@ -1,0 +1,206 @@
+<!doctype html> <meta charset="utf-8" /><meta
+  name="viewport"
+  content="width=device-width,initial-scale=1"
+/>
+<title>Pacer: wearable workout dedupe, report</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font:
+      15px/1.55 Georgia,
+      serif;
+    background: #fbfaf7;
+    color: #222;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 28px auto;
+    padding: 0 18px;
+  }
+  h1 {
+    font:
+      700 24px system-ui,
+      sans-serif;
+    margin: 0 0 4px;
+  }
+  h2 {
+    font:
+      600 16px system-ui,
+      sans-serif;
+    margin: 22px 0 6px;
+  }
+  .meta {
+    font:
+      13px system-ui,
+      sans-serif;
+    color: #777;
+  }
+  .big {
+    display: flex;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .k {
+    flex: 1;
+    background: #fff;
+    border: 1px solid #e6e2d8;
+    border-radius: 10px;
+    padding: 12px;
+    font-family: system-ui, sans-serif;
+  }
+  .k b {
+    display: block;
+    font-size: 26px;
+  }
+  .k.good b {
+    color: #2b8a3e;
+  }
+  .k.bad b {
+    color: #c92a2a;
+  }
+  svg {
+    width: 100%;
+    height: auto;
+    background: #fff;
+    border: 1px solid #e6e2d8;
+    border-radius: 10px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font:
+      14px system-ui,
+      sans-serif;
+  }
+  td,
+  th {
+    padding: 6px 8px;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+  }
+  .chip {
+    cursor: pointer;
+    font:
+      13px system-ui,
+      sans-serif;
+    border: 1px solid #ccc;
+    border-radius: 99px;
+    padding: 3px 10px;
+    background: #fff;
+    margin-right: 6px;
+  }
+  .chip.on {
+    background: #222;
+    color: #fff;
+  }
+</style>
+<div class="wrap">
+  <h1>Wearable sync: duplicate workouts</h1>
+  <div class="meta">
+    Pacer API · /v1/workouts/sync · measured on 41,200 synced workouts over 8 weeks
+  </div>
+  <div class="big">
+    <div class="k bad"><span>Before: duplicates</span><b>6.8%</b></div>
+    <div class="k good"><span>After dedupe key</span><b>0.4%</b></div>
+    <div class="k"><span>Real workouts swallowed</span><b>3</b></div>
+  </div>
+  <h2>Duplicates per week</h2>
+  <div>
+    <span class="chip on" data-s="all">All sources</span
+    ><span class="chip" data-s="garmin">Garmin + Apple</span
+    ><span class="chip" data-s="strava">Strava re-export</span>
+  </div>
+  <svg viewBox="0 0 640 240" id="chart"></svg>
+  <h2>What we found</h2>
+  <table>
+    <tr>
+      <th>Cause</th>
+      <th>Share</th>
+      <th>Fix</th>
+    </tr>
+    <tr>
+      <td>Same run from Garmin and Apple Health</td>
+      <td>58%</td>
+      <td>Key on start time ±90 s and duration ±5%</td>
+    </tr>
+    <tr>
+      <td>Strava re-export of an imported run</td>
+      <td>31%</td>
+      <td>Carry the origin id through</td>
+    </tr>
+    <tr>
+      <td>Phone timezone changed mid-sync</td>
+      <td>11%</td>
+      <td>Normalize to UTC before keying</td>
+    </tr>
+  </table>
+  <h2>Verdict</h2>
+  <p>
+    The fuzzy key removes almost all duplicates. The three real workouts it swallowed were
+    back-to-back intervals under 90 seconds apart, so the window becomes 45 s for sessions tagged
+    <i>intervals</i>.
+  </p>
+</div>
+<script>
+  const data = {
+    all: [
+      [52, 3],
+      [61, 4],
+      [58, 2],
+      [66, 3],
+      [71, 2],
+      [60, 3],
+      [55, 1],
+      [49, 2],
+    ],
+    garmin: [
+      [30, 1],
+      [35, 2],
+      [34, 1],
+      [39, 1],
+      [41, 1],
+      [35, 1],
+      [33, 0],
+      [28, 1],
+    ],
+    strava: [
+      [16, 1],
+      [19, 1],
+      [17, 1],
+      [20, 1],
+      [22, 1],
+      [18, 1],
+      [16, 1],
+      [15, 1],
+    ],
+  };
+  function draw(k) {
+    const d = data[k],
+      m = Math.max(...d.map((x) => x[0])) * 1.15;
+    let s = "";
+    for (let i = 0; i < 4; i++) {
+      const y = 200 - i * 50;
+      s += `<line x1="40" x2="620" y1="${y}" y2="${y}" stroke="#eee"/><text x="34" y="${y + 4}" text-anchor="end" font-size="10" fill="#999">${Math.round((m * i) / 4)}</text>`;
+    }
+    d.forEach(([b, a], i) => {
+      const x = 60 + i * 72,
+        hb = (b / m) * 200,
+        ha = (a / m) * 200;
+      s += `<rect x="${x}" y="${200 - hb}" width="26" height="${hb}" fill="#e03131"><title>W${i + 1} before: ${b}</title></rect><rect x="${x + 28}" y="${200 - ha}" width="26" height="${ha}" fill="#2f9e44"><title>W${i + 1} after: ${a}</title></rect><text x="${x + 27}" y="218" text-anchor="middle" font-size="11" fill="#777">W${i + 1}</text>`;
+    });
+    s +=
+      '<rect x="470" y="8" width="10" height="10" fill="#e03131"/><text x="486" y="17" font-size="11">before</text><rect x="540" y="8" width="10" height="10" fill="#2f9e44"/><text x="556" y="17" font-size="11">after</text>';
+    document.getElementById("chart").innerHTML = s;
+  }
+  document.querySelectorAll(".chip").forEach(
+    (c) =>
+      (c.onclick = () => {
+        document.querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c));
+        draw(c.dataset.s);
+      }),
+  );
+  draw("all");
+</script>

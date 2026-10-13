@@ -209,6 +209,12 @@ export function GrowRow(props: {
   const { card, onPlay } = props;
   const lessons = card.card?.lessons.length ?? 0;
   const look = WORK_REASON_LOOK[card.reason];
+  // The project says where the idea lives; the dot alone carries the thread's state.
+  const project = useProjects().find(
+    (candidate) =>
+      candidate.environmentId === card.thread.environmentId &&
+      candidate.id === card.thread.projectId,
+  )?.title;
   const playLabel = `Play ${card.thread.title}`;
   return (
     <div
@@ -233,8 +239,13 @@ export function GrowRow(props: {
           {card.thread.title}
         </span>
         <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
-          <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", look.dot)} />
-          <span className="truncate">{look.label}</span>
+          <span
+            aria-label={look.label}
+            title={look.label}
+            role="img"
+            className={cn("size-1.5 shrink-0 rounded-full", look.dot)}
+          />
+          <span className="truncate">{project ?? look.label}</span>
           {lessons > 0 ? (
             <span className="shrink-0 tabular-nums">
               {lessons === 1 ? "1 lesson" : `${lessons} lessons`}

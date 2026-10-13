@@ -1,0 +1,200 @@
+<!doctype html> <meta charset="utf-8" /><meta
+  name="viewport"
+  content="width=device-width,initial-scale=1"
+/>
+<title>Ledgerly portal: pay by bank transfer</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font:
+      15px/1.5 system-ui,
+      sans-serif;
+    background: #f4f5f7;
+    color: #1c2330;
+  }
+  .wrap {
+    max-width: 560px;
+    margin: 24px auto;
+    padding: 0 16px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e1e4ea;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 2px;
+  }
+  .muted {
+    color: #6b7385;
+    font-size: 13px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px dashed #e8eaef;
+  }
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin: 14px 0;
+  }
+  .tab {
+    flex: 1;
+    padding: 9px;
+    border: 1px solid #d5d9e2;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+    font: inherit;
+  }
+  .tab.on {
+    border-color: #3b5bdb;
+    background: #edf1ff;
+    color: #2441b8;
+    font-weight: 600;
+  }
+  .iban {
+    font-family: ui-monospace, monospace;
+    background: #f4f5f7;
+    padding: 8px 10px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    margin: 6px 0;
+  }
+  button.pay {
+    width: 100%;
+    padding: 11px;
+    border: 0;
+    border-radius: 8px;
+    background: #3b5bdb;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  button.pay:disabled {
+    background: #9aa8e0;
+    cursor: default;
+  }
+  button.small {
+    border: 1px solid #d5d9e2;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    padding: 2px 8px;
+  }
+  .step {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    color: #9aa1b2;
+  }
+  .step.done {
+    color: #1c2330;
+  }
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #c3c8d4;
+  }
+  .step.done .dot {
+    background: #2f9e44;
+    border-color: #2f9e44;
+  }
+  .note {
+    background: #e7f5ec;
+    border: 1px solid #b2e0c1;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    margin-top: 10px;
+  }
+</style>
+<div class="wrap">
+  <div class="card">
+    <h1>Invoice INV-2041</h1>
+    <div class="muted">Harbor &amp; Finch Studio · due 28 Oct</div>
+    <div class="row"><span>Brand refresh, phase 2</span><span>€3,200.00</span></div>
+    <div class="row"><span>VAT 19%</span><span>€608.00</span></div>
+    <div class="row"><b>Total</b><b>€3,808.00</b></div>
+    <div class="tabs">
+      <button class="tab" id="t-card">Card</button
+      ><button class="tab on" id="t-bank">Bank transfer</button>
+    </div>
+    <div id="bank">
+      <div class="muted">Send exactly this amount with the reference, we match it for you.</div>
+      <div class="iban">
+        <span id="iban">DE89 3704 0044 0532 0130 00</span
+        ><button class="small" data-copy="iban">Copy</button>
+      </div>
+      <div class="iban">
+        <span id="ref">LDG-2041-HF</span><button class="small" data-copy="ref">Copy</button>
+      </div>
+      <button class="pay" id="sent">I have sent the transfer</button>
+    </div>
+    <div id="card" hidden>
+      <div class="muted">Card payments add a 2.9% fee.</div>
+      <button class="pay">Pay €3,919.97</button>
+    </div>
+  </div>
+  <div class="card" id="status" hidden>
+    <h1>Reconciliation</h1>
+    <div class="step" id="s1"><span class="dot"></span>Transfer announced</div>
+    <div class="step" id="s2"><span class="dot"></span>Bank statement checked</div>
+    <div class="step" id="s3"><span class="dot"></span>Matched to INV-2041 by reference</div>
+    <div class="note" id="note" hidden>
+      Paid. The receipt was emailed and your accountant sees it as reconciled.
+    </div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $("t-card").onclick = () => {
+    $("card").hidden = false;
+    $("bank").hidden = true;
+    $("t-card").classList.add("on");
+    $("t-bank").classList.remove("on");
+  };
+  $("t-bank").onclick = () => {
+    $("card").hidden = true;
+    $("bank").hidden = false;
+    $("t-bank").classList.add("on");
+    $("t-card").classList.remove("on");
+  };
+  document.querySelectorAll("[data-copy]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        navigator.clipboard?.writeText($(b.dataset.copy).textContent);
+        b.textContent = "Copied";
+        setTimeout(() => (b.textContent = "Copy"), 900);
+      }),
+  );
+  $("sent").onclick = () => {
+    $("status").hidden = false;
+    $("sent").disabled = true;
+    [
+      ["s1", 100],
+      ["s2", 1100],
+      ["s3", 2200],
+    ].forEach(([id, t]) =>
+      setTimeout(() => {
+        $(id).classList.add("done");
+        if (id === "s3") $("note").hidden = false;
+      }, t),
+    );
+  };
+</script>

@@ -1,0 +1,135 @@
+<!doctype html> <meta charset="utf-8" /><meta
+  name="viewport"
+  content="width=device-width,initial-scale=1"
+/>
+<title>Pacer: public API tiers, pitch</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    font:
+      18px/1.45 system-ui,
+      sans-serif;
+    background: #10141c;
+    color: #eef1f6;
+    overflow: hidden;
+  }
+  .s {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    padding: 6vw;
+  }
+  .s.on {
+    display: flex;
+  }
+  h1 {
+    font-size: clamp(26px, 4.5vw, 48px);
+    line-height: 1.1;
+    margin: 0 0 14px;
+  }
+  p {
+    max-width: 34em;
+    color: #b9c1d0;
+  }
+  .tiers {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .t {
+    flex: 1;
+    min-width: 170px;
+    background: #1a2030;
+    border: 1px solid #2b3347;
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .t b {
+    font-size: 26px;
+    display: block;
+  }
+  .t.hot {
+    border-color: #74c0fc;
+  }
+  .nav {
+    position: fixed;
+    bottom: 16px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    align-items: center;
+    font-size: 14px;
+    color: #8993a8;
+  }
+  .nav button {
+    background: #1a2030;
+    color: #eef1f6;
+    border: 1px solid #2b3347;
+    border-radius: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font: inherit;
+  }
+  .acc {
+    color: #74c0fc;
+  }
+</style>
+<section class="s on">
+  <h1>Give every coach an <span class="acc">API key</span>, not an export button.</h1>
+  <p>
+    Pacer has 1,900 coaches stitching spreadsheets to our CSV export. They asked for the thing we
+    already run internally.
+  </p>
+</section>
+<section class="s">
+  <h1>Three tiers, one price curve</h1>
+  <div class="tiers">
+    <div class="t"><b>Free</b>1k calls / day<br />Read-only, 1 key</div>
+    <div class="t hot"><b>Coach €19</b>50k calls / day<br />Write, webhooks, 5 keys</div>
+    <div class="t"><b>Studio €79</b>500k calls / day<br />SLA, audit log, SSO</div>
+  </div>
+</section>
+<section class="s">
+  <h1>What we expect in 90 days</h1>
+  <p>
+    About 140 paying coaches, mostly Coach tier. Support load stays flat because docs and keys are
+    self-serve. Studio brings 12 gym chains already on the waitlist.
+  </p>
+</section>
+<section class="s">
+  <h1>The ask</h1>
+  <p>
+    Two weeks to ship per-key rate limits and a billing meter. Everything else already exists behind
+    the internal gateway.
+  </p>
+</section>
+<div class="nav">
+  <button id="p">&larr;</button><span id="n">1 / 4</span><button id="x">&rarr;</button>
+</div>
+<script>
+  const ss = [...document.querySelectorAll(".s")];
+  let i = 0;
+  function go(k) {
+    i = Math.max(0, Math.min(ss.length - 1, k));
+    ss.forEach((s, j) => s.classList.toggle("on", j === i));
+    document.getElementById("n").textContent = i + 1 + " / " + ss.length;
+  }
+  document.getElementById("p").onclick = () => go(i - 1);
+  document.getElementById("x").onclick = () => go(i + 1);
+  addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " ") go(i + 1);
+    if (e.key === "ArrowLeft") go(i - 1);
+  });
+</script>

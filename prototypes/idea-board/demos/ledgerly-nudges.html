@@ -1,0 +1,162 @@
+<!doctype html> <meta charset="utf-8" /><meta
+  name="viewport"
+  content="width=device-width,initial-scale=1"
+/>
+<title>Ledgerly: late-payment nudges</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font:
+      15px/1.5 system-ui,
+      sans-serif;
+    background: #f4f5f7;
+    color: #1c2330;
+  }
+  .wrap {
+    max-width: 680px;
+    margin: 24px auto;
+    padding: 0 16px;
+    display: grid;
+    gap: 14px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e1e4ea;
+    border-radius: 12px;
+    padding: 18px;
+  }
+  h2 {
+    margin: 0 0 8px;
+    font-size: 15px;
+  }
+  input[type="range"] {
+    width: 100%;
+  }
+  .seg {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .seg button {
+    flex: 1;
+    padding: 7px;
+    border: 1px solid #d5d9e2;
+    background: #fff;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+  }
+  .seg .on {
+    background: #edf1ff;
+    border-color: #3b5bdb;
+    color: #2441b8;
+    font-weight: 600;
+  }
+  .tl {
+    display: flex;
+    margin: 14px 0 4px;
+  }
+  .pt {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    color: #9aa1b2;
+  }
+  .pt::before {
+    content: "";
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #c3c8d4;
+    margin: 0 auto 4px;
+  }
+  .pt.hit {
+    color: #1c2330;
+  }
+  .pt.hit::before {
+    background: #e8590c;
+  }
+  .mail {
+    white-space: pre-wrap;
+    font-size: 14px;
+    border-left: 3px solid #e8590c;
+    padding-left: 12px;
+  }
+  .muted {
+    color: #6b7385;
+    font-size: 13px;
+  }
+</style>
+<div class="wrap">
+  <div class="card">
+    <h2>Days overdue: <span id="d">0</span></h2>
+    <input id="r" type="range" min="0" max="45" value="0" />
+    <div class="tl" id="tl"></div>
+    <div class="seg" id="tone">
+      <button data-t="friendly" class="on">Friendly</button><button data-t="firm">Firm</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2 id="subj"></h2>
+    <div class="mail" id="body"></div>
+    <p class="muted" id="meta"></p>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let tone = "friendly";
+  const steps = [
+    { d: 3, n: "Gentle reminder" },
+    { d: 10, n: "Second notice" },
+    { d: 21, n: "Final notice" },
+    { d: 35, n: "Hand to collections" },
+  ];
+  const copy = {
+    friendly: [
+      "Quick reminder: INV-2041 was due 3 days ago. If it already went out, thank you and ignore this.",
+      "Hi Sam, INV-2041 is 10 days past due. Is there anything blocking it on your side? Happy to resend the PDF.",
+      "INV-2041 is now 21 days overdue. We would love to settle this by Friday before late fees apply.",
+      "We could not reach a payment on INV-2041. We are passing it to our collections partner next week.",
+    ],
+    firm: [
+      "INV-2041 is overdue. Payment is requested within 7 days.",
+      "INV-2041 remains unpaid after 10 days. A late fee of 1.5% applies from today.",
+      "FINAL NOTICE. INV-2041 will be escalated in 14 days without payment.",
+      "INV-2041 has been escalated to collections.",
+    ],
+  };
+  function draw() {
+    const d = +$("r").value;
+    $("d").textContent = d;
+    $("tl").innerHTML = steps
+      .map((s) => `<div class="pt ${d >= s.d ? "hit" : ""}">${s.n}<br>day ${s.d}</div>`)
+      .join("");
+    let i = -1;
+    steps.forEach((s, k) => {
+      if (d >= s.d) i = k;
+    });
+    if (i < 0) {
+      $("subj").textContent = "No reminder yet";
+      $("body").textContent = "Nothing is sent until day 3.";
+      $("meta").textContent = "Clients with a paid-in-full history skip the first step.";
+    } else {
+      $("subj").textContent = steps[i].n + " (day " + steps[i].d + ")";
+      $("body").textContent = copy[tone][i];
+      $("meta").textContent = "Sent 09:00 in the client timezone, never on weekends.";
+    }
+  }
+  $("r").oninput = draw;
+  document.querySelectorAll("#tone button").forEach(
+    (b) =>
+      (b.onclick = () => {
+        tone = b.dataset.t;
+        document.querySelectorAll("#tone button").forEach((x) => x.classList.toggle("on", x === b));
+        draw();
+      }),
+  );
+  draw();
+</script>
