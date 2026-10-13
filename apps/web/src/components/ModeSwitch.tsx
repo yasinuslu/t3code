@@ -43,7 +43,7 @@ export function ModeShortcuts() {
 
 /**
  * The switch between Grow, the classic Manager and normal T3. Fixed at the top
- * centre of the window so it sits in the same spot in every mode, above Home.
+ * centre of the page area so it sits in the same spot in every mode, above Home.
  */
 export function ModeSwitch() {
   const mode = useAppMode();
@@ -51,7 +51,7 @@ export function ModeSwitch() {
 
   return (
     <div
-      className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-1/2 z-50 flex h-[var(--workspace-topbar-height)] -translate-x-1/2 items-center [-webkit-app-region:no-drag]"
+      className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-(--mode-switch-center) z-50 flex h-[var(--workspace-topbar-height)] -translate-x-1/2 items-center [-webkit-app-region:no-drag]"
       data-mode-switch=""
     >
       <ToggleGroup

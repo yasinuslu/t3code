@@ -263,7 +263,8 @@ export const ChatHeader = memo(function ChatHeader({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
+        // Stops short of the mode switch at the window's centre (see index.css).
+        "box-content flex min-w-0 max-w-[max(var(--mode-switch-clear),8rem)] flex-1 items-center gap-2 sm:gap-3",
         embedded ? "pr-3" : rightPanelOpen ? "pr-10" : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}

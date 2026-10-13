@@ -139,7 +139,7 @@ export function HomeDashboard() {
             <CompassIcon className="size-4 text-muted-foreground" aria-hidden />
             <h1 className="font-medium text-sm">Home</h1>
             <ManagerProfileSwitcher includeAll onSelect={selectManagerProfile} />
-            <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
+            <span className="hidden min-w-0 max-w-[max(0px,calc(var(--mode-switch-clear)-17rem))] truncate text-muted-foreground text-xs sm:inline">
               {overview.needsMe.length} need you · {overview.working.length} working ·{" "}
               {overview.review.length} to review
             </span>

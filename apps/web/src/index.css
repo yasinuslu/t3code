@@ -2334,3 +2334,26 @@ body:has(.home-overlay) [data-workspace-titlebar-controls]:not(.home-overlay *) 
     transform: scale(0.99);
   }
 }
+
+/* The mode switch is centred on the page area (the window less an expanded sidebar).
+   Header content stops short of it: `--mode-switch-clear` is the room between a
+   header's left edge and the switch. */
+[data-slot="sidebar-wrapper"] {
+  --mode-switch-center: 50vw;
+  --mode-switch-clear: calc(50vw - 7.5rem);
+}
+[data-slot="sidebar-wrapper"][data-sidebar-state="expanded"] {
+  --mode-switch-center: calc((100vw + var(--sidebar-width)) / 2);
+  --mode-switch-clear: calc((100vw - var(--sidebar-width)) / 2 - 7.5rem);
+}
+/* Home covers the sidebar, so its headers start at the window's edge. */
+.home-overlay {
+  --mode-switch-clear: calc(var(--mode-switch-center) - 7.5rem);
+}
+[data-grow-mode="threads"] [data-grow-chat] {
+  --mode-switch-clear: calc(var(--mode-switch-center) - 7.5rem - var(--grow-rail));
+}
+/* Board mode's chat starts right of the switch. */
+[data-grow-mode="board"] [data-grow-chat] {
+  --mode-switch-clear: 100vw;
+}
