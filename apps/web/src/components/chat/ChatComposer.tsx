@@ -114,6 +114,7 @@ import {
   composerDraftHasUserContent,
   composerTargetKey,
   hydrateImagesFromPersisted,
+  composerProviderPick,
   useComposerDraftStore,
   useComposerThreadDraft,
   useEffectiveComposerModelState,
@@ -252,6 +253,7 @@ import {
 } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
+import { type AccountBalancePicker, newThreadAccountGroup } from "./accountBalance.logic";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import {
@@ -1702,7 +1704,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThread,
     promptHistoryMessages,
     isServerThread: _isServerThread,
-    isLocalDraftThread: _isLocalDraftThread,
+    isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
     phase,
@@ -2081,7 +2083,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ),
     [providerStatuses, settings],
   );
-  const selectedProviderByThreadId = composerDraft.activeProvider ?? null;
+  const selectedProviderByThreadId = composerProviderPick(
+    composerDraft,
+    _isServerThread ? activeThread?.modelSelection.instanceId : null,
+  );
   const {
     selectedProviderEntry,
     requestedDriverKind,
@@ -2112,6 +2117,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const selectedInstanceId =
     selectedProviderEntry?.instanceId ?? NO_PROVIDER_MODEL_SELECTION.instanceId;
+  // "Auto balance" is offered on a draft whose provider has accounts to balance;
+  // an unset account selection means auto, same as the launch.
+  const draftAccountSelection = useComposerDraftStore((store) =>
+    draftId ? store.getDraftSession(draftId)?.accountSelection : undefined,
+  );
+  const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
+  const accountGroup = newThreadAccountGroup({
+    isNewThread: isLocalDraftThread && multipleModelSelections === null,
+    codeProfiles: settings.codeProfiles,
+    providers: providerStatuses,
+    instanceId: selectedInstanceId,
+  });
+  const accountBalance: AccountBalancePicker | undefined =
+    accountGroup && draftId
+      ? {
+          instanceIds: accountGroup.map((provider) => provider.instanceId),
+          auto: draftAccountSelection !== "manual",
+          onAuto: () => setDraftThreadContext(draftId, { accountSelection: "auto" }),
+        }
+      : undefined;
   const noProviderAvailable =
     selectedProviderEntry === undefined && multipleModelSelections === null;
   // Before the catalog arrives, every thread resolves to "no provider". Send
@@ -5488,8 +5513,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           : {})}
         onOpenChange={setIsComposerModelPickerOpen}
         getModelDisabledReason={getModelDisabledReason}
-        onInstanceModelChange={(instanceId, model) => {
+        {...(accountBalance ? { accountBalance } : {})}
+        onInstanceModelChange={(instanceId, model, account) => {
           setMultipleModelSelections(null);
+          if (account && draftId) setDraftThreadContext(draftId, { accountSelection: account });
           onProviderModelSelect(instanceId, model);
         }}
         onOpenProviderSetup={onOpenProviderSetup}

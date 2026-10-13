@@ -45,6 +45,7 @@ import * as ProjectStore from "./ProjectStore.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as AccountBalancer from "../provider/AccountBalancer.ts";
 import { makeProviderRegistryLayer } from "../provider/testUtils/providerRegistryMock.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ScheduledTasks from "../scheduledTasks/ScheduledTaskService.ts";
@@ -87,6 +88,8 @@ const otherProject = {
   title: "Other",
 } as const;
 
+const secondAccount = ProviderInstanceId.make("codex_2");
+
 const adapter = {
   instanceId: modelSelection.instanceId,
   driver: ProviderDriverKind.make("codex"),
@@ -105,11 +108,16 @@ interface HarnessOptions {
   readonly generateBranchName?: TextGeneration.TextGeneration["Service"]["generateBranchName"];
   readonly serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   readonly providers?: ReadonlyArray<ServerProvider>;
+  /** What account balancing answers for every launch; left out, it keeps the named account. */
+  readonly accountChoice?: AccountBalancer.LaunchAccountChoice;
 }
 
 function makeHarness(options: HarnessOptions = {}) {
   const database = SqlitePersistenceMemory;
-  const registry = ProviderAdapterRegistry.makeLayer([adapter]);
+  const registry = ProviderAdapterRegistry.makeLayer([
+    adapter,
+    { ...adapter, instanceId: secondAccount },
+  ]);
   const orchestrator = makeOrchestratorV2ReplayLayerWithRegistry(
     { name: "thread-launch" },
     registry,
@@ -182,6 +190,10 @@ function makeHarness(options: HarnessOptions = {}) {
     }),
     ServerSettings.layerTest(options.serverSettings),
     makeProviderRegistryLayer(options.providers),
+    Layer.mock(AccountBalancer.AccountBalancer)({
+      chooseForLaunch: ({ selection }) =>
+        Effect.succeed(options.accountChoice ?? { modelSelection: selection }),
+    }),
     options.managedFolders ??
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
@@ -438,6 +450,47 @@ it.effect("returns a visible preparing message while provisioning is still block
     }).pipe(Effect.provide(harness.layer));
   }),
 );
+
+it.effect("starts on the account balancing chose and says which account it replaced", () => {
+  const harness = makeHarness({
+    accountChoice: {
+      modelSelection: { ...modelSelection, instanceId: secondAccount },
+      replaced: { from: "Codex", to: "Codex 2", limitedFor: 3 * 60 * 60 * 1000 },
+    },
+  });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const launched = yield* launches.launch(
+      launchInput({
+        command: "command:launch:balanced",
+        thread: "thread:launch:balanced",
+        message: "Build the feature",
+      }),
+    );
+    const projection = yield* threads.getThreadProjection(launched.threadId);
+    assert.equal(projection.thread.modelSelection.instanceId, secondAccount);
+    assert.equal(projection.runs[0]?.providerInstanceId, secondAccount);
+    assert.deepEqual(
+      projection.turnItems
+        .filter((item) => item.type === "system_notice")
+        .map((item) => [item.runId, item.message]),
+      [
+        [
+          projection.runs[0]?.id ?? null,
+          "Started on Codex 2 instead of Codex: Codex is limited for 3h 0m.",
+        ],
+      ],
+    );
+
+    // A manager chat is launched outside balancing and keeps the account it names.
+    const pinned = yield* launches.launch({
+      ...launchInput({ command: "command:launch:pinned", thread: "thread:launch:pinned" }),
+      accountBalance: "off",
+    });
+    assert.equal(pinned.projection.thread.modelSelection.instanceId, modelSelection.instanceId);
+  }).pipe(Effect.provide(harness.layer));
+});
 
 it.effect("provisions independent launches concurrently instead of behind a global semaphore", () =>
   Effect.gen(function* () {

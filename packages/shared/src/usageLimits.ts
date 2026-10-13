@@ -542,6 +542,47 @@ export function formatResetsIn(window: ServerProviderUsageWindow, now: number): 
   return resetsAt <= now ? "resets now" : `resets in ${formatDuration(resetsAt - now)}`;
 }
 
+/**
+ * Claude names a weekly bucket that belongs to one model `seven_day_<model>`
+ * (`seven_day_opus`); every other window counts against the whole account.
+ */
+const MODEL_SCOPED_WINDOW_PREFIX = "seven_day_";
+
+/** Whether the window counts against `model`; with no model, only account-wide windows do. */
+export function windowAppliesToModel(
+  window: ServerProviderUsageWindow,
+  model: string | undefined,
+): boolean {
+  if (!window.id.startsWith(MODEL_SCOPED_WINDOW_PREFIX)) return true;
+  const scope = window.id.slice(MODEL_SCOPED_WINDOW_PREFIX.length).split("_")[0];
+  return model !== undefined && scope !== undefined && model.toLowerCase().includes(scope);
+}
+
+/**
+ * The exhausted window that keeps `model` from running on this account until
+ * it resets, or null when the account has room. With several, the one that
+ * resets last. A window without a future reset time never counts: nothing
+ * says when the account would be usable again.
+ */
+export function exhaustedLimitWindow(
+  limits: ServerProviderUsageLimits | undefined,
+  model: string | undefined,
+  now: number,
+): ServerProviderUsageWindow | null {
+  let blocking: ServerProviderUsageWindow | null = null;
+  let blockingReset = 0;
+  for (const window of limits?.windows ?? []) {
+    const resetsAt = resetMillis(window);
+    if (window.usedPercent < 100 || resetsAt === null || resetsAt <= now) continue;
+    if (!windowAppliesToModel(window, model)) continue;
+    if (resetsAt > blockingReset) {
+      blocking = window;
+      blockingReset = resetsAt;
+    }
+  }
+  return blocking;
+}
+
 /** Limit commands are served by T3 from the same snapshots as Usage → Limits. */
 export const USAGE_LIMITS_COMMAND = {
   name: "usage-limits",

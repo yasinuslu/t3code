@@ -1982,6 +1982,9 @@ const makeWsRpcLayer = (
                     ? {}
                     : { generateTitle: input.generateTitle }),
                   modelSelection: input.modelSelection,
+                  ...(input.accountBalance === undefined
+                    ? {}
+                    : { accountBalance: input.accountBalance }),
                   runtimeMode: input.runtimeMode,
                   interactionMode: input.interactionMode,
                   workspaceStrategy: input.workspaceStrategy,

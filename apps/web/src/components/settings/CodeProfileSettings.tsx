@@ -1,21 +1,41 @@
 import {
   ProviderDriverKind,
   type CodeProfile,
+  type CodeProfileBalancedAccount,
+  type ProviderInstanceId,
   type ServerProviderCodeProfile,
 } from "@t3tools/contracts";
-import { CopyIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, CopyIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
+import {
+  isProviderInstancePickerVisible,
+  type ProviderInstanceEntry,
+} from "../../providerInstances";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
 import { RefreshIcon } from "../ui/refresh-icon";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  addBalancedAccount,
+  moveBalancedAccount,
+  profileWith,
+  removeBalancedAccount,
+  setBalancedAccountModel,
+  setBalancedAccountWeight,
+  setBalancingEnabled,
+  setBalancingIncludeManager,
+  splitDirs,
+} from "./CodeProfileSettings.logic";
+import { loadPreferenceForWeight, loadPreferences } from "./LoadBalancingSettings";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { getProviderVersionLabel, PROVIDER_STATUS_STYLES } from "./providerStatus";
@@ -31,27 +51,6 @@ export function codeProfileHeadline(status: ServerProviderCodeProfile | undefine
   }
   if (status.auth.status === "unauthenticated") return "Not authenticated";
   return "Needs attention";
-}
-
-function splitDirs(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map((dir) => dir.trim())
-    .filter((dir) => dir.length > 0);
-}
-
-function profileWith(
-  profile: CodeProfile,
-  patch: { root?: string; configDir?: string; extra?: string[] },
-): CodeProfile {
-  const root = patch.root ?? profile.root;
-  const configDir = patch.configDir ?? profile.claude?.configDir;
-  // A profile written without Claude settings keeps none until a dir is set.
-  if (configDir === undefined) return { root };
-  return {
-    root,
-    claude: { configDir, extraConfigDirs: patch.extra ?? profile.claude?.extraConfigDirs ?? [] },
-  };
 }
 
 function StatusDot({ status }: { readonly status: ServerProviderCodeProfile | undefined }) {
@@ -179,6 +178,226 @@ function LoginCommand({ configDir }: { readonly configDir: string }) {
   );
 }
 
+/** Select value for "no model chosen": the instance's default model is used. */
+const DEFAULT_MODEL_VALUE = "";
+
+function AccountModelSelect({
+  account,
+  entry,
+  onChange,
+}: {
+  readonly account: CodeProfileBalancedAccount;
+  readonly entry: ProviderInstanceEntry | undefined;
+  readonly onChange: (model: string | undefined) => void;
+}) {
+  const models = (entry?.models ?? []).filter((model) => !model.isLegacy);
+  const labelFor = (slug: string) => models.find((model) => model.slug === slug)?.name ?? slug;
+  return (
+    <Select
+      value={account.model ?? DEFAULT_MODEL_VALUE}
+      onValueChange={(value) => onChange(value === null || value === "" ? undefined : value)}
+    >
+      <SelectTrigger
+        size="xs"
+        className="w-36"
+        aria-label={`Model for ${entry?.displayName ?? account.instanceId}`}
+      >
+        <SelectValue>
+          {(value: string | null) =>
+            value === null || value === DEFAULT_MODEL_VALUE ? "Default model" : labelFor(value)
+          }
+        </SelectValue>
+      </SelectTrigger>
+      <SelectPopup align="end" alignItemWithTrigger={false}>
+        <SelectItem value={DEFAULT_MODEL_VALUE}>Default model</SelectItem>
+        {account.model !== undefined && !models.some((model) => model.slug === account.model) ? (
+          <SelectItem value={account.model}>{account.model}</SelectItem>
+        ) : null}
+        {models.map((model) => (
+          <SelectItem key={model.slug} value={model.slug}>
+            {model.name}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
+function AccountPreferenceSelect({
+  account,
+  label,
+  onChange,
+}: {
+  readonly account: CodeProfileBalancedAccount;
+  readonly label: string;
+  readonly onChange: (weight: number) => void;
+}) {
+  return (
+    <Select
+      items={loadPreferences}
+      value={loadPreferenceForWeight(account.weight)}
+      onValueChange={(value) => {
+        if (value !== null) onChange(value);
+      }}
+    >
+      <SelectTrigger size="xs" className="w-28" aria-label={`${label} preference`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectPopup align="end" alignItemWithTrigger={false}>
+        {loadPreferences.map(({ value, label: optionLabel }) => (
+          <SelectItem key={value} value={value}>
+            {optionLabel}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
+function BalancedAccountIcon({ entry }: { readonly entry: ProviderInstanceEntry | undefined }) {
+  if (!entry) return <span className="size-5 shrink-0" aria-hidden />;
+  return (
+    <ProviderInstanceIcon
+      driverKind={entry.driverKind}
+      displayName={entry.displayName}
+      accentColor={entry.accentColor}
+      acpRegistryAgentId={entry.acpRegistryAgentId}
+      acpRegistryIconUrl={entry.acpRegistryIconUrl}
+      className="size-5"
+      iconClassName="size-4"
+    />
+  );
+}
+
+/** The accounts of one profile: order, preference, fallback model, and adding more. */
+function BalancedAccountsRow({
+  profile,
+  instances,
+  onChange,
+}: {
+  readonly profile: CodeProfile;
+  readonly instances: ReadonlyArray<ProviderInstanceEntry>;
+  readonly onChange: (profile: CodeProfile) => void;
+}) {
+  const accounts = profile.accountBalancing?.accounts ?? [];
+  const byId = new Map(instances.map((entry) => [entry.instanceId, entry] as const));
+  const addable = instances.filter(
+    (entry) =>
+      isProviderInstancePickerVisible(entry) &&
+      !accounts.some((account) => account.instanceId === entry.instanceId),
+  );
+  return (
+    <SettingsRow
+      title="Accounts"
+      description="Other providers are used in this order once every account of a thread's own provider is limited."
+      control={
+        <div className="w-44 max-w-full">
+          <Select
+            value={null}
+            onValueChange={(value) => {
+              if (value !== null)
+                onChange(addBalancedAccount(profile, value as ProviderInstanceId));
+            }}
+          >
+            <SelectTrigger size="sm" aria-label="Add account" disabled={addable.length === 0}>
+              <SelectValue>{() => "Add account"}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              {addable.map((entry) => (
+                <SelectItem key={entry.instanceId} value={entry.instanceId}>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <BalancedAccountIcon entry={entry} />
+                    <span className="truncate">{entry.displayName}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+      }
+    >
+      {accounts.length === 0 ? (
+        <p className="pb-2 text-xs text-muted-foreground">No accounts yet.</p>
+      ) : (
+        <ol className="pb-1">
+          {accounts.map((account, index) => {
+            const entry = byId.get(account.instanceId);
+            const name = entry?.displayName ?? account.instanceId;
+            // Same-provider accounts keep the thread's model; only other
+            // providers need one, and Claude is what a profile configures.
+            const showModel =
+              account.model !== undefined ||
+              (entry !== undefined && entry.driverKind !== CLAUDE_DRIVER);
+            return (
+              <li
+                key={account.instanceId}
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5"
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <BalancedAccountIcon entry={entry} />
+                  <span className="min-w-0 truncate text-sm text-foreground">{name}</span>
+                  {entry === undefined ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">missing</span>
+                  ) : !entry.enabled ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">disabled</span>
+                  ) : null}
+                </span>
+                <AccountPreferenceSelect
+                  account={account}
+                  label={name}
+                  onChange={(weight) =>
+                    onChange(setBalancedAccountWeight(profile, account.instanceId, weight))
+                  }
+                />
+                {showModel ? (
+                  <AccountModelSelect
+                    account={account}
+                    entry={entry}
+                    onChange={(model) =>
+                      onChange(setBalancedAccountModel(profile, account.instanceId, model))
+                    }
+                  />
+                ) : null}
+                <div className="flex shrink-0 items-center">
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    disabled={index === 0}
+                    onClick={() => onChange(moveBalancedAccount(profile, account.instanceId, -1))}
+                    aria-label={`Move ${name} up`}
+                  >
+                    <ArrowUpIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    disabled={index === accounts.length - 1}
+                    onClick={() => onChange(moveBalancedAccount(profile, account.instanceId, 1))}
+                    aria-label={`Move ${name} down`}
+                  >
+                    <ArrowDownIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost-destructive"
+                    onClick={() => onChange(removeBalancedAccount(profile, account.instanceId))}
+                    aria-label={`Remove ${name}`}
+                  >
+                    <XIcon />
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </SettingsRow>
+  );
+}
+
 /**
  * Editor for one code profile, or a draft profile when `name` is undefined.
  * Root and Claude config dir are required; an edit that clears either is not saved.
@@ -189,6 +408,7 @@ export function CodeProfileEditor({
   status,
   version,
   existingNames,
+  instances,
   readOnly,
   isRefreshing,
   onSave,
@@ -200,6 +420,8 @@ export function CodeProfileEditor({
   readonly status: ServerProviderCodeProfile | undefined;
   readonly version: string | null;
   readonly existingNames: ReadonlyArray<string>;
+  /** The environment's provider instances, for the balancing list. */
+  readonly instances: ReadonlyArray<ProviderInstanceEntry>;
   readonly readOnly: boolean;
   readonly isRefreshing: boolean;
   readonly onSave: (name: string, profile: CodeProfile) => void;
@@ -405,6 +627,38 @@ export function CodeProfileEditor({
             />
           }
         />
+        <SettingsRow
+          title="Account balancing"
+          description="New threads start on the account with the most quota left. A thread that hits a limit moves to the next account and continues."
+          control={
+            <Switch
+              checked={profile.accountBalancing?.enabled ?? false}
+              onCheckedChange={(checked) => onSave(name, setBalancingEnabled(profile, checked))}
+              aria-label="Balance threads across accounts"
+            />
+          }
+        />
+        {profile.accountBalancing?.enabled ? (
+          <>
+            <BalancedAccountsRow
+              profile={profile}
+              instances={instances}
+              onChange={(next) => onSave(name, next)}
+            />
+            <SettingsRow
+              title="Also move the manager thread"
+              control={
+                <Switch
+                  checked={profile.accountBalancing.includeManager}
+                  onCheckedChange={(checked) =>
+                    onSave(name, setBalancingIncludeManager(profile, checked))
+                  }
+                  aria-label="Also move the manager thread"
+                />
+              }
+            />
+          </>
+        ) : null}
       </div>
     </SettingsSection>
   );

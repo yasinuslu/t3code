@@ -5,6 +5,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
+import * as AccountFailoverReactor from "./orchestration-v2/AccountFailoverReactor.ts";
 import * as PreviewLinkReportReactor from "./orchestration-v2/PreviewLinkReportReactor.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
@@ -681,6 +682,14 @@ const makeRoutesLayer = Layer.mergeAll(
   McpHttpServer.layer.pipe(
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
   ),
+  // Started beside the routes because it asks BrainstormService which threads
+  // are managers.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* AccountFailoverReactor.AccountFailoverReactor;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(AccountFailoverReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
   // Last, so no route layer can replace the server's one TracerDisabledWhen.
   untracedRequestsLayer,
 ).pipe(

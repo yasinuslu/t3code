@@ -10,7 +10,8 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
-import { ModelPickerSidebar } from "./ModelPickerSidebar";
+import { ModelPickerSidebar, type ModelPickerRailSelection } from "./ModelPickerSidebar";
+import type { AccountBalancePicker, AccountSelection } from "./accountBalance.logic";
 import { getProviderStatusMessage, hasProviderSetup } from "./ProviderStatusBanner";
 import {
   modelPickerLegacySectionKey,
@@ -117,13 +118,16 @@ export function shouldOfferModelPickerSetup(
 
 export function adjacentModelPickerProvider(input: {
   entries: ReadonlyArray<ProviderInstanceEntry>;
-  selectedInstanceId: ProviderInstanceId | "favorites";
+  selectedInstanceId: ModelPickerRailSelection;
   direction: 1 | -1;
   disabledInstanceIds: ReadonlySet<ProviderInstanceId> | undefined;
   selectableUnavailableInstanceIds: ReadonlySet<ProviderInstanceId> | undefined;
+  /** The rail has an "Auto balance" entry right after Favorites. */
+  hasAutoBalance?: boolean;
 }) {
-  const providers: Array<ProviderInstanceId | "favorites"> = [
+  const providers: Array<ModelPickerRailSelection> = [
     "favorites",
+    ...(input.hasAutoBalance ? (["auto"] as const) : []),
     ...input.entries
       .filter(
         (entry) =>
@@ -183,7 +187,17 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onRequestClose?: () => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
-  onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  /**
+   * Opt-in "Auto balance" rail entry for a draft thread whose provider has
+   * accounts to balance. A pick made under it reports `account: "auto"`, a
+   * pick under one of those accounts reports `"manual"`.
+   */
+  accountBalance?: AccountBalancePicker;
+  onInstanceModelChange: (
+    instanceId: ProviderInstanceId,
+    model: string,
+    account?: AccountSelection,
+  ) => void;
 }) {
   const {
     keybindings: providedKeybindings,
@@ -249,19 +263,24 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       activeEntry,
       modelOptionsByInstance.get(props.activeInstanceId) ?? [],
     );
-  const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | "favorites">(
-    () => {
-      if (
-        props.lockedProvider !== null ||
-        activeInstanceHasSelectableUnavailableModel ||
-        activeInstanceNeedsSetup
-      ) {
-        // Keep the active instance visible when it is locked or needs setup.
-        return props.activeInstanceId;
-      }
-      return favorites.length > 0 ? "favorites" : props.activeInstanceId;
-    },
-  );
+  const accountBalance = props.accountBalance;
+  const [selectedInstanceId, setSelectedInstanceId] = useState<ModelPickerRailSelection>(() => {
+    if (accountBalance?.auto) {
+      return "auto";
+    }
+    if (
+      props.lockedProvider !== null ||
+      activeInstanceHasSelectableUnavailableModel ||
+      activeInstanceNeedsSetup
+    ) {
+      // Keep the active instance visible when it is locked or needs setup.
+      return props.activeInstanceId;
+    }
+    return favorites.length > 0 ? "favorites" : props.activeInstanceId;
+  });
+  // "Auto balance" lists the composer's own account; its siblings share the driver and models.
+  const listedInstanceId =
+    selectedInstanceId === "auto" ? props.activeInstanceId : selectedInstanceId;
   const [expandedLegacyInstances, setExpandedLegacyInstances] = useState(
     () =>
       new Set<ProviderInstanceId>(
@@ -281,13 +300,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   }, []);
 
   const handleSelectInstance = useCallback(
-    (instanceId: ProviderInstanceId | "favorites") => {
+    (instanceId: ModelPickerRailSelection) => {
       setSelectedInstanceId(instanceId);
+      if (instanceId === "auto") accountBalance?.onAuto();
       window.requestAnimationFrame(() => {
         focusSearchInput();
       });
     },
-    [focusSearchInput],
+    [accountBalance, focusSearchInput],
   );
 
   useLayoutEffect(() => {
@@ -521,12 +541,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (selectedInstanceId === "favorites") {
         result = result.filter((m) => favoritesSet.has(providerModelKey(m.instanceId, m.slug)));
       } else {
-        result = result.filter((m) => m.instanceId === selectedInstanceId);
+        result = result.filter((m) => m.instanceId === listedInstanceId);
       }
     } else if (selectedInstanceId === "favorites") {
       result = result.filter((m) => favoritesSet.has(providerModelKey(m.instanceId, m.slug)));
     } else {
-      result = result.filter((m) => m.instanceId === selectedInstanceId);
+      result = result.filter((m) => m.instanceId === listedInstanceId);
     }
 
     return sortProviderModelItems(result, {
@@ -539,13 +559,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     flatModels,
     instanceOrder,
     matchesLockedProvider,
+    listedInstanceId,
     props.lockedProvider,
     searchQuery,
     selectedInstanceId,
   ]);
 
   const legacySection = useMemo(() => {
-    if (isSearching || selectedInstanceId === "favorites") {
+    if (isSearching || listedInstanceId === "favorites") {
       return null;
     }
     const currentModels = filteredModels.filter((model) => !model.isLegacy);
@@ -554,12 +575,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       return null;
     }
     return {
-      key: modelPickerLegacySectionKey(selectedInstanceId),
+      key: modelPickerLegacySectionKey(listedInstanceId),
       currentModels,
       legacyModels,
-      isExpanded: expandedLegacyInstances.has(selectedInstanceId),
+      isExpanded: expandedLegacyInstances.has(listedInstanceId),
     };
-  }, [expandedLegacyInstances, filteredModels, isSearching, selectedInstanceId]);
+  }, [expandedLegacyInstances, filteredModels, isSearching, listedInstanceId]);
 
   const visibleModels = useMemo(() => {
     if (!legacySection) {
@@ -572,7 +593,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   }, [filteredModels, legacySection]);
 
   const selectedEntry =
-    selectedInstanceId === "favorites" ? undefined : entryByInstanceId.get(selectedInstanceId);
+    listedInstanceId === "favorites" ? undefined : entryByInstanceId.get(listedInstanceId);
   const providerSetupEntries =
     !isSearching && props.onOpenProviderSetup
       ? instanceEntries.filter(
@@ -621,16 +642,26 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         if (additive && onToggleModel) {
           onToggleModel(instanceId, resolvedModel);
         } else {
-          onInstanceModelChange(instanceId, resolvedModel);
+          onInstanceModelChange(
+            instanceId,
+            resolvedModel,
+            accountBalance?.instanceIds.includes(instanceId)
+              ? selectedInstanceId === "auto"
+                ? "auto"
+                : "manual"
+              : undefined,
+          );
         }
       }
     },
     [
+      accountBalance,
       entryByInstanceId,
       getModelDisabledReason,
       modelOptionsByInstance,
       onInstanceModelChange,
       onToggleModel,
+      selectedInstanceId,
     ],
   );
 
@@ -768,6 +799,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         const next = adjacentModelPickerProvider({
           entries: sidebarInstanceEntries,
           selectedInstanceId,
+          hasAutoBalance: accountBalance !== undefined,
           direction: command === "modelPicker.nextProvider" ? 1 : -1,
           disabledInstanceIds: lockedDisabledInstanceIds,
           selectableUnavailableInstanceIds,
@@ -800,6 +832,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       window.removeEventListener("keydown", onWindowKeyDown, true);
     };
   }, [
+    accountBalance,
     handleModelSelect,
     handleSelectInstance,
     keybindings,
@@ -842,6 +875,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             onFocusSearch={focusSearchInput}
             instanceEntries={sidebarInstanceEntries}
             showFavorites
+            {...(accountBalance
+              ? {
+                  autoBalanceTooltip: `Auto balance: ${accountBalance.instanceIds
+                    .map(
+                      (instanceId) => entryByInstanceId.get(instanceId)?.displayName ?? instanceId,
+                    )
+                    .join(", ")}`,
+                }
+              : {})}
             {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
             {...(lockedDisabledInstanceIds
               ? {

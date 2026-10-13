@@ -4,6 +4,7 @@ import {
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { ScaleIcon } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -11,7 +12,9 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ChatGptSharingControl } from "./ChatGptSharingControl";
+import type { AccountBalancePicker, AccountSelection } from "./accountBalance.logic";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { providerLimitHint } from "./providerLimitHint";
 import {
   ModelEsque,
   getTriggerDisplayModelLabel,
@@ -56,7 +59,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   onOpenChange?: (open: boolean) => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
-  onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  /**
+   * Opt-in: offers "Auto balance" across the provider's accounts. Only a
+   * draft thread in a project whose code profile balances accounts passes it.
+   */
+  accountBalance?: AccountBalancePicker;
+  onInstanceModelChange: (
+    instanceId: ProviderInstanceId,
+    model: string,
+    account?: AccountSelection,
+  ) => void;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
@@ -150,9 +162,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     };
   }, [isMenuOpen]);
 
-  const handleInstanceModelChange = (instanceId: ProviderInstanceId, model: string) => {
+  const handleInstanceModelChange = (
+    instanceId: ProviderInstanceId,
+    model: string,
+    account?: AccountSelection,
+  ) => {
     if (props.disabled) return;
-    props.onInstanceModelChange(instanceId, model);
+    props.onInstanceModelChange(instanceId, model, account);
     setIsMenuOpen(false);
   };
 
@@ -187,9 +203,33 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const allModelNames = selectedEntries
     ? selectedEntries.map((selection) => selection.label).join(", ") || "Choose models"
     : undefined;
-  const triggerTooltipContent = shortcutLabel
+  // Single-selection triggers only; the multi-select aggregate has no one account to blame.
+  const isAutoBalanced =
+    props.accountBalance?.auto === true && !selectedEntries && props.triggerLabel === undefined;
+  // Under Auto balance the active account may be limited while another one runs the thread.
+  const limitHint =
+    activeEntry && !selectedEntries && props.triggerLabel === undefined && !isAutoBalanced
+      ? providerLimitHint(activeEntry.snapshot, props.model)
+      : null;
+  const autoBalanceLabel =
+    isAutoBalanced && props.accountBalance
+      ? `Auto balance: ${props.accountBalance.instanceIds
+          .map(
+            (instanceId) =>
+              props.instanceEntries.find((entry) => entry.instanceId === instanceId)?.displayName ??
+              instanceId,
+          )
+          .join(", ")}`
+      : null;
+  const triggerTooltipBase = shortcutLabel
     ? `${props.triggerLabel ?? allModelNames ?? triggerLabel} · ${shortcutLabel}`
     : (props.triggerLabel ?? allModelNames ?? triggerLabel);
+  const triggerTooltipWithAccount = autoBalanceLabel
+    ? `${autoBalanceLabel} · ${triggerTooltipBase}`
+    : triggerTooltipBase;
+  const triggerTooltipContent = limitHint
+    ? `${triggerTooltipWithAccount} · ${limitHint}`
+    : triggerTooltipWithAccount;
 
   return (
     <Popover
@@ -244,6 +284,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 </span>
               ) : null}
             </span>
+          ) : isAutoBalanced ? (
+            <ScaleIcon
+              aria-hidden="true"
+              className={cn(
+                size === "xs" ? "size-3.5" : "size-4",
+                "shrink-0",
+                props.activeProviderIconClassName,
+              )}
+            />
           ) : activeEntry && props.triggerLabel === undefined ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
@@ -278,6 +327,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <Badge variant="outline" size="sm">
               Unavailable
             </Badge>
+          ) : limitHint ? (
+            <Badge variant="warning" size="sm">
+              Limit reached
+            </Badge>
           ) : null}
         </span>
         <span aria-hidden="true" className="flex items-center">
@@ -301,6 +354,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 },
               }
             : {})}
+          {...(props.accountBalance ? { accountBalance: props.accountBalance } : {})}
           lockedProvider={props.lockedProvider}
           lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
           instanceEntries={props.instanceEntries}

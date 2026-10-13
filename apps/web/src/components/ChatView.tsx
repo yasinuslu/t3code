@@ -37,6 +37,7 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
+import { accountBalanceForLaunch } from "./chat/accountBalance.logic";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
 import { Minimize2Icon } from "lucide-react";
@@ -363,6 +364,7 @@ import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
+  composerProviderPick,
   useComposerDraftStore,
   DraftId,
 } from "../composerDraftStore";
@@ -1750,8 +1752,11 @@ export default function ChatView(props: ChatViewProps) {
   const composerInteractionMode = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.interactionMode ?? null,
   );
-  const composerActiveProvider = useComposerDraftStore(
-    (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
+  const composerActiveProvider = useComposerDraftStore((store) =>
+    composerProviderPick(
+      store.getComposerDraft(composerDraftTarget),
+      serverThread?.modelSelection.instanceId,
+    ),
   );
   const composerHasAttachments = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
@@ -9580,6 +9585,15 @@ export default function ChatView(props: ChatViewProps) {
       ctxSelectedModelSelection.options,
     );
 
+    // Auto balance: the server picks between the profile's accounts of this provider.
+    const accountBalance = accountBalanceForLaunch({
+      isNewThread: isLocalDraftThread,
+      accountSelection: draftThread?.accountSelection,
+      codeProfiles: settings.codeProfiles,
+      providers: providerStatuses,
+      instanceId: threadCreateModelSelection.instanceId,
+    });
+
     let failure: AtomCommandResult<unknown, unknown> | null = null;
 
     if (failure === null && isServerThread) {
@@ -9700,6 +9714,7 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
+          ...(accountBalance ? { accountBalance } : {}),
           runtimeMode,
           interactionMode: sendInteractionMode,
           dispatchMode: turnDispatchMode,
@@ -10512,7 +10527,11 @@ export default function ChatView(props: ChatViewProps) {
         nextModelSelection,
         // A complete snapshot: an absent options field means "start from the
         // model default", not "keep the previous model's options".
-        { explicit: true, replaceOptions: true },
+        {
+          explicit: true,
+          replaceOptions: true,
+          ...(isServerThread ? { over: activeThread.modelSelection.instanceId } : {}),
+        },
       );
       setStickyComposerModelSelection(nextModelSelection);
       if (options?.focusComposer !== false) scheduleComposerFocus();
@@ -10520,6 +10539,7 @@ export default function ChatView(props: ChatViewProps) {
     [
       activeThread,
       activeRuntime,
+      isServerThread,
       lockedProvider,
       supportsProviderSwitchingViaHandoff,
       scheduleComposerFocus,

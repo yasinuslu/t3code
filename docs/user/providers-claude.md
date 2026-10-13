@@ -69,6 +69,30 @@ Claude Code holds the turn until that window reopens, so it can keep showing as
 working. Wait for the reset, or stop the turn and continue later. The warning's
 timestamp shows when the displayed wait started.
 
+## Balance threads across accounts
+
+A code profile can spread its threads across several accounts. Open the profile
+under its Claude instance in **Settings > Providers**, turn on **Account
+balancing**, and add the accounts it may use. Accounts that are not listed are
+never used.
+
+Accounts of the same provider share the work. A new thread starts on the one with
+the most usage left in its current windows, weighed by each account's preference:
+**Prefer**, **Normal**, **Less often**, or **Manual only**. Accounts of other
+providers are fallbacks, tried in list order on the model you pick for each.
+
+When a turn stops on a usage limit, the thread moves to the next listed account
+with room and continues there with its context. A note in the thread says where
+it moved and how long the first account stays limited. If no listed account can
+take it, the thread stays where it is and says why. Threads that are running
+normally do not move.
+
+In the composer's model picker, **Auto balance** leaves the account of a new
+thread to T3 Code; choose a specific account to pin it. A new thread that names a
+limited account starts on another one, including threads started by agents and
+scheduled tasks. Mobile has no **Auto balance** entry. The profile's manager
+thread stays on its account unless you turn on **Also move the manager thread**.
+
 ## Skills
 
 Claude skills come from the config directory's `skills` folder and the project's

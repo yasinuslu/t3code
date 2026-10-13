@@ -281,10 +281,8 @@ export const BrowserLinkTarget = Schema.Literals(["system", "app"]);
 export type BrowserLinkTarget = typeof BrowserLinkTarget.Type;
 export const DEFAULT_BROWSER_LINK_TARGET: BrowserLinkTarget = "system";
 
-export const LoadBalancingWeights = Schema.Record(
-  TrimmedNonEmptyString,
-  Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
-);
+export const LoadBalancingWeight = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
+export const LoadBalancingWeights = Schema.Record(TrimmedNonEmptyString, LoadBalancingWeight);
 
 export const DiffColorScheme = Schema.Literals(["red-green", "blue-orange"]);
 
@@ -1224,6 +1222,38 @@ export const CodeProfileClaudeSettings = Schema.Struct({
 export type CodeProfileClaudeSettings = typeof CodeProfileClaudeSettings.Type;
 
 /**
+ * One provider instance a profile's threads may run on. `weight` is how often
+ * it receives threads, on the scale machine load balancing uses (0 never, 50
+ * normal, 100 preferred). A thread keeps its model on an instance of the same
+ * driver (another account of the same provider); on another driver it takes
+ * `model`, or that instance's default model.
+ */
+export const CodeProfileBalancedAccount = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  weight: Schema.optionalKey(LoadBalancingWeight),
+  model: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type CodeProfileBalancedAccount = typeof CodeProfileBalancedAccount.Type;
+
+/**
+ * Account balancing for a profile's threads. A new thread starts on the listed
+ * account of its provider with the most quota left, and a thread that stops on
+ * a usage limit moves to the next usable account and continues. Accounts of
+ * other providers are fallbacks, used in list order once every account of the
+ * thread's own provider is limited. Only listed instances are ever chosen.
+ * The profile's manager thread stays where the user put it unless
+ * `includeManager` is set.
+ */
+export const CodeProfileAccountBalancing = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  accounts: Schema.Array(CodeProfileBalancedAccount).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  includeManager: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+});
+export type CodeProfileAccountBalancing = typeof CodeProfileAccountBalancing.Type;
+
+/**
  * A folder tree, such as `~/code/work`, whose repositories share provider
  * config. A git worktree outside `root` belongs to the profile of its main
  * checkout. Each provider's config is optional, so a profile can name only
@@ -1232,6 +1262,7 @@ export type CodeProfileClaudeSettings = typeof CodeProfileClaudeSettings.Type;
 export const CodeProfile = Schema.Struct({
   root: TrimmedNonEmptyString,
   claude: Schema.optionalKey(CodeProfileClaudeSettings),
+  accountBalancing: Schema.optionalKey(CodeProfileAccountBalancing),
 });
 export type CodeProfile = typeof CodeProfile.Type;
 

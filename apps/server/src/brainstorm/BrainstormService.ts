@@ -752,6 +752,8 @@ export const make = Effect.gen(function* () {
           projectId: project.id,
           title,
           modelSelection: yield* modelSelectionFor(project, snapshot.threads),
+          // The user picks the account a manager chat runs on.
+          accountBalance: "off",
           runtimeMode: resolveProjectSettings(settings, project.id).settings.defaultRuntimeMode,
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
           workspaceStrategy: { type: "root" },

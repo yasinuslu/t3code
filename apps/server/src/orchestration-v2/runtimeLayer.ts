@@ -10,6 +10,7 @@ import { ProviderAuthServiceLive } from "../provider/Layers/ProviderAuthService.
 import { layer as agentSessionImporterLayer } from "../project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
 import { layer as projectServiceLayer } from "../project/ProjectService.ts";
+import * as AccountBalancer from "../provider/AccountBalancer.ts";
 import { layer as projectSetupScriptRunnerLayer } from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import { layer as checkpointCaptureServiceLayer } from "./CheckpointCaptureService.ts";
@@ -242,9 +243,11 @@ export const ProjectSetupScriptRunnerLayerLive = projectSetupScriptRunnerLayer.p
 const managedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(ProjectServiceLayerLive),
 );
+const accountBalancerProvided = AccountBalancer.layer.pipe(Layer.provide(ProjectServiceLayerLive));
 const threadLaunchProvided = threadLaunchServiceLayer.pipe(
   Layer.provide(
     Layer.mergeAll(
+      accountBalancerProvided,
       ProjectServiceLayerLive,
       ProjectSetupScriptRunnerLayerLive,
       managedProjectFoldersProvided,
@@ -311,6 +314,7 @@ export const OrchestrationV2LayerLive = Layer.mergeAll(
 export const OrchestrationV2ProductionLayerLive = Layer.mergeAll(
   OrchestrationV2LayerLive.pipe(Layer.provide(ProjectServiceLayerLive)),
   ProjectServiceLayerLive,
+  accountBalancerProvided,
   managedProjectFoldersProvided,
   threadLaunchProvided,
   threadLifecycleProvided,

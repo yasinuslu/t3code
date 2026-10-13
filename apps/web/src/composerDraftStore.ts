@@ -252,6 +252,7 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   // an entry already encodes "no selection for this instance".
   modelSelectionByProvider: Schema.optionalKey(Schema.Record(ProviderInstanceId, ModelSelection)),
   activeProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
+  activeProviderOver: Schema.optionalKey(ProviderInstanceId),
   // True only when a human picked this selection in the composer. Seeded
   // selections (project default / sticky) leave it unset so later seeds can
   // replace them; legacy entries predate the flag and read as seeded too.
@@ -321,6 +322,7 @@ const PersistedDraftThreadState = Schema.Struct({
   projectId: ProjectId,
   logicalProjectKey: Schema.optionalKey(Schema.String),
   environmentSelection: Schema.optionalKey(Schema.Literals(["auto", "manual"])),
+  accountSelection: Schema.optionalKey(Schema.Literals(["auto", "manual"])),
   loadBalancedEnvironmentId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   createdAt: Schema.String,
   runtimeMode: RuntimeMode,
@@ -406,6 +408,11 @@ export interface ComposerThreadDraftState {
   /** Routing key of the last picked instance (see `modelSelectionByProvider`). */
   activeProvider: ProviderInstanceId | null;
   /**
+   * The instance a started thread was on when `activeProvider` was picked for
+   * it. See `composerProviderPick`.
+   */
+  activeProviderOver?: ProviderInstanceId;
+  /**
    * True only when a human picked the active selection in the composer.
    * Absent/false means seeded (project default / sticky), so later seeds
    * may replace it. Legacy entries predate the flag and read as seeded.
@@ -453,6 +460,8 @@ export interface DraftSessionState {
   projectId: ProjectId;
   logicalProjectKey: string;
   environmentSelection?: "auto" | "manual";
+  /** Which account of the provider runs the first turn; unset means auto. */
+  accountSelection?: "auto" | "manual";
   loadBalancedEnvironmentId?: EnvironmentId | null;
   createdAt: string;
   runtimeMode: RuntimeMode;
@@ -542,6 +551,7 @@ interface ComposerDraftStoreState {
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
       environmentSelection?: "auto" | "manual";
+      accountSelection?: "auto" | "manual";
       loadBalancedEnvironmentId?: EnvironmentId | null;
     },
   ) => void;
@@ -559,6 +569,7 @@ interface ComposerDraftStoreState {
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
       environmentSelection?: "auto" | "manual";
+      accountSelection?: "auto" | "manual";
       loadBalancedEnvironmentId?: EnvironmentId | null;
     },
   ) => void;
@@ -575,6 +586,7 @@ interface ComposerDraftStoreState {
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
       environmentSelection?: "auto" | "manual";
+      accountSelection?: "auto" | "manual";
       loadBalancedEnvironmentId?: EnvironmentId | null;
     },
   ) => void;
@@ -603,6 +615,8 @@ interface ComposerDraftStoreState {
        * thread) rather than a model-only change.
        */
       replaceOptions?: boolean;
+      /** The instance a started thread is on when the user picks for it. */
+      over?: ProviderInstanceId;
     },
   ) => void;
   /** Replace the model options for one or more providers in the draft. */
@@ -1245,6 +1259,21 @@ function legacyToModelSelectionByProvider(
   return result;
 }
 
+/**
+ * The instance the composer has picked for a thread's next message, or null to
+ * follow the thread. A pick for a started thread holds only while the thread
+ * stays on the instance it was picked over: once the thread moves, by a
+ * usage-limit failover or from another device, the composer follows it again.
+ */
+export function composerProviderPick(
+  draft: Pick<ComposerThreadDraftState, "activeProvider" | "activeProviderOver"> | null | undefined,
+  startedOnInstanceId: ProviderInstanceId | null | undefined,
+): ProviderInstanceId | null {
+  const picked = draft?.activeProvider ?? null;
+  if (picked === null || startedOnInstanceId == null) return picked;
+  return draft?.activeProviderOver === startedOnInstanceId ? picked : null;
+}
+
 export function deriveEffectiveComposerModelState(input: {
   draft:
     | Pick<ComposerThreadDraftState, "modelSelectionByProvider" | "activeProvider">
@@ -1585,6 +1614,7 @@ function createDraftThreadState(
     runtimeMode?: RuntimeMode;
     interactionMode?: ProviderInteractionMode;
     environmentSelection?: "auto" | "manual";
+    accountSelection?: "auto" | "manual";
     loadBalancedEnvironmentId?: EnvironmentId | null;
   },
 ): DraftThreadState {
@@ -1614,12 +1644,14 @@ function createDraftThreadState(
       : options.startFromOrigin;
   const environmentSelection =
     options?.environmentSelection ?? existingThread?.environmentSelection;
+  const accountSelection = options?.accountSelection ?? existingThread?.accountSelection;
   return {
     threadId,
     environmentId: projectRef.environmentId,
     projectId: projectRef.projectId,
     logicalProjectKey,
     ...(environmentSelection ? { environmentSelection } : {}),
+    ...(accountSelection ? { accountSelection } : {}),
     ...(options?.loadBalancedEnvironmentId !== undefined
       ? { loadBalancedEnvironmentId: options.loadBalancedEnvironmentId }
       : existingThread?.loadBalancedEnvironmentId !== undefined
@@ -1664,6 +1696,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.projectId === right.projectId &&
     left.logicalProjectKey === right.logicalProjectKey &&
     left.environmentSelection === right.environmentSelection &&
+    left.accountSelection === right.accountSelection &&
     left.loadBalancedEnvironmentId === right.loadBalancedEnvironmentId &&
     left.createdAt === right.createdAt &&
     left.runtimeMode === right.runtimeMode &&
@@ -1823,6 +1856,10 @@ function normalizePersistedDraftThreads(
         ...(candidateDraftThread.environmentSelection === "manual" ||
         candidateDraftThread.environmentSelection === "auto"
           ? { environmentSelection: candidateDraftThread.environmentSelection }
+          : {}),
+        ...(candidateDraftThread.accountSelection === "manual" ||
+        candidateDraftThread.accountSelection === "auto"
+          ? { accountSelection: candidateDraftThread.accountSelection }
           : {}),
         ...(typeof candidateDraftThread.loadBalancedEnvironmentId === "string" &&
         candidateDraftThread.loadBalancedEnvironmentId.length > 0
@@ -2025,6 +2062,7 @@ function normalizePersistedDraftsByThreadId(
     let modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>> = {};
     let activeProvider: ProviderInstanceId | null = null;
     let modelSelectionExplicit: true | undefined = undefined;
+    let activeProviderOver: ProviderInstanceId | null = null;
 
     if (
       draftCandidate.modelSelectionByProvider &&
@@ -2036,6 +2074,7 @@ function normalizePersistedDraftsByThreadId(
       >;
       activeProvider = normalizeProviderInstanceId(draftCandidate.activeProvider);
       modelSelectionExplicit = draftCandidate.modelSelectionExplicit === true ? true : undefined;
+      activeProviderOver = normalizeProviderInstanceId(draftCandidate.activeProviderOver);
     } else {
       // v2 or legacy format: migrate
       const normalizedModelOptions =
@@ -2108,6 +2147,7 @@ function normalizePersistedDraftsByThreadId(
         ? {
             modelSelectionByProvider: compactModelSelectionByProvider(modelSelectionByProvider),
             activeProvider,
+            ...(activeProviderOver ? { activeProviderOver } : {}),
             ...(modelSelectionExplicit ? { modelSelectionExplicit: true } : {}),
           }
         : {}),
@@ -2147,6 +2187,7 @@ function stripLegacyModelSeedsFromEmptyDraftSessions(
 
       const {
         activeProvider: _activeProvider,
+        activeProviderOver: _activeProviderOver,
         modelSelectionByProvider: _modelSelectionByProvider,
         modelSelectionExplicit: _modelSelectionExplicit,
         ...retained
@@ -2277,6 +2318,7 @@ export function partializeComposerDraftStoreState(
               draft.modelSelectionByProvider,
             ),
             activeProvider: draft.activeProvider,
+            ...(draft.activeProviderOver ? { activeProviderOver: draft.activeProviderOver } : {}),
             ...(draft.modelSelectionExplicit ? { modelSelectionExplicit: true } : {}),
           }
         : {}),
@@ -2554,6 +2596,9 @@ function toHydratedThreadDraft(
     threadContexts: persistedDraft.threadContexts?.map((record) => ({ ...record })) ?? [],
     modelSelectionByProvider,
     activeProvider,
+    ...(persistedDraft.activeProviderOver
+      ? { activeProviderOver: persistedDraft.activeProviderOver }
+      : {}),
     ...(persistedDraft.modelSelectionExplicit ? { modelSelectionExplicit: true } : {}),
     runtimeMode: persistedDraft.runtimeMode ?? null,
     interactionMode: persistedDraft.interactionMode ?? null,
@@ -2584,6 +2629,9 @@ function toHydratedDraftThreadState(
     startFromOrigin: persistedDraftThread.startFromOrigin,
     ...(persistedDraftThread.environmentSelection
       ? { environmentSelection: persistedDraftThread.environmentSelection }
+      : {}),
+    ...(persistedDraftThread.accountSelection
+      ? { accountSelection: persistedDraftThread.accountSelection }
       : {}),
     ...(persistedDraftThread.loadBalancedEnvironmentId !== undefined
       ? {
@@ -2863,12 +2911,14 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               (options.branch != null || options.worktreePath != null
                 ? "manual"
                 : existing.environmentSelection);
+            const accountSelection = options.accountSelection ?? existing.accountSelection;
             const nextDraftThread: DraftThreadState = {
               threadId: existing.threadId,
               environmentId: nextProjectRef.environmentId,
               projectId: nextProjectRef.projectId,
               logicalProjectKey: existing.logicalProjectKey,
               ...(environmentSelection ? { environmentSelection } : {}),
+              ...(accountSelection ? { accountSelection } : {}),
               loadBalancedEnvironmentId:
                 options.loadBalancedEnvironmentId === undefined
                   ? projectChanged
@@ -2893,6 +2943,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.projectId === existing.projectId &&
               nextDraftThread.logicalProjectKey === existing.logicalProjectKey &&
               nextDraftThread.environmentSelection === existing.environmentSelection &&
+              nextDraftThread.accountSelection === existing.accountSelection &&
               nextDraftThread.loadBalancedEnvironmentId === existing.loadBalancedEnvironmentId &&
               nextDraftThread.createdAt === existing.createdAt &&
               nextDraftThread.runtimeMode === existing.runtimeMode &&
@@ -3164,6 +3215,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (
               Equal.equals(base.modelSelectionByProvider, nextMap) &&
               base.activeProvider === nextActiveProvider &&
+              base.activeProviderOver === opts?.over &&
               (base.modelSelectionExplicit ?? false) === (opts?.explicit === true)
             ) {
               return state;
@@ -3171,11 +3223,16 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             // Last writer defines intent: picker writes mark the selection
             // explicit; seeding writes leave it unset so future seeds can
             // replace it.
-            const { modelSelectionExplicit: _previousExplicit, ...restBase } = base;
+            const {
+              modelSelectionExplicit: _previousExplicit,
+              activeProviderOver: _previousOver,
+              ...restBase
+            } = base;
             const nextDraft: ComposerThreadDraftState = {
               ...restBase,
               modelSelectionByProvider: nextMap,
               activeProvider: nextActiveProvider,
+              ...(opts?.over ? { activeProviderOver: opts.over } : {}),
               ...(opts?.explicit === true ? { modelSelectionExplicit: true as const } : {}),
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
