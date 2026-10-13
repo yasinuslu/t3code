@@ -2,8 +2,9 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ProjectIconOverride } from "@t3tools/contracts";
 import { FolderIcon, PlusIcon } from "lucide-react";
 import type { IconName } from "lucide-react/dynamic";
-import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useState, type WheelEvent } from "react";
 
+import { useMouseThumbButtons } from "~/lib/mouseThumbButtons";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { PROJECT_ICON_COLORS, projectIconColorClassName } from "../../projectIconColors";
@@ -272,36 +273,9 @@ export function useSpaceSwipe(onSwitch: (spaceId: string) => void) {
   };
 }
 
-/**
- * Mouse thumb buttons switch spaces while the pointer is over the sidebar:
- * back (3) to the previous space, forward (4) to the next. Elsewhere they
- * keep their default. Capture phase, and every event of the press is
- * swallowed, so neither sidebar rows nor Chromium's own back/forward
- * handling can act on it; the switch runs once, on mouseup.
- */
+/** Mouse thumb buttons switch spaces while the pointer is over the sidebar. */
 export function useSpaceMouseButtons(onSwitch: (spaceId: string) => void) {
-  const onSwitchRef = useRef(onSwitch);
-  useEffect(() => {
-    onSwitchRef.current = onSwitch;
-  }, [onSwitch]);
-  useEffect(() => {
-    const handle = (event: MouseEvent) => {
-      if (event.button !== 3 && event.button !== 4) return;
-      if (!(event.target instanceof Element) || !event.target.closest("[data-app-sidebar]")) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.type === "mouseup") switchSpaceBy(event.button === 3 ? -1 : 1, onSwitchRef.current);
-    };
-    // Pointer events are left alone: preventing pointerdown would suppress
-    // the mouseup this acts on.
-    const types = ["mousedown", "mouseup", "auxclick"] as const;
-    for (const type of types) window.addEventListener(type, handle, true);
-    return () => {
-      for (const type of types) window.removeEventListener(type, handle, true);
-    };
-  }, []);
+  useMouseThumbButtons("[data-app-sidebar]", (direction) => switchSpaceBy(direction, onSwitch));
 }
 
 /**

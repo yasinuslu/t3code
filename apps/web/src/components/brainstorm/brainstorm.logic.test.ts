@@ -5,7 +5,10 @@ import { ALL_SPACE_ID, initialSpaceState, type Space } from "../../spaceStore";
 import {
   boardGoals,
   brainstormSpacesInput,
+  adjacentManagerProfileChoice,
   goalsOfSpace,
+  MANAGER_PROFILE_ALL,
+  managerProfileChoices,
   membershipChangesToAdopt,
   resolveManagerEnvironmentId,
   resolveManagerEnvironmentIds,
@@ -212,5 +215,26 @@ describe("goalsOfSpace", () => {
     expect(titles({ id: "client-sn", profile: "sn" })).toEqual(["Work"]);
     expect(titles({ id: ALL_SPACE_ID, profile: null })).toEqual(["Personal", "Work"]);
     expect(titles(null)).toEqual(["Personal", "Work"]);
+  });
+});
+
+describe("adjacentManagerProfileChoice", () => {
+  const choices = managerProfileChoices(["yu", "sn"], true);
+  it("lists All last, and only when offered", () => {
+    expect(choices).toEqual(["yu", "sn", MANAGER_PROFILE_ALL]);
+    expect(managerProfileChoices(["yu", "sn"], false)).toEqual(["yu", "sn"]);
+  });
+  it("steps in switcher order and wraps at both ends", () => {
+    expect(adjacentManagerProfileChoice(choices, "yu", 1)).toBe("sn");
+    expect(adjacentManagerProfileChoice(choices, "sn", 1)).toBe(MANAGER_PROFILE_ALL);
+    expect(adjacentManagerProfileChoice(choices, MANAGER_PROFILE_ALL, 1)).toBe("yu");
+    expect(adjacentManagerProfileChoice(choices, "yu", -1)).toBe(MANAGER_PROFILE_ALL);
+  });
+  it("enters the list from either end when nothing is selected", () => {
+    expect(adjacentManagerProfileChoice(choices, null, 1)).toBe("yu");
+    expect(adjacentManagerProfileChoice(choices, null, -1)).toBe(MANAGER_PROFILE_ALL);
+  });
+  it("does nothing with a single segment", () => {
+    expect(adjacentManagerProfileChoice(["yu"], "yu", 1)).toBeNull();
   });
 });

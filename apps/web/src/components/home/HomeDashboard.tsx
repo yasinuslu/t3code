@@ -37,7 +37,10 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
-import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
+import {
+  ManagerProfileSwitcher,
+  useManagerProfileMouseButtons,
+} from "../brainstorm/ManagerProfileSwitcher";
 import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
 import {
   selectManagerProfile,
@@ -98,9 +101,18 @@ export function HomeDashboard() {
   const manager = useEnsureManagerThread();
   const openManagerThreadPage = useOpenManagerThreadPage();
   const projects = useProjects();
+  // Thumb buttons anywhere on Home switch profiles like they switch spaces over the sidebar.
+  useManagerProfileMouseButtons({
+    regionSelector: "[data-home-dashboard-root]",
+    includeAll: true,
+    onSelect: selectManagerProfile,
+  });
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background">
+    <div
+      data-home-dashboard-root=""
+      className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background"
+    >
       {/* Cards sort by profile; phones may not have shown the sidebar that detects them. */}
       <CodeProfileProbes projects={projects} />
       {/* The cards stay one column wide (narrower than two 24rem cards); the manager gets the rest. */}
@@ -250,6 +262,12 @@ function WorkCard(props: {
   const { thread, reason, lastActivityAt } = props.item;
   const look = WORK_REASON_LOOK[reason];
   const projects = useProjects();
+  // Thumb buttons anywhere on Home switch profiles like they switch spaces over the sidebar.
+  useManagerProfileMouseButtons({
+    regionSelector: "[data-home-dashboard-root]",
+    includeAll: true,
+    onSelect: selectManagerProfile,
+  });
   const projectTitle =
     projects.find(
       (project) =>

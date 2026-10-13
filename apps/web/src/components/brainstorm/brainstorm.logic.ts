@@ -194,3 +194,30 @@ export function goalsOfSpace(
   );
   return boardGoals(own, ALL_SPACE_ID);
 }
+
+/** The manager profile switcher's value for All; profile names never contain a colon. */
+export const MANAGER_PROFILE_ALL = ":all";
+
+/** The manager profile switcher's segments, in display order. */
+export function managerProfileChoices(
+  profiles: ReadonlyArray<string>,
+  includeAll: boolean,
+): ReadonlyArray<string> {
+  return includeAll ? [...profiles, MANAGER_PROFILE_ALL] : profiles;
+}
+
+/**
+ * The segment a thumb button steps to from `current`, wrapping at both ends
+ * like the sidebar's space switcher. From nothing selected, forward is the
+ * first segment and back the last.
+ */
+export function adjacentManagerProfileChoice(
+  choices: ReadonlyArray<string>,
+  current: string | null,
+  direction: 1 | -1,
+): string | null {
+  if (choices.length < 2) return null;
+  const index = current === null ? -1 : choices.indexOf(current);
+  if (index === -1) return (direction === 1 ? choices[0] : choices.at(-1)) ?? null;
+  return choices[(index + direction + choices.length) % choices.length] ?? null;
+}
