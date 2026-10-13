@@ -22,7 +22,7 @@ import {
   type PreviewLinkStatePresentation,
 } from "./threadPreviewLinkChip.logic";
 import { showThreadPreviewLinkContextMenu } from "./threadPreviewLinkContextMenu";
-import { useOpenThreadPreviewLink } from "./useOpenThreadPreviewLink";
+import { openPreviewLinkExternally, useOpenThreadPreviewLink } from "./useOpenThreadPreviewLink";
 
 const DOT_CLASS_NAME: Record<NonNullable<PreviewLinkStatePresentation["dot"]>, string> = {
   running: "bg-success",
@@ -36,6 +36,23 @@ type RemoveLink = (url: string) => void;
 
 /** The chips sit inside clickable rows; nothing they do may activate or drag the row. */
 const stopRow = (event: SyntheticEvent) => event.stopPropagation();
+
+/**
+ * Middle-click opens a link in the system browser, like middle-clicking a link in a browser. The
+ * mousedown default starts autoscroll and the auxclick default is the Linux primary paste, so both
+ * are cancelled. A removed preview has nothing to open, as with a left click.
+ */
+const middleClickOpensExternally = (url: string, state: ThreadPreviewLinkState) => ({
+  onMouseDown: (event: MouseEvent) => {
+    if (event.button === 1) event.preventDefault();
+  },
+  onAuxClick: (event: MouseEvent) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (state !== "gone") openPreviewLinkExternally(url);
+  },
+});
 
 /**
  * A thread's preview links: the newest as a chip, the rest behind a "+N" that opens a list of
@@ -140,6 +157,7 @@ export function ThreadPreviewLinkList({
               aria-label={[`Open preview ${label}`, presentation.label].filter(Boolean).join(", ")}
               className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
               onClick={() => onOpen(link.url, state)}
+              {...middleClickOpensExternally(link.url, state)}
             >
               <MonitorIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="flex min-w-0 flex-1 flex-col">
@@ -219,6 +237,7 @@ function ThreadPreviewLinkChip({
             onPointerDown={stopRow}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
+            {...middleClickOpensExternally(link.url, state)}
           />
         }
       >
