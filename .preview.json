@@ -1,4 +1,5 @@
 {
-  "run": "bun prototypes/idea-board/serve.ts",
+  "run": "nep t3 preview serve",
+  "startTimeoutSeconds": 300,
   "idleMinutes": 120
 }
