@@ -10,7 +10,16 @@
  * a roving tabindex on the selected one.
  */
 import { type GrowStage } from "@t3tools/contracts";
-import { Columns3Icon, KeyboardIcon, ListIcon, MessagesSquareIcon, PlayIcon } from "lucide-react";
+import {
+  ChevronsUpDownIcon,
+  Columns3Icon,
+  KeyboardIcon,
+  ListIcon,
+  MessagesSquareIcon,
+  PlayIcon,
+  SearchIcon,
+  XIcon,
+} from "lucide-react";
 import { type RefObject, useCallback, useEffect, useRef } from "react";
 
 import { useManagerProfile } from "../../brainstormStore";
@@ -19,9 +28,18 @@ import { useProjects } from "../../state/entities";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { WORK_REASON_LOOK } from "../home/ThreadReportCard";
 import { Button } from "../ui/button";
+import {
+  Combobox,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxSearchInput,
+  ComboboxTrigger,
+} from "../ui/combobox";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
   GROW_MANAGER_KEY,
@@ -36,14 +54,84 @@ import { type GrowLeftMode, useGrowStore } from "./grow.store";
 
 const ALL_PROJECTS = "all";
 
-/** Threads | Board switch, project filter and keyboard help: one line, same in both modes. */
-export function GrowHeader(props: { readonly projects: ReadonlyArray<string> }) {
+/** The search text, owned by the workspace; `firstKey` is the first card still shown. */
+export interface GrowSearch {
+  readonly query: string;
+  readonly setQuery: (query: string) => void;
+  readonly firstKey: string | null;
+}
+
+/**
+ * Same in both modes: Threads | Board switch, project filter and keyboard help
+ * on one line, the search field under it.
+ */
+export function GrowHeader(props: {
+  readonly projects: ReadonlyArray<string>;
+  readonly search: GrowSearch;
+}) {
   return (
-    <div className="flex min-w-0 items-center gap-2" data-grow-header="">
-      <LeftSwitch />
-      <ProjectFilter projects={props.projects} />
-      <KeyboardHelp />
+    <div className="flex min-w-0 flex-col gap-2" data-grow-header="">
+      <div className="flex min-w-0 items-center gap-2">
+        <LeftSwitch />
+        <ProjectFilter projects={props.projects} />
+        <KeyboardHelp />
+      </div>
+      <SearchField search={props.search} />
     </div>
+  );
+}
+
+/**
+ * Filters the list by title and what a card became. `/` in the list focuses
+ * it; Esc leaves it for the list (GrowWorkspace); Enter or Down selects the
+ * first match and goes to the list.
+ */
+function SearchField(props: { readonly search: GrowSearch }) {
+  const { query, setQuery, firstKey } = props.search;
+  const select = useGrowStore((store) => store.select);
+  return (
+    <InputGroup>
+      <InputGroupAddon>
+        <SearchIcon />
+      </InputGroupAddon>
+      <InputGroupInput
+        nativeInput
+        type="text"
+        size="sm"
+        data-grow-search=""
+        aria-label="Search threads"
+        placeholder="Search threads  /"
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== "ArrowDown") return;
+          if (event.nativeEvent.isComposing) return;
+          event.preventDefault();
+          if (firstKey !== null) select(firstKey);
+          const zone = event.currentTarget.closest<HTMLElement>("[data-grow-zone]");
+          window.requestAnimationFrame(() => focusSelectedRow(zone));
+        }}
+      />
+      {query === "" ? null : (
+        <InputGroupAddon align="inline-end">
+          <Button
+            type="button"
+            size="icon-micro"
+            variant="ghost-muted"
+            aria-label="Clear search"
+            onClick={(event) => {
+              setQuery("");
+              event.currentTarget
+                .closest("[data-grow-header]")
+                ?.querySelector<HTMLElement>("[data-grow-search]")
+                ?.focus();
+            }}
+          >
+            <XIcon />
+          </Button>
+        </InputGroupAddon>
+      )}
+    </InputGroup>
   );
 }
 
@@ -60,17 +148,17 @@ function LeftSwitch() {
         if (value === "threads" || value === "board") setLeftMode(value);
       }}
     >
-      <Toggle value="threads" aria-label="Threads" title="Threads (b)">
+      <Toggle value="threads" aria-label="Threads" title="Threads (o)">
         <ListIcon />
       </Toggle>
-      <Toggle value="board" aria-label="Board" title="Board (b)">
+      <Toggle value="board" aria-label="Board" title="Board (i)">
         <Columns3Icon />
       </Toggle>
     </ToggleGroup>
   );
 }
 
-/** One select under the space filter: all projects, or one that has cards. */
+/** Searchable project filter: all projects, or one that has cards. */
 function ProjectFilter(props: { readonly projects: ReadonlyArray<string> }) {
   const project = useGrowStore((store) => store.project);
   const setProject = useGrowStore((store) => store.setProject);
@@ -82,23 +170,43 @@ function ProjectFilter(props: { readonly projects: ReadonlyArray<string> }) {
     ...props.projects.map((key) => ({ value: key, label: titleOf(key) })),
   ];
   const value = project !== null && props.projects.includes(project) ? project : ALL_PROJECTS;
+  const current = items.find((item) => item.value === value) ?? items[0];
   return (
-    <Select
+    <Combobox
       items={items}
-      value={value}
-      onValueChange={(next) => setProject(next === ALL_PROJECTS ? null : next)}
+      autoHighlight
+      itemToStringLabel={(item) => item.label}
+      isItemEqualToValue={(a, b) => a.value === b.value}
+      value={current}
+      onValueChange={(item) => {
+        if (item) setProject(item.value === ALL_PROJECTS ? null : item.value);
+      }}
     >
-      <SelectTrigger size="compact" aria-label="Project" className="min-w-0 flex-1">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectPopup>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
+      <ComboboxTrigger
+        render={
+          <Button
+            variant="outline"
+            size="xs"
+            aria-label="Project"
+            className="min-w-0 flex-1 justify-between"
+          />
+        }
+      >
+        <span className="truncate">{current?.label}</span>
+        <ChevronsUpDownIcon className="opacity-60" />
+      </ComboboxTrigger>
+      <ComboboxPopup align="start" className="max-w-[min(18rem,var(--available-width))]">
+        <ComboboxSearchInput aria-label="Search projects" placeholder="Search projects..." />
+        <ComboboxEmpty>No matching projects.</ComboboxEmpty>
+        <ComboboxList>
+          {(item: (typeof items)[number]) => (
+            <ComboboxItem key={item.value} value={item} hideIndicator>
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxPopup>
+    </Combobox>
   );
 }
 
@@ -106,11 +214,14 @@ const KEY_HELP: ReadonlyArray<readonly [string, string]> = [
   ["j k  or  Up Down", "Move through the list"],
   ["h l  or  Left Right", "Across board columns"],
   ["Ctrl+h  /  Ctrl+l", "Pane to the left / right: list, chat, prototype"],
-  ["Enter  or  i", "Type to this thread"],
+  ["Enter", "Type to this thread"],
+  ["/", "Search the list (Enter picks the first match)"],
   ["Esc", "Back to the list from anywhere, or close Home"],
-  ["b", "Threads or Board"],
+  ["i", "Board"],
+  ["o", "Threads list"],
   ["m", "Manager, and back"],
-  ["p  /  o", "Play / Overview (h l in the prototype pane)"],
+  ["p", "Play this thread's prototype"],
+  ["h  /  l", "Play / Overview, in the prototype pane"],
 ];
 
 function KeyboardHelp() {
@@ -164,7 +275,7 @@ const rowLook = (selected: boolean, variant: "rail" | "card") =>
       : "hover:bg-accent/50",
   );
 const ITEM_BUTTON =
-  "flex min-w-0 flex-1 flex-col gap-0.5 text-start outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring";
+  "flex min-w-0 flex-1 flex-col gap-0.5 text-start outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring";
 
 /** The manager as a pinned row, the same row as a card's. */
 export function ManagerRow(props: {
@@ -236,9 +347,7 @@ export function GrowRow(props: {
           event.currentTarget.focus();
         }}
       >
-        <span className={cn("font-medium", props.variant === "card" ? "line-clamp-2" : "truncate")}>
-          {card.thread.title}
-        </span>
+        <span className="line-clamp-2 font-medium">{card.thread.title}</span>
         <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
           <span
             aria-label={look.label}
@@ -302,12 +411,12 @@ export const composerEditor = () =>
 
 /** Moves focus to the zone's selected row. */
 export function focusSelectedRow(zone: HTMLElement | null) {
-  zone
-    ?.querySelector<HTMLElement>('[data-grow-item][tabindex="0"]')
-    ?.focus({ preventScroll: true });
-  zone
-    ?.querySelector('[data-grow-item][tabindex="0"]')
-    ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  // The selected row can be filtered out by the search; then the first row takes focus.
+  const row =
+    zone?.querySelector<HTMLElement>('[data-grow-item][tabindex="0"]') ??
+    zone?.querySelector<HTMLElement>("[data-grow-item]");
+  row?.focus({ preventScroll: true });
+  row?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 /**
@@ -399,28 +508,31 @@ export function useGrowNav<T extends HTMLElement>(options: {
       return used();
     }
     switch (event.key) {
-      case "Enter":
-      case "i": {
+      case "Enter": {
         if (!onRow) return false;
         const editor = composerEditor();
         if (!editor) return false;
         editor.focus();
         return used();
       }
-      case "b":
-        store.setLeftMode(mode === "threads" ? "board" : "threads");
+      case "i":
+        store.setLeftMode("board");
         return used();
+      case "o":
+        store.setLeftMode("threads");
+        return used();
+      case "/": {
+        const search = ref.current?.querySelector<HTMLElement>("[data-grow-search]");
+        if (!search) return false;
+        search.focus();
+        return used();
+      }
       case "m":
         store.toggleManager();
         return used();
       case "p":
         if (!onCard || !canPlay) return false;
         store.setThingTab("play");
-        store.setLeftMode("threads");
-        return used();
-      case "o":
-        if (!onCard) return false;
-        store.setThingTab("overview");
         store.setLeftMode("threads");
         return used();
       default:
@@ -432,7 +544,7 @@ export function useGrowNav<T extends HTMLElement>(options: {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target !== document.body) return;
-      if (handle(event, false)) focusSelectedRow(ref.current);
+      if (handle(event, false) && event.key !== "/") focusSelectedRow(ref.current);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { isElectron } from "../env";
+import { openHomeOnStartup } from "../homeOverlayStore";
 import { NoProjectsHero } from "../components/NoProjectsHero";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
@@ -55,7 +56,12 @@ function IndexDraftLanding() {
   );
 
   useEffect(() => {
-    if (mostRecentProject === null || startingRef.current) {
+    if (mostRecentProject === null) {
+      return;
+    }
+    // The start page is where the app lands with no thread asked for: Home sits over it.
+    openHomeOnStartup();
+    if (startingRef.current) {
       return;
     }
     startingRef.current = true;

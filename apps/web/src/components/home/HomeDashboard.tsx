@@ -17,7 +17,13 @@ import {
 } from "@t3tools/client-runtime/state/work-overview";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import { CompassIcon, ExternalLinkIcon, MessagesSquareIcon, PlayIcon } from "lucide-react";
+import {
+  CompassIcon,
+  EllipsisIcon,
+  ExternalLinkIcon,
+  MessagesSquareIcon,
+  PlayIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as Schema from "effect/Schema";
 
@@ -37,7 +43,7 @@ import ChatView from "../ChatView";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { Toggle, ToggleGroup } from "../ui/toggle-group";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
 import {
@@ -60,8 +66,9 @@ import {
 } from "./ThreadReportCard";
 
 /** Time labels move on while the page stays open; a coarse tick is enough. */
-const HOME_VIEW_KEY = "t3code:home-view";
-const HomeView = Schema.Literals(["board", "list"]);
+// v2: Grow is the default view; the old stored "list" and "board" values are ignored.
+const HOME_VIEW_KEY = "t3code:home-view:v2";
+const HomeView = Schema.Literals(["grow", "classic"]);
 const CLOCK_TICK_MS = 30_000;
 const OPEN_TASKS_SHOWN = 3;
 
@@ -89,7 +96,7 @@ export function HomeDashboard() {
   }, []);
   const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
-  const [view, setView] = useLocalStorage(HOME_VIEW_KEY, "board", HomeView);
+  const [view, setView] = useLocalStorage(HOME_VIEW_KEY, "grow", HomeView);
   const managerProfile = useManagerProfile();
   // Goals come from the brain of the manager in view.
   const managerEnvironmentId = useManagerEnvironmentId(managerProfile);
@@ -127,7 +134,7 @@ export function HomeDashboard() {
         className={cn(
           "grid min-h-0 flex-1",
           // Grow lays out its own zones, chat included; Classic docks the manager at the right.
-          view === "list" ? "lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]" : "",
+          view === "classic" ? "lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]" : "",
         )}
       >
         {/* Home has its own canvas so the cards read as one board, apart from thread views. */}
@@ -141,35 +148,40 @@ export function HomeDashboard() {
             <CompassIcon className="size-4 text-muted-foreground" aria-hidden />
             <h1 className="font-medium text-sm">Home</h1>
             <ManagerProfileSwitcher includeAll onSelect={selectManagerProfile} />
-            <ToggleGroup
-              aria-label="Home view"
-              className="shrink-0"
-              value={[view]}
-              onValueChange={(next) => {
-                const value = next[0];
-                if (value === "board" || value === "list") setView(value);
-              }}
-            >
-              <Toggle value="board">Grow</Toggle>
-              <Toggle value="list">Classic</Toggle>
-            </ToggleGroup>
             <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
               {overview.needsMe.length} need you · {overview.working.length} working ·{" "}
               {overview.review.length} to review
             </span>
-            {/* Narrow windows have no docked manager; this opens it as a page. */}
-            <Button
-              size="xs"
-              variant="outline"
-              className="ms-auto lg:hidden"
-              data-home-open-manager=""
-              onClick={() => void openManagerThreadPage(managerProfile)}
-            >
-              <MessagesSquareIcon />
-              {managerProfile === null ? "Manager" : `${managerProfile} manager`}
-            </Button>
+            <div className="ms-auto flex shrink-0 items-center gap-1">
+              {/* Narrow windows have no docked manager; this opens it as a page. */}
+              <Button
+                size="xs"
+                variant="outline"
+                className="lg:hidden"
+                data-home-open-manager=""
+                onClick={() => void openManagerThreadPage(managerProfile)}
+              >
+                <MessagesSquareIcon />
+                {managerProfile === null ? "Manager" : `${managerProfile} manager`}
+              </Button>
+              {/* Grow is Home; the old card list is one low-key step away. */}
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button size="icon-xs" variant="ghost-muted" aria-label="More" title="More" />
+                  }
+                >
+                  <EllipsisIcon />
+                </MenuTrigger>
+                <MenuPopup align="end">
+                  <MenuItem onClick={() => setView(view === "grow" ? "classic" : "grow")}>
+                    {view === "grow" ? "Classic list" : "Grow"}
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            </div>
           </WorkspacePageHeader>
-          {view === "board" ? (
+          {view === "grow" ? (
             <GrowWorkspace
               threads={threads}
               now={now}
@@ -226,7 +238,7 @@ export function HomeDashboard() {
             </div>
           )}
         </div>
-        {view === "list" ? <ManagerPane manager={manager} /> : null}
+        {view === "classic" ? <ManagerPane manager={manager} /> : null}
       </div>
     </div>
   );

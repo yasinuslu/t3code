@@ -224,6 +224,22 @@ export function growBoardProjects(board: GrowBoard): ReadonlyArray<string> {
   ];
 }
 
+/**
+ * The cards whose title or "what it became" text contains the query, as the
+ * sidebar's thread search matches titles: case-insensitive substring. A blank
+ * query keeps everything.
+ */
+export function filterGrowBoard(board: GrowBoard, query: string): GrowBoard {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return board;
+  const matches = (card: GrowBoardCard) =>
+    card.thread.title.toLowerCase().includes(needle) ||
+    (card.card?.became ?? "").toLowerCase().includes(needle);
+  return Object.fromEntries(
+    GROW_STAGES.map((stage) => [stage, board[stage].filter(matches)]),
+  ) as unknown as GrowBoard;
+}
+
 /** Every card in rail order: stages in board order, Shelf last, newest first within a stage. */
 export function growRailOrder(board: GrowBoard): ReadonlyArray<GrowBoardCard> {
   return GROW_STAGES.flatMap((stage) => board[stage]);

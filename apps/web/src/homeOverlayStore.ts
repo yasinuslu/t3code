@@ -18,6 +18,18 @@ export const useHomeOverlayStore = create<HomeOverlayStore>()((set) => ({
 }));
 
 export const openHomeOverlay = () => useHomeOverlayStore.getState().setOpen(true);
+
+let openedOnStartup = false;
+
+/**
+ * Home is the default screen: the start page calls this to open it, once per
+ * app load. Later visits to the start page, and closing Home, leave it alone.
+ */
+export function openHomeOnStartup() {
+  if (openedOnStartup) return;
+  openedOnStartup = true;
+  openHomeOverlay();
+}
 export const closeHomeOverlay = () => useHomeOverlayStore.getState().setOpen(false);
 export const toggleHomeOverlay = () => useHomeOverlayStore.getState().toggle();
 

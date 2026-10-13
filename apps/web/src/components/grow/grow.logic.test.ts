@@ -6,6 +6,7 @@ import {
   GROW_MANAGER_KEY,
   IN_USE_LIMIT,
   buildGrowBoard,
+  filterGrowBoard,
   growBoardProjects,
   growBoardStep,
   growCardKey,
@@ -200,5 +201,23 @@ describe("growBoardStep", () => {
     expect(growBoardStep(board, GROW_MANAGER_KEY, "down")).toBe(key("e1"));
     expect(growBoardStep(board, GROW_MANAGER_KEY, "up")).toBe(GROW_MANAGER_KEY);
     expect(growBoardStep(board, key("e1"), "up")).toBe(GROW_MANAGER_KEY);
+  });
+});
+
+describe("filterGrowBoard", () => {
+  it("matches the title or what the card became, ignoring case; blank keeps all", () => {
+    const cards = new Map<string, GrowCard>([
+      [
+        growCardKey({ environmentId: "env" as never, id: ThreadId.make("b") }),
+        { threadId: ThreadId.make("b"), lessons: [], became: "A Piano toy", updatedAt: "x" },
+      ],
+    ]);
+    const board = buildGrowBoard([shell("Alpha"), shell("b"), shell("c")], cards, NOW);
+    const ids = (query: string) =>
+      growRailOrder(filterGrowBoard(board, query)).map((card) => card.thread.id);
+    expect(ids("  ")).toHaveLength(3);
+    expect(ids("alp")).toEqual(["Alpha"]);
+    expect(ids("piano")).toEqual(["b"]);
+    expect(ids("zzz")).toEqual([]);
   });
 });

@@ -29,6 +29,7 @@ import {
 import { type GrowThingTab, useGrowStore } from "./grow.store";
 import {
   GrowHeader,
+  type GrowSearch,
   GrowNavSkeleton,
   GrowRow,
   ManagerRow,
@@ -41,6 +42,7 @@ export function Rail(props: {
   readonly board: GrowBoard;
   readonly selected: string;
   readonly projects: ReadonlyArray<string>;
+  readonly search: GrowSearch;
   readonly ready: boolean;
   readonly canPlay: boolean;
 }) {
@@ -58,13 +60,17 @@ export function Rail(props: {
       onKeyDown={nav.onKeyDown}
       aria-label="Cards"
       data-grow-zone=""
-      className="flex min-h-0 w-60 flex-col gap-2 border-e pe-2 pb-3"
+      className="flex min-h-0 w-full flex-1 flex-col gap-2 border-e pe-2 pb-3"
     >
-      <GrowHeader projects={props.projects} />
+      <GrowHeader projects={props.projects} search={props.search} />
       <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         {!props.ready ? (
           <GrowNavSkeleton />
+        ) : GROW_STAGES.every((stage) => props.board[stage].length === 0) ? (
+          <p className="px-1 text-muted-foreground text-xs">
+            {props.search.query.trim() === "" ? "Nothing here yet" : "No matches"}
+          </p>
         ) : (
           GROW_STAGES.map((stage) => {
             const cards = props.board[stage];
@@ -107,7 +113,7 @@ export function Thing(props: { readonly card: GrowBoardCard; readonly update: Up
   return (
     <section
       aria-label={thread.title}
-      className="flex min-h-0 min-w-0 flex-col gap-2 border-s ps-3 pb-3"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 border-s ps-3 pb-3"
       data-grow-thing={thread.id}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -215,7 +221,7 @@ function PlayPane(props: { readonly links: NonNullable<GrowBoardCard["thread"]["
         title="Prototype"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-pointer-lock allow-downloads"
         allow="fullscreen; clipboard-read; clipboard-write; autoplay; gamepad"
-        className="min-h-0 flex-1 rounded-lg border bg-background"
+        className="min-h-0 flex-1 rounded-lg border bg-background in-data-[grow-resizing]:pointer-events-none"
       />
     </div>
   );

@@ -5,6 +5,17 @@ import { GROW_MANAGER_KEY } from "./grow.logic";
 
 export type GrowLeftMode = "threads" | "board";
 export type GrowThingTab = "play" | "overview";
+/** The panes whose width can be dragged; the chat takes whatever is left. */
+export type GrowPane = "rail" | "thing" | "boardChat";
+
+/** Pixel widths: default, smallest, largest. */
+export const GROW_PANE_SIZES: Readonly<
+  Record<GrowPane, { readonly initial: number; readonly min: number; readonly max: number }>
+> = {
+  rail: { initial: 320, min: 240, max: 560 },
+  thing: { initial: 600, min: 320, max: 1100 },
+  boardChat: { initial: 448, min: 320, max: 900 },
+};
 
 interface GrowStore {
   /** What the left side shows: the thread rail, or the kanban board. */
@@ -17,6 +28,10 @@ interface GrowStore {
   thingTab: GrowThingTab | null;
   /** Project filter (`envId:projectId`); null: all projects. Filters rail and board. */
   project: string | null;
+  /** Dragged pane widths in px. */
+  widths: Record<GrowPane, number>;
+  setWidth: (pane: GrowPane, width: number) => void;
+  resetWidth: (pane: GrowPane) => void;
   setLeftMode: (mode: GrowLeftMode) => void;
   setProject: (project: string | null) => void;
   select: (key: string) => void;
@@ -36,6 +51,14 @@ export const useGrowStore = create<GrowStore>()(
       previousThread: null,
       thingTab: null,
       project: null,
+      widths: {
+        rail: GROW_PANE_SIZES.rail.initial,
+        thing: GROW_PANE_SIZES.thing.initial,
+        boardChat: GROW_PANE_SIZES.boardChat.initial,
+      },
+      setWidth: (pane, width) => set((state) => ({ widths: { ...state.widths, [pane]: width } })),
+      resetWidth: (pane) =>
+        set((state) => ({ widths: { ...state.widths, [pane]: GROW_PANE_SIZES[pane].initial } })),
       setProject: (project) => set({ project }),
       setLeftMode: (leftMode) => set({ leftMode }),
       select: (key) =>
@@ -57,7 +80,8 @@ export const useGrowStore = create<GrowStore>()(
       // v2: round 2 stored a different shape; that state is ignored.
       name: "t3code:grow-focus:v2",
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ leftMode, selected, previousThread, thingTab, project }) => ({
+      partialize: ({ leftMode, selected, previousThread, thingTab, project, widths }) => ({
+        widths,
         project,
         leftMode,
         selected,
