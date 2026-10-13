@@ -36,7 +36,11 @@ function HomeOverlayLayer() {
     const previousFocus = document.activeElement;
     const covered = [...layer.parentElement.children].filter(
       (element): element is HTMLElement =>
-        element !== layer && element instanceof HTMLElement && !element.inert,
+        element !== layer &&
+        element instanceof HTMLElement &&
+        !element.inert &&
+        // The mode switch floats above Home and has to stay clickable.
+        !element.hasAttribute("data-mode-switch"),
     );
     for (const element of covered) element.inert = true;
     return () => {
