@@ -45,6 +45,8 @@ import {
   useManagerProfileMouseButtons,
 } from "../brainstorm/ManagerProfileSwitcher";
 import { GrowBoard } from "../grow/GrowBoard";
+import { GrowDock } from "../grow/GrowDock";
+import { useGrowFocusStore } from "../grow/grow.store";
 import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
 import {
   selectManagerProfile,
@@ -90,6 +92,7 @@ export function HomeDashboard() {
   const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
   const [view, setView] = useLocalStorage(HOME_VIEW_KEY, "board", HomeView);
+  const growFocused = useGrowFocusStore((store) => store.focusedKey !== null);
   const managerProfile = useManagerProfile();
   // Goals come from the brain of the manager in view.
   const managerEnvironmentId = useManagerEnvironmentId(managerProfile);
@@ -127,7 +130,9 @@ export function HomeDashboard() {
         className={cn(
           "grid min-h-0 flex-1",
           view === "board"
-            ? "lg:grid-cols-[minmax(0,1fr)_minmax(22rem,32%)]"
+            ? growFocused
+              ? "lg:grid-cols-[minmax(0,1fr)_minmax(24rem,30%)]"
+              : "lg:grid-cols-[minmax(0,1fr)_minmax(22rem,32%)]"
             : "lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]",
         )}
       >
@@ -225,7 +230,11 @@ export function HomeDashboard() {
             </div>
           )}
         </div>
-        <ManagerPane manager={manager} />
+        {view === "board" ? (
+          <GrowDock threads={threads} manager={<ManagerPane manager={manager} />} />
+        ) : (
+          <ManagerPane manager={manager} />
+        )}
       </div>
     </div>
   );
@@ -265,7 +274,7 @@ function ManagerPane(props: { readonly manager: ReturnType<typeof useEnsureManag
     <section
       aria-label="Manager"
       data-home-manager=""
-      className="hidden min-h-0 min-w-0 flex-col border-s lg:flex"
+      className="hidden min-h-0 min-w-0 flex-1 flex-col border-s lg:flex"
     >
       {manager._tag === "Ready" ? (
         <ChatView

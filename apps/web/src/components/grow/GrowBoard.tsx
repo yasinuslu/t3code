@@ -5,14 +5,13 @@
  * manager or an agent through `grow_update`, or the user here).
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { GROW_STAGES } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon, PlayIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
-import { growEnvironment, useGrowCards } from "../../state/grow";
-import { useAtomCommand } from "../../state/use-atom-command";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useGrowCards } from "../../state/grow";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { ThreadReportBody, WORK_REASON_LOOK, useThreadReport } from "../home/ThreadReportCard";
 import { Badge } from "../ui/badge";
@@ -25,19 +24,17 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { Textarea } from "../ui/textarea";
 import {
   GROW_COLUMN_STAGES,
   GROW_STAGE_DEFS,
   type GrowBoardCard,
-  type GrowPatch,
   buildGrowBoard,
+  growRailOrder,
 } from "./grow.logic";
-
-const AUTOMATIC = "automatic";
-
-type UpdateCard = (card: GrowBoardCard, patch: GrowPatch) => void;
+import { GrowFocus } from "./GrowFocus";
+import { SavedField, StageActions, type UpdateCard, useGrowUpdate } from "./GrowParts";
+import { useGrowFocusStore } from "./grow.store";
+import { useGrowShortcuts } from "./useGrowShortcuts";
 
 export function GrowBoard(props: {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -49,19 +46,27 @@ export function GrowBoard(props: {
     [cards, props.now, props.threads],
   );
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const run = useAtomCommand(growEnvironment.update);
-  const update: UpdateCard = (card, patch) => {
-    void run({
-      environmentId: card.thread.environmentId,
-      input: { threadId: card.thread.id, ...patch },
-    });
-  };
+  const update = useGrowUpdate();
+  // Wide windows focus a card in place; narrow ones keep the detail dialog.
+  const wide = useMediaQuery("lg");
+  const focusedKey = useGrowFocusStore((store) => store.focusedKey);
+  const setFocusedKey = useGrowFocusStore((store) => store.setFocusedKey);
+  const focusedCard = useMemo(
+    () => growRailOrder(board).find((card) => card.key === focusedKey) ?? null,
+    [board, focusedKey],
+  );
+  useGrowShortcuts(board, { enabled: wide, canPlay: focusedCard?.playUrl != null });
+  const choose = (key: string) => (wide ? setFocusedKey(key) : setOpenKey(key));
   const open =
     openKey === null
       ? null
       : (Object.values(board)
           .flat()
           .find((card) => card.key === openKey) ?? null);
+
+  if (wide && focusedKey !== null) {
+    return <GrowFocus board={board} focusedKey={focusedKey} update={update} />;
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 pb-4" data-grow-board="">
@@ -95,7 +100,7 @@ export function GrowBoard(props: {
                       key={card.key}
                       card={card}
                       now={props.now}
-                      onOpen={() => setOpenKey(card.key)}
+                      onOpen={() => choose(card.key)}
                     />
                   ))
                 )}
@@ -123,7 +128,7 @@ export function GrowBoard(props: {
                 size="sm"
                 variant="outline"
                 className="max-w-60"
-                onClick={() => setOpenKey(card.key)}
+                onClick={() => choose(card.key)}
               >
                 <span className="truncate">{card.thread.title}</span>
               </Button>
@@ -203,39 +208,6 @@ function GrowCardView(props: {
   );
 }
 
-/**
- * A text field that saves when focus leaves it. It follows the stored value
- * (an agent may change it) except while the user is typing in it.
- */
-function SavedField(props: {
-  readonly label: string;
-  readonly value: string;
-  readonly onSave: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState(props.value);
-  const [editing, setEditing] = useState(false);
-  const [seen, setSeen] = useState(props.value);
-  if (props.value !== seen && !editing) {
-    setSeen(props.value);
-    setDraft(props.value);
-  }
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="font-medium text-xs">{props.label}</span>
-      <Textarea
-        aria-label={props.label}
-        value={draft}
-        onFocus={() => setEditing(true)}
-        onChange={(event) => setDraft(event.currentTarget.value)}
-        onBlur={() => {
-          setEditing(false);
-          if (draft.trim() !== props.value.trim()) props.onSave(draft);
-        }}
-      />
-    </div>
-  );
-}
-
 function GrowCardDialog(props: {
   readonly card: GrowBoardCard;
   readonly update: UpdateCard;
@@ -307,47 +279,5 @@ function GrowCardDialog(props: {
         </DialogPanel>
       </DialogPopup>
     </Dialog>
-  );
-}
-
-/** The stage's actions from `GROW_STAGE_DEFS`, plus the manual escape hatch. */
-function StageActions(props: { readonly card: GrowBoardCard; readonly update: UpdateCard }) {
-  const { card, update } = props;
-  const stored = card.card?.stage ?? AUTOMATIC;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {GROW_STAGE_DEFS[card.stage].actions.map((action) => (
-        <Button
-          key={action.label}
-          size="sm"
-          variant={action.primary ? "default" : "outline"}
-          onClick={() => update(card, action.patch)}
-        >
-          {action.label}
-        </Button>
-      ))}
-      <span className="ms-auto flex items-center gap-1.5 text-muted-foreground text-xs">
-        Move to
-        <Select
-          value={stored}
-          onValueChange={(value) => {
-            const stage = GROW_STAGES.find((candidate) => candidate === value);
-            update(card, { stage: stage ?? null });
-          }}
-        >
-          <SelectTrigger size="compact" aria-label="Move to">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectPopup>
-            <SelectItem value={AUTOMATIC}>Automatic</SelectItem>
-            {GROW_STAGES.map((stage) => (
-              <SelectItem key={stage} value={stage}>
-                {GROW_STAGE_DEFS[stage].title}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      </span>
-    </div>
   );
 }

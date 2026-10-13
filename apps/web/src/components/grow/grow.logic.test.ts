@@ -2,7 +2,13 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { type GrowCard, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { IN_USE_LIMIT, buildGrowBoard, growCardKey } from "./grow.logic";
+import {
+  IN_USE_LIMIT,
+  buildGrowBoard,
+  growCardKey,
+  growRailOrder,
+  growStepFocus,
+} from "./grow.logic";
 
 const NOW = Date.parse("2026-10-13T12:00:00.000Z");
 
@@ -77,5 +83,44 @@ describe("buildGrowBoard", () => {
       }),
     );
     expect(buildGrowBoard(threads, new Map(), NOW).done).toHaveLength(IN_USE_LIMIT);
+  });
+});
+
+describe("growStepFocus", () => {
+  const preview = [{ url: "http://localhost:1" }];
+  const board = buildGrowBoard(
+    [
+      shell("plain", { createdAt: "2026-10-13T09:00:00.000Z" }),
+      shell("playable", { previewLinks: preview }),
+      shell("shelved"),
+    ],
+    new Map([
+      [
+        growCardKey({ environmentId: "env" as never, id: ThreadId.make("shelved") }),
+        {
+          threadId: ThreadId.make("shelved"),
+          stage: "shelved" as const,
+          lessons: [],
+          updatedAt: "x",
+        },
+      ],
+    ]),
+    NOW,
+  );
+
+  it("orders the rail by stage with the shelf last", () => {
+    expect(growRailOrder(board).map((card) => card.thread.id)).toEqual([
+      "plain",
+      "playable",
+      "shelved",
+    ]);
+  });
+
+  it("starts on the first your-turn card, then steps and stops at the ends", () => {
+    expect(growStepFocus(board, null, 1)).toBe("env:playable");
+    expect(growStepFocus(board, "env:plain", 1)).toBe("env:playable");
+    expect(growStepFocus(board, "env:plain", -1)).toBe("env:plain");
+    expect(growStepFocus(board, "env:shelved", 1)).toBe("env:shelved");
+    expect(growStepFocus(board, "env:gone", -1)).toBe("env:playable");
   });
 });
