@@ -392,6 +392,16 @@ export function summarizeT3ToolCalls(
         `the thread status${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
+    case "grow-update":
+      label = phrase(
+        "Updated",
+        "update",
+        `the Grow board${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
+    case "grow-board":
+      label = phrase("Read", "read", "the Grow board");
+      break;
     case "unlink-preview":
       label = phrase("Unlinked", "unlink", quantity(selected.length, "preview"));
       break;

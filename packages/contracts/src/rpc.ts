@@ -78,6 +78,7 @@ import {
   BrainstormThreadReport,
   BrainstormThreadReportInput,
 } from "./brainstorm.ts";
+import { GrowCard, GrowState, GrowUpdateInput } from "./grow.ts";
 import {
   AgentSessionImportInput,
   AgentSessionImportProjectChangedError,
@@ -377,6 +378,9 @@ export const WS_METHODS = {
   brainstormMutateTasks: "brainstorm.mutateTasks",
   brainstormThreadReport: "brainstorm.threadReport",
   subscribeBrainstorm: "subscribeBrainstorm",
+  growState: "grow.state",
+  growUpdate: "grow.update",
+  subscribeGrow: "subscribeGrow",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
   assetsCreateUrl: "assets.createUrl",
@@ -1244,6 +1248,25 @@ const WsSubscribeBrainstormRpc = Rpc.make(WS_METHODS.subscribeBrainstorm, {
   stream: true,
 });
 
+const WsGrowStateRpc = Rpc.make(WS_METHODS.growState, {
+  payload: Schema.Struct({}),
+  success: GrowState,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsGrowUpdateRpc = Rpc.make(WS_METHODS.growUpdate, {
+  payload: GrowUpdateInput,
+  success: GrowCard,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsSubscribeGrowRpc = Rpc.make(WS_METHODS.subscribeGrow, {
+  payload: Schema.Struct({}),
+  success: GrowState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsAgentSessionsScanRpc = Rpc.make(WS_METHODS.agentSessionsScan, {
   payload: AgentSessionScanInput,
   success: AgentSessionScanResult,
@@ -1893,6 +1916,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsBrainstormMutateTasksRpc,
   WsBrainstormThreadReportRpc,
   WsSubscribeBrainstormRpc,
+  WsGrowStateRpc,
+  WsGrowUpdateRpc,
+  WsSubscribeGrowRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
   WsAssetsCreateUrlRpc,

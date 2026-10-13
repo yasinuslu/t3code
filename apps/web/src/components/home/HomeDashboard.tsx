@@ -19,9 +19,11 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { CompassIcon, ExternalLinkIcon, MessagesSquareIcon, PlayIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import * as Schema from "effect/Schema";
 
 import { useAssetUrlState } from "../../assets/assetUrls";
 import { useHomeThreadShells, useManagerProfile } from "../../brainstormStore";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { useSpaceStore } from "../../spaceStore";
@@ -35,12 +37,14 @@ import ChatView from "../ChatView";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
 import {
   ManagerProfileSwitcher,
   useManagerProfileMouseButtons,
 } from "../brainstorm/ManagerProfileSwitcher";
+import { GrowBoard } from "../grow/GrowBoard";
 import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
 import {
   selectManagerProfile,
@@ -56,6 +60,8 @@ import {
 } from "./ThreadReportCard";
 
 /** Time labels move on while the page stays open; a coarse tick is enough. */
+const HOME_VIEW_KEY = "t3code:home-view";
+const HomeView = Schema.Literals(["board", "list"]);
 const CLOCK_TICK_MS = 30_000;
 const OPEN_TASKS_SHOWN = 3;
 
@@ -83,6 +89,7 @@ export function HomeDashboard() {
   }, []);
   const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
+  const [view, setView] = useLocalStorage(HOME_VIEW_KEY, "board", HomeView);
   const managerProfile = useManagerProfile();
   // Goals come from the brain of the manager in view.
   const managerEnvironmentId = useManagerEnvironmentId(managerProfile);
@@ -116,7 +123,14 @@ export function HomeDashboard() {
       {/* Cards sort by profile; phones may not have shown the sidebar that detects them. */}
       <CodeProfileProbes projects={projects} />
       {/* The cards stay one column wide (narrower than two 24rem cards); the manager gets the rest. */}
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]">
+      <div
+        className={cn(
+          "grid min-h-0 flex-1",
+          view === "board"
+            ? "lg:grid-cols-[minmax(0,1fr)_minmax(22rem,32%)]"
+            : "lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]",
+        )}
+      >
         {/* Home has its own canvas so the cards read as one board, apart from thread views. */}
         <div className="flex min-h-0 min-w-0 flex-col bg-muted/40" data-home-dashboard="">
           <WorkspacePageHeader
@@ -128,6 +142,18 @@ export function HomeDashboard() {
             <CompassIcon className="size-4 text-muted-foreground" aria-hidden />
             <h1 className="font-medium text-sm">Home</h1>
             <ManagerProfileSwitcher includeAll onSelect={selectManagerProfile} />
+            <ToggleGroup
+              aria-label="Home view"
+              className="shrink-0"
+              value={[view]}
+              onValueChange={(next) => {
+                const value = next[0];
+                if (value === "board" || value === "list") setView(value);
+              }}
+            >
+              <Toggle value="board">Board</Toggle>
+              <Toggle value="list">List</Toggle>
+            </ToggleGroup>
             <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
               {overview.needsMe.length} need you · {overview.working.length} working ·{" "}
               {overview.review.length} to review
@@ -144,54 +170,60 @@ export function HomeDashboard() {
               {managerProfile === null ? "Manager" : `${managerProfile} manager`}
             </Button>
           </WorkspacePageHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
-            <VerdictBanner verdict={verdict} />
-            {CARD_GROUPS.map(({ group, title }) =>
-              overview[group].length === 0 ? null : (
-                <section key={group} aria-label={title} data-work-group={group} className="mt-6">
-                  <SectionTitle title={title} count={overview[group].length} />
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))] gap-3">
-                    {overview[group].map((item) => (
-                      <WorkCard
+          {view === "board" ? (
+            <div className="flex min-h-0 flex-1 flex-col px-(--workspace-gutter-start) pt-3">
+              <GrowBoard threads={threads} now={now} />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
+              <VerdictBanner verdict={verdict} />
+              {CARD_GROUPS.map(({ group, title }) =>
+                overview[group].length === 0 ? null : (
+                  <section key={group} aria-label={title} data-work-group={group} className="mt-6">
+                    <SectionTitle title={title} count={overview[group].length} />
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))] gap-3">
+                      {overview[group].map((item) => (
+                        <WorkCard
+                          key={`${item.thread.environmentId}:${item.thread.id}`}
+                          item={item}
+                          now={now}
+                          primaryEnvironmentId={primaryEnvironmentId}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ),
+              )}
+              {overview.done.length > 0 ? (
+                <section aria-label="Recently done" data-work-group="done" className="mt-6">
+                  <SectionTitle title="Recently done" count={overview.done.length} />
+                  <ul className="divide-y rounded-xl border bg-card">
+                    {overview.done.map((item) => (
+                      <DoneRow
                         key={`${item.thread.environmentId}:${item.thread.id}`}
                         item={item}
                         now={now}
-                        primaryEnvironmentId={primaryEnvironmentId}
                       />
                     ))}
-                  </div>
+                  </ul>
                 </section>
-              ),
-            )}
-            {overview.done.length > 0 ? (
-              <section aria-label="Recently done" data-work-group="done" className="mt-6">
-                <SectionTitle title="Recently done" count={overview.done.length} />
-                <ul className="divide-y rounded-xl border bg-card">
-                  {overview.done.map((item) => (
-                    <DoneRow
-                      key={`${item.thread.environmentId}:${item.thread.id}`}
-                      item={item}
-                      now={now}
-                    />
-                  ))}
-                </ul>
+              ) : null}
+              <section aria-label="Goals" data-work-group="goals" className="mt-6">
+                <SectionTitle title="Goals" count={goals.length} />
+                {goals.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    No open goals. Ask the manager to plan one.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3">
+                    {goals.map((goal) => (
+                      <GoalCard key={goal.key} goal={goal} environmentId={managerEnvironmentId} />
+                    ))}
+                  </div>
+                )}
               </section>
-            ) : null}
-            <section aria-label="Goals" data-work-group="goals" className="mt-6">
-              <SectionTitle title="Goals" count={goals.length} />
-              {goals.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  No open goals. Ask the manager to plan one.
-                </p>
-              ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3">
-                  {goals.map((goal) => (
-                    <GoalCard key={goal.key} goal={goal} environmentId={managerEnvironmentId} />
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+            </div>
+          )}
         </div>
         <ManagerPane manager={manager} />
       </div>

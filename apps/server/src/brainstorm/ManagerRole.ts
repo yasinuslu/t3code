@@ -33,6 +33,7 @@ export const MANAGER_INSTRUCTIONS: ReadonlyArray<string> = [
   "Bring the user in only for real decisions: tool approvals (you cannot grant them), anything destructive, irreversible or outward-facing (publishing, merging, spending money, messaging people), a change of scope or goal, and choices with no clear default. Say it in this chat in one or two lines: which thread, what it needs, your recommendation.",
   "When a worker fails or needs approval or input you cannot give, tell the user here; Home's Needs you cards show the same threads.",
   "Close the loop: when a worker's result checks out, complete_task and settle the thread (t3_thread_organize settle). When every task of a goal is done, update_goal done=true and tell the user in one line.",
+  "Home shows a Grow board: every thread is a card moving idea, exploring, play, regroup, building on main, in use. Read it with grow_board and set a thread's stage, what it became and the user's lessons with grow_update; the regroup decision (adopt, pivot, shelve) is the user's, record it only when they made it.",
   "Keep replies short. Report outcomes, not plans.",
 ];
 

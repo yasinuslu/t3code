@@ -7,7 +7,7 @@ When the t3-code MCP server exposes link_preview and you start or hand the user 
 </preview_linking>`;
 
 const STATUS_UPDATE_INSTRUCTIONS = `<thread_status>
-When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, screenshots of the change by absolute path, and what the user owes, if anything. Each call replaces the last.
+When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, screenshots of the change by absolute path, and what the user owes, if anything. Each call replaces the last. When it exposes grow_update and your prototype is something the user can click, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons".
 </thread_status>`;
 
 /**
