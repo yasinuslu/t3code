@@ -14,7 +14,7 @@ export const GROW_PANE_SIZES: Readonly<
 > = {
   rail: { initial: 320, min: 240, max: 560 },
   thing: { initial: 600, min: 320, max: 1100 },
-  boardChat: { initial: 448, min: 320, max: 900 },
+  boardChat: { initial: 420, min: 352, max: 900 },
 };
 
 interface GrowStore {
@@ -28,6 +28,9 @@ interface GrowStore {
   thingTab: GrowThingTab | null;
   /** Project filter (`envId:projectId`); null: all projects. Filters rail and board. */
   project: string | null;
+  /** The list's search text; not persisted. */
+  query: string;
+  setQuery: (query: string) => void;
   /** Dragged pane widths in px. */
   widths: Record<GrowPane, number>;
   setWidth: (pane: GrowPane, width: number) => void;
@@ -51,6 +54,8 @@ export const useGrowStore = create<GrowStore>()(
       previousThread: null,
       thingTab: null,
       project: null,
+      query: "",
+      setQuery: (query) => set({ query }),
       widths: {
         rail: GROW_PANE_SIZES.rail.initial,
         thing: GROW_PANE_SIZES.thing.initial,

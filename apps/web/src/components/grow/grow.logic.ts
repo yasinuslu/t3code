@@ -71,6 +71,7 @@ export const GROW_STAGE_DEFS: Readonly<Record<GrowStage, GrowStageDef>> = {
       { label: "Adopt into main", primary: true, patch: { decision: "adopt" } },
       { label: "Pivot", patch: { decision: "pivot" } },
       { label: "Shelve", patch: { decision: "shelve" } },
+      { label: "Back to play", patch: { stage: "play", decision: null } },
     ],
   },
   building: {
@@ -101,6 +102,48 @@ export const GROW_COLUMN_STAGES = GROW_STAGES.filter(
 );
 
 export const IN_USE_LIMIT = 8;
+
+/** The chat never gets narrower than this (22rem), and the board keeps this much beside its chat. */
+export const GROW_CHAT_MIN = 352;
+export const GROW_BOARD_MIN = 440;
+
+export interface GrowPaneWidths {
+  readonly rail: number;
+  readonly thing: number;
+  readonly boardChat: number;
+}
+
+/**
+ * The widths Grow actually lays out, from the stored preferences and the
+ * window: the thing pane shrinks first, then the rail, down to their minimums.
+ * When even that leaves the chat under its minimum, the thing pane is dropped
+ * (`showThing` false) and the rail keeps what the chat leaves. The stored
+ * preferences are never rewritten by this; a wider window gets them back.
+ */
+export function growLayoutWidths(
+  stored: GrowPaneWidths,
+  total: number,
+  mins: GrowPaneWidths,
+): GrowPaneWidths & { readonly showThing: boolean } {
+  const room = total - GROW_CHAT_MIN;
+  let rail = Math.max(mins.rail, stored.rail);
+  let thing = Math.max(mins.thing, stored.thing);
+  let over = rail + thing - room;
+  if (over > 0) {
+    const cut = Math.min(over, thing - mins.thing);
+    thing -= cut;
+    over -= cut;
+  }
+  if (over > 0) {
+    const cut = Math.min(over, rail - mins.rail);
+    rail -= cut;
+    over -= cut;
+  }
+  const showThing = over <= 0;
+  if (!showThing) rail = Math.max(mins.rail, Math.min(stored.rail, room));
+  const boardChat = Math.max(mins.boardChat, Math.min(stored.boardChat, total - GROW_BOARD_MIN));
+  return { rail, thing, boardChat, showThing };
+}
 
 export interface GrowBoardCard {
   readonly key: string;

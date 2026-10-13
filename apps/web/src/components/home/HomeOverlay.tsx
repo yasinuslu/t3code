@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 import {
   InHomeOverlayContext,
   closeHomeOverlay,
+  inStartupHops,
   useHomeOverlayStore,
 } from "../../homeOverlayStore";
 import { MARKDOWN_FILE_LINK_CLASS_NAME } from "../../markdown-links";
@@ -60,6 +61,7 @@ function HomeOverlayLayer() {
   useEffect(() => {
     const before = previousPathname.current;
     previousPathname.current = pathname;
+    if (inStartupHops()) return;
     if (before !== pathname && before !== "/home" && before !== "/") closeHomeOverlay();
   }, [pathname]);
 

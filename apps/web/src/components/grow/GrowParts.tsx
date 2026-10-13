@@ -29,6 +29,7 @@ export function useGrowUpdate(): UpdateCard {
  */
 export function SavedField(props: {
   readonly label: string;
+  readonly placeholder: string;
   readonly value: string;
   readonly onSave: (value: string) => void;
 }) {
@@ -44,6 +45,7 @@ export function SavedField(props: {
       <span className="font-medium text-xs">{props.label}</span>
       <Textarea
         aria-label={props.label}
+        placeholder={props.placeholder}
         value={draft}
         onFocus={() => setEditing(true)}
         onChange={(event) => setDraft(event.currentTarget.value)}
@@ -61,7 +63,7 @@ export function StageActions(props: { readonly card: GrowBoardCard; readonly upd
   const { card, update } = props;
   const stored = card.card?.stage ?? AUTOMATIC;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       {GROW_STAGE_DEFS[card.stage].actions.map((action) => (
         <Button
           key={action.label}
@@ -72,7 +74,7 @@ export function StageActions(props: { readonly card: GrowBoardCard; readonly upd
           {action.label}
         </Button>
       ))}
-      <span className="ms-auto flex items-center gap-1.5 text-muted-foreground text-xs">
+      <span className="ms-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap text-muted-foreground text-xs">
         Move to
         <Select
           value={stored}

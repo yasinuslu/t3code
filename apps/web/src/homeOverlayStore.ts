@@ -20,6 +20,10 @@ export const useHomeOverlayStore = create<HomeOverlayStore>()((set) => ({
 export const openHomeOverlay = () => useHomeOverlayStore.getState().setOpen(true);
 
 let openedOnStartup = false;
+let startupHopsUntil = 0;
+
+/** Within seconds of opening on startup, the app is still hopping to its landing page. */
+export const inStartupHops = () => Date.now() < startupHopsUntil;
 
 /**
  * Home is the default screen: the start page calls this to open it, once per
@@ -28,6 +32,7 @@ let openedOnStartup = false;
 export function openHomeOnStartup() {
   if (openedOnStartup) return;
   openedOnStartup = true;
+  startupHopsUntil = Date.now() + 8000;
   openHomeOverlay();
 }
 export const closeHomeOverlay = () => useHomeOverlayStore.getState().setOpen(false);

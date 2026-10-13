@@ -33,6 +33,7 @@ import {
   GrowNavSkeleton,
   GrowRow,
   ManagerRow,
+  NoMatches,
   StageHeader,
   useGrowNav,
 } from "./GrowNav";
@@ -53,6 +54,7 @@ export function Rail(props: {
     board: props.board,
     selected: props.selected,
     canPlay: props.canPlay,
+    ready: props.ready,
   });
   return (
     <nav
@@ -63,14 +65,19 @@ export function Rail(props: {
       className="flex min-h-0 w-full flex-1 flex-col gap-2 border-e pe-2 pb-3"
     >
       <GrowHeader projects={props.projects} search={props.search} />
-      <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        {/* Opaque, so rows scrolling under the manager do not show through. */}
+        <div className="sticky top-0 z-20 border-b bg-background pb-1">
+          <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
+        </div>
         {!props.ready ? (
           <GrowNavSkeleton />
         ) : GROW_STAGES.every((stage) => props.board[stage].length === 0) ? (
-          <p className="px-1 text-muted-foreground text-xs">
-            {props.search.query.trim() === "" ? "Nothing here yet" : "No matches"}
-          </p>
+          props.search.query.trim() === "" ? (
+            <p className="px-1 text-muted-foreground text-xs">Nothing here yet</p>
+          ) : (
+            <NoMatches />
+          )
         ) : (
           GROW_STAGES.map((stage) => {
             const cards = props.board[stage];
@@ -113,15 +120,15 @@ export function Thing(props: { readonly card: GrowBoardCard; readonly update: Up
   return (
     <section
       aria-label={thread.title}
-      className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 border-s ps-3 pb-3"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 border-s px-3 pt-3 pb-3"
       data-grow-thing={thread.id}
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <h2 className="min-w-0 truncate font-semibold text-base">{thread.title}</h2>
+      <h2 className="line-clamp-2 min-w-0 font-semibold text-base">{thread.title}</h2>
+      <div className="flex min-w-0 items-center gap-2">
         <Badge variant="outline" size="sm">
           {GROW_STAGE_DEFS[card.stage].title}
         </Badge>
-        <span className="ms-auto flex items-center gap-1">
+        <span className="ms-auto flex shrink-0 items-center gap-1">
           {card.playUrl ? (
             <Button
               size="xs"
@@ -236,11 +243,13 @@ function Overview(props: { readonly card: GrowBoardCard; readonly update: Update
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pe-2">
       <SavedField
         label="What it became"
+        placeholder="Not written yet. What did this idea turn into?"
         value={stored?.became ?? ""}
         onSave={(value) => update(card, { became: value.trim() })}
       />
       <SavedField
         label="Lessons, one per line"
+        placeholder="What did you learn? One lesson per line."
         value={(stored?.lessons ?? []).join("\n")}
         onSave={(value) =>
           update(card, {

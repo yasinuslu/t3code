@@ -8,7 +8,9 @@ import {
   buildGrowBoard,
   filterGrowBoard,
   growBoardProjects,
+  GROW_CHAT_MIN,
   growBoardStep,
+  growLayoutWidths,
   growCardKey,
   growEffectiveSelection,
   growRailOrder,
@@ -219,5 +221,29 @@ describe("filterGrowBoard", () => {
     expect(ids("alp")).toEqual(["Alpha"]);
     expect(ids("piano")).toEqual(["b"]);
     expect(ids("zzz")).toEqual([]);
+  });
+});
+
+describe("growLayoutWidths", () => {
+  const mins = { rail: 240, thing: 320, boardChat: 352 };
+  const stored = { rail: 320, thing: 600, boardChat: 560 };
+  it("keeps the preferences when everything fits", () => {
+    expect(growLayoutWidths(stored, 1920, mins)).toMatchObject({ rail: 320, thing: 600 });
+  });
+  it("shrinks the thing pane first, then the rail, never the chat below its minimum", () => {
+    const narrow = growLayoutWidths(stored, 1100, mins);
+    expect(narrow).toMatchObject({ rail: 320, thing: 428, showThing: true });
+    const tight = growLayoutWidths(stored, 930, mins);
+    expect(tight.rail + tight.thing).toBeLessThanOrEqual(930 - GROW_CHAT_MIN);
+    expect(tight.thing).toBe(320);
+  });
+  it("drops the thing pane when the minimums cannot fit", () => {
+    const tiny = growLayoutWidths(stored, 800, mins);
+    expect(tiny.showThing).toBe(false);
+    expect(tiny.rail).toBeLessThanOrEqual(800 - GROW_CHAT_MIN);
+  });
+  it("keeps the board beside its chat", () => {
+    expect(growLayoutWidths(stored, 1000, mins).boardChat).toBe(560);
+    expect(growLayoutWidths({ ...stored, boardChat: 900 }, 1000, mins).boardChat).toBe(560);
   });
 });

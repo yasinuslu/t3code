@@ -185,7 +185,7 @@ export function HomeDashboard() {
             <GrowWorkspace
               threads={threads}
               now={now}
-              managerPane={<ManagerPane manager={manager} autoFocusComposer={false} />}
+              managerPane={<ManagerPane manager={manager} autoFocusComposer={false} embedded />}
             />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
@@ -276,6 +276,8 @@ function ManagerPane(props: {
   readonly manager: ReturnType<typeof useEnsureManagerThread>;
   /** Grow keeps focus in its list; Classic lets the composer take it. */
   readonly autoFocusComposer?: boolean;
+  /** Grow's chat: no right panel or its toggles. */
+  readonly embedded?: boolean;
 }) {
   const { manager } = props;
   return (
@@ -292,6 +294,7 @@ function ManagerPane(props: {
           routeKind="server"
           reserveTitleBarControlInset={false}
           autoFocusComposer={props.autoFocusComposer ?? true}
+          embedded={props.embedded ?? false}
         />
       ) : manager._tag === "Failed" ? (
         <p className="m-4 text-destructive-foreground text-sm">{manager.message}</p>

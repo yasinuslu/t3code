@@ -13,10 +13,8 @@
  */
 import { cn } from "../../lib/utils";
 import { useResizeDrag } from "../../hooks/useResizeDrag";
+import { GROW_BOARD_MIN, GROW_CHAT_MIN } from "./grow.logic";
 import { GROW_PANE_SIZES, type GrowPane, useGrowStore } from "./grow.store";
-
-/** The chat never gets narrower than this because a neighbour was dragged wide. */
-const CHAT_MIN_WIDTH = 320;
 
 export const growPaneVar = (pane: GrowPane) => `--grow-${pane}`;
 
@@ -28,12 +26,19 @@ export function GrowSplitter(props: { readonly pane: GrowPane; readonly side: "s
     const panel = event.currentTarget.parentElement;
     const container = event.currentTarget.closest<HTMLElement>("[data-grow-mode]");
     if (panel === null || container === null) return null;
-    const others = [...container.children]
-      .filter((child) => child !== panel && !child.hasAttribute("data-grow-chat"))
-      .reduce((sum, child) => sum + child.getBoundingClientRect().width, 0);
+    // The chat is what gives way, except in Board mode where the board does.
+    const board = pane === "boardChat";
+    const others = board
+      ? 0
+      : [...container.children]
+          .filter((child) => child !== panel && !child.hasAttribute("data-grow-chat"))
+          .reduce((sum, child) => sum + child.getBoundingClientRect().width, 0);
     const max = Math.max(
       sizes.min,
-      Math.min(sizes.max, container.getBoundingClientRect().width - others - CHAT_MIN_WIDTH),
+      Math.min(
+        sizes.max,
+        container.getBoundingClientRect().width - others - (board ? GROW_BOARD_MIN : GROW_CHAT_MIN),
+      ),
     );
     const clamp = (value: number) => Math.min(max, Math.max(sizes.min, value));
     container.setAttribute("data-grow-resizing", "");

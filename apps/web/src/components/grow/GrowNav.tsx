@@ -68,15 +68,31 @@ export interface GrowSearch {
 export function GrowHeader(props: {
   readonly projects: ReadonlyArray<string>;
   readonly search: GrowSearch;
+  /** Below lg there is only the board: no mode switch, no keys to explain. */
+  readonly narrow?: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-2" data-grow-header="">
       <div className="flex min-w-0 items-center gap-2">
-        <LeftSwitch />
+        {props.narrow ? null : <LeftSwitch />}
         <ProjectFilter projects={props.projects} />
-        <KeyboardHelp />
+        {props.narrow ? null : <KeyboardHelp />}
       </div>
       <SearchField search={props.search} />
+    </div>
+  );
+}
+
+/** The list says so when the search hides every card; the selected thread stays as it was. */
+export function NoMatches() {
+  const query = useGrowStore((store) => store.query);
+  const setQuery = useGrowStore((store) => store.setQuery);
+  return (
+    <div className="flex min-w-0 items-center gap-2 px-1 text-muted-foreground text-xs">
+      <span className="min-w-0 truncate">No matches for "{query.trim()}"</span>
+      <Button size="xs" variant="ghost" onClick={() => setQuery("")}>
+        Clear
+      </Button>
     </div>
   );
 }
@@ -213,14 +229,17 @@ function ProjectFilter(props: { readonly projects: ReadonlyArray<string> }) {
 const KEY_HELP: ReadonlyArray<readonly [string, string]> = [
   ["j k  or  Up Down", "Move through the list"],
   ["h l  or  Left Right", "Across board columns"],
-  ["Ctrl+h  /  Ctrl+l", "Pane to the left / right: list, chat, prototype"],
+  [
+    "Ctrl+h  /  Ctrl+l",
+    "Pane to the left / right: list, chat, prototype (from the board's chat, Ctrl+l opens the thread in the list layout)",
+  ],
   ["Enter", "Type to this thread"],
   ["/", "Search the list (Enter picks the first match)"],
-  ["Esc", "Back to the list from anywhere, or close Home"],
+  ["Esc", "Back to the list from anywhere; on the list it clears the search, then closes Home"],
   ["i", "Board"],
   ["o", "Threads list"],
   ["m", "Manager, and back"],
-  ["p", "Play this thread's prototype"],
+  ["p", "Play this thread's prototype (list layout)"],
   ["h  /  l", "Play / Overview, in the prototype pane"],
 ];
 
@@ -348,6 +367,9 @@ export function GrowRow(props: {
         }}
       >
         <span className="line-clamp-2 font-medium">{card.thread.title}</span>
+        {props.variant === "card" && (card.card?.became ?? "").trim() !== "" ? (
+          <span className="line-clamp-2 text-muted-foreground text-xs">{card.card?.became}</span>
+        ) : null}
         <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
           <span
             aria-label={look.label}
@@ -412,11 +434,20 @@ export const composerEditor = () =>
 /** Moves focus to the zone's selected row. */
 export function focusSelectedRow(zone: HTMLElement | null) {
   // The selected row can be filtered out by the search; then the first row takes focus.
+  // Before the cards have loaded there is no right row yet, so nothing takes it.
   const row =
     zone?.querySelector<HTMLElement>('[data-grow-item][tabindex="0"]') ??
-    zone?.querySelector<HTMLElement>("[data-grow-item]");
+    (zone?.querySelector("[data-grow-skeleton]")
+      ? null
+      : zone?.querySelector<HTMLElement>("[data-grow-item]"));
   row?.focus({ preventScroll: true });
+  reveal(row);
+}
+
+/** The row, and on the board its whole column, so the column is not cut at the edge. */
+function reveal(row: Element | null | undefined) {
   row?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  row?.closest("[data-grow-column]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 /**
@@ -432,6 +463,8 @@ export function useGrowNav<T extends HTMLElement>(options: {
   readonly canPlay: boolean;
   /** False below lg, where the board only opens a dialog. */
   readonly enabled?: boolean;
+  /** False until the cards have loaded; focus then lands on the selected row. */
+  readonly ready?: boolean;
 }): {
   readonly ref: RefObject<T | null>;
   readonly onKeyDown: (event: React.KeyboardEvent) => void;
@@ -453,7 +486,10 @@ export function useGrowNav<T extends HTMLElement>(options: {
     window.addEventListener("pointerdown", interact, true);
     window.addEventListener("keydown", interact, true);
     const take = () => {
-      if (interacted || zone === null || zone.contains(document.activeElement)) return;
+      const active = document.activeElement;
+      // The prototype pane may have been asked for (Ctrl+l from the board's chat).
+      if (interacted || zone === null || zone.contains(active)) return;
+      if (active?.closest("[data-grow-thing]")) return;
       focusSelectedRow(zone);
     };
     focusSelectedRow(zone);
@@ -466,15 +502,14 @@ export function useGrowNav<T extends HTMLElement>(options: {
       window.removeEventListener("keydown", interact, true);
     };
   }, []);
-  const { selected } = options;
+  const { selected, ready = true } = options;
   useEffect(() => {
     const zone = ref.current;
-    if (zone?.contains(document.activeElement)) focusSelectedRow(zone);
-    else
-      zone
-        ?.querySelector('[data-grow-item][tabindex="0"]')
-        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selected]);
+    const active = document.activeElement;
+    // Once the cards are in, focus is the selected row: from the first frame, not the manager.
+    if (zone?.contains(active) || (ready && active === document.body)) focusSelectedRow(zone);
+    else reveal(zone?.querySelector('[data-grow-item][tabindex="0"]'));
+  }, [selected, ready]);
 
   const handle = useCallback((event: KeyboardEvent, onRow: boolean): boolean => {
     if (event.defaultPrevented || event.isComposing) return false;
@@ -508,6 +543,11 @@ export function useGrowNav<T extends HTMLElement>(options: {
       return used();
     }
     switch (event.key) {
+      case "Escape":
+        // A search in force goes first; the next Esc closes Home.
+        if (store.query === "") return false;
+        store.setQuery("");
+        return used();
       case "Enter": {
         if (!onRow) return false;
         const editor = composerEditor();

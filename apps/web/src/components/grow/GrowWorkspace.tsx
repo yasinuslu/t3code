@@ -9,7 +9,14 @@
  * chats here never take it on their own, and Esc in a composer returns it.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { useEveryManagerThreadKey } from "../../brainstormStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -19,7 +26,7 @@ import ChatView from "../ChatView";
 import { GrowCardDialog, GrowColumns } from "./GrowBoard";
 import { Rail, Thing } from "./GrowFocus";
 import { GrowSplitter, growPaneVar } from "./GrowSplitter";
-import { GrowHeader, ManagerRow, composerEditor, focusSelectedRow } from "./GrowNav";
+import { GrowHeader, ManagerRow, NoMatches, composerEditor, focusSelectedRow } from "./GrowNav";
 import { useGrowUpdate } from "./GrowParts";
 import {
   GROW_MANAGER_KEY,
@@ -27,9 +34,20 @@ import {
   filterGrowBoard,
   growBoardProjects,
   growEffectiveSelection,
+  growLayoutWidths,
   growRailOrder,
 } from "./grow.logic";
-import { useGrowStore } from "./grow.store";
+import { GROW_PANE_SIZES, useGrowStore } from "./grow.store";
+
+/** Home covers the window, so the window's width is the workspace's width. */
+const subscribeToResize = (notify: () => void) => {
+  window.addEventListener("resize", notify);
+  return () => window.removeEventListener("resize", notify);
+};
+const useWindowWidth = () => useSyncExternalStore(subscribeToResize, () => window.innerWidth);
+
+/** The quiet marker of where keystrokes go: a top line on the pane that has focus. */
+const PANE_LOOK = "border-t-2 border-t-transparent focus-within:border-t-primary/60";
 
 /**
  * Esc is the one way out: with focus anywhere in Grow outside the list (a
@@ -59,6 +77,17 @@ function returnToList(event: KeyboardEvent) {
   event.preventDefault();
   event.stopImmediatePropagation();
   focusSelectedRow(document.querySelector<HTMLElement>("[data-grow-zone]"));
+}
+
+/**
+ * Board mode has no prototype pane: from its chat, Ctrl+l switches to the list
+ * layout and lands on the selected thread's pane, like `p` does for the list.
+ */
+function openThingFromBoard() {
+  const store = useGrowStore.getState();
+  if (store.leftMode !== "board" || store.selected === GROW_MANAGER_KEY) return;
+  store.setLeftMode("threads");
+  window.requestAnimationFrame(() => window.requestAnimationFrame(focusThingTab));
 }
 
 const focusThingTab = () =>
@@ -92,7 +121,8 @@ function walkPanes(event: KeyboardEvent) {
       used();
     } else if (event.key === "l") {
       if (pane === "list") composerEditor()?.focus();
-      else focusThingTab();
+      else if (document.querySelector("[data-grow-thing]")) focusThingTab();
+      else openThingFromBoard();
       used();
     }
     return;
@@ -134,16 +164,25 @@ export function GrowWorkspace(props: {
     [activeProject, cards, everyone, managers.keys, props.now, props.threads],
   );
   // Typed in the search field; not persisted. Filters what the list shows, never the selection.
-  const [query, setQuery] = useState("");
+  const query = useGrowStore((store) => store.query);
+  const setQuery = useGrowStore((store) => store.setQuery);
   const shown = useMemo(() => filterGrowBoard(board, query), [board, query]);
   const firstShown = growRailOrder(shown)[0]?.key ?? null;
   const search = { query, setQuery, firstKey: firstShown };
-  const widths = useGrowStore((store) => store.widths);
+  const storedWidths = useGrowStore((store) => store.widths);
+  const windowWidth = useWindowWidth();
+  // The stored widths are preferences; what is laid out always fits the window.
+  const widths = growLayoutWidths(storedWidths, windowWidth, {
+    rail: GROW_PANE_SIZES.rail.min,
+    thing: GROW_PANE_SIZES.thing.min,
+    boardChat: GROW_PANE_SIZES.boardChat.min,
+  });
   const paneVars = {
     [growPaneVar("rail")]: `${widths.rail}px`,
     [growPaneVar("thing")]: `${widths.thing}px`,
     [growPaneVar("boardChat")]: `${widths.boardChat}px`,
   } as CSSProperties;
+  const noMatches = query.trim() !== "" && growRailOrder(shown).length === 0;
   const wide = useMediaQuery("lg");
   useEffect(() => {
     if (!wide) return;
@@ -170,7 +209,14 @@ export function GrowWorkspace(props: {
     const open = rail.find((card) => card.key === openKey) ?? null;
     return (
       <div className="flex min-h-0 flex-1 flex-col px-(--workspace-gutter-start) pt-3">
-        <GrowColumns board={shown} selected={null} onSelect={setOpenKey} ready={ready} />
+        <GrowColumns
+          board={shown}
+          selected={null}
+          onSelect={setOpenKey}
+          ready={ready}
+          empty={noMatches ? <NoMatches /> : null}
+          header={<GrowHeader projects={projects} search={search} narrow />}
+        />
         {open ? (
           <GrowCardDialog card={open} update={update} onClose={() => setOpenKey(null)} />
         ) : null}
@@ -179,7 +225,7 @@ export function GrowWorkspace(props: {
   }
 
   const chat = (
-    <div className="relative flex min-h-0 min-w-0 flex-col" data-grow-chat="">
+    <div className={cn("relative flex min-h-0 min-w-0 flex-col", PANE_LOOK)} data-grow-chat="">
       {leftMode === "board" ? <GrowSplitter pane="boardChat" side="start" /> : null}
       {!ready ? null : selectedCard ? (
         <section
@@ -193,6 +239,7 @@ export function GrowWorkspace(props: {
             routeKind="server"
             reserveTitleBarControlInset={false}
             autoFocusComposer={false}
+            embedded
           />
         </section>
       ) : (
@@ -208,7 +255,12 @@ export function GrowWorkspace(props: {
         style={paneVars}
         data-grow-mode="board"
       >
-        <div className="flex min-h-0 min-w-0 flex-col ps-(--workspace-gutter-start) pt-3 pe-3">
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col ps-(--workspace-gutter-start) pt-3 pe-3",
+            PANE_LOOK,
+          )}
+        >
           <GrowColumns
             board={shown}
             selected={selected}
@@ -216,6 +268,7 @@ export function GrowWorkspace(props: {
             onPlay={play}
             ready={ready}
             canPlay={canPlay}
+            empty={noMatches ? <NoMatches /> : null}
             header={
               <>
                 <GrowHeader projects={projects} search={search} />
@@ -235,14 +288,19 @@ export function GrowWorkspace(props: {
     <div
       className={cn(
         "grid min-h-0 flex-1",
-        selectedCard
+        selectedCard && widths.showThing
           ? "grid-cols-[var(--grow-rail)_minmax(0,1fr)_var(--grow-thing)]"
           : "grid-cols-[var(--grow-rail)_minmax(0,1fr)]",
       )}
       style={paneVars}
       data-grow-mode="threads"
     >
-      <div className="relative flex min-h-0 min-w-0 flex-col ps-(--workspace-gutter-start) pt-3">
+      <div
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-col ps-(--workspace-gutter-start) pt-3",
+          PANE_LOOK,
+        )}
+      >
         <GrowSplitter pane="rail" side="end" />
         <Rail
           board={shown}
@@ -254,8 +312,8 @@ export function GrowWorkspace(props: {
         />
       </div>
       {chat}
-      {selectedCard ? (
-        <div className="relative flex min-h-0 min-w-0 flex-col">
+      {selectedCard && widths.showThing ? (
+        <div className={cn("relative flex min-h-0 min-w-0 flex-col", PANE_LOOK)}>
           <GrowSplitter pane="thing" side="start" />
           <Thing key={selectedCard.key} card={selectedCard} update={update} />
         </div>

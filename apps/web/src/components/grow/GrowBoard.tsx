@@ -43,6 +43,8 @@ export function GrowColumns(props: {
   /** False until the cards have loaded; the columns are not drawn before. */
   readonly ready?: boolean;
   readonly canPlay?: boolean;
+  /** Shown instead of the columns when a search hides every card. */
+  readonly empty?: ReactNode;
 }) {
   const { board, selected } = props;
   const nav = useGrowNav<HTMLDivElement>({
@@ -51,6 +53,7 @@ export function GrowColumns(props: {
     selected: selected ?? "",
     canPlay: props.canPlay ?? false,
     enabled: selected !== null,
+    ready: props.ready !== false,
   });
   return (
     <div
@@ -63,9 +66,11 @@ export function GrowColumns(props: {
       {props.header}
       {props.ready === false ? (
         <GrowNavSkeleton />
+      ) : props.empty ? (
+        props.empty
       ) : (
         <>
-          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-1">
+          <div className="flex min-h-0 flex-1 items-start gap-3 overflow-x-auto scroll-px-3 pe-3 pb-1">
             {GROW_COLUMN_STAGES.map((stage) => {
               const column = GROW_STAGE_DEFS[stage];
               return (
@@ -74,7 +79,7 @@ export function GrowColumns(props: {
                   aria-label={column.title}
                   data-grow-column={stage}
                   className={cn(
-                    "flex min-h-0 w-64 min-w-64 flex-1 flex-col gap-2 rounded-xl border p-2",
+                    "flex max-h-full min-h-32 w-64 min-w-64 flex-col gap-2 rounded-xl border p-2",
                     column.yourTurn ? "border-warning/50 bg-warning-surface/40" : "bg-card/40",
                   )}
                 >
@@ -174,11 +179,13 @@ export function GrowCardDialog(props: {
             <div className="flex flex-col gap-3">
               <SavedField
                 label="What it became"
+                placeholder="Not written yet. What did this idea turn into?"
                 value={stored?.became ?? ""}
                 onSave={(value) => update(card, { became: value.trim() })}
               />
               <SavedField
                 label="Lessons, one per line"
+                placeholder="What did you learn? One lesson per line."
                 value={(stored?.lessons ?? []).join("\n")}
                 onSave={(value) =>
                   update(card, {
