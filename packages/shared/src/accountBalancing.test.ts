@@ -6,7 +6,12 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { accountRoom, balancedAccountGroup, rankBalancedAccounts } from "./accountBalancing.ts";
+import {
+  accountRoom,
+  balancedAccountGroup,
+  observedLimitKey,
+  rankBalancedAccounts,
+} from "./accountBalancing.ts";
 
 const now = Date.parse("2026-10-13T12:00:00.000Z");
 const claude = ProviderInstanceId.make("claude");
@@ -124,8 +129,19 @@ describe("rankBalancedAccounts", () => {
       },
     ]);
 
-    const observed = rank(providers, { observedLimits: new Map([[claude2, now + 60_000]]) });
+    const observed = rank(providers, {
+      observedLimits: new Map([[observedLimitKey(claude2, selection.model), now + 60_000]]),
+    });
     expect(observed.ranked.map((account) => account.instance.instanceId)).toEqual([codex]);
+
+    // A limit a turn hit on another model leaves this one usable.
+    const otherModel = rank(providers, {
+      observedLimits: new Map([[observedLimitKey(claude2, "claude-fable-5-1"), now + 60_000]]),
+    });
+    expect(otherModel.ranked.map((account) => account.instance.instanceId)).toEqual([
+      claude2,
+      codex,
+    ]);
   });
 
   it("offers other providers after the thread's own, in list order, on their own model", () => {

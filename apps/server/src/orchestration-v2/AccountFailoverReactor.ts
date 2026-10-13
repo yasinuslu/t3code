@@ -2,12 +2,12 @@ import {
   CommandId,
   isProviderNativeSubagentThread,
   MessageId,
+  type OrchestrationV2TurnItem,
   RunId,
   type ThreadId,
 } from "@t3tools/contracts";
 import type { SkippedAccount } from "@t3tools/shared/accountBalancing";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
-import { modelSelectionCommandType } from "@t3tools/shared/model";
 import {
   latestExecutedRun,
   latestRootProviderFailure,
@@ -31,6 +31,19 @@ import * as ThreadManagement from "./ThreadManagementService.ts";
 const CONTINUE_PROMPT = "Continue where you left off.";
 const FAILOVER_MESSAGE_PREFIX = "message:account-failover:";
 const MAX_REMEMBERED_RUNS = 256;
+/** What a provider produces once it has taken a turn. */
+const WORK_ITEM_TYPES: ReadonlyArray<OrchestrationV2TurnItem["type"]> = [
+  "assistant_message",
+  "reasoning",
+  "command_execution",
+  "file_change",
+  "file_search",
+  "web_search",
+  "dynamic_tool",
+  "subagent",
+  "todo_list",
+  "proposed_plan",
+];
 
 interface FailedRun {
   readonly threadId: ThreadId;
@@ -84,8 +97,8 @@ function limitReason(account: string, resetAt: string | null | undefined, now: n
  * Moves a thread that stopped on a usage limit to the next account its code
  * profile balances across, and continues it there with a provider handoff.
  * When that account cannot take the thread either (its own limit, or the turn
- * fails before answering) the next one is tried; once none is left the thread
- * gets one notice and stays where it is. Profiles opt in through
+ * fails before doing anything) the next one is tried; once none is left the
+ * thread gets one notice and stays where it is. Profiles opt in through
  * `accountBalancing`, and a profile's manager thread only moves when the
  * profile says so.
  */
@@ -111,20 +124,31 @@ const make = Effect.gen(function* () {
     const { thread, runs, turnItems } = yield* projections.getThreadRecords(
       threadId,
       ["runs", "turnItems"],
-      { turnItemRunIds: [runId], turnItemTypes: ["error", "assistant_message"] },
+      { turnItemRunIds: [runId], turnItemTypes: ["error"] },
     );
     const run = latestExecutedRun(runs);
     if (run?.id !== runId || run.status !== "failed") return;
     const failure = latestRootProviderFailure(run, turnItems);
     const limited = failure?.class === "usage_limit";
-    if (limited) yield* balancer.recordLimit(run.providerInstanceId, failure.resetAt);
+    if (limited) {
+      yield* balancer.recordLimit(
+        run.providerInstanceId,
+        run.modelSelection.model,
+        failure.resetAt,
+      );
+    }
     const earlierLimitedRunId = failoverLimitedRunId(run.userMessageId);
-    // A continuation that fails before answering means the account could not
-    // take the thread at all; one that got to work failed for its own reasons.
-    const neverAnswered =
-      earlierLimitedRunId !== null && !turnItems.some((item) => item.type === "assistant_message");
+    // A continuation that fails before doing anything means the account could
+    // not take the thread at all; one that got to work failed for its own reasons.
+    const neverWorked =
+      !limited &&
+      earlierLimitedRunId !== null &&
+      (yield* projections.getThreadRecords(threadId, ["turnItems"], {
+        turnItemRunIds: [runId],
+        turnItemTypes: WORK_ITEM_TYPES,
+      })).turnItems.length === 0;
     if (
-      (!limited && !neverAnswered) ||
+      (!limited && !neverWorked) ||
       thread.archivedAt !== null ||
       thread.deletedAt !== null ||
       thread.settledOverride === "settled" ||
@@ -134,17 +158,20 @@ const make = Effect.gen(function* () {
       thread.providerInstanceId !== run.providerInstanceId
     )
       return;
+    const limitedRunId = earlierLimitedRunId ?? run.id;
+    // The account the thread first ran out on is spent for this limit too,
+    // whether or not it said when it resets.
+    const origin = runs.find((candidate) => candidate.id === limitedRunId)?.providerInstanceId;
     const ranking = yield* balancer.rank({
       projectId: thread.projectId,
       selection: thread.modelSelection,
-      exclude: new Set([run.providerInstanceId]),
+      exclude: new Set([run.providerInstanceId, ...(origin === undefined ? [] : [origin])]),
     });
     if (ranking === null) return;
     if (!ranking.balancing.includeManager && (yield* brainstorm.managerOf(threadId)) !== null) {
       return;
     }
 
-    const limitedRunId = earlierLimitedRunId ?? run.id;
     const { messages } = yield* projections.getThreadRecords(threadId, ["messages"], {
       messageIds: ranking.ranked.map((account) =>
         failoverMessageId(limitedRunId, account.instance.instanceId),
@@ -173,24 +200,32 @@ const make = Effect.gen(function* () {
       const messageId = failoverMessageId(limitedRunId, instanceId);
       if (tried.has(messageId)) continue;
       const to = account.instance.displayName ?? instanceId;
-      const switched = yield* threads
+      // One command moves the thread and starts the turn, so a thread is
+      // never left on the new account with nothing running.
+      const moved = yield* threads
         .dispatch({
-          type: modelSelectionCommandType(thread.providerInstanceId, account.selection),
-          commandId: CommandId.make(`server:account-failover:switch:${run.id}:${instanceId}`),
+          type: "message.dispatch",
+          commandId: CommandId.make(`server:account-failover:continue:${run.id}:${instanceId}`),
           threadId,
+          messageId,
+          text: CONTINUE_PROMPT,
+          attachments: [],
           modelSelection: account.selection,
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "agent",
+          creationSource: "server",
         })
         .pipe(
           Effect.as(true),
           Effect.catch((cause) =>
-            Effect.logWarning("account failover could not switch", {
+            Effect.logWarning("account failover could not move the thread", {
               threadId,
               instanceId,
               cause,
             }).pipe(Effect.as(false)),
           ),
         );
-      if (!switched) {
+      if (!moved) {
         rejected.push(`${to} could not take this thread`);
         continue;
       }
@@ -200,18 +235,6 @@ const make = Effect.gen(function* () {
           account.sameDriver ? "" : ` (${account.selection.model})`
         }: ${reason}.`,
       );
-      yield* threads.dispatch({
-        type: "message.dispatch",
-        commandId: CommandId.make(`server:account-failover:continue:${run.id}:${instanceId}`),
-        threadId,
-        messageId,
-        text: CONTINUE_PROMPT,
-        attachments: [],
-        modelSelection: account.selection,
-        dispatchMode: { type: "start_immediately" },
-        createdBy: "agent",
-        creationSource: "server",
-      });
       return;
     }
 
@@ -265,6 +288,7 @@ const make = Effect.gen(function* () {
         return event.payload.status === "completed" && event.payload.startedAt !== null
           ? balancer.clearLimit(
               event.payload.providerInstanceId,
+              event.payload.modelSelection.model,
               DateTime.toEpochMillis(event.payload.startedAt),
             )
           : Effect.void;

@@ -57,7 +57,10 @@ function provider(instanceId: ProviderInstanceId, usedPercent: number): ServerPr
 }
 
 /** One server state directory, so a rebuilt balancer reads what the last one saved. */
-function dependencies(usedPercent: { readonly first: number; readonly second: number }) {
+function dependencies(
+  usedPercent: { readonly first: number; readonly second: number },
+  listed: ReadonlyArray<ProviderInstanceId> = [first, second],
+) {
   return Layer.mergeAll(
     ServerSettings.layerTest({
       codeProfiles: {
@@ -65,7 +68,7 @@ function dependencies(usedPercent: { readonly first: number; readonly second: nu
           root: "/code/yu",
           accountBalancing: {
             enabled: true,
-            accounts: [{ instanceId: first }, { instanceId: second }],
+            accounts: listed.map((instanceId) => ({ instanceId })),
           },
         },
       },
@@ -125,6 +128,16 @@ it.effect("replaces a limited account even when the launch names it", () =>
   }).pipe(Effect.provide(dependencies({ first: 100, second: 10 }))),
 );
 
+it.effect("leaves a limited account the profile does not list as the launch named it", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(NOW);
+    const choice = yield* withBalancer((balancer) =>
+      balancer.chooseForLaunch({ projectId: profileProject, selection, mode: "pinned" }),
+    );
+    assert.deepEqual(choice, { modelSelection: selection });
+  }).pipe(Effect.provide(dependencies({ first: 100, second: 10 }, [second]))),
+);
+
 it.effect("remembers a limit a turn hit across restarts, until a later turn gets through", () =>
   Effect.gen(function* () {
     yield* TestClock.setTime(NOW);
@@ -132,7 +145,11 @@ it.effect("remembers a limit a turn hit across restarts, until a later turn gets
       balancer.chooseForLaunch({ projectId: profileProject, selection, mode: "pinned" }),
     );
     yield* withBalancer((balancer) =>
-      balancer.recordLimit(first, DateTime.formatIso(DateTime.makeUnsafe(NOW + 22 * HOUR))),
+      balancer.recordLimit(
+        first,
+        selection.model,
+        DateTime.formatIso(DateTime.makeUnsafe(NOW + 22 * HOUR)),
+      ),
     );
 
     // A new balancer stands in for the server after a restart.
@@ -143,10 +160,21 @@ it.effect("remembers a limit a turn hit across restarts, until a later turn gets
     });
 
     // A turn that started before the limit was seen proves nothing about it.
-    yield* withBalancer((balancer) => balancer.clearLimit(first, NOW - 1));
+    yield* withBalancer((balancer) => balancer.clearLimit(first, selection.model, NOW - 1));
     assert.equal((yield* choose).modelSelection.instanceId, second);
 
-    yield* withBalancer((balancer) => balancer.clearLimit(first, NOW + 1));
+    // Neither does a turn of another model, and that model was never limited.
+    yield* withBalancer((balancer) => balancer.clearLimit(first, "claude-sonnet-5-5", NOW + 1));
+    assert.equal((yield* choose).modelSelection.instanceId, second);
+    const sonnet = { ...selection, model: "claude-sonnet-5-5" };
+    assert.deepEqual(
+      yield* withBalancer((balancer) =>
+        balancer.chooseForLaunch({ projectId: profileProject, selection: sonnet, mode: "pinned" }),
+      ),
+      { modelSelection: sonnet },
+    );
+
+    yield* withBalancer((balancer) => balancer.clearLimit(first, selection.model, NOW + 1));
     assert.deepEqual(yield* choose, { modelSelection: selection });
   }).pipe(Effect.provide(dependencies({ first: 20, second: 10 }))),
 );

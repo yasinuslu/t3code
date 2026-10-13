@@ -729,6 +729,15 @@ interface ComposerDraftStoreState {
   ) => Promise<void>;
   clearComposerContent: (threadRef: ComposerThreadTarget) => void;
   /**
+   * Forgets a provider pick once its thread runs on `startedOnInstanceId`,
+   * another instance than the pick was made over. Without this the pick would
+   * come back when the thread later returns to that instance.
+   */
+  dropStaleProviderPick: (
+    threadRef: ComposerThreadTarget,
+    startedOnInstanceId: ProviderInstanceId,
+  ) => void;
+  /**
    * Clears the prompt text and attachments, preserving terminal /
    * element contexts, preview annotations, and review comments. Used by the
    * prompt stash. Session-bound context stays in the source draft.
@@ -4249,6 +4258,31 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               reviewComments: [],
               threadContexts: [],
             };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) {
+              delete nextDraftsByThreadKey[threadKey];
+            } else {
+              nextDraftsByThreadKey[threadKey] = nextDraft;
+            }
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
+        dropStaleProviderPick: (threadRef, startedOnInstanceId) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (
+              !current ||
+              current.activeProvider === null ||
+              current.activeProviderOver === startedOnInstanceId
+            ) {
+              return state;
+            }
+            const { activeProviderOver: _staleOver, ...rest } = current;
+            const nextDraft: ComposerThreadDraftState = { ...rest, activeProvider: null };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {
               delete nextDraftsByThreadKey[threadKey];

@@ -82,19 +82,24 @@ interface Scenario {
   readonly sentMessageIds?: ReadonlyArray<MessageId>;
   readonly manager?: boolean;
   readonly includeManager?: boolean;
-  readonly rejectsSwitchTo?: ProviderInstanceId;
+  readonly rejectsMoveTo?: ProviderInstanceId;
+  /** The run that first hit the limit, when the failed run is a later hop. */
+  readonly limitedRun?: { readonly id: RunId; readonly ranOn: ProviderInstanceId };
+  /** The failed run called a tool before it failed. */
+  readonly worked?: boolean;
 }
 
 const makeHarness = Effect.fn("makeAccountFailoverHarness")(function* (scenario: Scenario) {
   const domainEvents = yield* Queue.unbounded<OrchestrationV2DomainEvent>();
   const read = yield* Deferred.make<void>();
   const dispatched: Array<OrchestrationV2ServerCommand> = [];
-  const limits: Array<readonly [ProviderInstanceId, string | null | undefined]> = [];
+  const limits: Array<readonly [ProviderInstanceId, string, string | null | undefined]> = [];
+  const excluded: Array<ReadonlyArray<ProviderInstanceId>> = [];
   const ranOn = scenario.ranOn ?? claude;
   const run = {
     id: RUN_ID,
     threadId: THREAD_ID,
-    ordinal: 1,
+    ordinal: 2,
     providerInstanceId: ranOn,
     modelSelection: { ...selection, instanceId: ranOn },
     providerThreadId: null,
@@ -113,8 +118,8 @@ const makeHarness = Effect.fn("makeAccountFailoverHarness")(function* (scenario:
     Layer.mock(ThreadManagement.ThreadManagementService)({
       dispatch: (command) => {
         if (
-          command.type === "provider.switch" &&
-          command.modelSelection.instanceId === scenario.rejectsSwitchTo
+          command.type === "message.dispatch" &&
+          command.modelSelection?.instanceId === scenario.rejectsMoveTo
         ) {
           return Effect.fail(
             new Orchestrator.OrchestratorDispatchError({
@@ -150,8 +155,21 @@ const makeHarness = Effect.fn("makeAccountFailoverHarness")(function* (scenario:
                     lineage: { relationshipToParent: null },
                     creationSource: "web",
                   },
-                  runs: [run],
+                  runs: [
+                    ...(scenario.limitedRun === undefined
+                      ? []
+                      : [
+                          {
+                            ...run,
+                            id: scenario.limitedRun.id,
+                            ordinal: 1,
+                            providerInstanceId: scenario.limitedRun.ranOn,
+                          },
+                        ]),
+                    run,
+                  ],
                   turnItems: [
+                    ...(scenario.worked ? [{ id: "item:tool", type: "command_execution" }] : []),
                     {
                       id: "item:error",
                       type: "error",
@@ -169,28 +187,31 @@ const makeHarness = Effect.fn("makeAccountFailoverHarness")(function* (scenario:
                             }
                           : { class: "transport", message: "The session failed to open." },
                     },
-                  ],
+                  ].filter((item) => filter?.turnItemTypes?.includes(item.type as never) ?? true),
                 },
           ),
         )) as ProjectionStore.ProjectionStoreV2Shape["getThreadRecords"],
     }),
     Layer.mock(AccountBalancer.AccountBalancer)({
-      recordLimit: (instanceId, resetAt) =>
+      recordLimit: (instanceId, model, resetAt) =>
         Effect.sync(() => {
-          limits.push([instanceId, resetAt]);
+          limits.push([instanceId, model, resetAt]);
         }),
-      rank: () =>
-        Effect.succeed({
-          profile: "yu",
-          balancing: {
-            enabled: true,
-            accounts: [],
-            includeManager: scenario.includeManager ?? false,
-          },
-          providers,
-          ranked: scenario.ranked,
-          skipped: scenario.skipped ?? [],
-          now: NOW,
+      rank: (input) =>
+        Effect.sync(() => {
+          excluded.push(Array.from(input.exclude ?? []));
+          return {
+            profile: "yu",
+            balancing: {
+              enabled: true,
+              accounts: [],
+              includeManager: scenario.includeManager ?? false,
+            },
+            providers,
+            ranked: scenario.ranked,
+            skipped: scenario.skipped ?? [],
+            now: NOW,
+          };
         }),
     }),
     Layer.mock(BrainstormService)({
@@ -213,15 +234,13 @@ const makeHarness = Effect.fn("makeAccountFailoverHarness")(function* (scenario:
     yield* reactor.drain;
   }).pipe(Effect.provide(AccountFailoverReactor.layer.pipe(Layer.provide(dependencies))));
 
-  return { failRun, dispatched, limits };
+  return { failRun, dispatched, limits, excluded };
 });
 
 /** What a dispatched command did, in the order the thread saw it. */
 function summarize(commands: ReadonlyArray<OrchestrationV2ServerCommand>) {
   return commands.map((command) => {
     switch (command.type) {
-      case "provider.switch":
-        return ["switch", command.modelSelection.instanceId];
       case "thread.run-notice.record":
         return ["notice", command.message];
       case "message.dispatch":
@@ -238,16 +257,16 @@ describe("AccountFailoverReactor", () => {
       const fixture = yield* makeHarness({ ranked: [toClaude2, toCodex] });
       yield* fixture.failRun;
 
-      assert.deepEqual(fixture.limits, [[claude, RESET_AT]]);
+      assert.deepEqual(fixture.limits, [[claude, selection.model, RESET_AT]]);
+      // The move and the turn are one command, so the thread never sits moved and idle.
       assert.deepEqual(summarize(fixture.dispatched), [
-        ["switch", claude2],
+        ["continue", claude2, AccountFailoverReactor.failoverMessageId(RUN_ID, claude2)],
         [
           "notice",
           "Moved from Claude to Claude 2: Claude reached its usage limit and resets in 22h 0m.",
         ],
-        ["continue", claude2, AccountFailoverReactor.failoverMessageId(RUN_ID, claude2)],
       ]);
-      const continuation = fixture.dispatched.at(-1);
+      const continuation = fixture.dispatched[0];
       assert.equal(continuation?.type, "message.dispatch");
       if (continuation?.type === "message.dispatch") {
         // The model carries over to another account of the same provider.
@@ -261,22 +280,21 @@ describe("AccountFailoverReactor", () => {
     Effect.gen(function* () {
       const fixture = yield* makeHarness({
         ranked: [toClaude2, toCodex],
-        rejectsSwitchTo: claude2,
+        rejectsMoveTo: claude2,
       });
       yield* fixture.failRun;
 
       assert.deepEqual(summarize(fixture.dispatched), [
-        ["switch", codex],
+        ["continue", codex, AccountFailoverReactor.failoverMessageId(RUN_ID, codex)],
         [
           "notice",
           "Moved from Claude to Codex (gpt-6): Claude reached its usage limit and resets in 22h 0m.",
         ],
-        ["continue", codex, AccountFailoverReactor.failoverMessageId(RUN_ID, codex)],
       ]);
     }),
   );
 
-  it.effect("moves on when the account it moved to fails before answering", () =>
+  it.effect("moves on when the account it moved to fails before doing anything", () =>
     Effect.gen(function* () {
       const limitedRunId = RunId.make("run:first-limit");
       const sent = AccountFailoverReactor.failoverMessageId(limitedRunId, claude2);
@@ -284,19 +302,38 @@ describe("AccountFailoverReactor", () => {
         ranOn: claude2,
         userMessageId: sent,
         failure: "transport",
-        // The account that hit the limit is still listed; it was never sent a continuation.
+        limitedRun: { id: limitedRunId, ranOn: claude },
         ranked: [toCodex],
         sentMessageIds: [sent],
       });
       yield* fixture.failRun;
 
       assert.isEmpty(fixture.limits);
+      // The account that first ran out is not offered the thread back.
+      assert.deepEqual(fixture.excluded, [[claude2, claude]]);
       assert.deepEqual(summarize(fixture.dispatched), [
-        ["switch", codex],
-        ["notice", "Moved from Claude 2 to Codex (gpt-6): Claude 2 could not start the turn."],
         // Named after the run that first hit the limit, so no account is tried twice.
         ["continue", codex, AccountFailoverReactor.failoverMessageId(limitedRunId, codex)],
+        ["notice", "Moved from Claude 2 to Codex (gpt-6): Claude 2 could not start the turn."],
       ]);
+    }),
+  );
+
+  it.effect("leaves a moved thread alone when its turn got to work before failing", () =>
+    Effect.gen(function* () {
+      const limitedRunId = RunId.make("run:first-limit");
+      const sent = AccountFailoverReactor.failoverMessageId(limitedRunId, claude2);
+      const fixture = yield* makeHarness({
+        ranOn: claude2,
+        userMessageId: sent,
+        failure: "transport",
+        worked: true,
+        limitedRun: { id: limitedRunId, ranOn: claude },
+        ranked: [toCodex],
+        sentMessageIds: [sent],
+      });
+      yield* fixture.failRun;
+      assert.isEmpty(fixture.dispatched);
     }),
   );
 
@@ -334,7 +371,7 @@ describe("AccountFailoverReactor", () => {
       yield* pinned.failRun;
       assert.isEmpty(pinned.dispatched);
       // The limit still counts for every other thread.
-      assert.deepEqual(pinned.limits, [[claude, RESET_AT]]);
+      assert.deepEqual(pinned.limits, [[claude, selection.model, RESET_AT]]);
 
       const included = yield* makeHarness({
         ranked: [toClaude2],
@@ -342,7 +379,7 @@ describe("AccountFailoverReactor", () => {
         includeManager: true,
       });
       yield* included.failRun;
-      assert.deepEqual(summarize(included.dispatched)[0], ["switch", claude2]);
+      assert.deepEqual(summarize(included.dispatched)[0]?.slice(0, 2), ["continue", claude2]);
     }),
   );
 

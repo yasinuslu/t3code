@@ -2463,6 +2463,25 @@ describe("composerDraftStore setModelSelection", () => {
     store.setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.3-codex"));
     expect(pickedOn(CLAUDE_AGENT_INSTANCE)).toBeNull();
   });
+
+  it("does not bring a pick back when the thread returns to the instance it was made over", () => {
+    const store = useComposerDraftStore.getState();
+    store.setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.3-codex"), {
+      explicit: true,
+      over: CLAUDE_AGENT_INSTANCE,
+    });
+    const pickedOn = (instanceId: ProviderInstanceId) =>
+      composerProviderPick(draftFor(threadId, TEST_ENVIRONMENT_ID), instanceId);
+
+    // Still on the instance the pick was made over: the pick stands.
+    store.dropStaleProviderPick(threadRef, CLAUDE_AGENT_INSTANCE);
+    expect(pickedOn(CLAUDE_AGENT_INSTANCE)).toBe(CODEX_INSTANCE);
+
+    // The message was sent, so the thread runs on the picked instance.
+    store.dropStaleProviderPick(threadRef, CODEX_INSTANCE);
+    // A failover later returns it to the first one.
+    expect(pickedOn(CLAUDE_AGENT_INSTANCE)).toBeNull();
+  });
 });
 
 describe("composerDraftStore sticky composer settings", () => {

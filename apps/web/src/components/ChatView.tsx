@@ -1758,6 +1758,13 @@ export default function ChatView(props: ChatViewProps) {
       serverThread?.modelSelection.instanceId,
     ),
   );
+  const dropStaleProviderPick = useComposerDraftStore((store) => store.dropStaleProviderPick);
+  const startedOnInstanceId = serverThread?.modelSelection.instanceId;
+  useEffect(() => {
+    if (startedOnInstanceId !== undefined) {
+      dropStaleProviderPick(composerDraftTarget, startedOnInstanceId);
+    }
+  }, [composerDraftTarget, dropStaleProviderPick, startedOnInstanceId]);
   const composerHasAttachments = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;

@@ -3,8 +3,8 @@
  * that turn account balancing on (`settings.codeProfiles.<name>.accountBalancing`).
  *
  * It owns the limit state the choice needs: the reset time of every usage
- * limit a turn actually hit, per provider instance, kept across restarts. The
- * quota windows providers report are read from their snapshots.
+ * limit a turn actually hit, per provider instance and model, kept across
+ * restarts. The quota windows providers report are read from their snapshots.
  *
  * @module provider/AccountBalancer
  */
@@ -16,11 +16,12 @@ import {
   type CodeProfileAccountBalancing,
   type ModelSelection,
   type ProjectId,
-  ProviderInstanceId,
+  type ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
 import {
   accountLimitedUntil,
+  observedLimitKey,
   rankBalancedAccounts,
   type RankedAccount,
   type SkippedAccount,
@@ -32,6 +33,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 
 import * as ServerConfig from "../config.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -43,7 +45,7 @@ import * as ProviderRegistry from "./Services/ProviderRegistry.ts";
 const ObservedLimit = Schema.Struct({ since: Schema.Number, until: Schema.Number });
 type ObservedLimit = typeof ObservedLimit.Type;
 
-/** Keyed by provider instance. */
+/** Keyed by `observedLimitKey`. */
 const PersistedLimits = Schema.fromJsonString(Schema.Record(Schema.String, ObservedLimit));
 const decodePersistedLimits = Schema.decodeUnknownOption(PersistedLimits);
 const encodePersistedLimits = Schema.encodeSync(PersistedLimits);
@@ -71,16 +73,21 @@ export interface LaunchAccountChoice {
 export class AccountBalancer extends Context.Service<
   AccountBalancer,
   {
-    /** Remembers that a turn on `instanceId` hit a limit lasting until `resetAt`. */
+    /** Remembers that a turn of `model` on `instanceId` hit a limit lasting until `resetAt`. */
     readonly recordLimit: (
       instanceId: ProviderInstanceId,
+      model: string,
       resetAt: string | null | undefined,
     ) => Effect.Effect<void>;
     /**
-     * A turn on `instanceId` that started at `startedAt` (epoch milliseconds)
-     * finished, so a limit seen before it started is over.
+     * A turn of `model` on `instanceId` that started at `startedAt` (epoch
+     * milliseconds) finished, so a limit seen before it started is over.
      */
-    readonly clearLimit: (instanceId: ProviderInstanceId, startedAt: number) => Effect.Effect<void>;
+    readonly clearLimit: (
+      instanceId: ProviderInstanceId,
+      model: string,
+      startedAt: number,
+    ) => Effect.Effect<void>;
     /**
      * The accounts a thread of this project running `selection` could use,
      * best first, without the instances in `exclude`. Null when the code
@@ -116,19 +123,19 @@ const make = Effect.gen(function* () {
     NodeFSP.readFile(statePath, "utf8").catch(() => ""),
   );
   const startedAt = yield* Clock.currentTimeMillis;
-  const limits = yield* Ref.make<ReadonlyMap<ProviderInstanceId, ObservedLimit>>(
+  const limits = yield* Ref.make<ReadonlyMap<string, ObservedLimit>>(
     new Map(
-      Object.entries(Option.getOrElse(decodePersistedLimits(persisted), () => ({})))
-        .filter(([, limit]) => limit.until > startedAt)
-        .map(([instanceId, limit]) => [ProviderInstanceId.make(instanceId), limit] as const),
+      Object.entries(Option.getOrElse(decodePersistedLimits(persisted), () => ({}))).filter(
+        ([, limit]) => limit.until > startedAt,
+      ),
     ),
   );
   const observedUntil = Ref.get(limits).pipe(
-    Effect.map(
-      (current) => new Map(Array.from(current, ([instanceId, limit]) => [instanceId, limit.until])),
-    ),
+    Effect.map((current) => new Map(Array.from(current, ([key, limit]) => [key, limit.until]))),
   );
 
+  // One writer at a time: two saves would race over the same temp file.
+  const saving = yield* Semaphore.make(1);
   const save = Ref.get(limits).pipe(
     Effect.flatMap((current) =>
       Effect.promise(async () => {
@@ -139,31 +146,34 @@ const make = Effect.gen(function* () {
       }),
     ),
     Effect.catchCause((cause) => Effect.logWarning("could not save account limits", { cause })),
+    saving.withPermits(1),
   );
 
   const recordLimit: AccountBalancer["Service"]["recordLimit"] = Effect.fn(
     "AccountBalancer.recordLimit",
-  )(function* (instanceId, resetAt) {
+  )(function* (instanceId, model, resetAt) {
     const until = resetAt == null ? Number.NaN : Date.parse(resetAt);
     const now = yield* Clock.currentTimeMillis;
     // Nothing says when a limit without a reset time ends, so it blocks nothing.
     if (!Number.isFinite(until) || until <= now) return;
+    const key = observedLimitKey(instanceId, model);
     const changed = yield* Ref.modify(limits, (current) =>
-      current.get(instanceId)?.until === until
+      current.get(key)?.until === until
         ? [false, current]
-        : [true, new Map(current).set(instanceId, { since: now, until })],
+        : [true, new Map(current).set(key, { since: now, until })],
     );
     if (changed) yield* save;
   });
 
   const clearLimit: AccountBalancer["Service"]["clearLimit"] = Effect.fn(
     "AccountBalancer.clearLimit",
-  )(function* (instanceId, startedAt) {
+  )(function* (instanceId, model, startedAt) {
+    const key = observedLimitKey(instanceId, model);
     const changed = yield* Ref.modify(limits, (current) => {
-      const limit = current.get(instanceId);
+      const limit = current.get(key);
       if (limit === undefined || startedAt <= limit.since) return [false, current];
       const next = new Map(current);
-      next.delete(instanceId);
+      next.delete(key);
       return [true, next];
     });
     if (changed) yield* save;
@@ -223,10 +233,11 @@ const make = Effect.gen(function* () {
         : accountLimitedUntil(
             named,
             selection.model,
-            (yield* observedUntil).get(named.instanceId),
+            (yield* observedUntil).get(observedLimitKey(named.instanceId, selection.model)),
             ranking.now,
           );
-    if (limitedUntil !== null && best.instance.instanceId !== selection.instanceId) {
+    // An account the profile does not list is not this profile's to replace.
+    if (listed && limitedUntil !== null && best.instance.instanceId !== selection.instanceId) {
       return {
         modelSelection: best.selection,
         replaced: {

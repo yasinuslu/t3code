@@ -75,6 +75,14 @@ export function accountLimitedUntil(
   return until > now ? until : null;
 }
 
+/**
+ * Key of a limit a turn hit. Limits are per model: an account out of one
+ * model's quota still runs the others.
+ */
+export function observedLimitKey(instanceId: ProviderInstanceId, model: string): string {
+  return `${instanceId} ${model}`;
+}
+
 function defaultModel(provider: ServerProvider): string | undefined {
   return (
     provider.models.find((model) => model.isDefault)?.slug ??
@@ -88,13 +96,14 @@ function defaultModel(provider: ServerProvider): string | undefined {
  * its own provider by quota left (times their weight), then accounts of other
  * providers in list order. The selection's own instance competes like any
  * other unless `exclude` names it. Callers supply the limits turns actually
- * hit; exhausted quota windows are read from the provider snapshots.
+ * hit, by `observedLimitKey`; exhausted quota windows are read from the
+ * provider snapshots.
  */
 export function rankBalancedAccounts(input: {
   readonly accounts: ReadonlyArray<CodeProfileBalancedAccount>;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly selection: ModelSelection;
-  readonly observedLimits: ReadonlyMap<ProviderInstanceId, number>;
+  readonly observedLimits: ReadonlyMap<string, number>;
   readonly exclude?: ReadonlySet<ProviderInstanceId>;
   readonly now: number;
 }): {
@@ -148,7 +157,7 @@ export function rankBalancedAccounts(input: {
     const limitedUntil = accountLimitedUntil(
       instance,
       model,
-      input.observedLimits.get(instance.instanceId),
+      input.observedLimits.get(observedLimitKey(instance.instanceId, model)),
       now,
     );
     if (limitedUntil !== null) {
