@@ -195,24 +195,20 @@ export function growRailOrder(board: GrowBoard): ReadonlyArray<GrowBoardCard> {
   return GROW_STAGES.flatMap((stage) => board[stage]);
 }
 
+/** The selection that is the manager's chat rather than a card. */
+export const GROW_MANAGER_KEY = "manager";
+
+/** The selection that is shown: a card still on the board, else the manager. */
+export function growEffectiveSelection(board: GrowBoard, selected: string): string {
+  return growRailOrder(board).some((card) => card.key === selected) ? selected : GROW_MANAGER_KEY;
+}
+
 /**
- * The card j/k land on. With nothing focused (or a focus that left the
- * board) the first press goes to the first card of the first your-turn stage
- * that has one, else the first card; after that it steps through the rail
- * and stops at its ends.
+ * Where j/k go: the manager first, then the rail in order, stopping at both
+ * ends. A selection that left the board counts as the manager.
  */
-export function growStepFocus(
-  board: GrowBoard,
-  focusedKey: string | null,
-  direction: 1 | -1,
-): string | null {
-  const order = growRailOrder(board);
-  const index = focusedKey === null ? -1 : order.findIndex((card) => card.key === focusedKey);
-  if (index === -1) {
-    const yourTurn = GROW_STAGES.find(
-      (stage) => GROW_STAGE_DEFS[stage].yourTurn && board[stage].length > 0,
-    );
-    return (yourTurn === undefined ? order[0] : board[yourTurn][0])?.key ?? null;
-  }
-  return order[Math.min(order.length - 1, Math.max(0, index + direction))]?.key ?? null;
+export function growStepSelection(board: GrowBoard, selected: string, direction: 1 | -1): string {
+  const keys = [GROW_MANAGER_KEY, ...growRailOrder(board).map((card) => card.key)];
+  const index = Math.max(0, keys.indexOf(selected));
+  return keys[Math.min(keys.length - 1, Math.max(0, index + direction))] ?? GROW_MANAGER_KEY;
 }

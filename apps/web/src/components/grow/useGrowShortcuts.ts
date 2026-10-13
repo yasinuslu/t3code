@@ -1,18 +1,24 @@
 import { useEffect, useRef } from "react";
 
 import { isEditableFocused } from "../../lib/editableFocus";
-import { type GrowBoard, growStepFocus } from "./grow.logic";
-import { useGrowFocusStore } from "./grow.store";
+import {
+  GROW_MANAGER_KEY,
+  type GrowBoard,
+  growEffectiveSelection,
+  growStepSelection,
+} from "./grow.logic";
+import { useGrowStore } from "./grow.store";
 
 /** Same idea as HomeOverlay's: a popup owns the keyboard while it is open. */
 const OPEN_POPUP_SELECTOR =
   '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
 /**
- * Board keys: j/k (or the arrows) step through the cards, Esc leaves focus
- * mode, m toggles the dock and p/o pick the center tab. Every one of them
- * also has a visible control; keys typed into the prototype's iframe never
- * reach this, which is why.
+ * Board keys: j/k (or the arrows) step through the cards, b switches the left
+ * side between Threads and Board, m selects the manager (and back), p/o pick
+ * the thing's tab, and Esc goes from Threads to Board (in Board it is left
+ * alone, so Home closes). Every one also has a visible control; keys typed
+ * into the prototype's iframe never reach this, which is why.
  */
 export function useGrowShortcuts(
   board: GrowBoard,
@@ -33,8 +39,9 @@ export function useGrowShortcuts(
         (element) => element.closest("[inert]") === null,
       );
       if (openPopup) return;
-      const store = useGrowFocusStore.getState();
-      const focused = store.focusedKey !== null;
+      const store = useGrowStore.getState();
+      const selected = growEffectiveSelection(board, store.selected);
+      const onCard = selected !== GROW_MANAGER_KEY;
       const handled = () => {
         event.preventDefault();
         event.stopPropagation();
@@ -43,40 +50,44 @@ export function useGrowShortcuts(
         case "j":
         case "ArrowDown":
         case "k":
-        case "ArrowUp": {
-          const next = growStepFocus(
-            board,
-            store.focusedKey,
-            event.key === "j" || event.key === "ArrowDown" ? 1 : -1,
+        case "ArrowUp":
+          handled();
+          store.select(
+            growStepSelection(
+              board,
+              selected,
+              event.key === "j" || event.key === "ArrowDown" ? 1 : -1,
+            ),
           );
-          if (next === null) return;
-          handled();
-          store.setFocusedKey(next);
           return;
-        }
-        case "Escape":
-          if (!focused) return;
+        case "b":
           handled();
-          store.setFocusedKey(null);
+          store.setLeftMode(store.leftMode === "threads" ? "board" : "threads");
           return;
         case "m":
-          if (!focused) return;
           handled();
-          store.setDockTab(store.dockTab === "thread" ? "manager" : "thread");
+          store.toggleManager();
           return;
         case "p":
-          if (!focused || !canPlay) return;
+          if (!onCard || !canPlay) return;
           handled();
-          store.setCenterTab("play");
+          store.setThingTab("play");
+          store.setLeftMode("threads");
           return;
         case "o":
-          if (!focused) return;
+          if (!onCard) return;
           handled();
-          store.setCenterTab("overview");
+          store.setThingTab("overview");
+          store.setLeftMode("threads");
+          return;
+        case "Escape":
+          // Capture phase, so this runs before HomeOverlay's handler could close Home.
+          if (store.leftMode !== "threads") return;
+          handled();
+          store.setLeftMode("board");
           return;
       }
     };
-    // Capture phase, so Esc leaves focus mode before HomeOverlay's handler can close Home.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);

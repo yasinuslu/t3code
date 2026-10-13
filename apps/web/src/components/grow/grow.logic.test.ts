@@ -3,11 +3,13 @@ import { type GrowCard, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  GROW_MANAGER_KEY,
   IN_USE_LIMIT,
   buildGrowBoard,
   growCardKey,
+  growEffectiveSelection,
   growRailOrder,
-  growStepFocus,
+  growStepSelection,
 } from "./grow.logic";
 
 const NOW = Date.parse("2026-10-13T12:00:00.000Z");
@@ -86,7 +88,7 @@ describe("buildGrowBoard", () => {
   });
 });
 
-describe("growStepFocus", () => {
+describe("growStepSelection", () => {
   const preview = [{ url: "http://localhost:1" }];
   const board = buildGrowBoard(
     [
@@ -116,11 +118,17 @@ describe("growStepFocus", () => {
     ]);
   });
 
-  it("starts on the first your-turn card, then steps and stops at the ends", () => {
-    expect(growStepFocus(board, null, 1)).toBe("env:playable");
-    expect(growStepFocus(board, "env:plain", 1)).toBe("env:playable");
-    expect(growStepFocus(board, "env:plain", -1)).toBe("env:plain");
-    expect(growStepFocus(board, "env:shelved", 1)).toBe("env:shelved");
-    expect(growStepFocus(board, "env:gone", -1)).toBe("env:playable");
+  it("steps from the manager through the rail and stops at both ends", () => {
+    expect(growStepSelection(board, GROW_MANAGER_KEY, 1)).toBe("env:plain");
+    expect(growStepSelection(board, "env:plain", 1)).toBe("env:playable");
+    expect(growStepSelection(board, "env:plain", -1)).toBe(GROW_MANAGER_KEY);
+    expect(growStepSelection(board, GROW_MANAGER_KEY, -1)).toBe(GROW_MANAGER_KEY);
+    expect(growStepSelection(board, "env:shelved", 1)).toBe("env:shelved");
+  });
+
+  it("treats a card that left the board as the manager", () => {
+    expect(growEffectiveSelection(board, "env:gone")).toBe(GROW_MANAGER_KEY);
+    expect(growEffectiveSelection(board, "env:plain")).toBe("env:plain");
+    expect(growStepSelection(board, "env:gone", 1)).toBe("env:plain");
   });
 });

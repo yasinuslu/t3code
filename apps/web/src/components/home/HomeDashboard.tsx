@@ -44,9 +44,7 @@ import {
   ManagerProfileSwitcher,
   useManagerProfileMouseButtons,
 } from "../brainstorm/ManagerProfileSwitcher";
-import { GrowBoard } from "../grow/GrowBoard";
-import { GrowDock } from "../grow/GrowDock";
-import { useGrowFocusStore } from "../grow/grow.store";
+import { GrowWorkspace } from "../grow/GrowWorkspace";
 import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
 import {
   selectManagerProfile,
@@ -92,7 +90,6 @@ export function HomeDashboard() {
   const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
   const [view, setView] = useLocalStorage(HOME_VIEW_KEY, "board", HomeView);
-  const growFocused = useGrowFocusStore((store) => store.focusedKey !== null);
   const managerProfile = useManagerProfile();
   // Goals come from the brain of the manager in view.
   const managerEnvironmentId = useManagerEnvironmentId(managerProfile);
@@ -129,11 +126,8 @@ export function HomeDashboard() {
       <div
         className={cn(
           "grid min-h-0 flex-1",
-          view === "board"
-            ? growFocused
-              ? "lg:grid-cols-[minmax(0,1fr)_minmax(24rem,30%)]"
-              : "lg:grid-cols-[minmax(0,1fr)_minmax(22rem,32%)]"
-            : "lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]",
+          // Grow lays out its own zones, chat included; Classic docks the manager at the right.
+          view === "list" ? "lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]" : "",
         )}
       >
         {/* Home has its own canvas so the cards read as one board, apart from thread views. */}
@@ -156,8 +150,8 @@ export function HomeDashboard() {
                 if (value === "board" || value === "list") setView(value);
               }}
             >
-              <Toggle value="board">Board</Toggle>
-              <Toggle value="list">List</Toggle>
+              <Toggle value="board">Grow</Toggle>
+              <Toggle value="list">Classic</Toggle>
             </ToggleGroup>
             <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
               {overview.needsMe.length} need you · {overview.working.length} working ·{" "}
@@ -176,9 +170,11 @@ export function HomeDashboard() {
             </Button>
           </WorkspacePageHeader>
           {view === "board" ? (
-            <div className="flex min-h-0 flex-1 flex-col px-(--workspace-gutter-start) pt-3">
-              <GrowBoard threads={threads} now={now} />
-            </div>
+            <GrowWorkspace
+              threads={threads}
+              now={now}
+              managerPane={<ManagerPane manager={manager} />}
+            />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
               <VerdictBanner verdict={verdict} />
@@ -230,11 +226,7 @@ export function HomeDashboard() {
             </div>
           )}
         </div>
-        {view === "board" ? (
-          <GrowDock threads={threads} manager={<ManagerPane manager={manager} />} />
-        ) : (
-          <ManagerPane manager={manager} />
-        )}
+        {view === "list" ? <ManagerPane manager={manager} /> : null}
       </div>
     </div>
   );

@@ -1,19 +1,15 @@
 /**
- * Focus mode of the Grow board: a rail of every card, and the focused thread
- * as a thing to play with and understand (its chat docks on the right, see
- * GrowDock). Switching focus is instant; only the focused thread's prototype
- * is mounted.
+ * The pieces of Grow's Threads mode: the switch between Threads and Board, the
+ * rail of every card with the manager pinned above it, and the selected
+ * thread as a "thing" to play with and understand. Switching is instant; only
+ * the selected thread's prototype is mounted.
  */
+import { GROW_STAGES } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import {
-  ExternalLinkIcon,
-  LayoutGridIcon,
-  MessagesSquareIcon,
-  PlayIcon,
-  RotateCwIcon,
-} from "lucide-react";
+import { ExternalLinkIcon, MessagesSquareIcon, PlayIcon, RotateCwIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useManagerProfile } from "../../brainstormStore";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import {
@@ -26,51 +22,75 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-import { GROW_STAGE_DEFS, type GrowBoard, type GrowBoardCard, growRailOrder } from "./grow.logic";
-import { GROW_STAGES } from "@t3tools/contracts";
-import { type GrowCenterTab, useGrowFocusStore } from "./grow.store";
+import {
+  GROW_MANAGER_KEY,
+  GROW_STAGE_DEFS,
+  type GrowBoard,
+  type GrowBoardCard,
+} from "./grow.logic";
+import { type GrowThingTab, useGrowStore } from "./grow.store";
 import { SavedField, StageActions, type UpdateCard } from "./GrowParts";
 
-export function GrowFocus(props: {
-  readonly board: GrowBoard;
-  readonly focusedKey: string;
-  readonly update: UpdateCard;
-}) {
-  const { board, focusedKey } = props;
-  const focused = growRailOrder(board).find((card) => card.key === focusedKey) ?? null;
+/** Same place and size in both left-side modes, so it never jumps. */
+export function LeftSwitch() {
+  const leftMode = useGrowStore((store) => store.leftMode);
+  const setLeftMode = useGrowStore((store) => store.setLeftMode);
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[17rem_minmax(0,1fr)]" data-grow-focus="">
-      <Rail board={board} focusedKey={focusedKey} />
-      {focused ? (
-        <Center key={focused.key} card={focused} update={props.update} />
-      ) : (
-        <p className="p-4 text-muted-foreground text-sm">
-          This thread is not on the board right now. Pick another from the rail, or go back to the
-          board.
-        </p>
-      )}
-    </div>
+    <ToggleGroup
+      aria-label="Left side"
+      className="self-start"
+      value={[leftMode]}
+      onValueChange={(next) => {
+        const value = next[0];
+        if (value === "threads" || value === "board") setLeftMode(value);
+      }}
+    >
+      <Toggle value="threads">Threads</Toggle>
+      <Toggle value="board">Board</Toggle>
+    </ToggleGroup>
   );
 }
 
-function Rail(props: { readonly board: GrowBoard; readonly focusedKey: string }) {
-  const setFocusedKey = useGrowFocusStore((store) => store.setFocusedKey);
+export function useManagerLabel(): string {
+  const profile = useManagerProfile();
+  return profile === null ? "Manager" : `Manager: ${profile}`;
+}
+
+/** Selects the manager; highlighted while selected. */
+export function ManagerButton(props: { readonly selected: boolean }) {
+  const select = useGrowStore((store) => store.select);
+  const label = useManagerLabel();
+  return (
+    <Button
+      size="sm"
+      variant={props.selected ? "default" : "outline"}
+      aria-pressed={props.selected}
+      aria-current={props.selected ? "true" : undefined}
+      data-grow-manager=""
+      className="self-start"
+      onClick={() => select(GROW_MANAGER_KEY)}
+    >
+      <MessagesSquareIcon />
+      {label}
+    </Button>
+  );
+}
+
+export function Rail(props: { readonly board: GrowBoard; readonly selected: string }) {
+  const select = useGrowStore((store) => store.select);
   const rail = useRef<HTMLElement>(null);
-  const { focusedKey } = props;
+  const { selected } = props;
   useEffect(() => {
     rail.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
-  }, [focusedKey]);
+  }, [selected]);
   return (
-    <nav ref={rail} aria-label="Cards" className="flex min-h-0 flex-col gap-2 border-e pe-2 pb-3">
-      <Button
-        size="sm"
-        variant="outline"
-        className="self-start"
-        onClick={() => setFocusedKey(null)}
-      >
-        <LayoutGridIcon />
-        Board
-      </Button>
+    <nav
+      ref={rail}
+      aria-label="Cards"
+      className="flex min-h-0 w-68 flex-col gap-2 border-e pe-2 pb-3"
+    >
+      <LeftSwitch />
+      <ManagerButton selected={selected === GROW_MANAGER_KEY} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         {GROW_STAGES.map((stage) => {
           const cards = props.board[stage];
@@ -88,8 +108,8 @@ function Rail(props: { readonly board: GrowBoard; readonly focusedKey: string })
                 <RailRow
                   key={card.key}
                   card={card}
-                  focused={card.key === props.focusedKey}
-                  onFocus={() => setFocusedKey(card.key)}
+                  focused={card.key === selected}
+                  onFocus={() => select(card.key)}
                 />
               ))}
             </section>
@@ -97,7 +117,8 @@ function Rail(props: { readonly board: GrowBoard; readonly focusedKey: string })
         })}
       </div>
       <p className="px-1 text-muted-foreground text-xs">
-        j/k cards · m chat · p play · o overview · Esc board. Click outside the prototype first.
+        j/k threads · m manager · b board · p play · o overview · Esc board. Click outside the
+        prototype first.
       </p>
     </nav>
   );
@@ -146,19 +167,19 @@ function RailRow(props: {
   );
 }
 
-function Center(props: { readonly card: GrowBoardCard; readonly update: UpdateCard }) {
+export function Thing(props: { readonly card: GrowBoardCard; readonly update: UpdateCard }) {
   const { card, update } = props;
   const { thread } = card;
   const links = thread.previewLinks ?? [];
   const playable = links.length > 0;
-  const chosen = useGrowFocusStore((store) => store.centerTab);
-  const setCenterTab = useGrowFocusStore((store) => store.setCenterTab);
-  const tab: GrowCenterTab = playable && (chosen ?? "play") === "play" ? "play" : "overview";
+  const chosen = useGrowStore((store) => store.thingTab);
+  const setCenterTab = useGrowStore((store) => store.setThingTab);
+  const tab: GrowThingTab = playable && (chosen ?? "play") === "play" ? "play" : "overview";
   return (
     <section
       aria-label={thread.title}
-      className="flex min-h-0 min-w-0 flex-col gap-2 ps-3 pb-3"
-      data-grow-center={thread.id}
+      className="flex min-h-0 min-w-0 flex-col gap-2 border-s ps-3 pb-3"
+      data-grow-thing={thread.id}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <h2 className="min-w-0 truncate font-semibold text-base">{thread.title}</h2>

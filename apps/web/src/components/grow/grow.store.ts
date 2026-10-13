@@ -1,35 +1,63 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-export type GrowCenterTab = "play" | "overview";
-export type GrowDockTab = "thread" | "manager";
+import { GROW_MANAGER_KEY } from "./grow.logic";
 
-interface GrowFocusStore {
-  /** The focused card, `envId:threadId`; null shows the whole board. */
-  focusedKey: string | null;
+export type GrowLeftMode = "threads" | "board";
+export type GrowThingTab = "play" | "overview";
+
+interface GrowStore {
+  /** What the left side shows: the thread rail, or the kanban board. */
+  leftMode: GrowLeftMode;
+  /** The selected card (`envId:threadId`) or `GROW_MANAGER_KEY`; the chat shows it. */
+  selected: string;
+  /** The card selected last, for `m` to return to from the manager. */
+  previousThread: string | null;
   /** The user's pick; null until they pick, then the thread's default (Play if playable) applies. */
-  centerTab: GrowCenterTab | null;
-  dockTab: GrowDockTab;
-  setFocusedKey: (key: string | null) => void;
-  setCenterTab: (tab: GrowCenterTab) => void;
-  setDockTab: (tab: GrowDockTab) => void;
+  thingTab: GrowThingTab | null;
+  setLeftMode: (mode: GrowLeftMode) => void;
+  select: (key: string) => void;
+  /** The manager, or from the manager back to the previous thread. */
+  toggleManager: () => void;
+  setThingTab: (tab: GrowThingTab) => void;
+  /** Select a card, show it in the rail and open its prototype. */
+  play: (key: string) => void;
 }
 
 /** Where the user was on the board, so reopening Home returns to the same place. */
-export const useGrowFocusStore = create<GrowFocusStore>()(
+export const useGrowStore = create<GrowStore>()(
   persist(
     (set) => ({
-      focusedKey: null,
-      centerTab: null,
-      dockTab: "thread",
-      setFocusedKey: (focusedKey) => set({ focusedKey }),
-      setCenterTab: (centerTab) => set({ centerTab }),
-      setDockTab: (dockTab) => set({ dockTab }),
+      leftMode: "threads",
+      selected: GROW_MANAGER_KEY,
+      previousThread: null,
+      thingTab: null,
+      setLeftMode: (leftMode) => set({ leftMode }),
+      select: (key) =>
+        set((state) => ({
+          selected: key,
+          previousThread: key === GROW_MANAGER_KEY ? state.previousThread : key,
+        })),
+      toggleManager: () =>
+        set((state) =>
+          state.selected === GROW_MANAGER_KEY
+            ? { selected: state.previousThread ?? GROW_MANAGER_KEY }
+            : { selected: GROW_MANAGER_KEY, previousThread: state.selected },
+        ),
+      setThingTab: (thingTab) => set({ thingTab }),
+      play: (key) =>
+        set({ selected: key, previousThread: key, leftMode: "threads", thingTab: "play" }),
     }),
     {
-      name: "t3code:grow-focus:v1",
+      // v2: round 2 stored a different shape; that state is ignored.
+      name: "t3code:grow-focus:v2",
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ focusedKey, centerTab, dockTab }) => ({ focusedKey, centerTab, dockTab }),
+      partialize: ({ leftMode, selected, previousThread, thingTab }) => ({
+        leftMode,
+        selected,
+        previousThread,
+        thingTab,
+      }),
     },
   ),
 );

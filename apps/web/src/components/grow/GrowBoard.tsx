@@ -4,14 +4,11 @@
  * main. Stages come from the thread itself unless someone set one (the
  * manager or an agent through `grow_update`, or the user here).
  */
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon, PlayIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 import { cn } from "../../lib/utils";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { useGrowCards } from "../../state/grow";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { ThreadReportBody, WORK_REASON_LOOK, useThreadReport } from "../home/ThreadReportCard";
 import { Badge } from "../ui/badge";
@@ -27,49 +24,31 @@ import {
 import {
   GROW_COLUMN_STAGES,
   GROW_STAGE_DEFS,
+  type GrowBoard,
   type GrowBoardCard,
-  buildGrowBoard,
-  growRailOrder,
 } from "./grow.logic";
-import { GrowFocus } from "./GrowFocus";
-import { SavedField, StageActions, type UpdateCard, useGrowUpdate } from "./GrowParts";
-import { useGrowFocusStore } from "./grow.store";
-import { useGrowShortcuts } from "./useGrowShortcuts";
+import { SavedField, StageActions, type UpdateCard } from "./GrowParts";
 
-export function GrowBoard(props: {
-  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+/** The kanban columns and the Shelf; `header` sits above them (the switch, the manager). */
+export function GrowColumns(props: {
+  readonly board: GrowBoard;
   readonly now: number;
+  readonly selected: string | null;
+  readonly onSelect: (key: string) => void;
+  /** Wide windows: a card's Play opens its prototype in Threads mode. */
+  readonly onPlay?: (key: string) => void;
+  readonly header?: ReactNode;
 }) {
-  const cards = useGrowCards();
-  const board = useMemo(
-    () => buildGrowBoard(props.threads, cards, props.now),
-    [cards, props.now, props.threads],
-  );
-  const [openKey, setOpenKey] = useState<string | null>(null);
-  const update = useGrowUpdate();
-  // Wide windows focus a card in place; narrow ones keep the detail dialog.
-  const wide = useMediaQuery("lg");
-  const focusedKey = useGrowFocusStore((store) => store.focusedKey);
-  const setFocusedKey = useGrowFocusStore((store) => store.setFocusedKey);
-  const focusedCard = useMemo(
-    () => growRailOrder(board).find((card) => card.key === focusedKey) ?? null,
-    [board, focusedKey],
-  );
-  useGrowShortcuts(board, { enabled: wide, canPlay: focusedCard?.playUrl != null });
-  const choose = (key: string) => (wide ? setFocusedKey(key) : setOpenKey(key));
-  const open =
-    openKey === null
-      ? null
-      : (Object.values(board)
-          .flat()
-          .find((card) => card.key === openKey) ?? null);
-
-  if (wide && focusedKey !== null) {
-    return <GrowFocus board={board} focusedKey={focusedKey} update={update} />;
-  }
-
+  const { board, selected } = props;
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    root.current
+      ?.querySelector('[data-grow-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selected]);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 pb-4" data-grow-board="">
+    <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3 pb-4" data-grow-board="">
+      {props.header}
       <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-1">
         {GROW_COLUMN_STAGES.map((stage) => {
           const column = GROW_STAGE_DEFS[stage];
@@ -100,7 +79,9 @@ export function GrowBoard(props: {
                       key={card.key}
                       card={card}
                       now={props.now}
-                      onOpen={() => choose(card.key)}
+                      selected={card.key === selected}
+                      onOpen={() => props.onSelect(card.key)}
+                      {...(props.onPlay ? { onPlay: () => props.onPlay?.(card.key) } : {})}
                     />
                   ))
                 )}
@@ -126,9 +107,10 @@ export function GrowBoard(props: {
               <Button
                 key={card.key}
                 size="sm"
-                variant="outline"
+                variant={card.key === selected ? "default" : "outline"}
                 className="max-w-60"
-                onClick={() => choose(card.key)}
+                data-grow-selected={card.key === selected ? "true" : undefined}
+                onClick={() => props.onSelect(card.key)}
               >
                 <span className="truncate">{card.thread.title}</span>
               </Button>
@@ -136,9 +118,6 @@ export function GrowBoard(props: {
           </div>
         )}
       </section>
-      {open ? (
-        <GrowCardDialog card={open} update={update} onClose={() => setOpenKey(null)} />
-      ) : null}
     </div>
   );
 }
@@ -146,7 +125,9 @@ export function GrowBoard(props: {
 function GrowCardView(props: {
   readonly card: GrowBoardCard;
   readonly now: number;
+  readonly selected: boolean;
   readonly onOpen: () => void;
+  readonly onPlay?: () => void;
 }) {
   const { card } = props;
   const lessons = card.card?.lessons.length ?? 0;
@@ -155,8 +136,12 @@ function GrowCardView(props: {
   );
   return (
     <article
-      className="relative flex min-w-0 flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-card-foreground"
+      className={cn(
+        "relative flex min-w-0 flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-card-foreground",
+        props.selected ? "border-primary ring-2 ring-primary/40" : "",
+      )}
       data-grow-card={card.thread.id}
+      data-grow-selected={props.selected ? "true" : undefined}
     >
       <button
         type="button"
@@ -198,7 +183,9 @@ function GrowCardView(props: {
           size="xs"
           className="relative z-10 self-start"
           variant={card.stage === "play" ? "default" : "outline"}
-          render={<a href={card.playUrl} target="_blank" rel="noopener noreferrer" />}
+          {...(props.onPlay
+            ? { onClick: props.onPlay }
+            : { render: <a href={card.playUrl} target="_blank" rel="noopener noreferrer" /> })}
         >
           <PlayIcon />
           Play
@@ -208,7 +195,7 @@ function GrowCardView(props: {
   );
 }
 
-function GrowCardDialog(props: {
+export function GrowCardDialog(props: {
   readonly card: GrowBoardCard;
   readonly update: UpdateCard;
   readonly onClose: () => void;
