@@ -67,3 +67,20 @@ export function previewLinkLabel(link: Pick<ThreadPreviewLink, "url" | "label">)
   if (isIp || !hostname.includes(".")) return url.host;
   return hostname.split(".")[0] ?? url.host;
 }
+
+/**
+ * True for a URL that only answers on the machine running the agent: localhost,
+ * 127.0.0.0/8, ::1 and 0.0.0.0. The user usually opens a preview from another
+ * machine, where such a link points at their own computer.
+ */
+export function isLoopbackPreviewUrl(raw: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(raw.trim()).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (hostname === "[::1]" || hostname === "0.0.0.0") return true;
+  return /^127(?:\.\d{1,3}){3}$/u.test(hostname);
+}
