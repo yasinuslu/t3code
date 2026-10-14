@@ -148,7 +148,7 @@ export function HomeDashboard() {
               <Button
                 size="xs"
                 variant="outline"
-                className="lg:hidden"
+                className="max-md:hidden lg:hidden"
                 data-home-open-manager=""
                 onClick={() => void openManagerThreadPage(managerProfile)}
               >

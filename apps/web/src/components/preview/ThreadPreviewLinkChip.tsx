@@ -106,6 +106,7 @@ export function ThreadPreviewLinks({
             render={
               <InlineButton
                 tone="muted"
+
                 aria-label={`${latest.others} more previews`}
                 onPointerDown={stopRow}
                 onClick={stopRow}
@@ -186,7 +187,7 @@ export function ThreadPreviewLinkList({
             <button
               type="button"
               aria-label={`Remove preview ${label}`}
-              className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:outline-none"
+              className="touch-target relative flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:outline-none"
               onClick={() => onRemove(link.url)}
             >
               <XIcon aria-hidden className="size-3.5" />
@@ -233,6 +234,7 @@ function ThreadPreviewLinkChip({
         render={
           <InlineButton
             tone="muted"
+
             aria-label={ariaLabel}
             onPointerDown={stopRow}
             onClick={handleClick}

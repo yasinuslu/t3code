@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import { APP_MODES, cycleAppMode, setAppMode, useAppMode } from "../appMode";
 import { useManagerProfile } from "../brainstormStore";
+import { useIsMobile } from "../hooks/useMediaQuery";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { goToManager } from "../lib/goToManager";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -80,6 +81,10 @@ export function ModeShortcuts() {
 export function ModeSwitch() {
   const mode = useAppMode();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const isMobile = useIsMobile();
+
+  // Phones have the bottom tab bar (PhoneTabBar); here the switch would sit on the header text.
+  if (isMobile) return null;
 
   return (
     <div
