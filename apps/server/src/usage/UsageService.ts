@@ -308,24 +308,18 @@ export const make = Effect.gen(function* () {
     for (const driver of ["claudeAgent", "codex", "grok"] as const) {
       // Disabled accounts still have history. Explicit default slots replace
       // the legacy settings, just as they do in the provider registry.
-      const instances: Array<
-        Pick<ProviderInstanceConfig, "config" | "environment"> & { instanceId: ProviderInstanceId }
-      > = Object.entries(settings.providerInstances)
-        .filter(([, instance]) => instance.driver === driver)
-        .map(([id, instance]) => ({ ...instance, instanceId: ProviderInstanceId.make(id) }));
+      // Only the home matters here. Code profile dirs have no instance id, and
+      // building one from the profile name (`claudeAgent:yu`) fails the slug
+      // check and kills the request with a defect.
+      const instances: Array<Pick<ProviderInstanceConfig, "config" | "environment">> =
+        Object.values(settings.providerInstances).filter((instance) => instance.driver === driver);
       if (!Object.hasOwn(settings.providerInstances, driver)) {
-        instances.push({
-          config: settings.providers[driver],
-          instanceId: ProviderInstanceId.make(driver),
-        });
+        instances.push({ config: settings.providers[driver] });
       }
       // Each code profile's Claude dirs hold history like an explicit home.
       if (driver === "claudeAgent" && codeProfiles !== undefined) {
-        for (const { profile, dir } of yield* codeProfiles.claudeConfigDirs) {
-          instances.push({
-            config: { homePath: dir },
-            instanceId: ProviderInstanceId.make(`${driver}:${profile}`),
-          });
+        for (const { dir } of yield* codeProfiles.claudeConfigDirs) {
+          instances.push({ config: { homePath: dir } });
         }
       }
       for (const instance of instances) {

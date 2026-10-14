@@ -30,6 +30,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import * as ServerConfig from "../config.ts";
+import { CodeProfiles } from "../provider/CodeProfiles.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as UsageService from "./UsageService.ts";
 
@@ -248,6 +249,36 @@ describe("UsageService", () => {
         );
       }).pipe(Effect.scoped),
   );
+
+  it.live("reads code profile Claude dirs whose profile name is not an instance id", () =>
+    Effect.gen(function* () {
+      const { home, settings } = yield* setup;
+      const profileDir = NodePath.join(home, "code", "yu", "home", "claude-2");
+      const projects = NodePath.join(profileDir, "projects", "proj");
+      yield* Effect.promise(async () => {
+        await NodeFSP.mkdir(projects, { recursive: true });
+        await NodeFSP.writeFile(NodePath.join(projects, "session.jsonl"), claudeLine(1, 31));
+      });
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSummary(WINDOW);
+      }).pipe(
+        Effect.provide(serviceLayers({ prefix: "usage-service-code-profiles", home, settings })),
+        Effect.provideService(
+          CodeProfiles,
+          CodeProfiles.of({
+            resolve: () => Effect.void,
+            list: Effect.succeed([]),
+            // "yu" is a valid profile name; `claudeAgent:yu` is not a valid
+            // provider instance id, and building one used to kill the request.
+            claudeConfigDirs: Effect.succeed([{ profile: "yu", dir: profileDir }]),
+          }),
+        ),
+      );
+      assert.strictEqual(summary.buckets[0]?.totals.outputTokens, 31);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("omits Cursor account usage when no file login is saved", () =>
     Effect.gen(function* () {
       const { settings, home } = yield* setup;

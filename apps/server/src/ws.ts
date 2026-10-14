@@ -3904,7 +3904,14 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         yield* analytics.record("client.connected", clientAnalyticsProps);
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
           const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
-          yield* RpcServer.make(ServerWsRpcGroup, { disableTracing: true }).pipe(
+          // A defect in one handler fails only that request. By default the
+          // RPC server turns it into a connection-wide Defect that fails every
+          // open stream, so the client drops its session and reconnects; a
+          // handler that dies on every call then loops the client forever.
+          yield* RpcServer.make(ServerWsRpcGroup, {
+            disableTracing: true,
+            disableFatalDefects: true,
+          }).pipe(
             Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
             Effect.provide(rpcScopeAuthorizationLayer(session.scopes)),
             Effect.forkScoped,
