@@ -6,7 +6,12 @@ for real decisions. Each code profile has its own manager.
 
 ## Getting Home
 
-Press `mod+e` (`ctrl+alt+m` also works, even in a focused terminal). The same keys are the way back from any thread. You can also click
+Press `mod+e` (`ctrl+alt+m` also works, even in a focused terminal). From any screen it opens the
+Manager mode with the manager's composer focused: Grow, any thread, settings, an open dialog or the
+command palette. Pressed again there, it just focuses the composer. In the desktop app it also works
+while an embedded preview or an iframe has the keyboard (on Windows and Linux that is `ctrl+alt+m`,
+since `ctrl+e` belongs to the terminal); in a browser tab, a page inside an iframe keeps its keys.
+You can also click
 **Home** at the top of the sidebar or the compass at the start of a thread's header, or choose **Go
 home** in the command palette. Home opens with the manager's composer focused. Change the shortcut in
 **Settings → Keybindings** under **Manager: Open**.

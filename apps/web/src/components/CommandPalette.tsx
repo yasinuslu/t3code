@@ -84,7 +84,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { openManagerHome } from "./brainstorm/useOpenManagerThread";
 import { APP_MODES, setAppMode } from "../appMode";
-import { toggleHomeOverlay } from "../homeOverlayStore";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -583,14 +582,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         event.stopPropagation();
         setOpen(false);
         void navigate({ to: "/usage" });
-        return;
-      }
-      if (command === "manager.open") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (event.repeat) return;
-        setOpen(false);
-        toggleHomeOverlay();
         return;
       }
       const mode = overlayModeForCommand(command);

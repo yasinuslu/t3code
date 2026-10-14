@@ -2,14 +2,24 @@ import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
 import { APP_MODES, cycleAppMode, setAppMode, useAppMode } from "../appMode";
+import { useManagerProfile } from "../brainstormStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
+import { goToManager } from "../lib/goToManager";
+import { isTerminalFocused } from "../lib/terminalFocus";
+import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
+import { useOpenManagerThreadPage } from "./brainstorm/useOpenManagerThread";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
-/** One shortcut per mode, and one that cycles them. App-global, like the right-panel chords. */
+/**
+ * One shortcut per mode, one that cycles them, and the Manager shortcut that
+ * works from any screen. App-global, like the right-panel chords.
+ */
 export function ModeShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const openManagerThreadPage = useOpenManagerThreadPage();
+  const managerProfile = useManagerProfile();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -20,7 +30,17 @@ export function ModeShortcuts() {
       ) {
         return;
       }
-      const command = resolveShortcutCommand(event, keybindings);
+      // The Manager shortcut has to work in a terminal too. Its `when` only
+      // spares Ctrl+E there (the shell's end-of-line), which is not a chord on a Mac.
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: { terminalFocus: !isMacPlatform(navigator.platform) && isTerminalFocused() },
+      });
+      if (command === "manager.open" || command === "mode.classic") {
+        event.preventDefault();
+        event.stopPropagation();
+        void goToManager(() => openManagerThreadPage(managerProfile));
+        return;
+      }
       if (command === "mode.cycle") {
         event.preventDefault();
         event.stopPropagation();
@@ -36,7 +56,19 @@ export function ModeShortcuts() {
     // Capture, so a focused editor or the chat cannot swallow the chord.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [keybindings]);
+  }, [keybindings, managerProfile, openManagerThreadPage]);
+
+  // The desktop shell catches the chord below the page, where an iframe or a
+  // preview cannot swallow it, and sends it here.
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction?.((action) => {
+        if (action === "open-manager") {
+          void goToManager(() => openManagerThreadPage(managerProfile));
+        }
+      }),
+    [managerProfile, openManagerThreadPage],
+  );
 
   return null;
 }
@@ -64,7 +96,11 @@ export function ModeSwitch() {
         }}
       >
         {APP_MODES.map((entry) => {
-          const shortcut = shortcutLabelForCommand(keybindings, entry.command);
+          // The Manager tab advertises the chord that gets there from anywhere.
+          const shortcut =
+            (entry.mode === "classic"
+              ? shortcutLabelForCommand(keybindings, "manager.open")
+              : null) ?? shortcutLabelForCommand(keybindings, entry.command);
           return (
             <Tooltip key={entry.mode}>
               <TooltipTrigger
