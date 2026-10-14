@@ -69,6 +69,9 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as GrowService from "./grow/GrowService.ts";
+import { notificationsHttpApiLayer } from "./notifications/http.ts";
+import * as UserNotifications from "./notifications/UserNotifications.ts";
+import * as WebPush from "./notifications/WebPush.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
@@ -665,6 +668,7 @@ const makeRoutesLayer = Layer.mergeAll(
       Layer.provide(orchestrationHttpApiLayer),
       Layer.provide(pullRequestHttpApiLayer),
       Layer.provide(projectHttpApiLayer),
+      Layer.provide(notificationsHttpApiLayer),
       Layer.provide(serverEnvironmentHttpApiLayer),
       Layer.provide(environmentAuthenticatedAuthLayer),
     ),
@@ -699,6 +703,7 @@ const makeRoutesLayer = Layer.mergeAll(
   Layer.provide(PullRequestServiceLive),
   Layer.provide(BrainstormService.layerWithManagerScope),
   Layer.provide(GrowService.layer),
+  Layer.provide(UserNotifications.layer.pipe(Layer.provide(WebPush.layer))),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(DesktopAppUpdateLayerLive))),
   Layer.provide(commandReadinessLayer),

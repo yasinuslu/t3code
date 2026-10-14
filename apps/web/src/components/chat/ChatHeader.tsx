@@ -31,6 +31,7 @@ import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { NotificationsBell } from "../NotificationsBell";
 import { ProjectFavicon } from "../ProjectFavicon";
 import {
   ProviderConfigDirIndicator,
@@ -416,6 +417,12 @@ export const ChatHeader = memo(function ChatHeader({
           <ProviderConfigDirIndicator value={providerConfigDir} compact={docked} />
         </div>
       ) : null}
+      {/* Home and the embedded Grow chat have their own place for it. */}
+      {docked ? null : (
+        <div className="flex shrink-0 items-center">
+          <NotificationsBell />
+        </div>
+      )}
     </div>
   );
 });

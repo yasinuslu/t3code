@@ -57,6 +57,8 @@ import { BrainstormToolkitHandlersLive } from "./toolkits/brainstorm/handlers.ts
 import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
 import { GrowToolkitHandlersLive } from "./toolkits/grow/handlers.ts";
 import { GrowToolkit } from "./toolkits/grow/tools.ts";
+import { NotificationsToolkitHandlersLive } from "./toolkits/notifications/handlers.ts";
+import { NotificationsToolkit } from "./toolkits/notifications/tools.ts";
 import { PeersToolkitHandlersLive } from "./toolkits/peers/handlers.ts";
 import { PeersToolkit } from "./toolkits/peers/tools.ts";
 import * as PeerEnvironments from "../peers/PeerEnvironments.ts";
@@ -722,6 +724,10 @@ const GrowToolkitRegistrationLive = McpServer.toolkit(GrowToolkit).pipe(
   Layer.provide(GrowToolkitHandlersLive),
 );
 
+const NotificationsToolkitRegistrationLive = McpServer.toolkit(NotificationsToolkit).pipe(
+  Layer.provide(NotificationsToolkitHandlersLive),
+);
+
 const PeersToolkitRegistrationLive = McpServer.toolkit(PeersToolkit).pipe(
   Layer.provide(PeersToolkitHandlersLive),
   Layer.provide(PeerEnvironments.layer),
@@ -761,6 +767,7 @@ export const layer = Layer.mergeAll(
   ThreadStatusToolkitRegistrationLive,
   BrainstormToolkitRegistrationLive,
   GrowToolkitRegistrationLive,
+  NotificationsToolkitRegistrationLive,
   PeersToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));

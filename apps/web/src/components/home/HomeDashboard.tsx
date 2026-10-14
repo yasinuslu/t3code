@@ -33,6 +33,7 @@ import { previewEnvironment } from "../../state/preview";
 import { useEnvironmentQuery } from "../../state/query";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
+import { NotificationsBell } from "../NotificationsBell";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -144,6 +145,7 @@ export function HomeDashboard() {
               {overview.review.length} to review
             </span>
             <div className="ms-auto flex shrink-0 items-center gap-1">
+              <NotificationsBell />
               {/* Narrow windows have no docked manager; this opens it as a page. */}
               <Button
                 size="xs"

@@ -348,6 +348,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification sound alert completion input approval desktop"],
   },
   {
+    id: "push-notifications",
+    title: "Bildirimler",
+    to: "/settings/general",
+    searchTerms: ["push bildirim telefon cihaz test inbox notify web push"],
+  },
+  {
     id: "in-app-notifications",
     title: "In-app notifications",
     to: "/settings/general",

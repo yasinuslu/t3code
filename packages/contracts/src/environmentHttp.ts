@@ -42,6 +42,7 @@ import {
   OrchestrationV2ThreadHistoryPage,
 } from "./orchestrationV2.ts";
 import { Project, ProjectMutation, ProjectSnapshot } from "./project.ts";
+import { UserNotificationInput, UserNotificationNotifyResult } from "./userNotification.ts";
 import {
   PullRequestDiffInput,
   PullRequestDiffResult,
@@ -574,6 +575,16 @@ class EnvironmentProjectsHttpApi extends HttpApiGroup.make("projects")
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
+/** The way `t3 notify` and other non-agent callers reach the running server. */
+class EnvironmentNotificationsHttpApi extends HttpApiGroup.make("notifications").add(
+  HttpApiEndpoint.post("notify", "/api/notifications", {
+    headers: OptionalBearerHeaders,
+    payload: UserNotificationInput,
+    success: UserNotificationNotifyResult,
+    error: EnvironmentProjectMutationErrors,
+  }).middleware(EnvironmentAuthenticatedAuth),
+) {}
+
 /** Large, compressible pull-request payloads travel over HTTP rather than the RPC socket. */
 class EnvironmentPullRequestsHttpApi extends HttpApiGroup.make("pullRequests").add(
   HttpApiEndpoint.post("diff", "/api/pull-requests/diff", {
@@ -657,4 +668,5 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentOrchestrationHttpApi)
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentProjectsHttpApi)
+  .add(EnvironmentNotificationsHttpApi)
   .add(EnvironmentConnectHttpApi) {}

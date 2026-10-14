@@ -402,6 +402,9 @@ export function summarizeT3ToolCalls(
     case "grow-board":
       label = phrase("Read", "read", "the Grow board");
       break;
+    case "notify-user":
+      label = phrase("Notified", "notify", "the user");
+      break;
     case "unlink-preview":
       label = phrase("Unlinked", "unlink", quantity(selected.length, "preview"));
       break;
