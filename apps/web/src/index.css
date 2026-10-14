@@ -5,6 +5,14 @@
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
 @custom-variant wco (&:is(.wco, .wco *));
 
+/* Touch: a coarse pointer, or a window phone-sized (below `md`) even when the pointer is a mouse,
+   so a narrow desktop window gets the same big targets and always-visible actions. */
+@custom-variant touch {
+  @media (pointer: coarse), (max-width: 767px) {
+    @slot;
+  }
+}
+
 /* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
 @custom-variant any-hover {
   @media (any-hover: hover) {
@@ -1039,6 +1047,21 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 @utility pr-safe {
   padding-right: max(env(safe-area-inset-right), 0px);
+}
+
+/* A 40px tap target on phones (and any coarse pointer) for a control that is visually smaller: an
+   invisible pseudo-element grows the hit area to 40px (44px is Apple's number;
+   40 is what the dense rows can give), the control itself does not change.
+   The element must already be positioned (`relative`, `absolute`, `fixed`).
+   Neighbours closer than the growth overlap it, so use it where there is room. */
+@utility touch-target {
+  @media (max-width: 767px), (pointer: coarse) {
+    &::after {
+      content: "";
+      position: absolute;
+      inset: min(0px, calc(50% - 20px)) min(0px, calc(50% - 20px));
+    }
+  }
 }
 
 /* Grain texture for chrome surfaces that float above the body (see the
@@ -2356,4 +2379,42 @@ body:has(.home-overlay) [data-workspace-titlebar-controls]:not(.home-overlay *) 
 /* Board mode's chat starts right of the switch. */
 [data-grow-mode="board"] [data-grow-chat] {
   --mode-switch-clear: 100vw;
+}
+
+/* Phones (below `md`, useIsMobile): the screens live in the bottom tab bar
+   (PhoneTabBar), so there is no mode switch to keep header text clear of. */
+@media (max-width: 767px) {
+  [data-slot="sidebar-wrapper"],
+  [data-slot="sidebar-wrapper"][data-sidebar-state="expanded"],
+  .home-overlay,
+  [data-grow-mode] [data-grow-chat] {
+    --mode-switch-clear: 100vw;
+  }
+
+  /* The tab bar's room: the window shrinks above it; Home is fixed, so it pads itself. */
+  [data-slot="sidebar-wrapper"]:has([data-phone-tabbar-bar]) {
+    --phone-tabbar-height: calc(3.5rem + 1px + env(safe-area-inset-bottom));
+    padding-bottom: var(--phone-tabbar-height);
+  }
+  [data-slot="sidebar-wrapper"]:has([data-phone-tabbar-bar]) .home-overlay {
+    padding-bottom: var(--phone-tabbar-height);
+  }
+  /* The page is `h-svh` below md, which would run under the bar; stretch to what is left. */
+  [data-slot="sidebar-wrapper"]:has([data-phone-tabbar-bar]) [data-slot="sidebar-inset"] {
+    height: auto;
+  }
+
+  /* The sidebar drawer is a sheet below the floating header controls' layer; while it
+     is open those controls belong to the page behind it. */
+  body:has([data-slot="sidebar"][data-mobile="true"]) [data-workspace-titlebar-controls],
+  body:has([data-slot="sidebar"][data-mobile="true"]) [data-sidebar-control] {
+    visibility: hidden;
+  }
+
+  /* iOS zooms into any field under 16px on focus. */
+  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
 }

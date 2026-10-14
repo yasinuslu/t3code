@@ -359,7 +359,7 @@ export const SpaceSwitcher = memo(function SpaceSwitcher({
                     void handleContextMenu(space, { x: event.clientX, y: event.clientY });
                   }}
                   className={cn(
-                    "relative flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-hidden transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring",
+                    "relative flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md touch:size-10 outline-hidden transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring",
                     active ? "bg-sidebar-row-hover" : "opacity-60 hover:opacity-100",
                   )}
                 />
@@ -391,7 +391,7 @@ export const SpaceSwitcher = memo(function SpaceSwitcher({
                 onSwitch(id);
                 setEditingSpaceId(id);
               }}
-              className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground/70 outline-hidden hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground/70 touch:size-10 outline-hidden hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
             />
           }
         >

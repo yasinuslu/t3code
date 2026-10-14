@@ -23,6 +23,7 @@ import {
 import { type RefObject, useCallback, useEffect, useRef } from "react";
 
 import { useManagerProfile } from "../../brainstormStore";
+import { useIsMobile } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import { useProjects } from "../../state/entities";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -105,6 +106,7 @@ export function NoMatches() {
 function SearchField(props: { readonly search: GrowSearch }) {
   const { query, setQuery, firstKey } = props.search;
   const select = useGrowStore((store) => store.select);
+  const phone = useIsMobile();
   return (
     <InputGroup>
       <InputGroupAddon>
@@ -113,7 +115,7 @@ function SearchField(props: { readonly search: GrowSearch }) {
       <InputGroupInput
         nativeInput
         type="text"
-        size="sm"
+        size={phone ? "lg" : "sm"}
         data-grow-search=""
         aria-label="Search threads"
         placeholder="Search threads  /"
