@@ -2,8 +2,9 @@ import { setAppMode } from "../appMode";
 import { closeHomeOverlay } from "../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "./desktopSnapShot";
 
+// Toasts are non-modal dialogs and are not in the way.
 const OPEN_POPUP_SELECTOR =
-  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
+  '[role="dialog"]:not([aria-modal="false"]), [role="alertdialog"], [role="menu"], [role="listbox"]';
 
 /** Home docks the manager from this width up; narrower windows show it as a page. */
 const DOCKED_MANAGER_QUERY = "(min-width: 1024px)";
