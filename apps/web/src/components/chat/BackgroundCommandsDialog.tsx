@@ -7,13 +7,16 @@ import {
 } from "@t3tools/client-runtime/state/background-commands";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { CheckIcon, CopyIcon, RadioTowerIcon, TerminalIcon } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   type BackgroundCommandTarget,
   useBackgroundCommandsDialogStore,
 } from "../../backgroundCommandsDialogStore";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
+import { formatDayAwareTimestamp } from "../../timestampFormat";
 import { cn } from "../../lib/utils";
 import { useThreadProjection } from "../../state/entities";
 import { useBackgroundTaskOutput } from "../../state/queries";
@@ -105,6 +108,33 @@ function withFileExit(
   return { status: exitCode === 0 ? "completed" : "failed", exitCode };
 }
 
+/** "Started 2:14 PM · running for 12m 3s"; the clock only ticks while the task runs. */
+function BackgroundCommandTiming(props: {
+  readonly environmentId: EnvironmentId;
+  readonly startedAt: string;
+  readonly running: boolean;
+}) {
+  const timestampFormat = useEnvironmentSettings(
+    props.environmentId,
+    (settings) => settings.timestampFormat,
+  );
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!props.running) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [props.running]);
+  const startedMs = Date.parse(props.startedAt);
+  return (
+    <p className="m-0 text-xs text-muted-foreground">
+      Started {formatDayAwareTimestamp(props.startedAt, timestampFormat, nowMs)}
+      {props.running && Number.isFinite(startedMs)
+        ? ` · running for ${formatDuration(Math.max(0, Math.floor((nowMs - startedMs) / 1_000)) * 1_000)}`
+        : null}
+    </p>
+  );
+}
+
 function BackgroundCommandDetail(props: {
   readonly target: BackgroundCommandTarget;
   readonly command: BackgroundCommand | undefined;
@@ -143,6 +173,14 @@ function BackgroundCommandDetail(props: {
           </span>
         ) : null}
       </div>
+
+      {props.command?.startedAt ? (
+        <BackgroundCommandTiming
+          environmentId={props.target.environmentId}
+          startedAt={props.command.startedAt}
+          running={running}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-1.5">
         <div className="flex h-6 items-center justify-between">

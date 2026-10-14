@@ -107,6 +107,9 @@ describe("deriveBackgroundCommands", () => {
     expect(commands.find((command) => command.taskId === "watch")?.command).toBe(
       "tail -f app.log | grep ERROR",
     );
+    expect(commands.find((command) => command.taskId === "build")?.startedAt).toBe(
+      "2026-06-20T00:00:00.000Z",
+    );
   });
 
   it("labels outcomes with their exit code", () => {
