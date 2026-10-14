@@ -15,6 +15,7 @@ import { ExternalLinkIcon, MessagesSquareIcon, PlayIcon, RotateCwIcon } from "lu
 import { useEffect, useState } from "react";
 
 import { useRememberedScroll } from "../../appMode";
+import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { ThreadReportBody, ThreadReportLinks, useThreadReport } from "../home/ThreadReportCard";
 import { Badge } from "../ui/badge";
@@ -38,6 +39,7 @@ import {
   StageHeader,
   useGrowNav,
 } from "./GrowNav";
+import { GrowPreview } from "./GrowPreview";
 import { SavedField, StageActions, type UpdateCard } from "./GrowParts";
 
 export function Rail(props: {
@@ -166,7 +168,7 @@ export function Thing(props: { readonly card: GrowBoardCard; readonly update: Up
       </ToggleGroup>
       <div className="flex min-h-0 flex-1 flex-col">
         {tab === "play" ? (
-          <PlayPane key={card.key} links={links} />
+          <PlayPane key={card.key} thread={thread} links={links} />
         ) : (
           <Overview card={card} update={update} />
         )}
@@ -199,29 +201,55 @@ function useIframeHasKeyboard(): boolean {
   return trapped;
 }
 
-function PlayPane(props: { readonly links: NonNullable<GrowBoardCard["thread"]["previewLinks"]> }) {
+/**
+ * One preview at a time. The desktop app shows it on T3's own preview surface,
+ * the same one the T3 view has; the web build has no such surface and falls
+ * back to a plain frame.
+ */
+function PlayPane(props: {
+  readonly thread: GrowBoardCard["thread"];
+  readonly links: NonNullable<GrowBoardCard["thread"]["previewLinks"]>;
+}) {
   const [index, setIndex] = useState(0);
-  const trapped = useIframeHasKeyboard();
-  const [reload, setReload] = useState(0);
   const link = props.links[index] ?? props.links[0];
   if (!link) return null;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+      {props.links.length > 1 ? (
+        <Select value={String(index)} onValueChange={(value) => setIndex(Number(value) || 0)}>
+          <SelectTrigger size="compact" aria-label="Preview" className="max-w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectPopup>
+            {props.links.map((candidate, position) => (
+              <SelectItem key={candidate.url} value={String(position)}>
+                {candidate.label ?? candidate.url}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      ) : null}
+      {isPreviewSupportedInRuntime() ? (
+        <GrowPreview
+          key={link.url}
+          environmentId={props.thread.environmentId}
+          threadId={props.thread.id}
+          url={link.url}
+        />
+      ) : (
+        <PlainFrame url={link.url} />
+      )}
+    </div>
+  );
+}
+
+function PlainFrame(props: { readonly url: string }) {
+  const trapped = useIframeHasKeyboard();
+  const [reload, setReload] = useState(0);
+  const link = props;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
       <div className="flex min-w-0 items-center gap-1.5 text-xs">
-        {props.links.length > 1 ? (
-          <Select value={String(index)} onValueChange={(value) => setIndex(Number(value) || 0)}>
-            <SelectTrigger size="compact" aria-label="Preview" className="max-w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectPopup>
-              {props.links.map((candidate, position) => (
-                <SelectItem key={candidate.url} value={String(position)}>
-                  {candidate.label ?? candidate.url}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-        ) : null}
         <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{link.url}</span>
         <Button
           size="icon-xs"

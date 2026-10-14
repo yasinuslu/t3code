@@ -10,7 +10,7 @@ const dependencies = [McpInvocationContext.McpInvocationContext, Orchestrator.Or
 
 const PreviewUrl = TrimmedNonEmptyString.annotate({
   description:
-    "The preview's http or https URL, for example http://my-branch.preview.example.org or http://localhost:5173.",
+    "The preview's http or https URL, for example https://my-branch.preview.example.org. localhost, 127.0.0.1, ::1 and 0.0.0.0 are rejected because the user opens it from another machine.",
 });
 
 export const LinkPreviewInput = Schema.Struct({
@@ -35,6 +35,15 @@ export class PreviewLinkUrlInvalidError extends Schema.TaggedError<PreviewLinkUr
   }
 }
 
+export class PreviewLinkUrlLoopbackError extends Schema.TaggedError<PreviewLinkUrlLoopbackError>()(
+  "PreviewLinkUrlLoopbackError",
+  { url: Schema.String },
+) {
+  override get message(): string {
+    return `${this.url} only answers on this machine, and the user opens previews from another one. Serve it with \`nep preview up\` (https://<repo>-<branch>.pv.nepjua.org) or link the machine's tailnet name (https://<machine>.<tailnet>.ts.net:<port>) instead.`;
+  }
+}
+
 export class PreviewLinkThreadNotFoundError extends Schema.TaggedError<PreviewLinkThreadNotFoundError>()(
   "PreviewLinkThreadNotFoundError",
   { threadId: Schema.String },
@@ -56,6 +65,7 @@ export class PreviewLinkUpdateFailedError extends Schema.TaggedError<PreviewLink
 export const PreviewLinkToolError = Schema.Union([
   McpCapabilityUnavailableError,
   PreviewLinkUrlInvalidError,
+  PreviewLinkUrlLoopbackError,
   PreviewLinkThreadNotFoundError,
   PreviewLinkUpdateFailedError,
 ]);
