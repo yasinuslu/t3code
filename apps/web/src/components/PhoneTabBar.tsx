@@ -31,28 +31,44 @@ function useNeedsYouCount(): number {
   return useMemo(() => buildWorkOverview(threads, Date.now()).needsMe.length, [threads]);
 }
 
-/** The on-screen keyboard is up (or about to be) while a text field has focus. */
-function useTextFieldFocused(): boolean {
-  const [focused, setFocused] = useState(false);
+/**
+ * The on-screen keyboard is up: a text field has focus and the visual viewport is much
+ * shorter than the tallest one seen at this width. Focus alone is not enough, because
+ * the manager and draft composers are focused by script without any keyboard opening.
+ */
+function useKeyboardUp(): boolean {
+  const [up, setUp] = useState(false);
   useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let tallest = viewport.height;
+    let width = window.innerWidth;
     const sync = () => {
+      if (window.innerWidth !== width) {
+        width = window.innerWidth;
+        tallest = 0;
+      }
+      tallest = Math.max(tallest, viewport.height, window.innerHeight);
       const active = document.activeElement;
-      setFocused(
+      const typing =
         active instanceof HTMLElement &&
-          (active.isContentEditable ||
-            active instanceof HTMLTextAreaElement ||
-            (active instanceof HTMLInputElement &&
-              !["button", "checkbox", "radio", "submit", "range"].includes(active.type))),
-      );
+        (active.isContentEditable ||
+          active instanceof HTMLTextAreaElement ||
+          (active instanceof HTMLInputElement &&
+            !["button", "checkbox", "radio", "submit", "range"].includes(active.type)));
+      setUp(typing && viewport.height < tallest * 0.75);
     };
+    viewport.addEventListener("resize", sync);
     document.addEventListener("focusin", sync);
     document.addEventListener("focusout", sync);
+    sync();
     return () => {
+      viewport.removeEventListener("resize", sync);
       document.removeEventListener("focusin", sync);
       document.removeEventListener("focusout", sync);
     };
   }, []);
-  return focused;
+  return up;
 }
 
 function activeTabOf(mode: AppMode, onManagerThread: boolean): PhoneTab {
@@ -75,7 +91,7 @@ export function PhoneTabBar() {
   const { setOpenMobile } = useSidebar();
   const route = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
   const onManagerThread = useIsManagerThread(route?.environmentId ?? "", route?.threadId ?? "");
-  const keyboardUp = useTextFieldFocused();
+  const keyboardUp = useKeyboardUp();
 
   if (!isMobile || keyboardUp) return null;
   const active = activeTabOf(mode, onManagerThread);
