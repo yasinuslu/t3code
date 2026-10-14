@@ -33,6 +33,15 @@ function toChangeRequest(summary: GitCodeApi.NormalizedGitCodePullRequest): Chan
   };
 }
 
+/**
+ * The provider error's detail names why GitCode failed ("GitCode returned HTTP 401.", a missing
+ * token), because the toast shows nothing but this line. Only the curated `detail` of GitCode's
+ * own errors is used, never the raw transport cause.
+ */
+function withGitCodeReason(summary: string, error: GitCodeApi.GitCodeError): string {
+  return `${summary}: ${error.detail}`;
+}
+
 export const make = Effect.gen(function* () {
   const gitcode = yield* GitCodeApi.GitCodeApi;
 
@@ -60,7 +69,7 @@ export const make = Effect.gen(function* () {
                 reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                   input.headSelector,
                 ),
-                detail: "Failed to list change requests.",
+                detail: withGitCodeReason("Failed to list change requests", error),
                 cause: error,
               }),
           ),
@@ -78,7 +87,7 @@ export const make = Effect.gen(function* () {
               reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                 input.reference,
               ),
-              detail: "Failed to get change request.",
+              detail: withGitCodeReason("Failed to get change request", error),
               cause: error,
             }),
         ),
@@ -106,7 +115,7 @@ export const make = Effect.gen(function* () {
                 reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                   input.headSelector,
                 ),
-                detail: "Failed to create change request.",
+                detail: withGitCodeReason("Failed to create change request", error),
                 cause: error,
               }),
           ),
@@ -123,7 +132,7 @@ export const make = Effect.gen(function* () {
               repository: SourceControlProvider.transportSafeSourceControlErrorValue(
                 input.repository,
               ),
-              detail: "Failed to get repository clone URLs.",
+              detail: withGitCodeReason("Failed to get repository clone URLs", error),
               cause: error,
             }),
         ),
@@ -139,7 +148,7 @@ export const make = Effect.gen(function* () {
               repository: SourceControlProvider.transportSafeSourceControlErrorValue(
                 input.repository,
               ),
-              detail: "Failed to create repository.",
+              detail: withGitCodeReason("Failed to create repository", error),
               cause: error,
             }),
         ),
@@ -157,7 +166,7 @@ export const make = Effect.gen(function* () {
                 provider: "gitcode",
                 operation: "getDefaultBranch",
                 cwd: input.cwd,
-                detail: "Failed to get default branch.",
+                detail: withGitCodeReason("Failed to get default branch", error),
                 cause: error,
               }),
           ),
@@ -180,7 +189,7 @@ export const make = Effect.gen(function* () {
                 reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                   input.reference,
                 ),
-                detail: "Failed to check out change request.",
+                detail: withGitCodeReason("Failed to check out change request", error),
                 cause: error,
               }),
           ),
