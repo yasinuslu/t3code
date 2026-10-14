@@ -11647,11 +11647,14 @@ export default function ChatView(props: ChatViewProps) {
             </div>
 
             {/* Home covers this view but the floating player sits above Home's layer,
-                where it would hide the manager's composer, so it waits until Home closes. */}
+                where it would hide the manager's composer, so it waits until Home closes.
+                A chat embedded in Home (Grow) has no panel to dock it to and Grow shows
+                the thread's preview itself, so it never floats one. */}
             {activeThreadRef &&
             activePreviewMiniPlayer &&
             previewMiniPlayerVisible &&
-            !coveredByHome ? (
+            !coveredByHome &&
+            !embedded ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(activePreviewMiniPlayer.source)}`}
                 threadRef={activeThreadRef}
