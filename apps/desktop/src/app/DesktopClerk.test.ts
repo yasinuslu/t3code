@@ -303,6 +303,48 @@ it.effect(
   },
 );
 
+it.effect("thread deep links open the thread in the running desktop", () => {
+  storageMock.mockReturnValue(storageAdapter);
+  createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+  const listeners = new Map<string, (...args: unknown[]) => void>();
+  let revealed = Promise.withResolvers<void>();
+  const loadURL = vi.fn(async (_url: string) => undefined);
+  const window = { loadURL, webContents: { isLoading: () => false, getURL: () => "x" } };
+  const electronApp = {
+    whenReady: Effect.void,
+    on: (name: string, listener: (...args: unknown[]) => void) =>
+      Effect.sync(() => {
+        listeners.set(name, listener);
+      }),
+  } as unknown as ElectronApp.ElectronApp["Service"];
+  const electronWindow = {
+    currentMainOrFirst: Effect.succeed(Option.some(window)),
+    reveal: () => Effect.sync(() => revealed.resolve()),
+  } as unknown as ElectronWindow.ElectronWindow["Service"];
+  return Effect.gen(function* () {
+    const clerk = yield* DesktopClerk.DesktopClerk;
+    yield* clerk.configure;
+    const event = { preventDefault: vi.fn() };
+    listeners.get("open-url")!(event, "t3code://threads/not-a-thread");
+    assert.equal(event.preventDefault.mock.calls.length, 0);
+    // Another environment's thread, with the id exactly as an MCP tool writes it.
+    listeners.get("open-url")!(event, "t3code://threads/env%201/mcp%3Aabc-123");
+    yield* Effect.promise(() => revealed.promise);
+    assert.equal(event.preventDefault.mock.calls.length, 1);
+    assert.deepEqual(loadURL.mock.calls, [["t3code-dev://app/env%201/mcp%3Aabc-123"]]);
+    revealed = Promise.withResolvers<void>();
+    // A hand-built link with the colon left unencoded still resolves to the same thread.
+    listeners.get("second-instance")!({}, ["t3", "t3code://threads/env%201/mcp:abc-123"]);
+    yield* Effect.promise(() => revealed.promise);
+    assert.equal(loadURL.mock.calls[1]?.[0], "t3code-dev://app/env%201/mcp%3Aabc-123");
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(makeDesktopClerkLayer()),
+    Effect.provideService(ElectronApp.ElectronApp, electronApp),
+    Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
+  );
+});
+
 it.effect.each(["startup", "open-url"] as const)(
   "receives hosted web sign-in through the desktop %s handler",
   (entry) =>
