@@ -134,5 +134,6 @@ describe("sendSelectionAvoidingLimit", () => {
     });
     expect(allLimited.selection.instanceId).toBe("claudeAgent");
     expect(allLimited.from).toBeNull();
+    expect(allLimited.stuckOn?.instanceId).toBe("claudeAgent");
   });
 });

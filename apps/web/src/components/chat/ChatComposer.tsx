@@ -1487,6 +1487,8 @@ export interface ChatComposerHandle {
     selectedModelSelection: ModelSelection;
     /** Set when `selectedModelSelection` was moved off an account at its usage limit. */
     limitSwitchedFrom: string | null;
+    /** Set when the account is at its usage limit and no other account has room. */
+    limitStuckOn: string | null;
     multipleModelSelections: ReadonlyArray<ModelSelection> | null;
     providerAvailable: boolean;
     selectedProvider: ProviderDriverKind;
@@ -6484,6 +6486,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           selectedModelOptionsForDispatch,
           selectedModelSelection: limitGuard.selection,
           limitSwitchedFrom: limitGuard.from?.displayName ?? limitGuard.from?.instanceId ?? null,
+          limitStuckOn: limitGuard.stuckOn?.displayName ?? limitGuard.stuckOn?.instanceId ?? null,
           multipleModelSelections:
             routeKind === "draft" && multipleModelSelections !== null
               ? multipleModelSelections.map((selection) =>
