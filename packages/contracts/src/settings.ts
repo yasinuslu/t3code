@@ -1354,6 +1354,12 @@ export const ServerSettings = Schema.Struct({
    */
   hostsManager: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
+   * The master switch for everything this fork adds on top of upstream T3 Code
+   * (Home with Grow and the Manager, the mode switch and its shortcuts, and
+   * whatever gets gated behind it next). Off, the app behaves like upstream.
+   */
+  forkFeatures: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /**
    * Code profiles whose managers this server runs, so each profile's manager
    * can live on the machine that does that profile's work. A server that
    * names profiles runs only those managers, whatever `hostsManager` says.
@@ -1731,6 +1737,7 @@ export const ServerSettingsPatch = Schema.Struct({
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   hostsManager: Schema.optionalKey(Schema.Boolean),
+  forkFeatures: Schema.optionalKey(Schema.Boolean),
   managerProfiles: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({

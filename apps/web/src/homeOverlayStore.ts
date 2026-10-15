@@ -34,11 +34,20 @@ const lastWasClosed = () => {
   }
 };
 
+// Home belongs to the fork features: while they are off, nothing can open it.
+let homeEnabled = true;
+
 export const useHomeOverlayStore = create<HomeOverlayStore>()((set) => ({
   open: reopened,
-  setOpen: (open) => set({ open }),
-  toggle: () => set((state) => ({ open: !state.open })),
+  setOpen: (open) => set({ open: open && homeEnabled }),
+  toggle: () => set((state) => ({ open: !state.open && homeEnabled })),
 }));
+
+/** Called by the app shell with the `forkFeatures` setting; turning it off closes Home. */
+export function setHomeOverlayEnabled(enabled: boolean) {
+  homeEnabled = enabled;
+  if (!enabled) useHomeOverlayStore.setState({ open: false });
+}
 
 export const openHomeOverlay = () => useHomeOverlayStore.getState().setOpen(true);
 

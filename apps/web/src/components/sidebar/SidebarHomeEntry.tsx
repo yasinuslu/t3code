@@ -11,6 +11,7 @@ import {
 } from "../../brainstormStore";
 import { openManagerHome, useOpenManagerThreadPage } from "../brainstorm/useOpenManagerThread";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useForkFeatures } from "../../hooks/useSettings";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerKeybindingsAtom } from "../../state/server";
@@ -24,6 +25,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  * the active profile's manager thread.
  */
 export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
+  return useForkFeatures() ? <HomeEntry /> : null;
+});
+
+function HomeEntry() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const managerKeys = useManagerThreadKeys();
   const allThreads = useThreadShellsWithoutBrainstorms();
@@ -89,4 +94,4 @@ export const SidebarHomeEntry = memo(function SidebarHomeEntry() {
       </Tooltip>
     </div>
   );
-});
+}
