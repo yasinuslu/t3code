@@ -15,6 +15,8 @@ import {
 } from "../../backgroundCommandsDialogStore";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
+import { useNowMinute } from "../../hooks/useNowMinute";
+import { formatElapsedDurationLabel } from "../../timestampFormat";
 import { useThreadProjection } from "../../state/entities";
 import { useBackgroundTaskOutput } from "../../state/queries";
 import { Button } from "../ui/button";
@@ -105,6 +107,22 @@ function withFileExit(
   return { status: exitCode === 0 ? "completed" : "failed", exitCode };
 }
 
+/** "Started 12m ago", with the exact time on hover. Re-renders each minute. */
+function StartedLabel(props: { readonly startedAt: string | null }) {
+  useNowMinute();
+  if (props.startedAt === null) return null;
+  const elapsed = formatElapsedDurationLabel(props.startedAt);
+  if (elapsed === "") return null;
+  return (
+    <span
+      className="text-xs text-muted-foreground"
+      title={new Date(props.startedAt).toLocaleString()}
+    >
+      {elapsed === "just now" ? "Started just now" : `Started ${elapsed} ago`}
+    </span>
+  );
+}
+
 function BackgroundCommandDetail(props: {
   readonly target: BackgroundCommandTarget;
   readonly command: BackgroundCommand | undefined;
@@ -145,9 +163,12 @@ function BackgroundCommandDetail(props: {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <div className="flex h-6 items-center justify-between">
+        <div className="flex h-6 items-center justify-between gap-2">
           <span className="text-xs font-medium text-muted-foreground">
             {props.command?.kind === "monitor" ? "Watching" : "Command"}
+          </span>
+          <span className="flex-1 text-right">
+            <StartedLabel startedAt={props.command?.startedAt ?? null} />
           </span>
           <CopyButton value={commandText} label="command" />
         </div>
