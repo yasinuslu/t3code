@@ -7,6 +7,7 @@ import {
   type ProviderInstanceId,
   type ServerProvider,
   type ServerProviderUsageLimits,
+  type ServerProviderUsageWindow,
 } from "@t3tools/contracts";
 
 import { exhaustedLimitWindow, windowAppliesToModel } from "./usageLimits.ts";
@@ -58,6 +59,41 @@ export function accountRoom(
   return room;
 }
 
+// Spend up to this share of the weekly window; the rest is headroom.
+const WEEK_TARGET = 90;
+const FIVE_HOUR_CAP = 60;
+
+/**
+ * Use it or lose it: the share of the weekly window that must be spent per
+ * hour until it resets to land on `WEEK_TARGET`, scaled down as the 5h window
+ * fills. This mirrors `nep budget`'s balance. The weekly is the one that
+ * applies to `model` (`seven_day_<model>` when the account has one, else
+ * `seven_day`). Null when it is unread or already reset, so the caller falls
+ * back to `accountRoom`.
+ */
+export function accountPace(
+  limits: ServerProviderUsageLimits | undefined,
+  model: string | undefined,
+  now: number,
+): number | null {
+  let weekly: ServerProviderUsageWindow | undefined;
+  let fiveHour: ServerProviderUsageWindow | undefined;
+  for (const window of limits?.windows ?? []) {
+    if (window.id === "five_hour") fiveHour = window;
+    else if (window.id.startsWith("seven_day") && windowAppliesToModel(window, model)) {
+      if (weekly === undefined || window.id !== "seven_day") weekly = window;
+    }
+  }
+  const weeklyReset = weekly?.resetsAt === undefined ? Number.NaN : Date.parse(weekly.resetsAt);
+  if (weekly === undefined || !Number.isFinite(weeklyReset) || weeklyReset <= now) return null;
+  const hoursLeft = Math.max(1, (weeklyReset - now) / 3_600_000);
+  const pace = Math.max(0, WEEK_TARGET - weekly.usedPercent) / hoursLeft;
+  const fiveReset = fiveHour?.resetsAt === undefined ? Number.NaN : Date.parse(fiveHour.resetsAt);
+  // A 5h window that already reset is spent history.
+  const fiveUsed = fiveHour === undefined || fiveReset <= now ? 0 : fiveHour.usedPercent;
+  return pace * Math.max(0.05, 1 - fiveUsed / FIVE_HOUR_CAP);
+}
+
 /**
  * When `model` can run on this account again, in epoch milliseconds, or null
  * when nothing says it is limited. `observedUntil` is the reset time of a
@@ -94,7 +130,8 @@ function defaultModel(provider: ServerProvider): string | undefined {
 /**
  * The accounts a thread running `selection` could use, best first: accounts of
  * its own provider by quota left (times their weight), then accounts of other
- * providers in list order. The selection's own instance competes like any
+ * providers in list order. Same-provider accounts score by weekly pace (see
+ * `accountPace`) and by quota left where a weekly is unread. The selection's own instance competes like any
  * other unless `exclude` names it. Callers supply the limits turns actually
  * hit, by `observedLimitKey`; exhausted quota windows are read from the
  * provider snapshots.
@@ -112,7 +149,9 @@ export function rankBalancedAccounts(input: {
 } {
   const { providers, selection, now } = input;
   const driver = providers.find((provider) => provider.instanceId === selection.instanceId)?.driver;
-  const sameDriver: Array<RankedAccount & { readonly score: number }> = [];
+  const sameDriver: Array<
+    RankedAccount & { readonly weight: number; readonly room: number; readonly pace: number | null }
+  > = [];
   const otherDrivers: Array<RankedAccount> = [];
   const skipped: Array<SkippedAccount> = [];
   const seen = new Set<ProviderInstanceId>();
@@ -169,7 +208,9 @@ export function rankBalancedAccounts(input: {
         instance,
         selection: { ...selection, instanceId: instance.instanceId },
         sameDriver: true,
-        score: weight * accountRoom(instance.usageLimits, model, now),
+        weight,
+        room: accountRoom(instance.usageLimits, model, now),
+        pace: accountPace(instance.usageLimits, model, now),
       });
     } else {
       otherDrivers.push({
@@ -179,12 +220,17 @@ export function rankBalancedAccounts(input: {
       });
     }
   }
+  // Pace and room are different scales, so one account without a readable
+  // weekly puts the whole ranking on room.
+  const byPace = sameDriver.every((account) => account.pace !== null);
+  const score = (account: (typeof sameDriver)[number]) =>
+    account.weight * (byPace ? (account.pace ?? 0) : account.room);
   return {
     ranked: [
-      // A stable sort keeps list order between accounts with equal room.
+      // A stable sort keeps list order between accounts with equal scores.
       ...[...sameDriver]
-        .sort((left, right) => right.score - left.score)
-        .map(({ score: _score, ...account }) => account),
+        .sort((left, right) => score(right) - score(left))
+        .map(({ weight: _weight, room: _room, pace: _pace, ...account }) => account),
       ...otherDrivers,
     ],
     skipped,

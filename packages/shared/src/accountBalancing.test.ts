@@ -4,9 +4,11 @@ import {
   type ServerProvider,
   type ServerProviderUsageWindow,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  accountPace,
   accountRoom,
   balancedAccountGroup,
   observedLimitKey,
@@ -223,5 +225,57 @@ describe("balancedAccountGroup", () => {
         claude,
       ),
     ).toBeNull();
+  });
+});
+
+describe("pace-aware ranking", () => {
+  const hours = (count: number) => DateTime.formatIso(DateTime.makeUnsafe(now + count * 3_600_000));
+  const weekly = (used: number, resetsInHours: number) =>
+    usageWindow("seven_day", used, hours(resetsInHours));
+  const five = (used: number) => usageWindow("five_hour", used, hours(3));
+  const first = (providers: ReadonlyArray<ServerProvider>) =>
+    rank(providers).ranked[0]?.instance.instanceId;
+
+  it("puts the sooner-resetting account with headroom ahead of a fresh one", () => {
+    expect(
+      first([
+        provider(claude, "claudeAgent", {}, [weekly(2, 168), five(7)]),
+        provider(claude2, "claudeAgent", {}, [weekly(14, 72), five(1)]),
+      ]),
+    ).toBe(claude2);
+  });
+
+  it("puts an account with a hot 5h window behind a slower weekly", () => {
+    expect(
+      first([
+        provider(claude, "claudeAgent", {}, [weekly(14, 72), five(55)]),
+        provider(claude2, "claudeAgent", {}, [weekly(2, 168), five(0)]),
+      ]),
+    ).toBe(claude2);
+  });
+
+  it("reads the model's own weekly window", () => {
+    const limits = (fable: number) => ({
+      checkedAt: "2026-10-13T11:59:00.000Z",
+      windows: [weekly(10, 100), usageWindow("seven_day_fable", fable, hours(50))],
+    });
+    expect(accountPace(limits(10), "claude-fable-5-1", now)).toBeCloseTo(80 / 50);
+    expect(accountPace(limits(10), "claude-opus-5-5", now)).toBeCloseTo(80 / 100);
+  });
+
+  it("falls back to quota left when a weekly is unread, and skips exhausted ones as before", () => {
+    expect(accountPace({ checkedAt: "", windows: [five(10)] }, "claude-opus-5-5", now)).toBeNull();
+    expect(
+      first([
+        provider(claude, "claudeAgent", {}, [five(80)]),
+        provider(claude2, "claudeAgent", {}, [weekly(14, 72), five(20)]),
+      ]),
+    ).toBe(claude2);
+    const { ranked, skipped } = rank([
+      provider(claude, "claudeAgent", {}, [weekly(100, 2)]),
+      provider(claude2, "claudeAgent", {}, [weekly(14, 72)]),
+    ]);
+    expect(ranked.map((account) => account.instance.instanceId)).toEqual([claude2]);
+    expect(skipped[0]?.reason).toBe("limited");
   });
 });
