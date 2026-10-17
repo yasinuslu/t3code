@@ -1545,10 +1545,19 @@ const retryingWorkspacePreparationRunIds = new Set<RunId>();
  * at its usage limit (see `sendSelectionAvoidingLimit`).
  */
 function announceLimitSwitch(
-  fromLabel: string | null,
+  sendCtx: { readonly limitSwitchedFrom: string | null; readonly limitStuckOn: string | null },
   sentWith: ModelSelection,
   providers: ReadonlyArray<ServerProvider>,
 ) {
+  if (sendCtx.limitStuckOn !== null) {
+    toastManager.add({
+      type: "warning",
+      title: `${sendCtx.limitStuckOn} is at its usage limit`,
+      description: "No other account has room, so this message will likely fail.",
+    });
+    return;
+  }
+  const fromLabel = sendCtx.limitSwitchedFrom;
   if (fromLabel === null) return;
   const toLabel =
     providers.find((provider) => provider.instanceId === sentWith.instanceId)?.displayName ??
@@ -8686,7 +8695,7 @@ export default function ChatView(props: ChatViewProps) {
       interactionMode: sendInteractionMode,
       interactionModeEnabled: sendInteractionModeEnabled,
     } = sendCtx;
-    announceLimitSwitch(sendCtx.limitSwitchedFrom, ctxSelectedModelSelection, providerStatuses);
+    announceLimitSwitch(sendCtx, ctxSelectedModelSelection, providerStatuses);
     const annotationImageAlreadyAttached =
       directAnnotation?.image !== undefined &&
       sendContextImages.some((image) => image.id === directAnnotation.image?.id);
@@ -10217,7 +10226,7 @@ export default function ChatView(props: ChatViewProps) {
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
     } = sendCtx;
-    announceLimitSwitch(sendCtx.limitSwitchedFrom, ctxSelectedModelSelection, providerStatuses);
+    announceLimitSwitch(sendCtx, ctxSelectedModelSelection, providerStatuses);
 
     const threadIdForSend = activeThread.id;
     const messageIdForSend = newMessageId();
@@ -10355,7 +10364,7 @@ export default function ChatView(props: ChatViewProps) {
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
     } = sendCtx;
-    announceLimitSwitch(sendCtx.limitSwitchedFrom, ctxSelectedModelSelection, providerStatuses);
+    announceLimitSwitch(sendCtx, ctxSelectedModelSelection, providerStatuses);
 
     const createdAt = new Date().toISOString();
     const nextThreadId = newThreadId();

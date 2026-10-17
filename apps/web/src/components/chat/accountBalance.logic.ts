@@ -57,7 +57,10 @@ export function accountBalanceForLaunch(input: {
  * known to be out of quota for the model and another account of the same
  * provider has room, which then runs the turn instead. The thread's own
  * account is preferred, so a stale pick falls back to where the thread is.
- * `from` is the limited account, set only when the selection changed.
+ * `from` is the limited account, set only when the selection changed;
+ * `stuckOn` is the limited account when no other account has room, so the
+ * message still goes out on it and the caller can warn instead of letting it
+ * fail silently.
  */
 export function sendSelectionAvoidingLimit(input: {
   readonly selection: ModelSelection;
@@ -65,9 +68,13 @@ export function sendSelectionAvoidingLimit(input: {
   /** The account the thread currently runs on, when it has started. */
   readonly threadInstanceId?: ProviderInstanceId | undefined;
   readonly now?: number;
-}): { readonly selection: ModelSelection; readonly from: ServerProvider | null } {
+}): {
+  readonly selection: ModelSelection;
+  readonly from: ServerProvider | null;
+  readonly stuckOn: ServerProvider | null;
+} {
   const now = input.now ?? Date.now();
-  const unchanged = { selection: input.selection, from: null };
+  const unchanged = { selection: input.selection, from: null, stuckOn: null };
   const current = input.providers.find(
     (provider) => provider.instanceId === input.selection.instanceId,
   );
@@ -88,5 +95,7 @@ export function sendSelectionAvoidingLimit(input: {
   const next =
     sameProvider.find((account) => account.instance.instanceId === input.threadInstanceId) ??
     sameProvider[0];
-  return next ? { selection: next.selection, from: current } : unchanged;
+  return next
+    ? { selection: next.selection, from: current, stuckOn: null }
+    : { ...unchanged, stuckOn: current };
 }
