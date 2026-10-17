@@ -108,7 +108,7 @@ function ManagerOverlayLayer() {
     <OverlayLayerContext value={2}>
       <div
         ref={layerRef}
-        className="manager-overlay fixed inset-0 z-55 flex items-center justify-center bg-black/40 sm:p-6"
+        className="fixed inset-0 z-55 flex items-center justify-center bg-black/40 sm:p-6"
         onClickCapture={onClickCapture}
         onPointerDown={(event) => {
           // A press on the dimmed backdrop, not inside the panel, puts the manager away.
