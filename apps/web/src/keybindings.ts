@@ -289,6 +289,14 @@ export function formatShortcutLabel(
   return parts.join("+");
 }
 
+/** The shortcut that runs `command` in the default context, as the UI advertises it. */
+export function shortcutForCommand(
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand,
+): KeybindingShortcut | null {
+  return findEffectiveShortcutForCommand(keybindings, command);
+}
+
 export function shortcutLabelForCommand(
   keybindings: ResolvedKeybindingsConfig,
   command: KeybindingCommand | null,

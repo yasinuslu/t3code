@@ -54,15 +54,14 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
   { key: "mod+shift+f", command: "projectSearch.toggle", when: "!terminalFocus" },
   { key: "mod+u", command: "usage.open", when: "!terminalFocus" },
-  // `ctrl+alt+m` was the original chord and stays as an alias. `mod+e` comes
-  // after it so the UI advertises the one-handed chord. It skips the terminal,
-  // where Ctrl+E is the shell's end-of-line.
-  { key: "ctrl+alt+m", command: "manager.open" },
-  { key: "mod+e", command: "manager.open", when: "!terminalFocus" },
-  // The three app modes. `ctrl` rather than `mod`, like the panel chords above, so the
-  // chord is the same physical keys everywhere; 0 cycles Grow, Classic, Normal.
+  // Shows or hides the manager over any screen: Ctrl+Option+Space, three
+  // neighbouring keys for the left hand alone. Free on macOS (the input-source
+  // chords use Ctrl+Space), GNOME, Windows, terminals and Zed, so the desktop
+  // app also takes it system-wide.
+  { key: "ctrl+alt+space", command: "manager.toggle" },
+  // The two screens. `ctrl` rather than `mod`, like the panel chords above, so the
+  // chord is the same physical keys everywhere; 0 switches between Grow and T3.
   { key: "ctrl+alt+1", command: "mode.grow" },
-  { key: "ctrl+alt+2", command: "mode.classic" },
   { key: "ctrl+alt+3", command: "mode.normal" },
   { key: "ctrl+alt+0", command: "mode.cycle" },
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },

@@ -39,10 +39,12 @@ on macOS and Ctrl on Windows and Linux, including GNOME, KDE Plasma, Niri, and
 Hyprland. If a custom desktop shortcut takes the same keys, choose another binding
 in Settings.
 
-## Home
+## Manager
 
-`mod+e` goes to [Home](./manager.md), with the manager's composer focused, from anywhere in
-the app except a focused terminal. `ctrl+alt+m` does the same everywhere, terminal included.
+`ctrl+alt+space` (Ctrl+Option+Space on a Mac) shows or hides [the manager](./manager.md) over
+any screen, terminal included. In the desktop app it works system-wide: from another app it brings
+T3 Code forward with the manager open. Rebind it under **Manager: Toggle**; the desktop app takes
+the new chord system-wide too.
 
 ## Copy pull request references
 

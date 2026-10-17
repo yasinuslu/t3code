@@ -82,7 +82,7 @@ import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
 
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
-import { openManagerHome } from "./brainstorm/useOpenManagerThread";
+import { toggleManager } from "../lib/goToManager";
 import { APP_MODES, setAppMode } from "../appMode";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -2256,28 +2256,18 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:manager",
-      searchTerms: ["home", "manager", "dashboard", "work", "goals", "tasks", "status", "plan"],
-      title: "Go home (manager and work)",
+      searchTerms: ["manager", "chat", "overlay", "goals", "tasks", "status", "plan"],
+      title: "Show or hide the manager",
       icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-      shortcutCommand: "manager.open",
-      run: async () => openManagerHome(),
+      shortcutCommand: "manager.toggle",
+      run: async () => toggleManager(),
     });
 
     for (const entry of APP_MODES) {
       actionItems.push({
         kind: "action",
         value: `action:mode-${entry.mode}`,
-        searchTerms: [
-          "mode",
-          "switch",
-          "view",
-          "grow",
-          "manager",
-          "classic",
-          "normal",
-          "threads",
-          "t3",
-        ],
+        searchTerms: ["mode", "switch", "view", "grow", "home", "normal", "threads", "t3"],
         title: `Switch to ${entry.label} mode`,
         icon: <CompassIcon className={ITEM_ICON_CLASS} />,
         shortcutCommand: entry.command,

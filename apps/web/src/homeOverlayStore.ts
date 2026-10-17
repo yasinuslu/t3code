@@ -5,6 +5,8 @@
 import { createContext, useContext } from "react";
 import { create } from "zustand";
 
+import { useManagerOverlayStore } from "./managerOverlayStore";
+
 interface HomeOverlayStore {
   readonly open: boolean;
   readonly setOpen: (open: boolean) => void;
@@ -80,16 +82,17 @@ export function openHomeOnStartup() {
 export const closeHomeOverlay = () => useHomeOverlayStore.getState().setOpen(false);
 export const toggleHomeOverlay = () => useHomeOverlayStore.getState().toggle();
 
-/** True inside the Home overlay. */
-export const InHomeOverlayContext = createContext(false);
+/** The layer a part of the UI sits in: 0 the page, 1 Home, 2 the manager overlay. */
+export const OverlayLayerContext = createContext(0);
 
 /**
- * Whether this part of the UI sits under the open Home overlay. Window-level
- * handlers of a covered view (thread shortcuts, paste-to-composer) stand down,
- * so keys pressed on Home never reach the thread behind it.
+ * Whether this part of the UI sits under an open overlay (Home, or the manager
+ * over everything). Window-level handlers of a covered view (thread shortcuts,
+ * paste-to-composer) stand down, so keys pressed on top never reach the view behind it.
  */
-export function useCoveredByHome(): boolean {
-  const inOverlay = useContext(InHomeOverlayContext);
-  const open = useHomeOverlayStore((state) => state.open);
-  return open && !inOverlay;
+export function useCoveredByOverlay(): boolean {
+  const layer = useContext(OverlayLayerContext);
+  const homeOpen = useHomeOverlayStore((state) => state.open);
+  const managerOpen = useManagerOverlayStore((state) => state.open);
+  return (managerOpen ? 2 : homeOpen ? 1 : 0) > layer;
 }

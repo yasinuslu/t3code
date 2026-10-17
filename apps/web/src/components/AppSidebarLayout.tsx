@@ -38,7 +38,9 @@ import {
 } from "../panelAnimations";
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
 import { HomeOverlay } from "./home/HomeOverlay";
+import { ManagerOverlay } from "./brainstorm/ManagerOverlay";
 import { setHomeOverlayEnabled, useHomeOverlayStore } from "../homeOverlayStore";
+import { useManagerOverlayStore } from "../managerOverlayStore";
 import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
 import { PhoneTabBar } from "./PhoneTabBar";
 import LegacyThreadSidebar from "./LegacySidebar";
@@ -107,7 +109,7 @@ function SidebarControl() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      if (useHomeOverlayStore.getState().open) return;
+      if (useHomeOverlayStore.getState().open || useManagerOverlayStore.getState().open) return;
       if (
         event.target instanceof HTMLElement &&
         event.target.closest("[data-keybinding-capture]")
@@ -356,6 +358,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         </Sidebar>
         {children}
         {forkFeatures ? <HomeOverlay /> : null}
+        {forkFeatures ? <ManagerOverlay /> : null}
         <SidebarControl />
         {forkFeatures ? (
           <>
