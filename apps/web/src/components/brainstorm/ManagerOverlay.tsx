@@ -77,7 +77,10 @@ function ManagerOverlayLayer() {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const openPopup = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].some(
-        (element) => element.closest("[inert]") === null && element.getClientRects().length > 0,
+        (element) =>
+          element.closest("[inert]") === null &&
+          element.closest('[data-slot="toast-viewport"]') === null &&
+          element.getClientRects().length > 0,
       );
       if (openPopup) return;
       event.preventDefault();
