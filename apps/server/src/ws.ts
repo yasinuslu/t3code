@@ -190,6 +190,7 @@ import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as GrowService from "./grow/GrowService.ts";
+import * as UserNotifications from "./notifications/UserNotifications.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
@@ -1263,6 +1264,7 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const brainstorm = yield* BrainstormService.BrainstormService;
       const grow = yield* GrowService.GrowService;
+      const notifications = yield* UserNotifications.UserNotifications;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
       const previewLinkStatus = yield* PreviewLinkStatus.PreviewLinkStatus;
@@ -3332,6 +3334,30 @@ const makeWsRpcLayer = (
           observeRpcStream(WS_METHODS.subscribeGrow, grow.changes, {
             "rpc.aggregate": "workspace",
           }),
+        [WS_METHODS.subscribeNotifications]: () =>
+          observeRpcStream(WS_METHODS.subscribeNotifications, notifications.changes, {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.notificationsNotify]: (input) =>
+          observeRpcEffect(WS_METHODS.notificationsNotify, notifications.notify(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.notificationsMarkRead]: (input) =>
+          observeRpcEffect(WS_METHODS.notificationsMarkRead, notifications.markRead(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.notificationsPushSubscribe]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.notificationsPushSubscribe,
+            notifications.subscribeDevice(input),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.notificationsPushUnsubscribe]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.notificationsPushUnsubscribe,
+            notifications.unsubscribeDevice(input.endpoint),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.subscribeWorktreeSetup]: (input) =>
           observeRpcStream(
             WS_METHODS.subscribeWorktreeSetup,
@@ -3867,6 +3893,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     const pullRequests = yield* PullRequestService.PullRequestService;
     const brainstorm = yield* BrainstormService.BrainstormService;
     const grow = yield* GrowService.GrowService;
+    const notifications = yield* UserNotifications.UserNotifications;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
       "GET",
@@ -3936,6 +3963,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
               Layer.provide(Layer.succeed(BrainstormService.BrainstormService, brainstorm)),
               Layer.provide(Layer.succeed(GrowService.GrowService, grow)),
+              Layer.provide(Layer.succeed(UserNotifications.UserNotifications, notifications)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(
                   Layer.provide(

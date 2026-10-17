@@ -80,6 +80,17 @@ import {
 } from "./brainstorm.ts";
 import { GrowCard, GrowState, GrowUpdateInput } from "./grow.ts";
 import {
+  UserNotificationError,
+  UserNotificationMarkReadInput,
+  UserNotificationMarkReadResult,
+  UserNotificationInput,
+  UserNotificationNotifyResult,
+  UserNotificationPushResult,
+  UserNotificationPushSubscribeInput,
+  UserNotificationPushUnsubscribeInput,
+  UserNotificationsState,
+} from "./userNotification.ts";
+import {
   AgentSessionImportInput,
   AgentSessionImportProjectChangedError,
   AgentSessionImportProjectNotFoundError,
@@ -381,6 +392,11 @@ export const WS_METHODS = {
   growState: "grow.state",
   growUpdate: "grow.update",
   subscribeGrow: "subscribeGrow",
+  subscribeNotifications: "subscribeNotifications",
+  notificationsNotify: "notifications.notify",
+  notificationsMarkRead: "notifications.markRead",
+  notificationsPushSubscribe: "notifications.pushSubscribe",
+  notificationsPushUnsubscribe: "notifications.pushUnsubscribe",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
   assetsCreateUrl: "assets.createUrl",
@@ -1267,6 +1283,37 @@ const WsSubscribeGrowRpc = Rpc.make(WS_METHODS.subscribeGrow, {
   stream: true,
 });
 
+const WsSubscribeNotificationsRpc = Rpc.make(WS_METHODS.subscribeNotifications, {
+  payload: Schema.Struct({}),
+  success: UserNotificationsState,
+  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsNotificationsNotifyRpc = Rpc.make(WS_METHODS.notificationsNotify, {
+  payload: UserNotificationInput,
+  success: UserNotificationNotifyResult,
+  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
+});
+
+const WsNotificationsMarkReadRpc = Rpc.make(WS_METHODS.notificationsMarkRead, {
+  payload: UserNotificationMarkReadInput,
+  success: UserNotificationMarkReadResult,
+  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
+});
+
+const WsNotificationsPushSubscribeRpc = Rpc.make(WS_METHODS.notificationsPushSubscribe, {
+  payload: UserNotificationPushSubscribeInput,
+  success: UserNotificationPushResult,
+  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
+});
+
+const WsNotificationsPushUnsubscribeRpc = Rpc.make(WS_METHODS.notificationsPushUnsubscribe, {
+  payload: UserNotificationPushUnsubscribeInput,
+  success: UserNotificationPushResult,
+  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
+});
+
 const WsAgentSessionsScanRpc = Rpc.make(WS_METHODS.agentSessionsScan, {
   payload: AgentSessionScanInput,
   success: AgentSessionScanResult,
@@ -1919,6 +1966,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsGrowStateRpc,
   WsGrowUpdateRpc,
   WsSubscribeGrowRpc,
+  WsSubscribeNotificationsRpc,
+  WsNotificationsNotifyRpc,
+  WsNotificationsMarkReadRpc,
+  WsNotificationsPushSubscribeRpc,
+  WsNotificationsPushUnsubscribeRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
   WsAssetsCreateUrlRpc,

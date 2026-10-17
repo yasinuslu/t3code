@@ -8,6 +8,7 @@ import { prepareProviderAuthDelivery } from "./providerAuthDelivery";
 import { isElectron } from "./env";
 import { hasCloudPublicConfig } from "./cloud/publicConfig";
 import { getRouter } from "./router";
+import { listenForNotificationOpen, registerPushServiceWorker } from "./pushNotifications";
 import {
   syncDocumentElectronPlatformClasses,
   syncDocumentWindowControlsOverlayClass,
@@ -21,6 +22,11 @@ prepareProviderAuthDelivery();
 const history = isElectron ? createHashHistory() : createBrowserHistory();
 
 const router = getRouter(history);
+
+// Push-only service worker: system notifications for messages sent to the owner. A tap on one
+// arrives as a message and is routed like any other in-app link.
+registerPushServiceWorker();
+listenForNotificationOpen(router.history);
 
 if (isElectron) {
   syncDocumentElectronPlatformClasses(navigator.platform);

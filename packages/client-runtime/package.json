@@ -151,6 +151,10 @@
       "types": "./src/state/brainstorm.ts",
       "default": "./src/state/brainstorm.ts"
     },
+    "./state/notifications": {
+      "types": "./src/state/notifications.ts",
+      "default": "./src/state/notifications.ts"
+    },
     "./state/grow": {
       "types": "./src/state/grow.ts",
       "default": "./src/state/grow.ts"

@@ -12,6 +12,7 @@ import { authCommand } from "./cli/auth.ts";
 import { appCommand } from "./cli/app.ts";
 import { connectCommand } from "./cli/connect.ts";
 import { pairCommand } from "./cli/pair.ts";
+import { notifyCommand } from "./cli/notify.ts";
 import { peerCommand } from "./cli/peer.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { sharedServerCommandFlags } from "./cli/config.ts";
@@ -67,6 +68,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       pairCommand,
       authCommand,
       peerCommand,
+      notifyCommand,
       projectCommand,
       serviceCommand,
       updateCommand,
