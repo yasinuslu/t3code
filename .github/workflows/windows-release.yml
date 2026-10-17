@@ -1,0 +1,137 @@
+# Builds the Windows (x64 NSIS) desktop app for every push to yu-v2 and publishes it as a
+# GitHub prerelease on yasinuslu/t3code, next to the Nix builds nix-desktop.yml makes for the
+# Mac and Linux machines. Allowed on GitHub Actions because no self-hosted runner can build
+# Windows yet: listed in the nepjua flake's scripts/watch/forge-guard.ts allowlist.
+#
+# Versions use upstream's nightly scheme (<next patch>-nightly.<date>.<run>), so the installed
+# app follows its built-in nightly update channel: electron-builder bakes a GitHub publish
+# config for this repo into the app, and nightly.yml plus the blockmap on each release are the
+# feed it polls. Unsigned unless the Azure Trusted Signing secrets exist, so SmartScreen warns
+# on the first install. No WSL runtime is bundled (that needs a Linux CLI archive job, and Linux
+# jobs do not run on GitHub here); the native Windows backend works without it.
+name: Windows release
+
+on:
+  push:
+    branches: [yu-v2]
+  workflow_dispatch:
+
+# Only the tip is ever installed.
+concurrency:
+  group: windows-release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+    steps:
+      # Same as release-desktop.yml: checkout's credential cleanup trips over the orphaned
+      # gitlinks in the vendored .repos tree, so fetch the commit by hand without it.
+      - name: Checkout
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
+
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/resolve-nightly-release.ts \
+            --date "$(date -u +%Y%m%d)" \
+            --run-number "$GITHUB_RUN_NUMBER" \
+            --sha "$GITHUB_SHA" \
+            --github-output
+          cat "$GITHUB_OUTPUT"
+
+      - name: Align package versions to release version
+        run: node scripts/update-release-package-versions.ts "${{ steps.meta.outputs.version }}"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      # The resource monitor links against these.
+      - name: Install Spectre-mitigated MSVC libs
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) {
+            $code = if ($null -ne $proc) { $proc.ExitCode } else { 1 }
+            Write-Error "Visual Studio Installer failed with exit code $code"
+            exit $code
+          }
+
+      - name: Build installer
+        shell: bash
+        run: |
+          vp run dist:desktop:artifact \
+            --platform win --target nsis --arch x64 \
+            --build-version "${{ steps.meta.outputs.version }}" \
+            --verbose
+          ls -la release
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release/*.exe release/*.blockmap)
+          for manifest in release/*.yml; do
+            [[ "$manifest" == */builder-debug.yml ]] || assets+=("$manifest")
+          done
+          printf '%s\n' "${assets[@]}"
+          gh release create "$TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "T3 Code (yu) Windows $VERSION" \
+            --notes "Windows x64 build of yu-v2 at ${GITHUB_SHA:0:12}. Unsigned: on first install pick \"More info\" then \"Run anyway\". Installed apps update themselves from here."
+
+      # The updater only ever needs the newest release; keep a few for rollback.
+      - name: Prune old Windows releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("-nightly\\."))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
+            while read -r tag; do
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done
