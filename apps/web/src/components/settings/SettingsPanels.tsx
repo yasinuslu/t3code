@@ -587,6 +587,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.snoozeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads
         ? ["Snooze limited threads"]
         : []),
+      ...(settings.forkFeatures !== DEFAULT_UNIFIED_SETTINGS.forkFeatures ? ["Fork features"] : []),
       ...(settings.hostsManager !== DEFAULT_UNIFIED_SETTINGS.hostsManager
         ? ["Host the manager"]
         : []),
@@ -711,6 +712,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarAutoSettleOnMerge,
       settings.autoResumeLimitedThreads,
       settings.snoozeLimitedThreads,
+      settings.forkFeatures,
       settings.hostsManager,
       settings.managerProfiles,
       settings.sidebarProjectGroupingMode,
@@ -820,6 +822,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
+      forkFeatures: DEFAULT_UNIFIED_SETTINGS.forkFeatures,
       hostsManager: DEFAULT_UNIFIED_SETTINGS.hostsManager,
       managerProfiles: DEFAULT_UNIFIED_SETTINGS.managerProfiles,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -2410,6 +2413,20 @@ export function GeneralSettingsPanel() {
                 updateSettings({ snoozeLimitedThreads: Boolean(checked) })
               }
               aria-label="Snooze limited threads"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("fork-features")}
+          description="Home with Grow and the Manager, the mode switch and its shortcuts. Turn off to use the app as upstream T3 Code ships it."
+          settingKeys={["forkFeatures"]}
+          control={
+            <ScopedSwitch
+              settingKeys={["forkFeatures"]}
+              checked={settings.forkFeatures}
+              onCheckedChange={(checked) => updateSettings({ forkFeatures: Boolean(checked) })}
+              aria-label="Fork features"
             />
           }
         />

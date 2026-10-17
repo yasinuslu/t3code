@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   useSyncExternalStore,
   type CSSProperties,
@@ -25,7 +26,11 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
+import {
+  useEnvironmentIdentificationMode,
+  useForkFeatures,
+  useLegacySidebarEnabled,
+} from "../hooks/useSettings";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
@@ -33,7 +38,7 @@ import {
 } from "../panelAnimations";
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
 import { HomeOverlay } from "./home/HomeOverlay";
-import { useHomeOverlayStore } from "../homeOverlayStore";
+import { setHomeOverlayEnabled, useHomeOverlayStore } from "../homeOverlayStore";
 import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
 import { PhoneTabBar } from "./PhoneTabBar";
 import LegacyThreadSidebar from "./LegacySidebar";
@@ -229,6 +234,9 @@ function ProjectProjectionRetention() {
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const legacySidebarEnabled = useLegacySidebarEnabled();
+  const forkFeatures = useForkFeatures();
+  // Before first paint, so a reloaded Home never flashes while the flag is off.
+  useLayoutEffect(() => setHomeOverlayEnabled(forkFeatures), [forkFeatures]);
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   // Settings routes show the settings nav in place of whichever thread
@@ -347,11 +355,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
         {children}
-        <HomeOverlay />
+        {forkFeatures ? <HomeOverlay /> : null}
         <SidebarControl />
-        <ModeSwitch />
-        <PhoneTabBar />
-        <ModeShortcuts />
+        {forkFeatures ? (
+          <>
+            <ModeSwitch />
+            <PhoneTabBar />
+            <ModeShortcuts />
+          </>
+        ) : null}
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />
       </SidebarProvider>

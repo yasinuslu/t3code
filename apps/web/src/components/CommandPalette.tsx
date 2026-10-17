@@ -89,7 +89,7 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, useForkFeatures } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
@@ -729,6 +729,7 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
   const clientSettings = useClientSettings();
+  const forkFeatures = useForkFeatures();
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -2251,36 +2252,38 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  actionItems.push({
-    kind: "action",
-    value: "action:manager",
-    searchTerms: ["home", "manager", "dashboard", "work", "goals", "tasks", "status", "plan"],
-    title: "Go home (manager and work)",
-    icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-    shortcutCommand: "manager.open",
-    run: async () => openManagerHome(),
-  });
-
-  for (const entry of APP_MODES) {
+  if (forkFeatures) {
     actionItems.push({
       kind: "action",
-      value: `action:mode-${entry.mode}`,
-      searchTerms: [
-        "mode",
-        "switch",
-        "view",
-        "grow",
-        "manager",
-        "classic",
-        "normal",
-        "threads",
-        "t3",
-      ],
-      title: `Switch to ${entry.label} mode`,
+      value: "action:manager",
+      searchTerms: ["home", "manager", "dashboard", "work", "goals", "tasks", "status", "plan"],
+      title: "Go home (manager and work)",
       icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-      shortcutCommand: entry.command,
-      run: async () => setAppMode(entry.mode),
+      shortcutCommand: "manager.open",
+      run: async () => openManagerHome(),
     });
+
+    for (const entry of APP_MODES) {
+      actionItems.push({
+        kind: "action",
+        value: `action:mode-${entry.mode}`,
+        searchTerms: [
+          "mode",
+          "switch",
+          "view",
+          "grow",
+          "manager",
+          "classic",
+          "normal",
+          "threads",
+          "t3",
+        ],
+        title: `Switch to ${entry.label} mode`,
+        icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: entry.command,
+        run: async () => setAppMode(entry.mode),
+      });
+    }
   }
 
   actionItems.push({
