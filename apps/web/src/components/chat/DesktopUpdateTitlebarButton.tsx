@@ -26,6 +26,12 @@ export function resolveTitlebarUpdatePhase(
   return null;
 }
 
+/** Whether the titlebar shows the update button, so headers can leave room for it. */
+export function useDesktopUpdateTitlebarVisible(): boolean {
+  const state = useDesktopUpdateState();
+  return isElectron && resolveTitlebarUpdatePhase(state) !== null;
+}
+
 /**
  * The app update in the titlebar: shown only while an update is on its way. Updates download
  * by themselves; nothing changes until the user clicks Restart.

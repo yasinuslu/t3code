@@ -33,6 +33,7 @@ import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { NotificationsBell } from "../NotificationsBell";
+import { useDesktopUpdateTitlebarVisible } from "./DesktopUpdateTitlebarButton";
 import { ProjectFavicon } from "../ProjectFavicon";
 import {
   ProviderConfigDirIndicator,
@@ -108,6 +109,8 @@ export const ChatHeader = memo(function ChatHeader({
   const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
   // Docked on Home, the manager needs no way back to where it already is.
   const onHome = useContext(InHomeOverlayContext);
+  // The update button widens the titlebar controls this header stops short of.
+  const updateButtonVisible = useDesktopUpdateTitlebarVisible();
   // The manager docked on Home: a narrow pane, so only its name and badge.
   const docked = (onHome && isManager) || embedded;
   const openManagerThreadPage = useOpenManagerThreadPage();
@@ -267,7 +270,7 @@ export const ChatHeader = memo(function ChatHeader({
       className={cn(
         // Stops short of the mode switch at the window's centre (see index.css).
         "box-content flex min-w-0 max-w-[max(var(--mode-switch-clear),8rem)] flex-1 items-center gap-2 sm:gap-3",
-        embedded ? "pr-3" : rightPanelOpen ? "pr-10" : "pr-24",
+        embedded ? "pr-3" : rightPanelOpen ? "pr-10" : updateButtonVisible ? "pr-56" : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
