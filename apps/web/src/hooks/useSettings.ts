@@ -380,6 +380,15 @@ export function useLegacySidebarEnabled(): boolean {
   return settingsHydrated && legacySidebarEnabled;
 }
 
+/**
+ * Whether the fork's additions are on (`forkFeatures`), read from the primary
+ * environment. Chrome that only exists in this fork asks this; it is on while
+ * the settings are still loading and in the hosted app, which has no primary.
+ */
+export function useForkFeatures(): boolean {
+  return useAtomValue(primaryServerSettingsAtom).forkFeatures;
+}
+
 /** Read current settings for one environment, merged with client-local preferences. */
 export function useEnvironmentSettings<T = UnifiedSettings>(
   environmentId: EnvironmentId,

@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 import {
   InHomeOverlayContext,
   closeHomeOverlay,
+  inStartupHops,
   useHomeOverlayStore,
 } from "../../homeOverlayStore";
 import { MARKDOWN_FILE_LINK_CLASS_NAME } from "../../markdown-links";
@@ -35,7 +36,11 @@ function HomeOverlayLayer() {
     const previousFocus = document.activeElement;
     const covered = [...layer.parentElement.children].filter(
       (element): element is HTMLElement =>
-        element !== layer && element instanceof HTMLElement && !element.inert,
+        element !== layer &&
+        element instanceof HTMLElement &&
+        !element.inert &&
+        // The mode switch floats above Home and has to stay clickable.
+        !element.hasAttribute("data-mode-switch"),
     );
     for (const element of covered) element.inert = true;
     return () => {
@@ -60,6 +65,7 @@ function HomeOverlayLayer() {
   useEffect(() => {
     const before = previousPathname.current;
     previousPathname.current = pathname;
+    if (inStartupHops()) return;
     if (before !== pathname && before !== "/home" && before !== "/") closeHomeOverlay();
   }, [pathname]);
 
@@ -70,8 +76,10 @@ function HomeOverlayLayer() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      // Grow is the default screen: Esc there never throws the user out of it.
+      if (document.querySelector('[data-home-view="grow"]') !== null) return;
       const openPopup = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].some(
-        (element) => element.closest("[inert]") === null,
+        (element) => element.closest("[inert]") === null && element.getClientRects().length > 0,
       );
       if (openPopup) return;
       const target = event.target instanceof Element ? event.target : null;

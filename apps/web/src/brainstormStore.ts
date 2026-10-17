@@ -19,6 +19,8 @@ export interface EnvironmentManagers {
   readonly profiles: ReadonlyArray<string>;
   readonly serverDefaultProfile: string | null;
   readonly hiddenThreadKeys: ReadonlySet<string>;
+  /** Every manager this environment has, including those another machine runs now. */
+  readonly allManagerThreadKeys: ReadonlySet<string>;
 }
 
 interface BrainstormStore {
@@ -30,6 +32,8 @@ interface BrainstormStore {
    * runs its own manager for it.
    */
   readonly managerThreadKeyBySlot: Readonly<Record<string, string>>;
+  /** Every manager thread of every report, hosted here or not; Grow keeps them off its board. */
+  readonly allManagerThreadKeys: ReadonlySet<string>;
   /** Code profiles with a brain on the managers' machines; null until a server says. */
   readonly profiles: ReadonlyArray<string> | null;
   /** The server's default profile, the manager to show before the user picks one. */
@@ -68,7 +72,8 @@ const sameManagers = (left: EnvironmentManagers | undefined, right: EnvironmentM
   sameRecord(left.managerThreadKeyBySlot, right.managerThreadKeyBySlot) &&
   left.profiles.join("\n") === right.profiles.join("\n") &&
   left.serverDefaultProfile === right.serverDefaultProfile &&
-  sameSet(left.hiddenThreadKeys, right.hiddenThreadKeys);
+  sameSet(left.hiddenThreadKeys, right.hiddenThreadKeys) &&
+  sameSet(left.allManagerThreadKeys, right.allManagerThreadKeys);
 
 /** The lists' view of every hosting environment's managers together. */
 function mergeManagers(byEnvironment: Readonly<Record<string, EnvironmentManagers>>) {
@@ -83,6 +88,7 @@ function mergeManagers(byEnvironment: Readonly<Record<string, EnvironmentManager
     serverDefaultProfile:
       reports.find((report) => report.serverDefaultProfile !== null)?.serverDefaultProfile ?? null,
     hiddenThreadKeys: new Set(reports.flatMap((report) => [...report.hiddenThreadKeys])),
+    allManagerThreadKeys: new Set(reports.flatMap((report) => [...report.allManagerThreadKeys])),
   };
 }
 
@@ -91,6 +97,7 @@ export const useBrainstormStore = create<BrainstormStore>()(
     (set) => ({
       hiddenThreadKeys: new Set(),
       managerThreadKeyBySlot: {},
+      allManagerThreadKeys: new Set(),
       profiles: null,
       serverDefaultProfile: null,
       lastManagerProfile: null,
@@ -168,6 +175,23 @@ export const useBrainstormStore = create<BrainstormStore>()(
 export function useManagerThreadKeys(): ReadonlySet<string> {
   const byProfile = useBrainstormStore((state) => state.managerThreadKeyBySlot);
   return useMemo(() => new Set(Object.values(byProfile)), [byProfile]);
+}
+
+/**
+ * Every manager's key, and whether the servers have reported yet (before that
+ * a manager cannot be told from other threads).
+ */
+export function useEveryManagerThreadKey(): {
+  readonly keys: ReadonlySet<string>;
+  readonly known: boolean;
+} {
+  const keys = useBrainstormStore((state) => state.allManagerThreadKeys);
+  const byProfile = useManagerThreadKeys();
+  const known = useBrainstormStore((state) => state.profiles !== null);
+  return useMemo(
+    () => ({ keys: new Set([...keys, ...byProfile]), known }),
+    [byProfile, keys, known],
+  );
 }
 
 export function useIsManagerThread(environmentId: string, threadId: string): boolean {

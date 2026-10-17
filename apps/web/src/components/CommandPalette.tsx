@@ -83,13 +83,13 @@ import { useAtomValue } from "@effect/atom-react";
 
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { openManagerHome } from "./brainstorm/useOpenManagerThread";
-import { toggleHomeOverlay } from "../homeOverlayStore";
+import { APP_MODES, setAppMode } from "../appMode";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, useForkFeatures } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
@@ -584,14 +584,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         void navigate({ to: "/usage" });
         return;
       }
-      if (command === "manager.open") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (event.repeat) return;
-        setOpen(false);
-        toggleHomeOverlay();
-        return;
-      }
       const mode = overlayModeForCommand(command);
       if (mode === null) {
         return;
@@ -737,6 +729,7 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
   const clientSettings = useClientSettings();
+  const forkFeatures = useForkFeatures();
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -2259,15 +2252,39 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  actionItems.push({
-    kind: "action",
-    value: "action:manager",
-    searchTerms: ["home", "manager", "dashboard", "work", "goals", "tasks", "status", "plan"],
-    title: "Go home (manager and work)",
-    icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-    shortcutCommand: "manager.open",
-    run: async () => openManagerHome(),
-  });
+  if (forkFeatures) {
+    actionItems.push({
+      kind: "action",
+      value: "action:manager",
+      searchTerms: ["home", "manager", "dashboard", "work", "goals", "tasks", "status", "plan"],
+      title: "Go home (manager and work)",
+      icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "manager.open",
+      run: async () => openManagerHome(),
+    });
+
+    for (const entry of APP_MODES) {
+      actionItems.push({
+        kind: "action",
+        value: `action:mode-${entry.mode}`,
+        searchTerms: [
+          "mode",
+          "switch",
+          "view",
+          "grow",
+          "manager",
+          "classic",
+          "normal",
+          "threads",
+          "t3",
+        ],
+        title: `Switch to ${entry.label} mode`,
+        icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: entry.command,
+        run: async () => setAppMode(entry.mode),
+      });
+    }
+  }
 
   actionItems.push({
     kind: "action",

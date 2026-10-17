@@ -5,6 +5,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
+import * as AccountFailoverReactor from "./orchestration-v2/AccountFailoverReactor.ts";
 import * as PreviewLinkReportReactor from "./orchestration-v2/PreviewLinkReportReactor.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
@@ -67,6 +68,10 @@ import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/Provide
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
+import * as GrowService from "./grow/GrowService.ts";
+import { notificationsHttpApiLayer } from "./notifications/http.ts";
+import * as UserNotifications from "./notifications/UserNotifications.ts";
+import * as WebPush from "./notifications/WebPush.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
@@ -663,6 +668,7 @@ const makeRoutesLayer = Layer.mergeAll(
       Layer.provide(orchestrationHttpApiLayer),
       Layer.provide(pullRequestHttpApiLayer),
       Layer.provide(projectHttpApiLayer),
+      Layer.provide(notificationsHttpApiLayer),
       Layer.provide(serverEnvironmentHttpApiLayer),
       Layer.provide(environmentAuthenticatedAuthLayer),
     ),
@@ -681,6 +687,14 @@ const makeRoutesLayer = Layer.mergeAll(
   McpHttpServer.layer.pipe(
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
   ),
+  // Started beside the routes because it asks BrainstormService which threads
+  // are managers.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* AccountFailoverReactor.AccountFailoverReactor;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(AccountFailoverReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
   // Last, so no route layer can replace the server's one TracerDisabledWhen.
   untracedRequestsLayer,
 ).pipe(
@@ -688,6 +702,8 @@ const makeRoutesLayer = Layer.mergeAll(
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.
   Layer.provide(PullRequestServiceLive),
   Layer.provide(BrainstormService.layerWithManagerScope),
+  Layer.provide(GrowService.layer),
+  Layer.provide(UserNotifications.layer.pipe(Layer.provide(WebPush.layer))),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(DesktopAppUpdateLayerLive))),
   Layer.provide(commandReadinessLayer),

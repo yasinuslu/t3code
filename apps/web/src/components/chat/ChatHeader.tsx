@@ -32,6 +32,7 @@ import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { NotificationsBell } from "../NotificationsBell";
 import { ProjectFavicon } from "../ProjectFavicon";
 import {
   ProviderConfigDirIndicator,
@@ -60,6 +61,8 @@ interface ChatHeaderProps {
   isServerThread: boolean;
   activeProject: EnvironmentProject | null;
   rightPanelOpen: boolean;
+  /** Inside Grow: the title takes the free width, no project breadcrumb or preview chip, no room kept for panel toggles. */
+  embedded?: boolean;
   /** The provider profile the thread runs on, for drivers that report one. */
   providerConfigDir?: ThreadProviderConfigDir | null;
   onNewThreadInProject: () => void;
@@ -94,6 +97,7 @@ export const ChatHeader = memo(function ChatHeader({
   isServerThread,
   activeProject,
   rightPanelOpen,
+  embedded = false,
   providerConfigDir = null,
   onNewThreadInProject,
   onOpenProjectSettings,
@@ -105,7 +109,7 @@ export const ChatHeader = memo(function ChatHeader({
   // Docked on Home, the manager needs no way back to where it already is.
   const onHome = useContext(InHomeOverlayContext);
   // The manager docked on Home: a narrow pane, so only its name and badge.
-  const docked = onHome && isManager;
+  const docked = (onHome && isManager) || embedded;
   const openManagerThreadPage = useOpenManagerThreadPage();
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
@@ -261,8 +265,9 @@ export const ChatHeader = memo(function ChatHeader({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : "pr-24",
+        // Stops short of the mode switch at the window's centre (see index.css).
+        "box-content flex min-w-0 max-w-[max(var(--mode-switch-clear),8rem)] flex-1 items-center gap-2 sm:gap-3",
+        embedded ? "pr-3" : rightPanelOpen ? "pr-10" : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
@@ -328,7 +333,7 @@ export const ChatHeader = memo(function ChatHeader({
                       type="button"
                       aria-label={`New thread in ${activeProjectName}`}
                       onClick={onNewThreadInProject}
-                      className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                      className="touch-target relative inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   }
                 >
@@ -380,7 +385,7 @@ export const ChatHeader = memo(function ChatHeader({
                     onClick={openMenuFromTitle}
                     onDoubleClick={handleTitleDoubleClick}
                     onBlur={cancelPendingTitleMenu}
-                    className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group/thread-title touch-target relative inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 }
               >
@@ -419,6 +424,12 @@ export const ChatHeader = memo(function ChatHeader({
           <ProviderConfigDirIndicator value={providerConfigDir} compact={docked} />
         </div>
       ) : null}
+      {/* Home and the embedded Grow chat have their own place for it. */}
+      {docked ? null : (
+        <div className="flex shrink-0 items-center">
+          <NotificationsBell />
+        </div>
+      )}
     </div>
   );
 });

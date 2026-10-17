@@ -114,6 +114,7 @@ import {
   composerDraftHasUserContent,
   composerTargetKey,
   hydrateImagesFromPersisted,
+  composerProviderPick,
   useComposerDraftStore,
   useComposerThreadDraft,
   useEffectiveComposerModelState,
@@ -252,6 +253,11 @@ import {
 } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
+import {
+  type AccountBalancePicker,
+  newThreadAccountGroup,
+  sendSelectionAvoidingLimit,
+} from "./accountBalance.logic";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import {
@@ -1479,6 +1485,10 @@ export interface ChatComposerHandle {
     selectedPromptEffort: string | null;
     selectedModelOptionsForDispatch: unknown;
     selectedModelSelection: ModelSelection;
+    /** Set when `selectedModelSelection` was moved off an account at its usage limit. */
+    limitSwitchedFrom: string | null;
+    /** Set when the account is at its usage limit and no other account has room. */
+    limitStuckOn: string | null;
     multipleModelSelections: ReadonlyArray<ModelSelection> | null;
     providerAvailable: boolean;
     selectedProvider: ProviderDriverKind;
@@ -1702,7 +1712,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThread,
     promptHistoryMessages,
     isServerThread: _isServerThread,
-    isLocalDraftThread: _isLocalDraftThread,
+    isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
     phase,
@@ -2081,7 +2091,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ),
     [providerStatuses, settings],
   );
-  const selectedProviderByThreadId = composerDraft.activeProvider ?? null;
+  const selectedProviderByThreadId = composerProviderPick(
+    composerDraft,
+    _isServerThread ? activeThread?.modelSelection.instanceId : null,
+  );
   const {
     selectedProviderEntry,
     requestedDriverKind,
@@ -2112,6 +2125,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const selectedInstanceId =
     selectedProviderEntry?.instanceId ?? NO_PROVIDER_MODEL_SELECTION.instanceId;
+  // "Auto balance" is offered on a draft whose provider has accounts to balance;
+  // an unset account selection means auto, same as the launch.
+  const draftAccountSelection = useComposerDraftStore((store) =>
+    draftId ? store.getDraftSession(draftId)?.accountSelection : undefined,
+  );
+  const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
+  const accountGroup = newThreadAccountGroup({
+    isNewThread: isLocalDraftThread && multipleModelSelections === null,
+    codeProfiles: settings.codeProfiles,
+    providers: providerStatuses,
+    instanceId: selectedInstanceId,
+  });
+  const accountBalance: AccountBalancePicker | undefined =
+    accountGroup && draftId
+      ? {
+          instanceIds: accountGroup.map((provider) => provider.instanceId),
+          auto: draftAccountSelection !== "manual",
+          onAuto: () => setDraftThreadContext(draftId, { accountSelection: "auto" }),
+        }
+      : undefined;
   const noProviderAvailable =
     selectedProviderEntry === undefined && multipleModelSelections === null;
   // Before the catalog arrives, every thread resolves to "no provider". Send
@@ -5488,8 +5521,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           : {})}
         onOpenChange={setIsComposerModelPickerOpen}
         getModelDisabledReason={getModelDisabledReason}
-        onInstanceModelChange={(instanceId, model) => {
+        {...(accountBalance ? { accountBalance } : {})}
+        onInstanceModelChange={(instanceId, model, account) => {
           setMultipleModelSelections(null);
+          if (account && draftId) setDraftThreadContext(draftId, { accountSelection: account });
           onProviderModelSelect(instanceId, model);
         }}
         onOpenProviderSetup={onOpenProviderSetup}
@@ -6433,35 +6468,44 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           composerEditorRef.current?.focusAt(nextCollapsedCursor);
         });
       },
-      getSendContext: () => ({
-        prompt: promptRef.current,
-        images: composerImagesRef.current,
-        files: composerFilesRef.current,
-        terminalContexts: composerTerminalContextsRef.current,
-        previewAnnotations: composerPreviewAnnotations,
-        reviewComments: composerReviewComments,
-        threadContexts: composerThreadContexts,
-        selectedPromptEffort,
-        selectedModelOptionsForDispatch,
-        selectedModelSelection,
-        multipleModelSelections:
-          routeKind === "draft" && multipleModelSelections !== null
-            ? multipleModelSelections.map((selection) =>
-                selection.instanceId === selectedModelSelection.instanceId &&
-                selection.model === selectedModelSelection.model
-                  ? selectedModelSelection
-                  : selection,
-              )
-            : null,
-        providerAvailable:
-          multipleModelSelections !== null ||
-          (!noProviderAvailable && providerSendBlockReason === null),
-        selectedProvider,
-        selectedModel,
-        selectedProviderModels,
-        interactionMode,
-        interactionModeEnabled: planModeUiEnabled,
-      }),
+      getSendContext: () => {
+        const limitGuard = sendSelectionAvoidingLimit({
+          selection: selectedModelSelection,
+          providers: providerStatuses,
+          threadInstanceId: activeThreadModelSelection?.instanceId,
+        });
+        return {
+          prompt: promptRef.current,
+          images: composerImagesRef.current,
+          files: composerFilesRef.current,
+          terminalContexts: composerTerminalContextsRef.current,
+          previewAnnotations: composerPreviewAnnotations,
+          reviewComments: composerReviewComments,
+          threadContexts: composerThreadContexts,
+          selectedPromptEffort,
+          selectedModelOptionsForDispatch,
+          selectedModelSelection: limitGuard.selection,
+          limitSwitchedFrom: limitGuard.from?.displayName ?? limitGuard.from?.instanceId ?? null,
+          limitStuckOn: limitGuard.stuckOn?.displayName ?? limitGuard.stuckOn?.instanceId ?? null,
+          multipleModelSelections:
+            routeKind === "draft" && multipleModelSelections !== null
+              ? multipleModelSelections.map((selection) =>
+                  selection.instanceId === selectedModelSelection.instanceId &&
+                  selection.model === selectedModelSelection.model
+                    ? selectedModelSelection
+                    : selection,
+                )
+              : null,
+          providerAvailable:
+            multipleModelSelections !== null ||
+            (!noProviderAvailable && providerSendBlockReason === null),
+          selectedProvider,
+          selectedModel,
+          selectedProviderModels,
+          interactionMode,
+          interactionModeEnabled: planModeUiEnabled,
+        };
+      },
       setMultipleModelSelections,
       validateProviderInput: (providerInput: string) => {
         const validationMessage = getComposerSubmissionValidationMessage({
@@ -6507,6 +6551,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedModel,
       selectedModelOptionsForDispatch,
       selectedModelSelection,
+      providerStatuses,
+      activeThreadModelSelection?.instanceId,
       multipleModelSelections,
       setMultipleModelSelections,
       routeKind,
@@ -6813,7 +6859,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   type="button"
                   data-chat-composer-transition-prompt="true"
                   className={cn(
-                    "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-sm focus:outline-none",
+                    "min-h-10 min-w-0 flex-1 truncate bg-transparent p-0 text-left text-sm focus:outline-none",
                     (activePendingProgress ? activePendingProgress.customAnswer : prompt.trim())
                       ? "text-foreground"
                       : "text-placeholder",
@@ -6837,7 +6883,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <button
                   type="button"
                   data-chat-composer-transition-actions="true"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
                   disabled={collapsedComposerPrimaryActionDisabled}
                   aria-label={collapsedComposerPrimaryActionLabel}
                   onPointerDown={(event) => event.preventDefault()}
@@ -7093,7 +7139,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               className={cn(
                                 "absolute right-1 top-1 flex",
                                 image.source?.kind === "snap-shot" &&
-                                  "opacity-0 transition-opacity pointer-coarse:opacity-100 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100",
+                                  "opacity-0 transition-opacity touch:opacity-100 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100",
                               )}
                             >
                               <Button

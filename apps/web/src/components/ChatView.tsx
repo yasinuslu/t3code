@@ -37,6 +37,7 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
+import { accountBalanceForLaunch } from "./chat/accountBalance.logic";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
 import { Minimize2Icon } from "lucide-react";
@@ -363,6 +364,7 @@ import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
+  composerProviderPick,
   useComposerDraftStore,
   DraftId,
 } from "../composerDraftStore";
@@ -821,6 +823,10 @@ type ChatViewProps =
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
+      /** False: never move focus to the composer on its own (Grow keeps it in its rail). */
+      autoFocusComposer?: boolean;
+      /** Embedded in another view (Grow): no right panel and none of its toggles. */
+      embedded?: boolean;
       routeKind: "server";
       draftId?: never;
     }
@@ -830,6 +836,8 @@ type ChatViewProps =
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
+      autoFocusComposer?: boolean;
+      embedded?: boolean;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -1532,6 +1540,35 @@ function releaseChatTimelineAnchor<T extends { readonly messageId: MessageId | n
 /** Runs with a workspace preparation retry in flight, across ChatView instances. */
 const retryingWorkspacePreparationRunIds = new Set<RunId>();
 
+/**
+ * Tells the user a message went to another account because the picked one is
+ * at its usage limit (see `sendSelectionAvoidingLimit`).
+ */
+function announceLimitSwitch(
+  sendCtx: { readonly limitSwitchedFrom: string | null; readonly limitStuckOn: string | null },
+  sentWith: ModelSelection,
+  providers: ReadonlyArray<ServerProvider>,
+) {
+  if (sendCtx.limitStuckOn !== null) {
+    toastManager.add({
+      type: "warning",
+      title: `${sendCtx.limitStuckOn} is at its usage limit`,
+      description: "No other account has room, so this message will likely fail.",
+    });
+    return;
+  }
+  const fromLabel = sendCtx.limitSwitchedFrom;
+  if (fromLabel === null) return;
+  const toLabel =
+    providers.find((provider) => provider.instanceId === sentWith.instanceId)?.displayName ??
+    sentWith.instanceId;
+  toastManager.add({
+    type: "info",
+    title: `${fromLabel} is at its usage limit`,
+    description: `Sent on ${toLabel} instead.`,
+  });
+}
+
 export default function ChatView(props: ChatViewProps) {
   const {
     environmentId,
@@ -1540,6 +1577,8 @@ export default function ChatView(props: ChatViewProps) {
     onDiffPanelOpen,
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
+    autoFocusComposer = true,
+    embedded = false,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
@@ -1750,9 +1789,19 @@ export default function ChatView(props: ChatViewProps) {
   const composerInteractionMode = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.interactionMode ?? null,
   );
-  const composerActiveProvider = useComposerDraftStore(
-    (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
+  const composerActiveProvider = useComposerDraftStore((store) =>
+    composerProviderPick(
+      store.getComposerDraft(composerDraftTarget),
+      serverThread?.modelSelection.instanceId,
+    ),
   );
+  const dropStaleProviderPick = useComposerDraftStore((store) => store.dropStaleProviderPick);
+  const startedOnInstanceId = serverThread?.modelSelection.instanceId;
+  useEffect(() => {
+    if (startedOnInstanceId !== undefined) {
+      dropStaleProviderPick(composerDraftTarget, startedOnInstanceId);
+    }
+  }, [composerDraftTarget, dropStaleProviderPick, startedOnInstanceId]);
   const composerHasAttachments = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;
@@ -2313,7 +2362,7 @@ export default function ChatView(props: ChatViewProps) {
     [activeKnownTerminalIds, panelTerminalIds],
   );
   const previewPanelOpen = activeRightPanelKind === "preview" && isPreviewSupportedInRuntime();
-  const rightPanelOpen = rightPanelState.isOpen;
+  const rightPanelOpen = !embedded && rightPanelState.isOpen;
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const activeTerminalDrawerPresence = usePanelPresence(
@@ -4542,7 +4591,10 @@ export default function ChatView(props: ChatViewProps) {
     [draftId, routeThreadKey, routeThreadRef, serverThread],
   );
 
+  // The composer handle is shared app-wide (command palette context), so a view hidden under
+  // Home must not focus "its" composer: the handle may point at the one Home shows.
   const focusComposer = useCallback(() => {
+    if (coveredByHomeRef.current) return;
     composerRef.current?.focusAtEnd();
   }, [composerRef]);
   const canInterruptRunningThread = deriveCanInterruptRunningThread(
@@ -4563,13 +4615,12 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
   }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
-  useEffect(
-    () =>
-      subscribeSnapShotComposerFocus(() => {
-        if (!coveredByHomeRef.current) focusComposer();
-      }),
-    [focusComposer],
-  );
+  useEffect(() => {
+    if (!autoFocusComposer) return;
+    return subscribeSnapShotComposerFocus(() => {
+      if (!coveredByHomeRef.current) focusComposer();
+    });
+  }, [autoFocusComposer, focusComposer]);
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -6646,14 +6697,14 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThreadKey]);
 
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!autoFocusComposer || !activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
       focusComposer();
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, autoFocusComposer, focusComposer, terminalUiState.terminalOpen]);
 
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The
@@ -6661,7 +6712,14 @@ export default function ChatView(props: ChatViewProps) {
   // terminal is a surface and is recognized by the predicate instead. Mobile is left alone so
   // returning to the app does not raise the keyboard.
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
+    if (
+      !autoFocusComposer ||
+      !activeThread?.id ||
+      terminalUiState.terminalOpen ||
+      isMobileViewport
+    ) {
+      return;
+    }
     let frame: number | null = null;
     const onWindowFocus = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -6680,7 +6738,13 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("focus", onWindowFocus);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposer, isMobileViewport, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    autoFocusComposer,
+    focusComposer,
+    isMobileViewport,
+    terminalUiState.terminalOpen,
+  ]);
 
   useEffect(() => {
     if (!activeThread?.id) return;
@@ -7420,6 +7484,7 @@ export default function ChatView(props: ChatViewProps) {
     : null;
   const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (
+      embedded ||
       !activeThread ||
       !activeContextWindow ||
       resumeCompactionKey === null ||
@@ -7477,6 +7542,7 @@ export default function ChatView(props: ChatViewProps) {
     compactDisabledReason,
     composerRef,
     dismissedResumeCompactionKeys,
+    embedded,
     nativeResumeCompactionDismissed,
     nowMinute,
     pendingUserInputs.length,
@@ -8629,6 +8695,7 @@ export default function ChatView(props: ChatViewProps) {
       interactionMode: sendInteractionMode,
       interactionModeEnabled: sendInteractionModeEnabled,
     } = sendCtx;
+    announceLimitSwitch(sendCtx, ctxSelectedModelSelection, providerStatuses);
     const annotationImageAlreadyAttached =
       directAnnotation?.image !== undefined &&
       sendContextImages.some((image) => image.id === directAnnotation.image?.id);
@@ -9580,6 +9647,15 @@ export default function ChatView(props: ChatViewProps) {
       ctxSelectedModelSelection.options,
     );
 
+    // Auto balance: the server picks between the profile's accounts of this provider.
+    const accountBalance = accountBalanceForLaunch({
+      isNewThread: isLocalDraftThread,
+      accountSelection: draftThread?.accountSelection,
+      codeProfiles: settings.codeProfiles,
+      providers: providerStatuses,
+      instanceId: threadCreateModelSelection.instanceId,
+    });
+
     let failure: AtomCommandResult<unknown, unknown> | null = null;
 
     if (failure === null && isServerThread) {
@@ -9700,6 +9776,7 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
+          ...(accountBalance ? { accountBalance } : {}),
           runtimeMode,
           interactionMode: sendInteractionMode,
           dispatchMode: turnDispatchMode,
@@ -10149,6 +10226,7 @@ export default function ChatView(props: ChatViewProps) {
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
     } = sendCtx;
+    announceLimitSwitch(sendCtx, ctxSelectedModelSelection, providerStatuses);
 
     const threadIdForSend = activeThread.id;
     const messageIdForSend = newMessageId();
@@ -10286,6 +10364,7 @@ export default function ChatView(props: ChatViewProps) {
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
     } = sendCtx;
+    announceLimitSwitch(sendCtx, ctxSelectedModelSelection, providerStatuses);
 
     const createdAt = new Date().toISOString();
     const nextThreadId = newThreadId();
@@ -10512,7 +10591,11 @@ export default function ChatView(props: ChatViewProps) {
         nextModelSelection,
         // A complete snapshot: an absent options field means "start from the
         // model default", not "keep the previous model's options".
-        { explicit: true, replaceOptions: true },
+        {
+          explicit: true,
+          replaceOptions: true,
+          ...(isServerThread ? { over: activeThread.modelSelection.instanceId } : {}),
+        },
       );
       setStickyComposerModelSelection(nextModelSelection);
       if (options?.focusComposer !== false) scheduleComposerFocus();
@@ -10520,6 +10603,7 @@ export default function ChatView(props: ChatViewProps) {
     [
       activeThread,
       activeRuntime,
+      isServerThread,
       lockedProvider,
       supportsProviderSwitchingViaHandoff,
       scheduleComposerFocus,
@@ -11051,7 +11135,9 @@ export default function ChatView(props: ChatViewProps) {
               className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
             />
           ) : null}
-          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
+          {!embedded && !rightPanelControlsAtRoot && !rightPanelControlsInPanel
+            ? panelLayoutControls
+            : null}
           {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
           <ChatHeader
             activeThreadEnvironmentId={activeThread.environmentId}
@@ -11060,6 +11146,7 @@ export default function ChatView(props: ChatViewProps) {
             activeThreadTitle={activeThread.title}
             activeProject={activeProject ?? null}
             rightPanelOpen={inlineRightPanelOwnsTitleBar}
+            embedded={embedded}
             providerConfigDir={providerConfigDir}
             onNewThreadInProject={handleNewThreadInActiveProject}
             {...(activeDraftLogicalProjectKey
@@ -11248,7 +11335,7 @@ export default function ChatView(props: ChatViewProps) {
               className={
                 isDraftHeroState
                   ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 max-md:border-t max-md:bg-background sm:pt-2"
               }
             >
               <div
@@ -11561,7 +11648,7 @@ export default function ChatView(props: ChatViewProps) {
                     </ComposerSurface.Shell>
                     <div
                       aria-hidden
-                      className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+                      className="h-[calc(env(safe-area-inset-bottom)+1rem)] max-md:h-3 sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
                     />
                   </div>
                 </div>
@@ -11569,11 +11656,14 @@ export default function ChatView(props: ChatViewProps) {
             </div>
 
             {/* Home covers this view but the floating player sits above Home's layer,
-                where it would hide the manager's composer, so it waits until Home closes. */}
+                where it would hide the manager's composer, so it waits until Home closes.
+                A chat embedded in Home (Grow) has no panel to dock it to and Grow shows
+                the thread's preview itself, so it never floats one. */}
             {activeThreadRef &&
             activePreviewMiniPlayer &&
             previewMiniPlayerVisible &&
-            !coveredByHome ? (
+            !coveredByHome &&
+            !embedded ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(activePreviewMiniPlayer.source)}`}
                 threadRef={activeThreadRef}
@@ -11612,7 +11702,7 @@ export default function ChatView(props: ChatViewProps) {
               </AlertDialogPopup>
             </AlertDialog>
 
-            <ThreadDetailsPanel {...threadDetailsPanelProps} />
+            {embedded ? null : <ThreadDetailsPanel {...threadDetailsPanelProps} />}
 
             {pullRequestDialogState ? (
               <PullRequestThreadDialog

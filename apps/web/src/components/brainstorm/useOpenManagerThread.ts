@@ -8,7 +8,7 @@ import { openHomeOverlay, useHomeOverlayStore } from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
-import { useThreadShell } from "../../state/entities";
+import { readThreadShell, useThreadShell, waitForThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
 import { formatEnvironmentQueryError } from "../../state/query";
@@ -157,12 +157,19 @@ export function useOpenManagerThreadPage() {
       if (environmentId === null || store.profiles === null) {
         return openManagerHome();
       }
+      const stored = store.managerThreadKeyBySlot[managerSlot(environmentId, profile)];
+      // A remembered key can outlive its thread (a restored state, a deleted manager); the
+      // thread page would then bounce to a new draft, so only a thread the client sees is reused.
+      const storedShell = stored === undefined ? null : readThreadShell(parseThreadKey(stored));
       const key =
-        store.managerThreadKeyBySlot[managerSlot(environmentId, profile)] ??
-        (await openManager(environmentId, profile).then((result) =>
-          result._tag === "Success" ? result.key : null,
-        ));
-      if (!key) return openManagerHome();
+        stored !== undefined && storedShell !== null && storedShell.archivedAt == null
+          ? stored
+          : await openManager(environmentId, profile).then((result) =>
+              result._tag === "Success" ? result.key : null,
+            );
+      if (key === null) return openManagerHome();
+      // A manager just created reaches the shell stream after the command returns.
+      await waitForThreadShell(parseThreadKey(key));
       await navigate({ to: "/$environmentId/$threadId", params: parseThreadKey(key) });
     },
     [navigate, openManager, primaryEnvironmentId, serverConfigs],

@@ -9,6 +9,12 @@
     <meta name="theme-color" content="#0a0a0a" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Installed from Safari (Share, Add to Home Screen) it opens as an app without browser chrome.
+         "black" keeps the page below the status bar, so no top safe-area inset is needed. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="T3 Code" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <script>
       (() => {

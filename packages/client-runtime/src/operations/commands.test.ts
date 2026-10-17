@@ -361,6 +361,45 @@ describe("V2 environment commands", () => {
     }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
   );
 
+  it.effect("carries accountBalance into the launch only when asked", () =>
+    Effect.gen(function* () {
+      const launches: OrchestrationV2ThreadLaunchInput[] = [];
+      const supervisor = yield* makeSupervisor({ commands: [], projects: [], launches });
+      const launch = (name: string, accountBalance?: "auto") =>
+        startThreadTurn({
+          commandId: CommandId.make(name),
+          threadId: v2ThreadId,
+          message: {
+            messageId: MessageId.make(`message-${name}`),
+            role: "user",
+            text: "Go",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          ...(accountBalance ? { accountBalance } : {}),
+          bootstrap: {
+            createThread: {
+              projectId: ProjectId.make("project-1"),
+              title: "Thread",
+              modelSelection: v2Projection.thread.modelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdAt: "2026-06-20T00:00:00.000Z",
+            },
+          },
+        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+
+      yield* launch("launch-balanced", "auto");
+      yield* launch("launch-pinned");
+
+      expect(launches[0]?.accountBalance).toBe("auto");
+      expect(launches[1] !== undefined && "accountBalance" in launches[1]).toBe(false);
+    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
+  );
+
   it.effect("provisions an origin-based worktree for an existing empty thread", () =>
     Effect.gen(function* () {
       const launches: OrchestrationV2ThreadLaunchInput[] = [];

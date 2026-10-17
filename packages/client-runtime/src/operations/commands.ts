@@ -173,6 +173,8 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
   };
   readonly modelSelection?: ModelSelection;
   readonly titleSeed?: string;
+  /** With a thread bootstrap: let the project's account balancing pick the account. */
+  readonly accountBalance?: "auto";
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly bootstrap?: StartThreadBootstrap;
@@ -673,6 +675,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       title: input.titleSeed ?? thread.title,
       generateTitle: input.titleSeed !== undefined,
       modelSelection: input.modelSelection ?? thread.modelSelection,
+      ...(input.accountBalance === undefined ? {} : { accountBalance: input.accountBalance }),
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
       workspaceStrategy,

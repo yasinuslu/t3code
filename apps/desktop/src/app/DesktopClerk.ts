@@ -11,6 +11,7 @@ import { codexAuthDeliveryUrl, readCodexAuthHandoff } from "@t3tools/shared/code
 import { receiveCodexAuthCallback, CodexAuthCallbackError } from "./CodexAuthCallback.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import { providerAuthReturnUrl } from "@t3tools/shared/providerAuthReturnUrl";
+import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { HostProcessArguments } from "@t3tools/shared/hostProcess";
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
 import * as ElectronApp from "../electron/ElectronApp.ts";
@@ -182,14 +183,45 @@ export const make = Effect.gen(function* () {
         );
         return true;
       };
+      // `t3code://threads/<env>/<thread>` clicked outside the app (or in a client that has no
+      // thread chips) arrives through the OS URL handler. A cold start has no window yet, so
+      // wait for the first one and let its initial load finish before navigating.
+      const openThreadLink = (value: string | undefined) => {
+        const target = value ? parseThreadLinkHref(value) : null;
+        if (!target) return false;
+        const destination = ElectronProtocol.getDesktopThreadUrl(environment.isDevelopment, target);
+        void runPromise(
+          Effect.gen(function* () {
+            yield* electronApp.whenReady;
+            let mainWindow = yield* electronWindow.currentMainOrFirst;
+            for (let attempt = 0; Option.isNone(mainWindow) && attempt < 120; attempt += 1) {
+              yield* Effect.sleep("250 millis");
+              mainWindow = yield* electronWindow.currentMainOrFirst;
+            }
+            if (Option.isNone(mainWindow)) return;
+            const window = mainWindow.value;
+            if (window.webContents.isLoading() || window.webContents.getURL() === "") {
+              yield* Effect.callback<void>((resume) => {
+                window.webContents.once("did-stop-loading", () => resume(Effect.void));
+              }).pipe(Effect.timeout("15 seconds"), Effect.ignore);
+            }
+            yield* Effect.promise(() => window.loadURL(destination));
+            yield* electronWindow.reveal(window);
+          }).pipe(
+            Effect.catchCause((cause) => Effect.logWarning("Could not open thread link", cause)),
+          ),
+        );
+        return true;
+      };
+      const handleDeepLink = (value: string | undefined) =>
+        startProviderAuthHandoff(value) || resumeProviderAuth(value) || openThreadLink(value);
       const args = yield* HostProcessArguments;
-      args.some((value) => startProviderAuthHandoff(value));
+      args.some((value) => startProviderAuthHandoff(value) || openThreadLink(value));
       yield* electronApp.on("open-url", (event: { preventDefault: () => void }, url: string) => {
-        if (startProviderAuthHandoff(url) || resumeProviderAuth(url)) event.preventDefault();
+        if (handleDeepLink(url)) event.preventDefault();
       });
       yield* electronApp.on("second-instance", (_event: unknown, argv: readonly string[]) => {
-        if (argv?.some((value) => startProviderAuthHandoff(value) || resumeProviderAuth(value)))
-          return;
+        if (argv?.some(handleDeepLink)) return;
         void runPromise(
           Effect.gen(function* () {
             const mainWindow = yield* electronWindow.currentMainOrFirst;

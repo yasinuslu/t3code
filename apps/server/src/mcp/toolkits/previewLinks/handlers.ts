@@ -1,5 +1,5 @@
 import { CommandId, type ThreadId } from "@t3tools/contracts";
-import { normalizePreviewLinkUrl } from "@t3tools/shared/threadPreviewLinks";
+import { isLoopbackPreviewUrl, normalizePreviewLinkUrl } from "@t3tools/shared/threadPreviewLinks";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -10,6 +10,7 @@ import {
   PreviewLinkThreadNotFoundError,
   PreviewLinkUpdateFailedError,
   PreviewLinkUrlInvalidError,
+  PreviewLinkUrlLoopbackError,
   PreviewLinksToolkit,
 } from "./tools.ts";
 
@@ -24,10 +25,17 @@ const make = Effect.gen(function* () {
     );
 
   /** The calling thread and the normalized URL, or the reason there is none. */
-  const resolve = Effect.fn("PreviewLinksToolkit.resolve")(function* (rawUrl: string) {
+  const resolve = Effect.fn("PreviewLinksToolkit.resolve")(function* (
+    rawUrl: string,
+    options: { readonly rejectLoopback: boolean },
+  ) {
     const scope = yield* McpInvocationContext.requireMcpCapability("orchestration");
     const url = normalizePreviewLinkUrl(rawUrl);
     if (url === null) return yield* new PreviewLinkUrlInvalidError({});
+    // Unlinking stays open so a link made before this check can still be removed.
+    if (options.rejectLoopback && isLoopbackPreviewUrl(url)) {
+      return yield* new PreviewLinkUrlLoopbackError({ url });
+    }
     const thread = yield* engine
       .getThreadShell(scope.threadId)
       .pipe(Effect.mapError((cause) => new PreviewLinkUpdateFailedError({ cause })));
@@ -46,7 +54,9 @@ const make = Effect.gen(function* () {
   return PreviewLinksToolkit.of({
     link_preview: (input) =>
       Effect.gen(function* () {
-        const { threadId, url, existing } = yield* resolve(input.url);
+        const { threadId, url, existing } = yield* resolve(input.url, {
+          rejectLoopback: true,
+        });
         yield* engine
           .dispatch({
             type: "thread.preview-link.link",
@@ -61,7 +71,9 @@ const make = Effect.gen(function* () {
       }),
     unlink_preview: (input) =>
       Effect.gen(function* () {
-        const { threadId, url, existing } = yield* resolve(input.url);
+        const { threadId, url, existing } = yield* resolve(input.url, {
+          rejectLoopback: false,
+        });
         if (existing === undefined) return { url, wasLinked: false };
         yield* engine
           .dispatch({

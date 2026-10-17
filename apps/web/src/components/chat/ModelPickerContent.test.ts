@@ -241,6 +241,23 @@ describe("adjacentModelPickerProvider", () => {
     ).toBe("favorites");
   });
 
+  it("walks through the Auto balance entry when the rail has one", () => {
+    const withAuto = { ...input, hasAutoBalance: true };
+    expect(
+      adjacentModelPickerProvider({ ...withAuto, selectedInstanceId: "favorites", direction: 1 }),
+    ).toBe("auto");
+    expect(
+      adjacentModelPickerProvider({ ...withAuto, selectedInstanceId: "auto", direction: 1 }),
+    ).toBe(codex.instanceId);
+    expect(
+      adjacentModelPickerProvider({
+        ...withAuto,
+        selectedInstanceId: codex.instanceId,
+        direction: -1,
+      }),
+    ).toBe("auto");
+  });
+
   it("keeps thread locks and the selected unavailable catalog", () => {
     expect(
       adjacentModelPickerProvider({

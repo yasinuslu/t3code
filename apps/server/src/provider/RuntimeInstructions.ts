@@ -3,11 +3,11 @@ When the t3-code MCP server exposes link_pull_request, you must use it to regist
 </pull_request_linking>`;
 
 const PREVIEW_LINKING_INSTRUCTIONS = `<preview_linking>
-When the t3-code MCP server exposes link_preview and you start or hand the user a preview of your work (a dev server or preview URL they can open), call link_preview with it so it shows on the thread. Linking again is safe.
+When the t3-code MCP server exposes link_preview and you start or hand the user a preview of your work (a dev server or preview URL they can open), call link_preview with it so it shows on the thread. Linking again is safe. The user opens previews from another machine, so never link localhost, 127.0.0.1 or 0.0.0.0 (they are rejected): serve it where they can reach it and link that URL.
 </preview_linking>`;
 
 const STATUS_UPDATE_INSTRUCTIONS = `<thread_status>
-When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, screenshots of the change by absolute path, and what the user owes, if anything. Each call replaces the last.
+When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, screenshots of the change by absolute path, and what the user owes, if anything. Each call replaces the last. When it exposes grow_update and your thread has something the user can open, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons". Every thread ends in something the owner can open and play with: for an app it is the running preview, for work without an interface it is an HTML page that demonstrates it (a report, demo or pitch, with video or screenshots when useful), linked as the thread's preview like any other. A standalone prototype (not a branch of an existing app) is a small clean Bun project, server plus client, that starts with "bun install" and "bun dev"; a feature of an existing app uses that app's own stack and preview.
 </thread_status>`;
 
 /**

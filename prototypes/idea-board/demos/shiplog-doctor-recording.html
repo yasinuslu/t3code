@@ -1,0 +1,179 @@
+<!doctype html> <meta charset="utf-8" /><meta
+  name="viewport"
+  content="width=device-width,initial-scale=1"
+/>
+<title>shiplog doctor: recording and screenshots</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font:
+      14px/1.5 system-ui,
+      sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 22px auto;
+    padding: 0 16px;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 4px;
+  }
+  .muted {
+    color: #8b949e;
+  }
+  .term {
+    background: #010409;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .bar {
+    background: #161b22;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #8b949e;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .bar i {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #30363d;
+    display: inline-block;
+  }
+  pre {
+    margin: 0;
+    padding: 14px;
+    font:
+      13px/1.55 ui-monospace,
+      monospace;
+    min-height: 230px;
+    white-space: pre-wrap;
+  }
+  .ok {
+    color: #3fb950;
+  }
+  .bad {
+    color: #f85149;
+  }
+  .warn {
+    color: #d29922;
+  }
+  .dim {
+    color: #8b949e;
+  }
+  .ctl {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .ctl button {
+    background: #21262d;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font: inherit;
+  }
+  input[type="range"] {
+    flex: 1;
+  }
+  .shots {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .shot {
+    background: #161b22;
+    border: 1px dashed #30363d;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .shot:hover {
+    border-color: #58a6ff;
+  }
+  .shot b {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+</style>
+<div class="wrap">
+  <h1>shiplog doctor</h1>
+  <div class="muted">
+    Recording of a run on a repo with a stale lockfile. The screenshots below jump to their frame.
+  </div>
+  <div class="term">
+    <div class="bar"><i></i><i></i><i></i>&nbsp;~/code/acme-web</div>
+    <pre id="t"></pre>
+  </div>
+  <div class="ctl">
+    <button id="pp">Pause</button><input id="sc" type="range" min="0" max="5" value="0" /><span
+      id="fr"
+      class="muted"
+      >1 / 6</span
+    >
+  </div>
+  <div class="shots" id="shots"></div>
+</div>
+<script>
+  const F = [
+    '<span class="dim">$</span> shiplog doctor\n\nChecking repository…',
+    '<span class="dim">$</span> shiplog doctor\n\n<span class="ok">✓</span> git: clean working tree\n<span class="ok">✓</span> remotes: origin reachable\nChecking lockfile…',
+    '<span class="dim">$</span> shiplog doctor\n\n<span class="ok">✓</span> git: clean working tree\n<span class="ok">✓</span> remotes: origin reachable\n<span class="bad">✗</span> lockfile: bun.lock is older than package.json (2 deps drifted)',
+    '<span class="dim">$</span> shiplog doctor\n\n<span class="ok">✓</span> git: clean working tree\n<span class="ok">✓</span> remotes: origin reachable\n<span class="bad">✗</span> lockfile: bun.lock is older than package.json (2 deps drifted)\n<span class="warn">?</span> Run <b>bun install</b> now? [Y/n] y',
+    '<span class="dim">$</span> shiplog doctor\n\n<span class="ok">✓</span> git: clean working tree\n<span class="ok">✓</span> remotes: origin reachable\n<span class="ok">✓</span> lockfile: refreshed (bun install, 1.2s)\nChecking release config…',
+    '<span class="dim">$</span> shiplog doctor\n\n<span class="ok">✓</span> git: clean working tree\n<span class="ok">✓</span> remotes: origin reachable\n<span class="ok">✓</span> lockfile: refreshed (bun install, 1.2s)\n<span class="warn">!</span> release: no changelog section for 1.8.0 yet\n\n4 checks passed, 1 warning. Ready to ship after you add notes.',
+  ];
+  const N = ["Clean start", "Lockfile drift", "Prompt to fix", "Final summary"],
+    at = [0, 2, 3, 5];
+  let i = 0,
+    run = true;
+  const t = document.getElementById("t"),
+    sc = document.getElementById("sc"),
+    pp = document.getElementById("pp");
+  function show(k) {
+    i = k;
+    t.innerHTML = F[i];
+    sc.value = i;
+    document.getElementById("fr").textContent = i + 1 + " / " + F.length;
+  }
+  document.getElementById("shots").innerHTML = N.map(
+    (n, k) =>
+      `<div class="shot" data-k="${at[k]}"><b>${n}</b>Frame ${at[k] + 1}. Click to jump.</div>`,
+  ).join("");
+  document.querySelectorAll(".shot").forEach(
+    (s) =>
+      (s.onclick = () => {
+        run = false;
+        pp.textContent = "Play";
+        show(+s.dataset.k);
+      }),
+  );
+  sc.oninput = () => {
+    run = false;
+    pp.textContent = "Play";
+    show(+sc.value);
+  };
+  pp.onclick = () => {
+    run = !run;
+    pp.textContent = run ? "Pause" : "Play";
+  };
+  setInterval(() => {
+    if (run) show((i + 1) % F.length);
+  }, 1400);
+  show(0);
+</script>

@@ -3051,6 +3051,19 @@ const OrchestrationV2InternalCommand = Schema.Union([
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
   }),
+  /**
+   * A server-authored notice in a run's timeline, such as the account a
+   * usage-limit failover moved the thread to. `signal` names the notice within
+   * the run; recording the same signal again changes nothing.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.run-notice.record"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    runId: RunId,
+    signal: TrimmedNonEmptyString,
+    message: TrimmedNonEmptyString,
+  }),
 ]);
 export type OrchestrationV2InternalCommand = typeof OrchestrationV2InternalCommand.Type;
 
@@ -3109,6 +3122,12 @@ export const OrchestrationV2ThreadLaunchInput = Schema.Struct({
   title: TrimmedNonEmptyString,
   generateTitle: Schema.optional(Schema.Boolean),
   modelSelection: ModelSelection,
+  /**
+   * `auto` lets the project's account balancing pick between the listed
+   * accounts of `modelSelection`'s provider. Left out, the named account is
+   * used unless it is limited.
+   */
+  accountBalance: Schema.optional(Schema.Literal("auto")),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,

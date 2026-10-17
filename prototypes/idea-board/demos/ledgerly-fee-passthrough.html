@@ -1,0 +1,156 @@
+<!doctype html> <meta charset="utf-8" /><meta
+  name="viewport"
+  content="width=device-width,initial-scale=1"
+/>
+<title>Ledgerly: card fee pass-through</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font:
+      15px/1.5 system-ui,
+      sans-serif;
+    background: #f4f5f7;
+    color: #1c2330;
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 24px auto;
+    padding: 0 16px;
+    display: grid;
+    gap: 14px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e1e4ea;
+    border-radius: 12px;
+    padding: 18px;
+  }
+  h2 {
+    margin: 0 0 10px;
+    font-size: 15px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    color: #6b7385;
+    margin-bottom: 4px;
+  }
+  input[type="number"] {
+    width: 100%;
+    padding: 9px;
+    border: 1px solid #d5d9e2;
+    border-radius: 8px;
+    font: inherit;
+  }
+  .sw {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .track {
+    width: 40px;
+    height: 22px;
+    background: #c3c8d4;
+    border-radius: 11px;
+    position: relative;
+    transition: 0.15s;
+  }
+  .track::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px;
+    left: 2px;
+    transition: 0.15s;
+  }
+  .on .track {
+    background: #3b5bdb;
+  }
+  .on .track::after {
+    left: 20px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+  }
+  .tot {
+    border-top: 1px solid #e1e4ea;
+    margin-top: 6px;
+    padding-top: 8px;
+    font-weight: 700;
+  }
+  .tag {
+    font-size: 12px;
+    background: #e7f5ec;
+    color: #1e7a3a;
+    border-radius: 6px;
+    padding: 2px 7px;
+  }
+  .warn {
+    background: #fff3e0;
+    color: #b45309;
+  }
+  .muted {
+    color: #6b7385;
+    font-size: 13px;
+  }
+</style>
+<div class="wrap">
+  <div class="card">
+    <h2>Invoice amount</h2>
+    <label for="amt">Net amount (€)</label><input id="amt" type="number" value="1200" min="0" />
+    <div class="sw" id="sw">
+      <span class="track"></span><span>Pass card fees to the client</span>
+    </div>
+    <div class="muted" style="margin-top: 6px" id="hint"></div>
+  </div>
+  <div class="card">
+    <h2>What the client sees</h2>
+    <div class="row"><span>Services</span><span id="a"></span></div>
+    <div class="row" id="feeRow"><span>Card processing fee</span><span id="fee"></span></div>
+    <div class="row tot"><span>Total due</span><span id="tot"></span></div>
+  </div>
+  <div class="card">
+    <h2>What you receive</h2>
+    <div class="row"><span>Payout after Stripe</span><span id="net"></span></div>
+    <span class="tag" id="tag"></span>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let on = false;
+  const eur = (n) => "€" + n.toFixed(2);
+  function calc() {
+    const a = Math.max(0, +$("amt").value || 0);
+    const total = on ? (a + 0.3) / (1 - 0.029) : a;
+    const fee = total - a;
+    const stripe = total * 0.029 + 0.3;
+    $("a").textContent = eur(a);
+    $("feeRow").style.display = on ? "flex" : "none";
+    $("fee").textContent = eur(fee);
+    $("tot").textContent = eur(total);
+    $("net").textContent = eur(total - stripe);
+    $("tag").textContent = on ? "You keep the full amount" : "Stripe takes " + eur(stripe);
+    $("tag").className = "tag" + (on ? "" : " warn");
+    $("hint").textContent = on
+      ? "Fee is grossed up so the payout equals the net amount. Disclosed as its own line."
+      : "Fee comes out of your payout.";
+  }
+  $("sw").onclick = () => {
+    on = !on;
+    $("sw").classList.toggle("on", on);
+    calc();
+  };
+  $("amt").oninput = calc;
+  calc();
+</script>

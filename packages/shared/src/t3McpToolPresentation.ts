@@ -60,6 +60,9 @@ export type T3McpToolSummaryAction =
   | "link-preview"
   | "unlink-preview"
   | "status-update"
+  | "grow-update"
+  | "grow-board"
+  | "notify-user"
   | "browser"
   | "device";
 
@@ -109,6 +112,9 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "pull-request",
   ),
   link_preview: tool(["Link", "Linking", "Linked", "a preview"], "link-preview", "browser"),
+  grow_update: tool(["Update", "Updating", "Updated", "the Grow board"], "grow-update"),
+  grow_board: tool(["Read", "Reading", "Read", "the Grow board"], "grow-board"),
+  notify_user: tool(["Notify", "Notifying", "Notified", "the user"], "notify-user"),
   thread_status_update: tool(
     ["Update", "Updating", "Updated", "the thread status"],
     "status-update",

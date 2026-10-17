@@ -93,6 +93,9 @@ export interface EnvironmentThreadShell {
   readonly id: ThreadId;
   readonly projectId: ProjectId;
   readonly title: string;
+  /** Who made the thread and through what; the server makes managers and brainstorm chats. */
+  readonly createdBy?: OrchestrationV2ThreadShell["createdBy"];
+  readonly creationSource?: OrchestrationV2ThreadShell["creationSource"];
   readonly providerInstanceId: ProviderInstanceId;
   readonly modelSelection: OrchestrationV2ThreadShell["modelSelection"];
   readonly runtimeMode: OrchestrationV2ThreadShell["runtimeMode"];
@@ -235,6 +238,8 @@ export function presentThreadShell(
       thread.lineage.relationshipToParent === "subagent"
         ? formatSubagentDisplayTitle(thread.title)
         : thread.title,
+    createdBy: thread.createdBy,
+    creationSource: thread.creationSource,
     providerInstanceId: thread.providerInstanceId,
     modelSelection: thread.modelSelection,
     runtimeMode: thread.runtimeMode,

@@ -77,6 +77,7 @@ import {
   type ComposerImageAttachment,
   composerFileNeedsReattach,
   partializeComposerDraftStoreState,
+  composerProviderPick,
   useComposerDraftStore,
   DraftId,
 } from "./composerDraftStore";
@@ -2440,6 +2441,46 @@ describe("composerDraftStore setModelSelection", () => {
     expect(
       draftFor(threadId, TEST_ENVIRONMENT_ID)?.modelSelectionByProvider[CODEX_INSTANCE],
     ).toEqual(modelSelection(CODEX_DRIVER, "gpt-5.3-codex"));
+  });
+
+  it("follows a started thread again once it moves off the instance a pick was made over", () => {
+    const store = useComposerDraftStore.getState();
+    store.setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.3-codex"), {
+      explicit: true,
+      over: CLAUDE_AGENT_INSTANCE,
+    });
+    const picked = () => composerProviderPick(draftFor(threadId, TEST_ENVIRONMENT_ID), null);
+    const pickedOn = (instanceId: ProviderInstanceId) =>
+      composerProviderPick(draftFor(threadId, TEST_ENVIRONMENT_ID), instanceId);
+
+    expect(pickedOn(CLAUDE_AGENT_INSTANCE)).toBe(CODEX_INSTANCE);
+    // The thread moved, for example on a usage-limit failover.
+    expect(pickedOn(CODEX_SECONDARY_INSTANCE)).toBeNull();
+    // A draft thread has no instance of its own yet.
+    expect(picked()).toBe(CODEX_INSTANCE);
+
+    // A selection carried over from the draft the thread started from is not a pick for it.
+    store.setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.3-codex"));
+    expect(pickedOn(CLAUDE_AGENT_INSTANCE)).toBeNull();
+  });
+
+  it("does not bring a pick back when the thread returns to the instance it was made over", () => {
+    const store = useComposerDraftStore.getState();
+    store.setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.3-codex"), {
+      explicit: true,
+      over: CLAUDE_AGENT_INSTANCE,
+    });
+    const pickedOn = (instanceId: ProviderInstanceId) =>
+      composerProviderPick(draftFor(threadId, TEST_ENVIRONMENT_ID), instanceId);
+
+    // Still on the instance the pick was made over: the pick stands.
+    store.dropStaleProviderPick(threadRef, CLAUDE_AGENT_INSTANCE);
+    expect(pickedOn(CLAUDE_AGENT_INSTANCE)).toBe(CODEX_INSTANCE);
+
+    // The message was sent, so the thread runs on the picked instance.
+    store.dropStaleProviderPick(threadRef, CODEX_INSTANCE);
+    // A failover later returns it to the first one.
+    expect(pickedOn(CLAUDE_AGENT_INSTANCE)).toBeNull();
   });
 });
 

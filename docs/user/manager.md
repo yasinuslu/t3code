@@ -6,10 +6,25 @@ for real decisions. Each code profile has its own manager.
 
 ## Getting Home
 
-Press `mod+e` (`ctrl+alt+m` also works, even in a focused terminal). The same keys are the way back from any thread. You can also click
+Press `mod+e` (`ctrl+alt+m` also works, even in a focused terminal). From any screen it opens the
+Manager mode with the manager's composer focused: Grow, any thread, settings, an open dialog or the
+command palette. Pressed again there, it just focuses the composer. In the desktop app it also works
+while an embedded preview or an iframe has the keyboard (on Windows and Linux that is `ctrl+alt+m`,
+since `ctrl+e` belongs to the terminal); in a browser tab, a page inside an iframe keeps its keys.
+You can also click
 **Home** at the top of the sidebar or the compass at the start of a thread's header, or choose **Go
 home** in the command palette. Home opens with the manager's composer focused. Change the shortcut in
 **Settings → Keybindings** under **Manager: Open**.
+
+## Modes
+
+The switch at the top centre of the window moves between **Grow** (the idea board), **Manager**
+(the card list with the manager docked) and **T3** (the thread list and chat, with Home closed). It
+sits in the same place in every mode. Each mode keeps its place: the selected card, scroll
+positions, and the thread you had open. The app reopens in the mode you left it in.
+
+`ctrl+alt+1`, `ctrl+alt+2` and `ctrl+alt+3` pick Grow, Manager and T3; `ctrl+alt+0` cycles them.
+Change them in **Settings → Keybindings** under **Mode**.
 
 ## The work cards
 

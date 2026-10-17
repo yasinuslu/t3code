@@ -164,6 +164,19 @@ it.effect("launches a scratch thread into the Scratch project", () =>
     });
     expect(rejected.at(-1)?.result).toMatchObject({ code: "invalid_request" });
     expect(launched).toHaveLength(1);
+
+    // Balancing: on for an inherited model, off for a named one unless asked.
+    const named = { instanceId: ProviderInstanceId.make("claude"), model: "claude-sonnet-5-5" };
+    yield* handle({ title: "A", scratch: true });
+    yield* handle({ title: "B", scratch: true, modelSelection: named });
+    yield* handle({ title: "C", scratch: true, modelSelection: named, accountBalance: "auto" });
+    yield* handle({ title: "D", scratch: true, accountBalance: "off" });
+    expect(launched.slice(1).map((input) => input.accountBalance)).toEqual([
+      "auto",
+      undefined,
+      "auto",
+      "off",
+    ]);
   }),
 );
 

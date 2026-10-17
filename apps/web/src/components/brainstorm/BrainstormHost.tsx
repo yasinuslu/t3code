@@ -79,11 +79,14 @@ function ManagerEnvironmentSync({ environmentId }: { readonly environmentId: Env
     const hosts = (profile: string | null) =>
       resolveManagerHostIds(primaryEnvironmentId, serverConfigs, profile).includes(environmentId);
     const managerThreadKeyBySlot: Record<string, string> = {};
+    const allManagerThreadKeys = new Set<string>();
     const singleId = state.threadIdsBySpaceId[ALL_SPACE_ID];
+    if (singleId) allManagerThreadKeys.add(`${environmentId}:${singleId}`);
     if (singleId && hosts(null)) {
       managerThreadKeyBySlot[managerSlot(environmentId, null)] = `${environmentId}:${singleId}`;
     }
     for (const [profile, threadId] of Object.entries(state.managerThreadIdsByProfile ?? {})) {
+      allManagerThreadKeys.add(`${environmentId}:${threadId}`);
       if (hosts(profile)) {
         managerThreadKeyBySlot[managerSlot(environmentId, profile)] =
           `${environmentId}:${threadId}`;
@@ -91,6 +94,7 @@ function ManagerEnvironmentSync({ environmentId }: { readonly environmentId: Env
     }
     setEnvironmentManagers(environmentId, {
       managerThreadKeyBySlot,
+      allManagerThreadKeys,
       profiles: state.profiles,
       serverDefaultProfile: state.defaultProfile,
       hiddenThreadKeys: new Set(

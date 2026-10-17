@@ -522,6 +522,7 @@ export const layer = Layer.effect(
                   projectId: active.projectId,
                   title: active.title,
                   modelSelection: active.modelSelection,
+                  accountBalance: "auto",
                   runtimeMode: active.runtimeMode,
                   interactionMode: active.interactionMode,
                   workspaceStrategy: active.workspaceStrategy,

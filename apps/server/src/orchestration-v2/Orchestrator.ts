@@ -426,6 +426,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "checkpoint.rollback":
     case "checkpoint.rollback.fail":
     case "thread.background-work.settle":
+    case "thread.run-notice.record":
     case "provider.switch":
       return command.threadId;
     case "delegated_task.request":
@@ -8694,6 +8695,63 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     });
 
+  const dispatchRunNoticeRecord = (
+    command: Extract<OrchestrationV2InternalCommand, { readonly type: "thread.run-notice.record" }>,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+  ) =>
+    Effect.gen(function* () {
+      const id = idAllocator.derive.runSignalTurnItem({
+        runId: command.runId,
+        signal: command.signal,
+      });
+      const projection = yield* projectionStore
+        .getThreadRecords(command.threadId, ["runs", "turnItems"], {
+          runIds: [command.runId],
+          turnItemRunIds: [command.runId],
+          turnItemTypes: ["system_notice"],
+        })
+        .pipe(mapDispatchError(command));
+      const run = projection.runs.find((candidate) => candidate.id === command.runId);
+      if (run === undefined || projection.thread.deletedAt !== null) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `Run ${command.runId} was not found.`,
+        });
+      }
+      if (projection.turnItems.some((item) => item.id === id)) return;
+      const now = yield* DateTime.now;
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "turn-item.updated",
+        threadId: command.threadId,
+        runId: run.id,
+        ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
+        providerInstanceId: run.providerInstanceId,
+        occurredAt: now,
+        payload: {
+          id,
+          threadId: command.threadId,
+          runId: run.id,
+          nodeId: run.rootNodeId,
+          providerThreadId: run.providerThreadId,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: yield* nextTurnItemOrdinal(projection),
+          status: "completed",
+          title: command.message,
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+          type: "system_notice",
+          message: command.message,
+        },
+      });
+    });
+
   /**
    * Parent thread of an app-owned delegated child, or undefined when the
    * thread is not one. Thread lineage and fork origin are immutable, so this
@@ -9741,6 +9799,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.background-work.settle":
         yield* dispatchBackgroundWorkSettle(command, events);
         break;
+      case "thread.run-notice.record":
+        yield* dispatchRunNoticeRecord(command, events);
+        break;
       case "thread.fork":
         yield* dispatchThreadFork(command, events);
         break;
@@ -9839,6 +9900,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         // does relinking an identical preview or unlinking one already gone.
         planned.events.length > 0 ||
         command.type === "thread.background-work.settle" ||
+        command.type === "thread.run-notice.record" ||
         command.type === "thread.preview-link.link" ||
         command.type === "thread.preview-link.unlink"
           ? Effect.succeed(planned)

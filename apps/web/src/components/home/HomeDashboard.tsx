@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useAssetUrlState } from "../../assets/assetUrls";
 import { useHomeThreadShells, useManagerProfile } from "../../brainstormStore";
+import { useHomeView, useRememberedScroll } from "../../appMode";
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { useSpaceStore } from "../../spaceStore";
@@ -32,13 +33,18 @@ import { previewEnvironment } from "../../state/preview";
 import { useEnvironmentQuery } from "../../state/query";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
+import { NotificationsBell } from "../NotificationsBell";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
 import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
-import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
+import {
+  ManagerProfileSwitcher,
+  useManagerProfileMouseButtons,
+} from "../brainstorm/ManagerProfileSwitcher";
+import { GrowWorkspace } from "../grow/GrowWorkspace";
 import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
 import {
   selectManagerProfile,
@@ -81,6 +87,8 @@ export function HomeDashboard() {
   }, []);
   const overview = useMemo(() => buildWorkOverview(threads, now), [now, threads]);
   const verdict = homeVerdict(overview);
+  const view = useHomeView();
+  const classicScrollRef = useRememberedScroll("classic:list");
   const managerProfile = useManagerProfile();
   // Goals come from the brain of the manager in view.
   const managerEnvironmentId = useManagerEnvironmentId(managerProfile);
@@ -99,13 +107,29 @@ export function HomeDashboard() {
   const manager = useEnsureManagerThread();
   const openManagerThreadPage = useOpenManagerThreadPage();
   const projects = useProjects();
+  // Thumb buttons anywhere on Home switch profiles like they switch spaces over the sidebar.
+  useManagerProfileMouseButtons({
+    regionSelector: "[data-home-dashboard-root]",
+    includeAll: true,
+    onSelect: selectManagerProfile,
+  });
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background">
+    <div
+      data-home-dashboard-root=""
+      data-home-view={view}
+      className="flex h-full min-h-0 flex-col overflow-hidden overscroll-y-none bg-background"
+    >
       {/* Cards sort by profile; phones may not have shown the sidebar that detects them. */}
       <CodeProfileProbes projects={projects} />
       {/* The cards stay one column wide (narrower than two 24rem cards); the manager gets the rest. */}
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]">
+      <div
+        className={cn(
+          "grid min-h-0 flex-1",
+          // Grow lays out its own zones, chat included; Classic docks the manager at the right.
+          view === "classic" ? "lg:grid-cols-[minmax(20rem,min(40%,36rem))_minmax(0,1fr)]" : "",
+        )}
+      >
         {/* Home has its own canvas so the cards read as one board, apart from thread views. */}
         <div className="flex min-h-0 min-w-0 flex-col bg-muted/40" data-home-dashboard="">
           <WorkspacePageHeader
@@ -118,72 +142,86 @@ export function HomeDashboard() {
             <h1 className="font-medium text-sm">Home</h1>
             <ManagerProfileSwitcher includeAll onSelect={selectManagerProfile} />
             <ManagerMachineSwitcher />
-            <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
+            <span className="hidden min-w-0 max-w-[max(0px,calc(var(--mode-switch-clear)-17rem))] truncate text-muted-foreground text-xs sm:inline">
               {overview.needsMe.length} need you · {overview.working.length} working ·{" "}
               {overview.review.length} to review
             </span>
-            {/* Narrow windows have no docked manager; this opens it as a page. */}
-            <Button
-              size="xs"
-              variant="outline"
-              className="ms-auto lg:hidden"
-              data-home-open-manager=""
-              onClick={() => void openManagerThreadPage(managerProfile)}
-            >
-              <MessagesSquareIcon />
-              {managerProfile === null ? "Manager" : `${managerProfile} manager`}
-            </Button>
+            <div className="ms-auto flex shrink-0 items-center gap-1">
+              <NotificationsBell />
+              {/* Narrow windows have no docked manager; this opens it as a page. */}
+              <Button
+                size="xs"
+                variant="outline"
+                className="max-md:hidden lg:hidden"
+                data-home-open-manager=""
+                onClick={() => void openManagerThreadPage(managerProfile)}
+              >
+                <MessagesSquareIcon />
+                {managerProfile === null ? "Manager" : `${managerProfile} manager`}
+              </Button>
+            </div>
           </WorkspacePageHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10">
-            <VerdictBanner verdict={verdict} />
-            {CARD_GROUPS.map(({ group, title }) =>
-              overview[group].length === 0 ? null : (
-                <section key={group} aria-label={title} data-work-group={group} className="mt-6">
-                  <SectionTitle title={title} count={overview[group].length} />
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))] gap-3">
-                    {overview[group].map((item) => (
-                      <WorkCard
+          {view === "grow" ? (
+            <GrowWorkspace
+              threads={threads}
+              now={now}
+              managerPane={<ManagerPane manager={manager} autoFocusComposer={false} embedded />}
+            />
+          ) : (
+            <div
+              ref={classicScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-10"
+            >
+              <VerdictBanner verdict={verdict} />
+              {CARD_GROUPS.map(({ group, title }) =>
+                overview[group].length === 0 ? null : (
+                  <section key={group} aria-label={title} data-work-group={group} className="mt-6">
+                    <SectionTitle title={title} count={overview[group].length} />
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))] gap-3">
+                      {overview[group].map((item) => (
+                        <WorkCard
+                          key={`${item.thread.environmentId}:${item.thread.id}`}
+                          item={item}
+                          now={now}
+                          primaryEnvironmentId={primaryEnvironmentId}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ),
+              )}
+              {overview.done.length > 0 ? (
+                <section aria-label="Recently done" data-work-group="done" className="mt-6">
+                  <SectionTitle title="Recently done" count={overview.done.length} />
+                  <ul className="divide-y rounded-xl border bg-card">
+                    {overview.done.map((item) => (
+                      <DoneRow
                         key={`${item.thread.environmentId}:${item.thread.id}`}
                         item={item}
                         now={now}
-                        primaryEnvironmentId={primaryEnvironmentId}
                       />
                     ))}
-                  </div>
+                  </ul>
                 </section>
-              ),
-            )}
-            {overview.done.length > 0 ? (
-              <section aria-label="Recently done" data-work-group="done" className="mt-6">
-                <SectionTitle title="Recently done" count={overview.done.length} />
-                <ul className="divide-y rounded-xl border bg-card">
-                  {overview.done.map((item) => (
-                    <DoneRow
-                      key={`${item.thread.environmentId}:${item.thread.id}`}
-                      item={item}
-                      now={now}
-                    />
-                  ))}
-                </ul>
+              ) : null}
+              <section aria-label="Goals" data-work-group="goals" className="mt-6">
+                <SectionTitle title="Goals" count={goals.length} />
+                {goals.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    No open goals. Ask the manager to plan one.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3">
+                    {goals.map((goal) => (
+                      <GoalCard key={goal.key} goal={goal} environmentId={managerEnvironmentId} />
+                    ))}
+                  </div>
+                )}
               </section>
-            ) : null}
-            <section aria-label="Goals" data-work-group="goals" className="mt-6">
-              <SectionTitle title="Goals" count={goals.length} />
-              {goals.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  No open goals. Ask the manager to plan one.
-                </p>
-              ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3">
-                  {goals.map((goal) => (
-                    <GoalCard key={goal.key} goal={goal} environmentId={managerEnvironmentId} />
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+            </div>
+          )}
         </div>
-        <ManagerPane manager={manager} />
+        {view === "classic" ? <ManagerPane manager={manager} /> : null}
       </div>
     </div>
   );
@@ -217,13 +255,19 @@ function VerdictBanner(props: { readonly verdict: Verdict }) {
 }
 
 /** The manager thread docked beside the cards, as the real thread view. */
-function ManagerPane(props: { readonly manager: ReturnType<typeof useEnsureManagerThread> }) {
+function ManagerPane(props: {
+  readonly manager: ReturnType<typeof useEnsureManagerThread>;
+  /** Grow keeps focus in its list; Classic lets the composer take it. */
+  readonly autoFocusComposer?: boolean;
+  /** Grow's chat: no right panel or its toggles. */
+  readonly embedded?: boolean;
+}) {
   const { manager } = props;
   return (
     <section
       aria-label="Manager"
       data-home-manager=""
-      className="hidden min-h-0 min-w-0 flex-col border-s lg:flex"
+      className="hidden min-h-0 min-w-0 flex-1 flex-col border-s lg:flex"
     >
       {manager._tag === "Ready" ? (
         <ChatView
@@ -232,6 +276,8 @@ function ManagerPane(props: { readonly manager: ReturnType<typeof useEnsureManag
           threadId={manager.threadId}
           routeKind="server"
           reserveTitleBarControlInset={false}
+          autoFocusComposer={props.autoFocusComposer ?? true}
+          embedded={props.embedded ?? false}
         />
       ) : manager._tag === "Failed" ? (
         <p className="m-4 text-destructive-foreground text-sm">{manager.message}</p>
@@ -252,6 +298,12 @@ function WorkCard(props: {
   const { thread, reason, lastActivityAt } = props.item;
   const look = WORK_REASON_LOOK[reason];
   const projects = useProjects();
+  // Thumb buttons anywhere on Home switch profiles like they switch spaces over the sidebar.
+  useManagerProfileMouseButtons({
+    regionSelector: "[data-home-dashboard-root]",
+    includeAll: true,
+    onSelect: selectManagerProfile,
+  });
   const projectTitle =
     projects.find(
       (project) =>

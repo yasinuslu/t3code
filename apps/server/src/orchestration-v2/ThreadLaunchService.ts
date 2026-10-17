@@ -29,11 +29,13 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import { buildTemporaryWorktreeBranchName, isTemporaryWorktreeBranch } from "@t3tools/shared/git";
+import { formatDuration } from "@t3tools/shared/usageLimits";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as AccountBalancer from "../provider/AccountBalancer.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
@@ -75,6 +77,12 @@ export interface ThreadLaunchInput {
   readonly title: string;
   readonly generateTitle?: boolean;
   readonly modelSelection: ModelSelection;
+  /**
+   * How the project's account balancing treats `modelSelection`: `auto` lets
+   * it pick between the listed accounts of that provider, `off` keeps the
+   * launch out of it. Left out, the named account is used unless it is limited.
+   */
+  readonly accountBalance?: "auto" | "off";
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
@@ -180,6 +188,7 @@ const make = Effect.gen(function* () {
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
+  const accountBalancer = yield* AccountBalancer.AccountBalancer;
   const preparationScope = yield* Scope.make("sequential");
   const scheduledLaunches = yield* Ref.make<ReadonlySet<CommandId>>(new Set());
   yield* Effect.addFinalizer(() => Scope.close(preparationScope, Exit.void));
@@ -687,6 +696,14 @@ const make = Effect.gen(function* () {
       }
 
       const launchReceipt = yield* readReceipt(input, input.commandId);
+      const account: AccountBalancer.LaunchAccountChoice =
+        input.accountBalance === "off" || input.importedNativeThread !== undefined
+          ? { modelSelection: input.modelSelection }
+          : yield* accountBalancer.chooseForLaunch({
+              projectId: input.projectId,
+              selection: input.modelSelection,
+              mode: input.accountBalance ?? "pinned",
+            });
       return yield* Effect.gen(function* () {
         // A retried launch has no client-supplied id to replay against, so
         // recover the thread id its accepted create was recorded under before
@@ -761,7 +778,7 @@ const make = Effect.gen(function* () {
                 threadId: candidateThreadId,
                 projectId: input.projectId,
                 title: input.title,
-                modelSelection: input.modelSelection,
+                modelSelection: account.modelSelection,
                 runtimeMode: input.runtimeMode,
                 interactionMode: input.interactionMode,
                 branch: initialBranch,
@@ -815,7 +832,7 @@ const make = Effect.gen(function* () {
               attachments: input.initialMessage.attachments,
               ...(input.initialMessage.context ? { context: input.initialMessage.context } : {}),
               ...(input.generateTitle === true ? { titleSeed: input.title } : {}),
-              modelSelection: input.modelSelection,
+              modelSelection: account.modelSelection,
               dispatchMode: { type: "defer_start", workspaceStrategy },
               createdBy: input.createdBy,
               creationSource: input.creationSource,
@@ -831,6 +848,19 @@ const make = Effect.gen(function* () {
               "dispatch-message",
               threadId,
             )("Initial message was accepted without a durable run.");
+          }
+          if (account.replaced !== undefined) {
+            const { from, to, limitedFor } = account.replaced;
+            yield* threads
+              .dispatch({
+                type: "thread.run-notice.record",
+                commandId: CommandId.make(`${input.commandId}:account-notice`),
+                threadId,
+                runId,
+                signal: "account-balance",
+                message: `Started on ${to} instead of ${from}: ${from} is limited for ${formatDuration(limitedFor)}.`,
+              })
+              .pipe(Effect.ignoreCause({ log: true }));
           }
         }
 

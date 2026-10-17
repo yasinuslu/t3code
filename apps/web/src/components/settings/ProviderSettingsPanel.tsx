@@ -44,6 +44,10 @@ import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { cn } from "../../lib/utils";
 import { resolveAppModelSelectionState } from "../../modelSelection";
 import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+} from "../../providerInstances";
+import {
   useEnvironments,
   usePrimaryEnvironmentId,
   type EnvironmentPresentation,
@@ -886,6 +890,10 @@ export function EnvironmentProviderSettings({
   );
   const codeProfiles = routingProvider ? Object.entries(settings.codeProfiles ?? {}) : [];
   const codeProfileNames = codeProfiles.map(([name]) => name);
+  const providerInstanceEntries = applyProviderInstanceSettings(
+    deriveProviderInstanceEntries(serverProviders),
+    settings,
+  );
   const selectedProfileEntry =
     selectedCodeProfile?.name === undefined
       ? undefined
@@ -1382,6 +1390,7 @@ export function EnvironmentProviderSettings({
                     )}
                     version={routingProvider?.version ?? null}
                     existingNames={codeProfileNames}
+                    instances={providerInstanceEntries}
                     readOnly={readOnly}
                     isRefreshing={isRefreshingProviders}
                     onSave={saveCodeProfile}

@@ -70,6 +70,7 @@ import {
 } from "../orchestration-v2/SubagentProjection.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import * as AccountBalancer from "../provider/AccountBalancer.ts";
 import { CodeProfiles } from "../provider/CodeProfiles.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
@@ -783,6 +784,7 @@ const make = Effect.gen(function* () {
   const providerAdapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
   const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
   const managers = yield* ManagerScope.ManagerScope;
+  const accountBalancer = yield* Effect.serviceOption(AccountBalancer.AccountBalancer);
 
   /** The project the caller reaches `threadId` in: its own, or for a manager that thread's. */
   const reachableProjectId = (
@@ -1053,15 +1055,25 @@ const make = Effect.gen(function* () {
         }
       }
 
+      const modelSelection =
+        instanceId === inheritedSelection.instanceId &&
+        model === inheritedSelection.model &&
+        requestedOptions === undefined
+          ? inheritedSelection
+          : requestedOptions === undefined
+            ? { instanceId, model }
+            : { instanceId, model, options: requestedOptions };
+      if (Option.isNone(accountBalancer)) return { modelSelection };
+      // A target that names no instance leaves the account to the balancer.
+      const balanced = yield* accountBalancer.value.chooseForLaunch({
+        projectId: input.parent.thread.projectId,
+        selection: modelSelection,
+        mode: requestedInstanceId === undefined ? "auto" : "pinned",
+      });
       return {
-        modelSelection:
-          instanceId === inheritedSelection.instanceId &&
-          model === inheritedSelection.model &&
-          requestedOptions === undefined
-            ? inheritedSelection
-            : requestedOptions === undefined
-              ? { instanceId, model }
-              : { instanceId, model, options: requestedOptions },
+        modelSelection: orchestrationCapableInstanceIds.has(balanced.modelSelection.instanceId)
+          ? balanced.modelSelection
+          : modelSelection,
       };
     });
 
