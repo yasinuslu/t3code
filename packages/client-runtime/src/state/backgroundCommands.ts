@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import type {
   OrchestrationV2NotificationTask,
   OrchestrationV2PendingBackgroundTask,
@@ -18,6 +19,8 @@ export interface BackgroundCommand {
   readonly status: BackgroundCommandStatus;
   readonly exitCode: number | undefined;
   readonly itemId: TurnItemId;
+  /** When the agent started it (ISO), or null when the item carries no start time. */
+  readonly startedAt: string | null;
 }
 
 type BackgroundToolItem = Extract<
@@ -92,6 +95,7 @@ export function deriveBackgroundCommands(input: {
       status,
       exitCode: result?.exitCode,
       itemId: item.id,
+      startedAt: item.startedAt === null ? null : DateTime.formatIso(item.startedAt),
     };
   });
 }
