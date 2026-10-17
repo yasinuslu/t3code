@@ -25,6 +25,7 @@ const first = ProviderInstanceId.make("claude");
 const second = ProviderInstanceId.make("claude_2");
 const profileProject = ProjectId.make("project:in-profile");
 const otherProject = ProjectId.make("project:outside");
+const snProject = ProjectId.make("project:in-sn");
 const selection = { instanceId: first, model: "claude-opus-5-5" };
 
 function provider(instanceId: ProviderInstanceId, usedPercent: number): ServerProvider {
@@ -60,6 +61,7 @@ function provider(instanceId: ProviderInstanceId, usedPercent: number): ServerPr
 function dependencies(
   usedPercent: { readonly first: number; readonly second: number },
   listed: ReadonlyArray<ProviderInstanceId> = [first, second],
+  snListed?: ReadonlyArray<ProviderInstanceId>,
 ) {
   return Layer.mergeAll(
     ServerSettings.layerTest({
@@ -71,6 +73,17 @@ function dependencies(
             accounts: listed.map((instanceId) => ({ instanceId })),
           },
         },
+        ...(snListed === undefined
+          ? {}
+          : {
+              sn: {
+                root: "/code/sn",
+                accountBalancing: {
+                  enabled: true,
+                  accounts: snListed.map((instanceId) => ({ instanceId })),
+                },
+              },
+            }),
       },
     }),
     makeProviderRegistryLayer([
@@ -80,14 +93,23 @@ function dependencies(
     Layer.mock(CodeProfiles)({
       resolve: (folder) =>
         Effect.succeed(
-          folder.startsWith("/code/yu") ? { name: "yu", claudeConfigDir: undefined } : undefined,
+          folder.startsWith("/code/yu")
+            ? { name: "yu", claudeConfigDir: undefined }
+            : folder.startsWith("/code/sn")
+              ? { name: "sn", claudeConfigDir: undefined }
+              : undefined,
         ),
     }),
     Layer.mock(ProjectService.ProjectService)({
       getById: (id) =>
         Effect.succeedSome({
           id,
-          workspaceRoot: id === profileProject ? "/code/yu/app" : "/elsewhere/app",
+          workspaceRoot:
+            id === profileProject
+              ? "/code/yu/app"
+              : id === snProject
+                ? "/code/sn/app"
+                : "/elsewhere/app",
         } as Option.Option.Value<
           Effect.Success<ReturnType<ProjectService.ProjectService["Service"]["getById"]>>
         >),
@@ -177,4 +199,22 @@ it.effect("remembers a limit a turn hit across restarts, until a later turn gets
     yield* withBalancer((balancer) => balancer.clearLimit(first, selection.model, NOW + 1));
     assert.deepEqual(yield* choose, { modelSelection: selection });
   }).pipe(Effect.provide(dependencies({ first: 20, second: 10 }))),
+);
+
+it.effect("never ranks an account only another profile lists", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(NOW);
+    const rank = (projectId: ProjectId) =>
+      withBalancer((balancer) => balancer.rank({ projectId, selection }));
+    const ids = (ranking: AccountBalancer.AccountRanking | null) =>
+      ranking?.ranked.map((account) => account.instance.instanceId);
+
+    // The sn account is the emptier one, so a leak would win the ranking.
+    assert.deepEqual(ids(yield* rank(profileProject)), [first]);
+    assert.deepEqual(ids(yield* rank(snProject)), [second, first]);
+    const launch = yield* withBalancer((balancer) =>
+      balancer.chooseForLaunch({ projectId: profileProject, selection, mode: "auto" }),
+    );
+    assert.deepEqual(launch, { modelSelection: selection });
+  }).pipe(Effect.provide(dependencies({ first: 80, second: 10 }, [first], [first, second]))),
 );

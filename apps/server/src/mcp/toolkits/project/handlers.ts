@@ -84,8 +84,13 @@ export const ProjectHandlersLive = ProjectToolkit.toLayer({
         projectId,
         title: input.title,
         modelSelection: input.modelSelection ?? caller.modelSelection,
-        // An inherited model names the caller's account only by accident.
-        ...(input.modelSelection === undefined ? { accountBalance: "auto" as const } : {}),
+        // An inherited model names the caller's account only by accident, so it
+        // balances unless told not to; a named model is pinned unless asked.
+        ...(input.accountBalance === undefined
+          ? input.modelSelection === undefined
+            ? { accountBalance: "auto" as const }
+            : {}
+          : { accountBalance: input.accountBalance }),
         runtimeMode: input.runtimeMode ?? caller.runtimeMode,
         interactionMode: input.interactionMode ?? caller.interactionMode,
         workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
