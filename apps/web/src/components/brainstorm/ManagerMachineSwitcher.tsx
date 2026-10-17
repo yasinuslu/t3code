@@ -12,7 +12,7 @@ import { useThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { hasUnseenCompletion, resolveSidebarThreadStatus } from "../Sidebar.logic";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-import { SINGLE_MANAGER_KEY, managerSlot } from "./brainstorm.logic";
+import { SINGLE_MANAGER_KEY, isEnvironmentUnreachable, managerSlot } from "./brainstorm.logic";
 
 export function ManagerMachineSwitcher(props: {
   /** Runs after the pick is stored, e.g. to open that machine's manager page. */
@@ -56,8 +56,7 @@ function MachineSegment(props: {
   readonly selected: boolean;
 }) {
   const environment = useEnvironment(props.environmentId);
-  const phase = environment?.connection.phase;
-  const offline = phase === "offline" || phase === "error";
+  const offline = isEnvironmentUnreachable(environment?.connection.phase);
   const label = environment?.label ?? props.environmentId;
   const managerKey = useBrainstormStore(
     (state) => state.managerThreadKeyBySlot[managerSlot(props.environmentId, props.profile)],

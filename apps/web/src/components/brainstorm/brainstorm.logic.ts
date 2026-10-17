@@ -160,6 +160,15 @@ export function resolveManagerEnvironmentId(
   return hosts.find((environmentId) => environmentId === pickedEnvironmentId) ?? hosts[0] ?? null;
 }
 
+/**
+ * Whether a machine cannot be reached now: it dropped (a closed laptop shows
+ * as reconnecting), failed, or this device is offline. Unknown (no entry)
+ * and a first connect attempt still count as reachable.
+ */
+export function isEnvironmentUnreachable(phase: string | undefined): boolean {
+  return phase !== undefined && phase !== "connected" && phase !== "connecting";
+}
+
 /** Every connected environment that runs a manager, else the primary one. */
 export function resolveManagerEnvironmentIds(
   primaryEnvironmentId: EnvironmentId | null,

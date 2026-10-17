@@ -14,7 +14,12 @@ import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
 import { formatEnvironmentQueryError } from "../../state/query";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { SINGLE_MANAGER_KEY, managerSlot, resolveManagerEnvironmentId } from "./brainstorm.logic";
+import {
+  SINGLE_MANAGER_KEY,
+  isEnvironmentUnreachable,
+  managerSlot,
+  resolveManagerEnvironmentId,
+} from "./brainstorm.logic";
 
 function parseThreadKey(key: string) {
   const separator = key.indexOf(":");
@@ -104,7 +109,7 @@ export function useEnsureManagerThread(): ManagerThreadState {
       message: `${profile === null ? "The" : `The ${profile}`} manager's machine is not connected; the manager runs there.`,
     };
   }
-  if (phase === "offline" || phase === "error")
+  if (isEnvironmentUnreachable(phase))
     return {
       _tag: "Failed",
       message: `${environment?.label ?? "Its machine"} is offline; the manager runs there.`,
