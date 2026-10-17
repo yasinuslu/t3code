@@ -35,7 +35,9 @@ import {
   growBoardProjects,
   growEffectiveSelection,
   growLayoutWidths,
+  growPlayReport,
   growRailOrder,
+  limitInUse,
 } from "./grow.logic";
 import { GROW_PANE_SIZES, useGrowStore } from "./grow.store";
 
@@ -149,22 +151,38 @@ export function GrowWorkspace(props: {
   // Until the cards and the managers are known the board would flash managers as cards.
   const ready = loaded && managers.known;
   const project = useGrowStore((store) => store.project);
-  const everyone = useMemo(
-    () => buildGrowBoard(props.threads, cards, props.now, { excluded: managers.keys }),
+  // Built without the In use limit so the play report counts every finished thread.
+  const everyoneInFull = useMemo(
+    () =>
+      buildGrowBoard(props.threads, cards, props.now, {
+        excluded: managers.keys,
+        inUseLimit: Number.POSITIVE_INFINITY,
+      }),
     [cards, managers.keys, props.now, props.threads],
+  );
+  const storedSelection = useGrowStore((store) => store.selected);
+  const everyone = useMemo(
+    () => limitInUse(everyoneInFull, storedSelection),
+    [everyoneInFull, storedSelection],
   );
   const projects = useMemo(() => growBoardProjects(everyone), [everyone]);
   const activeProject = project !== null && projects.includes(project) ? project : null;
-  const board = useMemo(
+  const boardInFull = useMemo(
     () =>
       activeProject === null
-        ? everyone
+        ? everyoneInFull
         : buildGrowBoard(props.threads, cards, props.now, {
             excluded: managers.keys,
             project: activeProject,
+            inUseLimit: Number.POSITIVE_INFINITY,
           }),
-    [activeProject, cards, everyone, managers.keys, props.now, props.threads],
+    [activeProject, cards, everyoneInFull, managers.keys, props.now, props.threads],
   );
+  const board = useMemo(
+    () => limitInUse(boardInFull, storedSelection),
+    [boardInFull, storedSelection],
+  );
+  const playReport = useMemo(() => growPlayReport(boardInFull), [boardInFull]);
   // Typed in the search field; not persisted. Filters what the list shows, never the selection.
   const query = useGrowStore((store) => store.query);
   const setQuery = useGrowStore((store) => store.setQuery);
@@ -207,11 +225,15 @@ export function GrowWorkspace(props: {
     };
   }, [wide]);
   const leftMode = useGrowStore((store) => store.leftMode);
-  const storedSelection = useGrowStore((store) => store.selected);
   const select = useGrowStore((store) => store.select);
   const play = useGrowStore((store) => store.play);
   const update = useGrowUpdate();
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const reportFor = (onPick: (key: string) => void) => ({
+    data: playReport,
+    now: props.now,
+    onPick,
+  });
 
   const selected = growEffectiveSelection(board, storedSelection);
   const rail = useMemo(() => growRailOrder(board), [board]);
@@ -228,7 +250,9 @@ export function GrowWorkspace(props: {
           onSelect={setOpenKey}
           ready={ready}
           empty={noMatches ? <NoMatches /> : null}
-          header={<GrowHeader projects={projects} search={search} narrow />}
+          header={
+            <GrowHeader projects={projects} search={search} report={reportFor(setOpenKey)} narrow />
+          }
         />
         {open ? (
           <GrowCardDialog card={open} update={update} onClose={() => setOpenKey(null)} />
@@ -284,7 +308,7 @@ export function GrowWorkspace(props: {
             empty={noMatches ? <NoMatches /> : null}
             header={
               <>
-                <GrowHeader projects={projects} search={search} />
+                <GrowHeader projects={projects} search={search} report={reportFor(select)} />
                 <div className="w-64">
                   <ManagerRow selected={selected === GROW_MANAGER_KEY} />
                 </div>
@@ -318,6 +342,7 @@ export function GrowWorkspace(props: {
         <Rail
           board={shown}
           search={search}
+          report={reportFor(select)}
           selected={selected}
           projects={projects}
           ready={ready}

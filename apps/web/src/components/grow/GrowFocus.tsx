@@ -31,6 +31,7 @@ import {
 import { type GrowThingTab, useGrowStore } from "./grow.store";
 import {
   GrowHeader,
+  type GrowHeaderReport,
   type GrowSearch,
   GrowNavSkeleton,
   GrowRow,
@@ -47,6 +48,7 @@ export function Rail(props: {
   readonly selected: string;
   readonly projects: ReadonlyArray<string>;
   readonly search: GrowSearch;
+  readonly report: GrowHeaderReport;
   readonly ready: boolean;
   readonly canPlay: boolean;
 }) {
@@ -68,7 +70,7 @@ export function Rail(props: {
       data-grow-zone=""
       className="flex min-h-0 w-full flex-1 flex-col gap-2 border-e pe-2 pb-3"
     >
-      <GrowHeader projects={props.projects} search={props.search} />
+      <GrowHeader projects={props.projects} search={props.search} report={props.report} />
       {/* A fixed band above the list, so scrolling never tucks a row under it. */}
       <div className="border-b pb-2">
         <ManagerRow selected={props.selected === GROW_MANAGER_KEY} />
