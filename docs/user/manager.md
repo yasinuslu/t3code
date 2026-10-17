@@ -68,6 +68,12 @@ General → Managers hosted here** on each machine (for example `sn` on a laptop
 A machine that lists profiles runs only those managers. Every device that connects to both
 machines opens each manager on the machine that lists it.
 
+When two machines list the same profile, each runs its own manager for it: a separate chat with its
+own history, nothing shared or moved between them. Home's header then shows a machine switcher
+next to the profile switcher; pick a machine to open its manager. Home remembers your pick per
+profile and otherwise starts on the machine you connected to. A machine that is offline is shown
+as offline and is not opened, and a dot on a machine means its manager is working or has news.
+
 Tell it what you want done. It breaks goals into tasks, starts worker threads, answers their routine
 questions and closes tasks. It reads its rules again after a restart, so nothing depends on its chat
 history.

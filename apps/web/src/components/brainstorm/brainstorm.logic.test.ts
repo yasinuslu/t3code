@@ -9,6 +9,7 @@ import {
   membershipChangesToAdopt,
   resolveManagerEnvironmentId,
   resolveManagerEnvironmentIds,
+  resolveManagerHostIds,
   resolveManagerProfile,
 } from "./brainstorm.logic";
 
@@ -157,6 +158,24 @@ describe("resolveManagerEnvironmentId", () => {
     const desktopOnly = configs({ desktop: ["yu"] });
     expect(resolveManagerEnvironmentId(desktop, desktopOnly, "yu")).toBe(desktop);
     expect(resolveManagerEnvironmentId(desktop, desktopOnly, "sn")).toBe(null);
+  });
+
+  it("lists every machine that runs a profile's own manager and opens the one picked", () => {
+    const both = configs({ laptop: ["sn", "yu"], desktop: ["yu"] });
+    expect(resolveManagerHostIds(desktop, both, "yu")).toEqual([desktop, laptop]);
+    expect(resolveManagerEnvironmentId(desktop, both, "yu")).toBe(desktop);
+    expect(resolveManagerEnvironmentId(desktop, both, "yu", laptop)).toBe(laptop);
+    // A pick that does not host this profile falls back to its first host.
+    expect(resolveManagerEnvironmentId(desktop, both, "sn", desktop)).toBe(laptop);
+  });
+
+  it("keeps an offline machine's pick, and only moves on once it is gone", () => {
+    // Offline machines keep their last config, so the pick stays and Home says it is offline.
+    const both = configs({ laptop: ["yu"], desktop: ["yu"] });
+    expect(resolveManagerEnvironmentId(desktop, both, "yu", laptop)).toBe(laptop);
+    expect(resolveManagerEnvironmentId(desktop, configs({ desktop: ["yu"] }), "yu", laptop)).toBe(
+      desktop,
+    );
   });
 
   it("lists every machine that runs a manager", () => {

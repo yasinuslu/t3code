@@ -18,10 +18,10 @@ import { useEnvironmentQuery } from "../../state/query";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
-  SINGLE_MANAGER_KEY,
   brainstormSpacesInput,
   membershipChangesToAdopt,
-  resolveManagerEnvironmentId,
+  managerSlot,
+  resolveManagerHostIds,
 } from "./brainstorm.logic";
 
 const SYNC_DELAY_MS = 300;
@@ -77,17 +77,20 @@ function ManagerEnvironmentSync({ environmentId }: { readonly environmentId: Env
     if (state === null) return;
     // Only the managers this environment runs: another machine may run a profile's now.
     const hosts = (profile: string | null) =>
-      resolveManagerEnvironmentId(primaryEnvironmentId, serverConfigs, profile) === environmentId;
-    const managerThreadKeyByProfile: Record<string, string> = {};
+      resolveManagerHostIds(primaryEnvironmentId, serverConfigs, profile).includes(environmentId);
+    const managerThreadKeyBySlot: Record<string, string> = {};
     const singleId = state.threadIdsBySpaceId[ALL_SPACE_ID];
     if (singleId && hosts(null)) {
-      managerThreadKeyByProfile[SINGLE_MANAGER_KEY] = `${environmentId}:${singleId}`;
+      managerThreadKeyBySlot[managerSlot(environmentId, null)] = `${environmentId}:${singleId}`;
     }
     for (const [profile, threadId] of Object.entries(state.managerThreadIdsByProfile ?? {})) {
-      if (hosts(profile)) managerThreadKeyByProfile[profile] = `${environmentId}:${threadId}`;
+      if (hosts(profile)) {
+        managerThreadKeyBySlot[managerSlot(environmentId, profile)] =
+          `${environmentId}:${threadId}`;
+      }
     }
     setEnvironmentManagers(environmentId, {
-      managerThreadKeyByProfile,
+      managerThreadKeyBySlot,
       profiles: state.profiles,
       serverDefaultProfile: state.defaultProfile,
       hiddenThreadKeys: new Set(

@@ -20,6 +20,7 @@ import {
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { InHomeOverlayContext } from "../../homeOverlayStore";
+import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
 import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
 import {
   openManagerHome,
@@ -286,13 +287,19 @@ export const ChatHeader = memo(function ChatHeader({
       {/* On its own page (narrow windows), a manager switches to another profile's here, ahead
           of the breadcrumb so it never clips; Home has its own switcher. */}
       {isManager && !docked ? (
-        <ManagerProfileSwitcher
-          className="shrink-0"
-          onSelect={(profile) => {
-            selectManagerProfile(profile);
-            void openManagerThreadPage(profile);
-          }}
-        />
+        <>
+          <ManagerProfileSwitcher
+            className="shrink-0"
+            onSelect={(profile) => {
+              selectManagerProfile(profile);
+              void openManagerThreadPage(profile);
+            }}
+          />
+          <ManagerMachineSwitcher
+            className="shrink-0"
+            onSelect={(profile) => void openManagerThreadPage(profile)}
+          />
+        </>
       ) : null}
       <WorkspaceBreadcrumb
         ariaLabel="Thread breadcrumb"

@@ -115,33 +115,49 @@ export function boardGoals(
 }
 
 /**
- * The environment that runs `profile`'s manager, primary first: one that
- * names the profile in `managerProfiles`, else one that hosts every manager
- * (`hostsManager` with no names), else the primary. Lets a laptop open the
- * manager on an always-on machine, and each profile's manager live where
- * that profile's work runs. Null when the managers are split by profile and
- * this one's machine is not connected, so a client never starts a second
- * copy elsewhere.
+ * Every environment that runs `profile`'s manager, primary first: those that
+ * name the profile in `managerProfiles`, else one that hosts every manager
+ * (`hostsManager` with no names), else the primary. Each machine that names a
+ * profile runs its own manager for it, with its own thread and history. Lets
+ * a laptop open the manager on an always-on machine, and each profile's
+ * manager live where that profile's work runs. Empty when the managers are
+ * split by profile and this one's machine is not connected, so a client never
+ * starts a second copy elsewhere.
+ */
+export function resolveManagerHostIds(
+  primaryEnvironmentId: EnvironmentId | null,
+  serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
+  profile: string | null = null,
+): EnvironmentId[] {
+  const ordered = [...serverConfigs].toSorted(
+    ([left], [right]) =>
+      Number(right === primaryEnvironmentId) - Number(left === primaryEnvironmentId),
+  );
+  const named = ordered
+    .filter(([, config]) => profile !== null && config.settings.managerProfiles.includes(profile))
+    .map(([environmentId]) => environmentId);
+  if (named.length > 0) return named;
+  const all = ordered.find(
+    ([, config]) => config.settings.hostsManager && config.settings.managerProfiles.length === 0,
+  );
+  if (all) return [all[0]];
+  const split = ordered.some(([, config]) => config.settings.managerProfiles.length > 0);
+  return split || primaryEnvironmentId === null ? [] : [primaryEnvironmentId];
+}
+
+/**
+ * The environment whose manager Home shows for `profile`: the machine the
+ * user picked last when it still hosts that manager, else the first host (see
+ * `resolveManagerHostIds`). Null when no connected machine hosts it.
  */
 export function resolveManagerEnvironmentId(
   primaryEnvironmentId: EnvironmentId | null,
   serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
   profile: string | null = null,
+  pickedEnvironmentId: string | null = null,
 ): EnvironmentId | null {
-  const ordered = [...serverConfigs].toSorted(
-    ([left], [right]) =>
-      Number(right === primaryEnvironmentId) - Number(left === primaryEnvironmentId),
-  );
-  const named = ordered.find(
-    ([, config]) => profile !== null && config.settings.managerProfiles.includes(profile),
-  );
-  if (named) return named[0];
-  const all = ordered.find(
-    ([, config]) => config.settings.hostsManager && config.settings.managerProfiles.length === 0,
-  );
-  if (all) return all[0];
-  const split = ordered.some(([, config]) => config.settings.managerProfiles.length > 0);
-  return split ? null : primaryEnvironmentId;
+  const hosts = resolveManagerHostIds(primaryEnvironmentId, serverConfigs, profile);
+  return hosts.find((environmentId) => environmentId === pickedEnvironmentId) ?? hosts[0] ?? null;
 }
 
 /** Every connected environment that runs a manager, else the primary one. */
@@ -160,6 +176,11 @@ export function resolveManagerEnvironmentIds(
 
 /** Key of the single manager in the client's map when no profile has a brain. */
 export const SINGLE_MANAGER_KEY = "";
+
+/** Where the client keeps one machine's manager for a profile (`null` for the single one). */
+export function managerSlot(environmentId: string, profile: string | null): string {
+  return `${environmentId}:${profile ?? SINGLE_MANAGER_KEY}`;
+}
 
 /**
  * Whose manager Home shows: the active space's profile, else the profile

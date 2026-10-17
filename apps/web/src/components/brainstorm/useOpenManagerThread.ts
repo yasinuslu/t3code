@@ -14,7 +14,7 @@ import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
 import { formatEnvironmentQueryError } from "../../state/query";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { SINGLE_MANAGER_KEY, resolveManagerEnvironmentId } from "./brainstorm.logic";
+import { SINGLE_MANAGER_KEY, managerSlot, resolveManagerEnvironmentId } from "./brainstorm.logic";
 
 function parseThreadKey(key: string) {
   const separator = key.indexOf(":");
@@ -29,14 +29,13 @@ export type ManagerThreadState =
   | { readonly _tag: "Failed"; readonly message: string }
   | { readonly _tag: "Ready"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
-/** A manager key the client can use: on this environment and not archived. */
+/** A manager key the client can use: this environment's manager, not archived. */
 function useUsableManagerKey(environmentId: EnvironmentId | null, profile: string | null) {
-  const storedKey = useBrainstormStore(
-    (state) => state.managerThreadKeyByProfile[profile ?? SINGLE_MANAGER_KEY] ?? null,
+  const knownKey = useBrainstormStore((state) =>
+    environmentId === null
+      ? null
+      : (state.managerThreadKeyBySlot[managerSlot(environmentId, profile)] ?? null),
   );
-  // A key from before the manager moved to another environment is not this one.
-  const knownKey =
-    environmentId !== null && storedKey?.startsWith(`${environmentId}:`) ? storedKey : null;
   const knownShell = useThreadShell(knownKey === null ? null : parseThreadKey(knownKey));
   // An archived manager is replaced: the server starts a new one on open.
   return knownShell?.archivedAt != null ? null : knownKey;
@@ -53,7 +52,7 @@ function useOpenManagerCommand() {
       });
       if (result._tag === "Failure") return result;
       const key = `${environmentId}:${result.value.threadId}`;
-      useBrainstormStore.getState().setManagerThreadKey(profile ?? SINGLE_MANAGER_KEY, key);
+      useBrainstormStore.getState().setManagerThreadKey(managerSlot(environmentId, profile), key);
       return { _tag: "Success" as const, key };
     },
     [openManager],
@@ -142,23 +141,23 @@ export function useOpenManagerThreadPage() {
   const navigate = useNavigate();
   return useCallback(
     async (profile: string | null) => {
+      const store = useBrainstormStore.getState();
       const environmentId = resolveManagerEnvironmentId(
         primaryEnvironmentId,
         serverConfigs,
         profile,
+        store.lastManagerEnvironmentByProfile[profile ?? SINGLE_MANAGER_KEY] ?? null,
       );
       // Before the server lists its profiles, which manager is meant is not known yet.
-      if (environmentId === null || useBrainstormStore.getState().profiles === null) {
+      if (environmentId === null || store.profiles === null) {
         return openManagerHome();
       }
-      const stored =
-        useBrainstormStore.getState().managerThreadKeyByProfile[profile ?? SINGLE_MANAGER_KEY];
-      const key = stored?.startsWith(`${environmentId}:`)
-        ? stored
-        : await openManager(environmentId, profile).then((result) =>
-            result._tag === "Success" ? result.key : null,
-          );
-      if (key === null) return openManagerHome();
+      const key =
+        store.managerThreadKeyBySlot[managerSlot(environmentId, profile)] ??
+        (await openManager(environmentId, profile).then((result) =>
+          result._tag === "Success" ? result.key : null,
+        ));
+      if (!key) return openManagerHome();
       await navigate({ to: "/$environmentId/$threadId", params: parseThreadKey(key) });
     },
     [navigate, openManager, primaryEnvironmentId, serverConfigs],

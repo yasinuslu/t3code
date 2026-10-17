@@ -15,7 +15,7 @@ import { useThreadShells } from "./state/entities";
 
 /** What one manager-hosting environment reports. */
 export interface EnvironmentManagers {
-  readonly managerThreadKeyByProfile: Readonly<Record<string, string>>;
+  readonly managerThreadKeyBySlot: Readonly<Record<string, string>>;
   readonly profiles: ReadonlyArray<string>;
   readonly serverDefaultProfile: string | null;
   readonly hiddenThreadKeys: ReadonlySet<string>;
@@ -25,16 +25,19 @@ interface BrainstormStore {
   /** `${environmentId}:${threadId}` of every brainstorm chat except the managers. */
   readonly hiddenThreadKeys: ReadonlySet<string>;
   /**
-   * `${environmentId}:${threadId}` of each manager the server has, by profile
-   * (`SINGLE_MANAGER_KEY` for the one manager when no profile has a brain).
+   * `${environmentId}:${threadId}` of each manager the servers have, by
+   * `managerSlot` (machine and profile): every machine that hosts a profile
+   * runs its own manager for it.
    */
-  readonly managerThreadKeyByProfile: Readonly<Record<string, string>>;
+  readonly managerThreadKeyBySlot: Readonly<Record<string, string>>;
   /** Code profiles with a brain on the managers' machines; null until a server says. */
   readonly profiles: ReadonlyArray<string> | null;
   /** The server's default profile, the manager to show before the user picks one. */
   readonly serverDefaultProfile: string | null;
   /** The profile whose manager the user picked last; kept across sessions. */
   readonly lastManagerProfile: string | null;
+  /** The machine whose manager the user picked last, by profile key; kept across sessions. */
+  readonly lastManagerEnvironmentByProfile: Readonly<Record<string, string>>;
   /** Profile whose brain custom spaces, Other and All use; null: the server picks. */
   readonly defaultProfile: string | null;
   /** Each manager-hosting environment's report; the fields above merge them. */
@@ -44,7 +47,8 @@ interface BrainstormStore {
     environmentId: string,
     managers: EnvironmentManagers | null,
   ) => void;
-  readonly setManagerThreadKey: (profileKey: string, key: string) => void;
+  readonly setManagerThreadKey: (slot: string, key: string) => void;
+  readonly setLastManagerEnvironment: (profileKey: string, environmentId: string) => void;
   readonly setLastManagerProfile: (profile: string) => void;
   readonly setDefaultProfile: (profile: string | null) => void;
 }
@@ -61,7 +65,7 @@ const sameSet = (left: ReadonlySet<string>, right: ReadonlySet<string>) =>
 
 const sameManagers = (left: EnvironmentManagers | undefined, right: EnvironmentManagers) =>
   left !== undefined &&
-  sameRecord(left.managerThreadKeyByProfile, right.managerThreadKeyByProfile) &&
+  sameRecord(left.managerThreadKeyBySlot, right.managerThreadKeyBySlot) &&
   left.profiles.join("\n") === right.profiles.join("\n") &&
   left.serverDefaultProfile === right.serverDefaultProfile &&
   sameSet(left.hiddenThreadKeys, right.hiddenThreadKeys);
@@ -70,9 +74,9 @@ const sameManagers = (left: EnvironmentManagers | undefined, right: EnvironmentM
 function mergeManagers(byEnvironment: Readonly<Record<string, EnvironmentManagers>>) {
   const reports = Object.values(byEnvironment);
   return {
-    managerThreadKeyByProfile: Object.assign(
+    managerThreadKeyBySlot: Object.assign(
       {},
-      ...reports.map((report) => report.managerThreadKeyByProfile),
+      ...reports.map((report) => report.managerThreadKeyBySlot),
     ) as Record<string, string>,
     profiles:
       reports.length === 0 ? null : [...new Set(reports.flatMap((report) => report.profiles))],
@@ -86,10 +90,11 @@ export const useBrainstormStore = create<BrainstormStore>()(
   persist(
     (set) => ({
       hiddenThreadKeys: new Set(),
-      managerThreadKeyByProfile: {},
+      managerThreadKeyBySlot: {},
       profiles: null,
       serverDefaultProfile: null,
       lastManagerProfile: null,
+      lastManagerEnvironmentByProfile: {},
       defaultProfile: null,
       managersByEnvironment: {},
       setEnvironmentManagers: (environmentId, managers) =>
@@ -103,10 +108,21 @@ export const useBrainstormStore = create<BrainstormStore>()(
             managers === null ? others : { ...others, [environmentId]: managers };
           return { managersByEnvironment, ...mergeManagers(managersByEnvironment) };
         }),
-      setManagerThreadKey: (profileKey, key) =>
+      setManagerThreadKey: (slot, key) =>
         set((state) => ({
-          managerThreadKeyByProfile: { ...state.managerThreadKeyByProfile, [profileKey]: key },
+          managerThreadKeyBySlot: { ...state.managerThreadKeyBySlot, [slot]: key },
         })),
+      setLastManagerEnvironment: (profileKey, environmentId) =>
+        set((state) =>
+          state.lastManagerEnvironmentByProfile[profileKey] === environmentId
+            ? state
+            : {
+                lastManagerEnvironmentByProfile: {
+                  ...state.lastManagerEnvironmentByProfile,
+                  [profileKey]: environmentId,
+                },
+              },
+        ),
       setLastManagerProfile: (lastManagerProfile) =>
         set((state) =>
           state.lastManagerProfile === lastManagerProfile ? state : { lastManagerProfile },
@@ -121,17 +137,27 @@ export const useBrainstormStore = create<BrainstormStore>()(
       partialize: (state) => ({
         defaultProfile: state.defaultProfile,
         lastManagerProfile: state.lastManagerProfile,
+        lastManagerEnvironmentByProfile: state.lastManagerEnvironmentByProfile,
       }),
       merge: (persisted, current) => {
         const saved = persisted as {
           defaultProfile?: unknown;
           lastManagerProfile?: unknown;
+          lastManagerEnvironmentByProfile?: unknown;
         } | null;
         const text = (value: unknown) => (typeof value === "string" ? value : null);
         return {
           ...current,
           defaultProfile: text(saved?.defaultProfile),
           lastManagerProfile: text(saved?.lastManagerProfile),
+          lastManagerEnvironmentByProfile: Object.fromEntries(
+            Object.entries(
+              typeof saved?.lastManagerEnvironmentByProfile === "object" &&
+                saved.lastManagerEnvironmentByProfile !== null
+                ? saved.lastManagerEnvironmentByProfile
+                : {},
+            ).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          ),
         };
       },
     },
@@ -140,13 +166,13 @@ export const useBrainstormStore = create<BrainstormStore>()(
 
 /** Every manager thread's `${environmentId}:${threadId}`. */
 export function useManagerThreadKeys(): ReadonlySet<string> {
-  const byProfile = useBrainstormStore((state) => state.managerThreadKeyByProfile);
+  const byProfile = useBrainstormStore((state) => state.managerThreadKeyBySlot);
   return useMemo(() => new Set(Object.values(byProfile)), [byProfile]);
 }
 
 export function useIsManagerThread(environmentId: string, threadId: string): boolean {
   return useBrainstormStore((state) =>
-    Object.values(state.managerThreadKeyByProfile).includes(`${environmentId}:${threadId}`),
+    Object.values(state.managerThreadKeyBySlot).includes(`${environmentId}:${threadId}`),
   );
 }
 

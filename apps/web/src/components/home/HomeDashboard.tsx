@@ -37,6 +37,7 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { type BoardGoal, goalsOfSpace } from "../brainstorm/brainstorm.logic";
+import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
 import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
 import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
 import {
@@ -116,6 +117,7 @@ export function HomeDashboard() {
             <CompassIcon className="size-4 text-muted-foreground" aria-hidden />
             <h1 className="font-medium text-sm">Home</h1>
             <ManagerProfileSwitcher includeAll onSelect={selectManagerProfile} />
+            <ManagerMachineSwitcher />
             <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
               {overview.needsMe.length} need you · {overview.working.length} working ·{" "}
               {overview.review.length} to review
