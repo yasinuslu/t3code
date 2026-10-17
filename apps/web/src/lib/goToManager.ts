@@ -17,6 +17,8 @@ function visibleOpenPopup(): Element | null {
     (element) =>
       element.closest("[inert]") === null &&
       element.closest("[data-manager-overlay]") === null &&
+      // Toasts are dialogs to assistive tech but never hold the keyboard.
+      element.closest('[data-slot="toast-viewport"]') === null &&
       element.getClientRects().length > 0,
   );
   return popups.at(-1) ?? null;
