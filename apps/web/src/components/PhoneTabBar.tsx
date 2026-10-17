@@ -1,35 +1,27 @@
 import { useParams } from "@tanstack/react-router";
-import { InboxIcon, ListIcon, MessagesSquareIcon, SproutIcon, type LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { buildWorkOverview } from "@t3tools/client-runtime/state/work-overview";
+import { ListIcon, MessagesSquareIcon, SproutIcon, type LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { type AppMode, setAppMode, useAppMode } from "../appMode";
-import { useHomeThreadShells, useIsManagerThread, useManagerProfile } from "../brainstormStore";
+import { useIsManagerThread } from "../brainstormStore";
 import { useIsMobile } from "../hooks/useMediaQuery";
-import { goToManager } from "../lib/goToManager";
+import { toggleManager } from "../lib/goToManager";
+import { useManagerOverlayStore } from "../managerOverlayStore";
 import { cn } from "../lib/utils";
 import { resolveThreadRouteRef } from "../threadRoutes";
-import { useOpenManagerThreadPage } from "./brainstorm/useOpenManagerThread";
 import { useSidebar } from "./ui/sidebar";
 
-type PhoneTab = "needs-you" | "manager" | "grow" | "threads";
+type PhoneTab = "manager" | "grow" | "threads";
 
 const TABS: ReadonlyArray<{
   readonly tab: PhoneTab;
   readonly label: string;
   readonly icon: LucideIcon;
 }> = [
-  { tab: "needs-you", label: "Needs you", icon: InboxIcon },
   { tab: "manager", label: "Manager", icon: MessagesSquareIcon },
   { tab: "grow", label: "Grow", icon: SproutIcon },
   { tab: "threads", label: "Threads", icon: ListIcon },
 ];
-
-/** Needs-you count, kept off the bar's render path until the count itself changes. */
-function useNeedsYouCount(): number {
-  const threads = useHomeThreadShells();
-  return useMemo(() => buildWorkOverview(threads, Date.now()).needsMe.length, [threads]);
-}
 
 /**
  * The on-screen keyboard is up: a text field has focus and the visual viewport is much
@@ -71,35 +63,31 @@ function useKeyboardUp(): boolean {
   return up;
 }
 
-function activeTabOf(mode: AppMode, onManagerThread: boolean): PhoneTab {
-  if (mode === "grow") return "grow";
-  if (mode === "classic") return "needs-you";
-  return onManagerThread ? "manager" : "threads";
+function activeTabOf(mode: AppMode, managerShown: boolean): PhoneTab {
+  if (managerShown) return "manager";
+  return mode === "grow" ? "grow" : "threads";
 }
 
 /**
  * The phone's way between the app's screens, replacing the top mode switch:
- * Needs you (Home's cards), the Manager chat, Grow, and the thread list.
+ * the Manager chat (shown over the screen), Grow, and the thread list.
  * Below `md` only; index.css reserves its room while it is mounted.
  */
 export function PhoneTabBar() {
   const isMobile = useIsMobile();
   const mode = useAppMode();
-  const needsYou = useNeedsYouCount();
-  const managerProfile = useManagerProfile();
-  const openManagerThreadPage = useOpenManagerThreadPage();
+  const managerOpen = useManagerOverlayStore((state) => state.open);
   const { setOpenMobile } = useSidebar();
   const route = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
   const onManagerThread = useIsManagerThread(route?.environmentId ?? "", route?.threadId ?? "");
   const keyboardUp = useKeyboardUp();
 
   if (!isMobile || keyboardUp) return null;
-  const active = activeTabOf(mode, onManagerThread);
+  const active = activeTabOf(mode, managerOpen || onManagerThread);
 
   const select = (tab: PhoneTab) => {
     if (tab === "grow") setAppMode("grow");
-    else if (tab === "needs-you") setAppMode("classic");
-    else if (tab === "manager") void goToManager(() => openManagerThreadPage(managerProfile));
+    else if (tab === "manager") toggleManager();
     else {
       // The list is the point of this tab: show it, over whichever thread is open.
       setAppMode("normal");
@@ -129,11 +117,6 @@ export function PhoneTabBar() {
         >
           <span className="relative">
             <Icon className="size-5" aria-hidden />
-            {tab === "needs-you" && needsYou > 0 ? (
-              <span className="absolute -top-1 left-full ms-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-3xs leading-4 text-primary-foreground">
-                {needsYou}
-              </span>
-            ) : null}
           </span>
           <span className="max-w-full truncate">{label}</span>
         </button>

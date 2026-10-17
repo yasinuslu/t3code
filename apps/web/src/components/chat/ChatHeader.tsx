@@ -5,7 +5,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon, CompassIcon } from "lucide-react";
+import { ChevronDownIcon, CompassIcon, MessagesSquareIcon } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
 import {
   memo,
   useContext,
@@ -19,14 +20,13 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { InHomeOverlayContext } from "../../homeOverlayStore";
+import { OverlayLayerContext } from "../../homeOverlayStore";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { openManager } from "../../lib/goToManager";
+import { primaryServerKeybindingsAtom } from "../../state/server";
 import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
 import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
-import {
-  openManagerHome,
-  selectManagerProfile,
-  useOpenManagerThreadPage,
-} from "../brainstorm/useOpenManagerThread";
+import { selectManagerProfile, useOpenManagerThreadPage } from "../brainstorm/useOpenManagerThread";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -107,9 +107,14 @@ export const ChatHeader = memo(function ChatHeader({
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
   const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
   // Docked on Home, the manager needs no way back to where it already is.
-  const onHome = useContext(InHomeOverlayContext);
-  // The manager docked on Home: a narrow pane, so only its name and badge.
-  const docked = (onHome && isManager) || embedded;
+  // Inside Grow or the manager overlay rather than on its own page.
+  const inOverlay = useContext(OverlayLayerContext) > 0;
+  // The manager inside an overlay: only its name and badge.
+  const docked = (inOverlay && isManager) || embedded;
+  const managerShortcut = shortcutLabelForCommand(
+    useAtomValue(primaryServerKeybindingsAtom),
+    "manager.toggle",
+  );
   const openManagerThreadPage = useOpenManagerThreadPage();
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
@@ -271,22 +276,24 @@ export const ChatHeader = memo(function ChatHeader({
       )}
       onContextMenu={handleHeaderContextMenu}
     >
-      {onHome ? null : (
+      {inOverlay || isManager ? null : (
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
                 size="icon-xs"
                 variant="ghost-muted"
-                aria-label="Home"
-                data-chat-header-home=""
-                onClick={openManagerHome}
+                aria-label="Manager"
+                data-chat-header-manager=""
+                onClick={() => void openManager()}
               />
             }
           >
-            <CompassIcon />
+            <MessagesSquareIcon />
           </TooltipTrigger>
-          <TooltipPopup side="bottom">Home: your work and the manager</TooltipPopup>
+          <TooltipPopup side="bottom">
+            Manager{managerShortcut ? ` (${managerShortcut})` : ""}
+          </TooltipPopup>
         </Tooltip>
       )}
       {/* On its own page (narrow windows), a manager switches to another profile's here, ahead

@@ -237,69 +237,62 @@ describe("settle thread shortcut", () => {
   });
 });
 
-describe("home (manager) shortcut", () => {
-  const ctrlAlt = (key: string) => event({ key, ctrlKey: true, altKey: true });
+describe("manager shortcut", () => {
+  const ctrlAltSpace = (overrides: Record<string, unknown> = {}) =>
+    // Option+Space types a no-break space on macOS; the physical key still matches.
+    event({ key: "\u00a0", code: "Space", ctrlKey: true, altKey: true, ...overrides });
 
-  it("goes Home to the manager with Ctrl+Alt+M everywhere, even from a terminal", () => {
+  it("toggles the manager with Ctrl+Alt+Space everywhere, even from a terminal", () => {
     for (const platform of ["MacIntel", "Linux", "Win32"]) {
       for (const terminalFocus of [false, true]) {
         const options = { platform, context: { terminalFocus } };
         assert.strictEqual(
-          resolveShortcutCommand(ctrlAlt("m"), DEFAULT_RESOLVED_KEYBINDINGS, options),
-          "manager.open",
+          resolveShortcutCommand(ctrlAltSpace(), DEFAULT_RESOLVED_KEYBINDINGS, options),
+          "manager.toggle",
+        );
+        assert.strictEqual(
+          resolveShortcutCommand(ctrlAltSpace({ key: " " }), DEFAULT_RESOLVED_KEYBINDINGS, options),
+          "manager.toggle",
         );
       }
     }
+    assert.strictEqual(
+      shortcutLabelForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "manager.toggle", "Linux"),
+      "Ctrl+Alt+Space",
+    );
   });
 
-  it("goes Home with one-handed mod+e and advertises it, but leaves the terminal its Ctrl+E", () => {
-    const platforms = [
-      { platform: "MacIntel", press: event({ key: "e", metaKey: true }), label: "⌘E" },
-      { platform: "Linux", press: event({ key: "e", ctrlKey: true }), label: "Ctrl+E" },
-    ];
-    for (const { platform, press, label } of platforms) {
-      assert.strictEqual(
-        resolveShortcutCommand(press, DEFAULT_RESOLVED_KEYBINDINGS, { platform }),
-        "manager.open",
-      );
-      assert.isNull(
-        resolveShortcutCommand(press, DEFAULT_RESOLVED_KEYBINDINGS, {
-          platform,
-          context: { terminalFocus: true },
-        }),
-      );
-      assert.strictEqual(
-        shortcutLabelForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "manager.open", platform),
-        label,
-      );
-    }
-  });
-
-  it("does not share its chords with any other default", () => {
-    const chords = new Set(["ctrl+alt+m"]);
-    const owners = DEFAULT_RESOLVED_KEYBINDINGS.filter(({ shortcut }) =>
-      chords.has(
-        `${shortcut.ctrlKey ? "ctrl+" : ""}${shortcut.altKey ? "alt+" : ""}${shortcut.key}`,
-      ),
-    ).filter(({ shortcut }) => !shortcut.metaKey && !shortcut.shiftKey && !shortcut.modKey);
+  it("does not share its chord with any other default", () => {
+    const owners = DEFAULT_RESOLVED_KEYBINDINGS.filter(
+      ({ shortcut }) =>
+        shortcut.key === " " &&
+        shortcut.ctrlKey &&
+        shortcut.altKey &&
+        !shortcut.metaKey &&
+        !shortcut.shiftKey &&
+        !shortcut.modKey,
+    );
     assert.deepEqual(
       owners.map((binding) => binding.command),
-      ["manager.open"],
+      ["manager.toggle"],
     );
   });
 
   it("can be rebound, which frees the default chord", () => {
     const bindings = mergeWithDefaultKeybindings(
-      compileResolvedKeybindingsConfig([{ key: "mod+shift+y", command: "manager.open" }]),
+      compileResolvedKeybindingsConfig([{ key: "mod+shift+y", command: "manager.toggle" }]),
     );
     assert.strictEqual(
       resolveShortcutCommand(event({ key: "y", ctrlKey: true, shiftKey: true }), bindings, {
         platform: "Linux",
       }),
-      "manager.open",
+      "manager.toggle",
     );
-    assert.isNull(resolveShortcutCommand(ctrlAlt("m"), bindings, { platform: "Linux" }));
-    assert.strictEqual(shortcutLabelForCommand(bindings, "manager.open", "Linux"), "Ctrl+Shift+Y");
+    assert.isNull(resolveShortcutCommand(ctrlAltSpace(), bindings, { platform: "Linux" }));
+    assert.strictEqual(
+      shortcutLabelForCommand(bindings, "manager.toggle", "Linux"),
+      "Ctrl+Shift+Y",
+    );
   });
 });
 

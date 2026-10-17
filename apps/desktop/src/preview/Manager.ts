@@ -67,7 +67,12 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from "../ipc/channels.ts";
-import { isOpenManagerShortcut, openManagerInWindow } from "../window/ManagerShortcut.ts";
+import {
+  currentManagerChord,
+  isManagerShortcut,
+  sendManagerAction,
+  TOGGLE_MANAGER_ACTION,
+} from "../window/ManagerShortcut.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 import {
   ANNOTATION_CAPTURED_CHANNEL,
@@ -2039,9 +2044,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       syncMenuShortcuts(wc, input);
       // A preview page owns its keys, but the Manager chord is the app's: it
       // works from anywhere, including a focused preview.
-      if (currentMainWindow && isOpenManagerShortcut(input, hostPlatform)) {
+      if (currentMainWindow && isManagerShortcut(input, currentManagerChord())) {
         event.preventDefault();
-        openManagerInWindow(currentMainWindow);
+        sendManagerAction(currentMainWindow, TOGGLE_MANAGER_ACTION);
         return;
       }
       if (isPreviewRefreshShortcut(input)) {

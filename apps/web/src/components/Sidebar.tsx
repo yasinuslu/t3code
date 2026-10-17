@@ -266,7 +266,7 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
-import { SidebarHomeEntry } from "./sidebar/SidebarHomeEntry";
+import { SidebarManagerEntry } from "./sidebar/SidebarManagerEntry";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import {
   CodeProfileProbes,
@@ -4929,7 +4929,7 @@ export default function Sidebar() {
       <ThreadContextDragGhost />
       <SpaceMembershipPopoverLayer />
       <SidebarChromeHeader isElectron={isElectron} />
-      <SidebarHomeEntry />
+      <SidebarManagerEntry />
       <CodeProfileProbes projects={projects} />
       <SidebarContent
         className="min-h-full"
