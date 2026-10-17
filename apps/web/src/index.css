@@ -13,9 +13,11 @@
   }
 }
 
-/* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
+/* Secondary hovering pointers reveal sidebar actions on touch-primary devices.
+   `any-pointer: none` is a desktop that reports no pointer at all (Electron on Xwayland does),
+   where a real mouse still hovers; phones report coarse, so they stay hover-free. */
 @custom-variant any-hover {
-  @media (any-hover: hover) {
+  @media (any-hover: hover), (any-pointer: none) {
     &:hover {
       @slot;
     }
