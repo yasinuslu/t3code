@@ -93,6 +93,10 @@ Provider update checks and restart continuation preferences are in
 **Settings → Maintenance**. If provider update checks are disabled, enable them
 there before refreshing to find newer versions.
 
+The desktop app downloads its own updates in the background and shows the
+progress at the top right of the window. When the update is ready, click
+**Restart to update** to install it and relaunch; nothing changes until you do.
+
 Install App Store or Google Play releases as usual. The mobile app can also
 download updates in the background and apply them when you next leave the app.
 It saves drafts and queued messages before restarting. If you keep the app open

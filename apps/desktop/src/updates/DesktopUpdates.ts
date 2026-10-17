@@ -33,6 +33,7 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
+import { parseStagedBuild, spawnStagedBuildSwitch } from "./stagedBuild.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
   createInitialDesktopUpdateState,
@@ -44,12 +45,15 @@ import {
   reduceDesktopUpdateStateOnDownloadStart,
   reduceDesktopUpdateStateOnInstallFailure,
   reduceDesktopUpdateStateOnNoUpdate,
+  reduceDesktopUpdateStateOnStagedBuild,
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine.ts";
 
 const AUTO_UPDATE_STARTUP_DELAY = "15 seconds";
 const AUTO_UPDATE_POLL_INTERVAL = "4 minutes";
 const PREPARED_INSTALL_CHECK_WAIT = Duration.seconds(90);
+// A local file read, so a staged build shows up within seconds of the installer writing it.
+const STAGED_BUILD_POLL_INTERVAL = "5 seconds";
 
 type UpdateAction = "check" | "download" | "install" | "install-recovery" | "channel";
 
@@ -349,7 +353,10 @@ export const make = Effect.gen(function* () {
     Effect.map((appUpdateYmlConfig) => Option.isSome(appUpdateYmlConfig) || config.mockUpdates),
   );
 
+  const stagedUpdateFile = Option.getOrNull(config.stagedUpdateFile);
+
   const resolveDisabledReason = Effect.gen(function* () {
+    if (stagedUpdateFile !== null) return Option.none<string>();
     const hasFeedConfig = yield* hasUpdateFeedConfig;
     return Option.fromNullishOr(
       getAutoUpdateDisabledReason({
@@ -450,12 +457,16 @@ export const make = Effect.gen(function* () {
       );
     });
 
-    return yield* actionReservation === "held"
-      ? check
-      : check.pipe(
-          Effect.onInterrupt(() => setState(state)),
-          Effect.ensuring(finishUpdateAction("check")),
-        );
+    if (actionReservation === "held") return yield* check;
+    const checked = yield* check.pipe(
+      Effect.onInterrupt(() => setState(state)),
+      Effect.ensuring(finishUpdateAction("check")),
+    );
+    // Updates download in the background; the user only decides when to restart.
+    if ((yield* Ref.get(updateStateRef)).status === "available") {
+      yield* downloadAvailableUpdate.pipe(Effect.forkDetach);
+    }
+    return checked;
   });
 
   const downloadAvailableUpdate = Effect.gen(function* () {
@@ -682,9 +693,64 @@ export const make = Effect.gen(function* () {
       }),
     ).pipe(Effect.withSpan("desktop.updates.installDownloadedUpdate"));
 
+  const refreshStagedBuild = Effect.gen(function* () {
+    if (stagedUpdateFile === null) return;
+    const raw = yield* fileSystem
+      .readFileString(stagedUpdateFile)
+      .pipe(Effect.orElseSucceed(() => null));
+    const staged = parseStagedBuild(raw);
+    const checkedAt = yield* currentIsoTimestamp;
+    const state = yield* Ref.get(updateStateRef);
+    const next = reduceDesktopUpdateStateOnStagedBuild(state, staged, checkedAt);
+    if (
+      next.status !== state.status ||
+      next.availableVersion !== state.availableVersion ||
+      next.downloadedVersion !== state.downloadedVersion
+    ) {
+      yield* setState(next);
+    }
+  }).pipe(Effect.withSpan("desktop.updates.refreshStagedBuild"));
+
+  // Runs the installer's switch command detached, so it outlives this app when it stops it.
+  const installStagedBuild = Effect.fn("desktop.updates.installStagedBuild")(function* () {
+    const state = yield* Ref.get(updateStateRef);
+    const command = Option.getOrNull(config.stagedUpdateCommand);
+    if (state.downloadedVersion === null || !(yield* tryStartUpdateAction("install"))) {
+      return { accepted: false, completed: false, failed: false };
+    }
+    const fail = (message: string) =>
+      Effect.gen(function* () {
+        yield* removeUpdateRestartMarker;
+        yield* updateState((current) => reduceDesktopUpdateStateOnInstallFailure(current, message));
+        yield* logUpdaterError(message);
+        yield* finishUpdateAction("install");
+      });
+    if (command === null) {
+      yield* fail("No T3CODE_DESKTOP_STAGED_UPDATE_COMMAND is set to switch to the staged build.");
+      return { accepted: true, completed: false, failed: true };
+    }
+    yield* writeUpdateRestartMarker;
+    yield* logUpdaterInfo("switching to staged build", { version: state.downloadedVersion });
+    const context = yield* Effect.context<never>();
+    const spawned = yield* Effect.try(() =>
+      spawnStagedBuildSwitch(command, (message) => {
+        void Effect.runPromiseWith(context)(fail(message));
+      }),
+    ).pipe(Effect.exit);
+    if (Exit.isFailure(spawned)) {
+      yield* fail("Could not run the switch command.");
+      return { accepted: true, completed: false, failed: true };
+    }
+    return { accepted: true, completed: false, failed: false };
+  });
+
   const installWithExpectedVersion = Effect.fn("desktop.updates.install")(function* (
     expectedVersion?: string,
   ) {
+    if (stagedUpdateFile !== null) {
+      const result = yield* installStagedBuild();
+      return { ...result, state: yield* Ref.get(updateStateRef) };
+    }
     if (yield* Ref.get(desktopState.quitting)) {
       return {
         accepted: false,
@@ -925,6 +991,15 @@ export const make = Effect.gen(function* () {
       const settings = yield* desktopSettings.get;
       const enabled = yield* shouldEnableAutoUpdates;
       yield* setState(createBaseUpdateState(settings.updateChannel, enabled, environment));
+      if (stagedUpdateFile !== null) {
+        yield* logUpdaterInfo("watching for staged builds", { file: stagedUpdateFile });
+        yield* refreshStagedBuild.pipe(
+          Effect.andThen(Effect.sleep(STAGED_BUILD_POLL_INTERVAL)),
+          Effect.forever,
+          Effect.forkScoped,
+        );
+        return;
+      }
       if (!enabled) {
         return;
       }
@@ -1012,6 +1087,10 @@ export const make = Effect.gen(function* () {
     }),
     check: Effect.fn("desktop.updates.check")(function* (reason: string) {
       yield* Effect.annotateCurrentSpan({ reason });
+      if (stagedUpdateFile !== null) {
+        yield* refreshStagedBuild;
+        return { checked: true, state: yield* Ref.get(updateStateRef) };
+      }
       if (!(yield* Ref.get(updaterConfiguredRef))) {
         return {
           checked: false,

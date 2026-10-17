@@ -11031,6 +11031,7 @@ export default function ChatView(props: ChatViewProps) {
     >
       <PanelLayoutControls
         {...panelToggleControlProps}
+        showUpdateControl={false}
         showTerminalControl={false}
         showRightPanelControl={false}
       />

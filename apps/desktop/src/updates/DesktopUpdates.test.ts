@@ -205,6 +205,57 @@ describe("DesktopUpdates", () => {
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
 
+  it.effect("downloads an update a check finds without waiting for a click", () => {
+    let emit: (eventName: string, payload?: unknown) => void = () => undefined;
+    const harness = makeHarness({
+      checkForUpdates: Effect.sync(() => emit("update-available", { version: "1.2.4" })).pipe(
+        Effect.andThen(flushCallbacks),
+      ),
+    });
+    emit = harness.emit;
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        yield* updates.check("poll");
+        yield* flushCallbacks;
+
+        assert.equal(harness.downloadCount(), 1);
+        assert.equal((yield* updates.getState).status, "downloading");
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("follows a staged build from preparing to ready and back to up to date", () => {
+    let staged: string | undefined = '{"status":"preparing","version":"1.2.4"}';
+    const harness = makeHarness({
+      env: { T3CODE_DESKTOP_STAGED_UPDATE_FILE: "/staged.json" },
+      readFile: (path) => (path === "/staged.json" ? staged : undefined),
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        yield* flushCallbacks;
+        assert.equal((yield* updates.getState).status, "downloading");
+        assert.equal(harness.listenerCount(), 0);
+
+        staged = '{"status":"ready","version":"1.2.4"}';
+        yield* updates.check("poll");
+        const ready = yield* updates.getState;
+        assert.equal(ready.status, "downloaded");
+        assert.equal(ready.downloadedVersion, "1.2.4");
+
+        staged = undefined;
+        yield* TestClock.adjust(Duration.seconds(5));
+        assert.equal((yield* updates.getState).status, "up-to-date");
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
   it.effect("checks for newer releases after an update has been downloaded", () => {
     const harness = makeHarness();
 

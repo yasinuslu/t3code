@@ -199,6 +199,42 @@ export function reduceDesktopUpdateStateOnDownloadComplete(
   };
 }
 
+/** A build staged outside electron-updater: preparing reads as downloading, ready as downloaded. */
+export function reduceDesktopUpdateStateOnStagedBuild(
+  state: DesktopUpdateState,
+  staged: { readonly status: "preparing" | "ready"; readonly version: string } | null,
+  checkedAt: string,
+): DesktopUpdateState {
+  if (staged === null) {
+    return {
+      ...state,
+      status: "up-to-date",
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadPercent: null,
+      checkedAt,
+      message: null,
+      errorContext: null,
+      canRetry: false,
+    };
+  }
+  const ready = staged.status === "ready";
+  // A failed switch keeps its message until the staged build changes.
+  const keepInstallError =
+    ready && state.errorContext === "install" && state.downloadedVersion === staged.version;
+  return {
+    ...state,
+    status: ready ? "downloaded" : "downloading",
+    availableVersion: staged.version,
+    downloadedVersion: ready ? staged.version : null,
+    downloadPercent: ready ? 100 : null,
+    checkedAt,
+    message: keepInstallError ? state.message : null,
+    errorContext: keepInstallError ? "install" : null,
+    canRetry: ready,
+  };
+}
+
 export function reduceDesktopUpdateStateOnInstallFailure(
   state: DesktopUpdateState,
   message: string,

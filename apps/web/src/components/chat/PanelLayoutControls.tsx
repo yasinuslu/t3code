@@ -7,8 +7,11 @@ import type { ThreadPanelPresentation } from "../../rightPanelLayout";
 import { PopoverCreateHandle, PopoverTrigger } from "../ui/popover";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { DesktopUpdateTitlebarButton } from "./DesktopUpdateTitlebarButton";
 
 export interface PanelLayoutControlsProps {
+  /** The app update button; off for secondary copies so it shows once. */
+  showUpdateControl?: boolean;
   showThreadPanelControl?: boolean;
   showTerminalControl?: boolean;
   showRightPanelControl?: boolean;
@@ -48,6 +51,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   onToggleTerminal,
   onToggleThreadPanel,
   onToggleRightPanel,
+  showUpdateControl = true,
 }: PanelLayoutControlsProps) {
   const threadPanelToggle = (
     <Toggle
@@ -84,6 +88,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
       className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]"
       data-panel-layout-controls
     >
+      {showUpdateControl ? <DesktopUpdateTitlebarButton /> : null}
       {showThreadPanelControl
         ? threadPanelPresentation === "popover"
           ? threadPanelTooltip(
