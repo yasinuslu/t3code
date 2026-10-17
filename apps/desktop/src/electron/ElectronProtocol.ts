@@ -28,6 +28,14 @@ export function getDesktopUrl(isDevelopment: boolean): string {
   return `${getDesktopOrigin(isDevelopment)}/`;
 }
 
+/** The in-app route of a thread, where a `t3code://threads/<env>/<thread>` deep link lands. */
+export function getDesktopThreadUrl(
+  isDevelopment: boolean,
+  target: { readonly environmentId: string; readonly threadId: string },
+): string {
+  return `${getDesktopOrigin(isDevelopment)}/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
+}
+
 export class ElectronProtocolRegistrationError extends Schema.TaggedError<ElectronProtocolRegistrationError>()(
   "ElectronProtocolRegistrationError",
   {
