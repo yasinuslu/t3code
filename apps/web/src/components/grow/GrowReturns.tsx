@@ -1052,7 +1052,7 @@ function PhoneStepper(props: {
 
 /**
  * The thing itself: its screenshot (tap to zoom) with Play on top, Play
- * showing it live. With no screenshot the desktop app shows it live at once.
+ * showing it live. Nothing loads live until Play: stepping through stays light.
  */
 function Visual(props: {
   readonly item: GrowReturn;
@@ -1063,10 +1063,10 @@ function Visual(props: {
   const { item, images } = props;
   const [zoom, setZoom] = useState<number | null>(null);
   const image = images[0];
-  // Live in place when there is room: T3's browser in the desktop app, a frame on the web.
+  // Live in place on Play when there is room: T3's browser in the desktop app, a frame on the web.
   // On a phone Play opens a tab.
   const embed = props.wide;
-  if (embed && item.playUrl !== null && (props.playing || image === undefined)) {
+  if (embed && item.playUrl !== null && props.playing) {
     return (
       <div className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border">
         {isPreviewSupportedInRuntime() ? (
