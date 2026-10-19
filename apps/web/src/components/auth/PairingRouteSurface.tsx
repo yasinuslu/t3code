@@ -7,6 +7,8 @@ import { APP_DISPLAY_NAME } from "../../branding";
 import { connectPairing } from "../../connection/onboarding";
 import {
   peekPairingTokenFromUrl,
+  resolveInitialPrimaryEnvironmentDescriptor,
+  resolvePrimaryEnvironmentHttpUrl,
   stripPairingTokenFromUrl,
   submitServerAuthCredential,
 } from "../../environments/primary";
@@ -28,6 +30,27 @@ export function PairingPendingSurface() {
   );
 }
 
+/** The environment's own label and address, so a bare token prompt says whose code to paste. */
+function usePairingTargetLabel(): { readonly label: string | null; readonly host: string } {
+  const [label, setLabel] = useState<string | null>(null);
+  const [host] = useState(() => new URL(resolvePrimaryEnvironmentHttpUrl("/")).host);
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveInitialPrimaryEnvironmentDescriptor().then(
+      (descriptor) => {
+        if (!cancelled) setLabel(descriptor.label);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { label, host };
+}
+
 export function PairingRouteSurface({
   auth,
   initialErrorMessage,
@@ -42,6 +65,7 @@ export function PairingRouteSurface({
   const [errorMessage, setErrorMessage] = useState(initialErrorMessage ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const autoSubmitAttemptedRef = useRef(false);
+  const target = usePairingTargetLabel();
 
   const submitCredential = useCallback(
     async (nextCredential: string) => {
@@ -90,9 +114,22 @@ export function PairingRouteSurface({
     <StandalonePage tone="pairing">
       <StandalonePageHeader
         eyebrow={APP_DISPLAY_NAME}
-        title="Pair with this environment"
+        title={target.label ? `Pair with ${target.label}` : "Pair with this environment"}
         description={describeAuthGate(auth.bootstrapMethods)}
       />
+
+      <dl className="mt-5 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-sm">
+        {target.label ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-xs text-muted-foreground">Environment</dt>
+            <dd className="min-w-0 font-medium break-words">{target.label}</dd>
+          </div>
+        ) : null}
+        <div className="mt-1.5 flex items-baseline justify-between gap-3 first:mt-0">
+          <dt className="text-xs text-muted-foreground">Address</dt>
+          <dd className="min-w-0 font-mono text-xs break-all text-foreground/80">{target.host}</dd>
+        </div>
+      </dl>
 
       <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
         <div className="space-y-2">
@@ -136,6 +173,11 @@ export function PairingRouteSurface({
 
       <div className="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
         {describeSupportedMethods(auth.bootstrapMethods)}
+        <p className="mt-2 text-foreground/80">
+          Get a code on {target.label ?? target.host}: open T3 Code there, go to Settings →
+          Connections and choose Create link, or run <code className="font-mono">t3 pair</code> in
+          its terminal and scan the QR code with this device.
+        </p>
       </div>
     </StandalonePage>
   );
