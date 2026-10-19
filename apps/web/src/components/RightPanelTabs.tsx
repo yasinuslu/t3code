@@ -163,6 +163,7 @@ const SURFACE_DISABLED_REASONS = {
 /** Overlays that must win over the launcher's letter shortcuts. */
 const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
   "[data-manager-overlay]",
+  "[data-home-overlay]",
   '[data-slot="dialog-popup"]',
   '[data-slot="alert-dialog-popup"]',
   '[data-slot="command-dialog-popup"]',

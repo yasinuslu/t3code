@@ -52,6 +52,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
+import { growKeyAction } from "./grow.keys";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
 import { Button } from "../ui/button";
@@ -256,71 +257,66 @@ export function GrowReturns(props: {
     setWhatIfOpen(false);
   }
 
+  // A conversation only shows while its thread is still in the relations; a key
+  // handler that trusted `thread` alone kept the deck's keys dead behind a deck.
+  const conversationOpen = thread !== null && relations.byKey.has(thread);
+  useEffect(() => {
+    if (ready && thread !== null && !conversationOpen) useReturnsStore.setState({ thread: null });
+  }, [conversationOpen, ready, thread]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       if (isTyping(event.target)) return;
-      // While a conversation is open, the deck's keys stay off; Esc goes back.
-      if (thread !== null) {
-        if (event.key === "o") {
-          useReturnsStore.setState({ thread: null });
-          event.preventDefault();
-        }
-        return;
-      }
+      const action = growKeyAction(event, { conversationOpen, item: current });
+      if (action === null) return;
       const item = current;
-      const step = (direction: 1 | -1) => select(growStep(shown, item?.key ?? null, direction));
-      const used = () => event.preventDefault();
-      switch (event.key) {
-        case "j":
-        case "ArrowDown":
-          step(1);
-          return used();
-        case "k":
-        case "ArrowUp":
-          step(-1);
-          return used();
-        case "u":
-          if (undo()) used();
-          return;
-        case "/":
+      switch (action.type) {
+        case "closeThread":
+          useReturnsStore.setState({ thread: null });
+          break;
+        case "step":
+          select(growStep(shown, item?.key ?? null, action.direction));
+          break;
+        case "undo":
+          if (!undo()) return;
+          break;
+        case "search":
           document.querySelector<HTMLElement>("[data-grow-search]")?.focus();
-          return used();
+          break;
+        case "whatIf":
+          setWhatIfOpen(true);
+          break;
+        case "ship":
+          if (item !== null) actions.ship(item);
+          break;
+        case "done":
+          if (item !== null) actions.done(item);
+          break;
+        case "letGo":
+          if (item !== null) actions.letGo(item);
+          break;
+        case "askProof":
+          if (item !== null) void actions.askProof(item);
+          break;
+        case "openThread":
+          if (item !== null) actions.openThread(item);
+          break;
+        case "play":
+          if (item === null || item.playUrl === null) return;
+          if (wide) useReturnsStore.setState({ playing: playing === item.key ? null : item.key });
+          else window.open(item.playUrl, "_blank", "noopener");
+          break;
       }
-      if (item === null) return;
-      const open = item.kind === "return" || item.kind === "urgent";
-      if (event.key === "s" && item.kind === "return" && item.shippable) {
-        actions.ship(item);
-        used();
-      } else if (event.key === "d" && item.kind === "return") {
-        actions.done(item);
-        used();
-      } else if ((event.key === "w" || event.key === "r") && open) {
-        setWhatIfOpen(true);
-        used();
-      } else if (event.key === "x" && open) {
-        actions.letGo(item);
-        used();
-      } else if (event.key === "a" && open && !item.thread.statusProof) {
-        void actions.askProof(item);
-        used();
-      } else if (event.key === "o") {
-        actions.openThread(item);
-        used();
-      } else if ((event.key === "p" || event.key === "Enter") && item.playUrl !== null) {
-        if (wide) useReturnsStore.setState({ playing: playing === item.key ? null : item.key });
-        else window.open(item.playUrl, "_blank", "noopener");
-        used();
-      }
+      event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [actions, current, playing, shown, thread, wide]);
+  }, [actions, conversationOpen, current, playing, shown, wide]);
 
   // Esc leaves an open conversation even from its message box, which keeps Esc
   // from bubbling; caught before it, and left alone while a menu or dialog is open.
   useEffect(() => {
-    if (thread === null) return;
+    if (!conversationOpen) return;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing) return;
       if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return;
@@ -330,7 +326,7 @@ export function GrowReturns(props: {
     };
     window.addEventListener("keydown", onEscape, true);
     return () => window.removeEventListener("keydown", onEscape, true);
-  }, [thread]);
+  }, [conversationOpen]);
 
   if (!ready) return <ReturnsSkeleton />;
 
