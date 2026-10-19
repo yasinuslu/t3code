@@ -26,7 +26,7 @@ import {
   type ThreadRouteTarget,
 } from "../threadRoutes";
 
-const UNKNOWN_ENVIRONMENT_GRACE_MS = 5000;
+const UNKNOWN_ENVIRONMENT_GRACE_MS = 15_000;
 
 /**
  * The single chat surface behind both `/draft/$draftId` and
@@ -150,23 +150,25 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   // A thread link (`t3code://threads/...`) can name an environment this client does not know,
   // which would otherwise sit on a blank pane forever. Say so and go home. Host-managed and
   // relay environments register after the saved ones, so a cold start gets a grace period
-  // before an unknown environment counts as missing. Drafts never reach this.
-  const unknownEnvironment =
+  // before an unknown environment counts as missing (the primary one is discovered by a 3 s poll). Drafts never reach this.
+  const unknownEnvironmentId =
     target.kind === "server" &&
     catalog.isReady &&
-    !catalog.entries.has(target.threadRef.environmentId);
+    !catalog.entries.has(target.threadRef.environmentId)
+      ? target.threadRef.environmentId
+      : null;
   useEffect(() => {
-    if (!unknownEnvironment) return;
+    if (unknownEnvironmentId === null) return;
     const timer = setTimeout(() => {
       toastManager.add({
         type: "warning",
         title: "Thread not found",
-        description: "That link points to an environment this app is not connected to.",
+        description: "That environment is not connected to this app.",
       });
       void navigate({ to: "/", replace: true });
     }, UNKNOWN_ENVIRONMENT_GRACE_MS);
     return () => clearTimeout(timer);
-  }, [navigate, unknownEnvironment]);
+  }, [navigate, unknownEnvironmentId]);
 
   useEffect(() => {
     if (target.kind !== "server" || !bootstrapComplete) {
