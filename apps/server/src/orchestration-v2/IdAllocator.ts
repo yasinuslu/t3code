@@ -127,8 +127,13 @@ export interface IdAllocatorV2AllocateShape {
 }
 
 export interface IdAllocatorV2DeriveShape {
+  /**
+   * The shared session for adapters that serve many threads from one process.
+   * Sandboxed threads get one per sandbox workspace, because its process runs in the sandbox.
+   */
   readonly providerSession: (input: {
     readonly providerInstanceId: ProviderInstanceId;
+    readonly sandboxWorkspacePath?: string;
   }) => ProviderSessionId;
   readonly delegatedTaskNode: (input: { readonly commandId: CommandId }) => NodeId;
   readonly delegatedTaskThread: (input: { readonly commandId: CommandId }) => ThreadId;
@@ -389,7 +394,16 @@ export const layer: Layer.Layer<IdAllocatorV2> = Layer.succeed(
     derive: {
       providerSession: (input) =>
         ProviderSessionId.make(
-          joinId("provider-session", "provider-instance", input.providerInstanceId, "shared"),
+          input.sandboxWorkspacePath === undefined
+            ? joinId("provider-session", "provider-instance", input.providerInstanceId, "shared")
+            : joinId(
+                "provider-session",
+                "provider-instance",
+                input.providerInstanceId,
+                "shared",
+                "sandbox",
+                input.sandboxWorkspacePath,
+              ),
         ),
       delegatedTaskNode: (input) => NodeId.make(joinId("node", "delegated-task", input.commandId)),
       delegatedTaskThread: (input) =>

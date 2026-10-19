@@ -2,6 +2,24 @@ import { sanitizeNewRefName } from "@t3tools/shared/git";
 
 type WorkspaceMode = "local" | "worktree";
 
+/** The workspace picker's options. Sandbox is a separate on/off choice. */
+export type NewTaskWorkspaceChoice = "local" | "worktree";
+
+/**
+ * Whether a new task starts in a sandbox. The draft keeps the user's choice;
+ * a server that does not offer sandboxes drops it, and an unknown config
+ * (offline or still loading) keeps it so editing a queued task cannot lose it.
+ */
+export function resolveNewTaskSandbox(input: {
+  readonly draftSandbox: boolean | undefined;
+  readonly serverConfig: { readonly sandboxes?: boolean } | null;
+}): boolean {
+  return (
+    input.draftSandbox === true &&
+    (input.serverConfig === null || input.serverConfig.sandboxes === true)
+  );
+}
+
 export function resolveNewTaskWorkspaceLabel(input: {
   readonly workspaceMode: WorkspaceMode;
   readonly worktreePath: string | null;

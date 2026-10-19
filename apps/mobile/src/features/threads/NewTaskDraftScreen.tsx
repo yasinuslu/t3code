@@ -1576,24 +1576,39 @@ export function NewTaskDraftScreen(props: {
     </View>
   );
 
+  const workspaceControlDisabled = isComposerInteractionLocked || voiceInput.isBusy;
+  const workspaceControl = (
+    <ComposerInlineControl
+      accessibilityHint={`Switches to ${flow.workspaceMode === "local" ? "a new worktree" : "the current checkout"}`}
+      accessibilityLabel={workspaceLabel}
+      disabled={workspaceControlDisabled}
+      renderIcon={(size) => (
+        <NewTaskWorkspaceIcon
+          workspaceMode={flow.workspaceMode}
+          worktreePath={flow.selectedWorktreePath}
+          size={size}
+        />
+      )}
+      label={workspaceLabel}
+      maxWidth={flow.workspaceMode === "local" ? 220 : 148}
+      onPress={() => flow.setWorkspaceChoice(flow.workspaceMode === "local" ? "worktree" : "local")}
+    />
+  );
+
   const workspaceControls = (
     <View className="flex-row items-center gap-1 px-2">
-      <ComposerInlineControl
-        accessibilityHint={`Switches to ${flow.workspaceMode === "local" ? "a new worktree" : "the current checkout"}`}
-        accessibilityLabel={workspaceLabel}
-        disabled={isComposerInteractionLocked || voiceInput.isBusy}
-        renderIcon={(size) => (
-          <NewTaskWorkspaceIcon
-            workspaceMode={flow.workspaceMode}
-            worktreePath={flow.selectedWorktreePath}
-            size={size}
-          />
-        )}
-        label={workspaceLabel}
-        maxWidth={flow.workspaceMode === "local" ? 220 : 148}
-        onPress={() => flow.setWorkspaceMode(flow.workspaceMode === "local" ? "worktree" : "local")}
-        showChevron={false}
-      />
+      {workspaceControl}
+      {flow.canUseSandbox ? (
+        <ComposerInlineControl
+          accessibilityHint="Runs the task in an isolated microVM"
+          accessibilityLabel={flow.sandbox ? "Sandbox on" : "Sandbox off"}
+          disabled={workspaceControlDisabled}
+          icon="cube"
+          label={flow.sandbox ? "Sandbox on" : "Sandbox off"}
+          maxWidth={120}
+          onPress={() => flow.setSandbox(!flow.sandbox)}
+        />
+      ) : null}
 
       <ComposerInlineControl
         accessibilityLabel={`${flow.workspaceMode === "worktree" ? "Base branch" : "Branch"}: ${selectedBranchLabel}`}

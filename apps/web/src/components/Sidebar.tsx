@@ -285,6 +285,7 @@ import {
 } from "./sidebar/SpaceMembership";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { ThreadSandboxBadge } from "./chat/ThreadSandboxBadge";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import {
   composerDraftHasUserContent,
@@ -1106,6 +1107,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the pinning capability is confirmed, and stays a passive marker while
   // the descriptor is not loaded. Pinning itself lives in the context menu.
   pinningSupported: boolean;
+  // The thread's server can run sandboxes; sandboxed rows then show a mark.
+  sandboxesAvailable: boolean;
   isPinned: boolean;
   // Present on rows whose server supports every drop outcome: dnd-kit
   // sortable bag applied to the row root so the whole row drags (the
@@ -1731,6 +1734,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  const sandboxIndicator = props.sandboxesAvailable ? (
+    <ThreadSandboxBadge environmentId={thread.environmentId} threadId={thread.id} variant="icon" />
+  ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1814,6 +1820,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             </span>
             {draftIndicator}
             {title}
+            {sandboxIndicator}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -1987,6 +1994,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
+              {sandboxIndicator}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
@@ -5251,6 +5259,9 @@ export default function Sidebar() {
                             pinningSupported={
                               serverConfigs.get(thread.environmentId)?.environment.capabilities
                                 .threadPinning === true
+                            }
+                            sandboxesAvailable={
+                              serverConfigs.get(thread.environmentId)?.sandboxes === true
                             }
                             isPinned={thread.pinnedAt != null}
                             sortable={sortable}

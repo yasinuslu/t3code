@@ -2,6 +2,7 @@ import { ComposerContextLabel } from "./ComposerContextLabel";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
+  BoxIcon,
   ChevronDownIcon,
   FolderGit2Icon,
   FolderGitIcon,
@@ -41,9 +42,11 @@ import {
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
 import { PreviousWorktreeItemContent } from "./PreviousWorktreeItemContent";
+import { type SandboxChoice, SandboxToggle } from "./SandboxToggle";
 import { ComposerControl } from "./chat/ComposerControl";
 import {
   Menu,
+  MenuCheckboxItem,
   MenuGroup,
   MenuGroupLabel,
   MenuPopup,
@@ -78,6 +81,8 @@ interface BranchToolbarProps {
   onEnvModeChange: (mode: EnvMode) => void;
   /** The thread's env mode as ChatView resolves it. */
   envMode: EnvMode;
+  /** A draft's sandbox choice; left out when the server cannot run sandboxes. */
+  sandboxChoice?: SandboxChoice;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
   startFromOrigin: boolean;
@@ -107,6 +112,7 @@ interface MobileRunContextSelectorProps {
   effectiveEnvMode: EnvMode;
   activeWorktreePath: string | null;
   onEnvModeChange: (mode: EnvMode) => void;
+  sandboxChoice: SandboxChoice | undefined;
   previousWorktreeLabel: string | null;
   previousWorktreeBranch: string | null;
   onUsePreviousWorktree: () => void;
@@ -126,6 +132,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   effectiveEnvMode,
   activeWorktreePath,
   onEnvModeChange,
+  sandboxChoice,
   previousWorktreeLabel,
   previousWorktreeBranch,
   onUsePreviousWorktree,
@@ -301,6 +308,19 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               </MenuRadioItem>
             ) : null}
           </MenuRadioGroup>
+          {sandboxChoice ? (
+            <MenuCheckboxItem
+              variant="switch"
+              disabled={isLocked}
+              checked={sandboxChoice.checked}
+              onCheckedChange={sandboxChoice.onCheckedChange}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <BoxIcon className="size-3" />
+                <span className="min-w-0 truncate">Sandbox</span>
+              </span>
+            </MenuCheckboxItem>
+          ) : null}
         </MenuGroup>
       </MenuPopup>
     </Menu>
@@ -509,6 +529,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   draftId,
   onEnvModeChange,
   envMode,
+  sandboxChoice,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
   startFromOrigin,
@@ -627,6 +648,9 @@ export const BranchToolbar = memo(function BranchToolbar({
             onEnvModeChange={onEnvModeChange}
           />
         ) : null}
+        {panelSection !== "branch" && sandboxChoice ? (
+          <SandboxToggle choice={sandboxChoice} disabled={envModeLocked} />
+        ) : null}
         {panelSection !== "workspace" ? (
           <BranchToolbarBranchSelector
             displayMode="panel"
@@ -676,6 +700,7 @@ export const BranchToolbar = memo(function BranchToolbar({
             effectiveEnvMode={effectiveEnvMode}
             activeWorktreePath={activeWorktreePath}
             onEnvModeChange={onEnvModeChange}
+            sandboxChoice={sandboxChoice}
             previousWorktreeLabel={previousWorktreeLabel}
             previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
             onUsePreviousWorktree={onUsePreviousWorktree}
@@ -720,6 +745,9 @@ export const BranchToolbar = memo(function BranchToolbar({
               previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
               onUsePreviousWorktree={onUsePreviousWorktree}
             />
+          ) : null}
+          {showGitControls && sandboxChoice ? (
+            <SandboxToggle choice={sandboxChoice} disabled={envModeLocked} />
           ) : null}
         </div>
       ) : null}

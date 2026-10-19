@@ -67,6 +67,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeBrainstorm
   | typeof WS_METHODS.subscribeGrow
   | typeof WS_METHODS.subscribeNotifications
+  | typeof WS_METHODS.subscribeSandboxes
   | typeof WS_METHODS.subscribeProjectClones
   | typeof WS_METHODS.terminalAttach;
 
