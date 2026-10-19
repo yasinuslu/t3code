@@ -58,6 +58,7 @@ import { Button } from "../ui/button";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
 import { type GrowAsk, recordGrowAsk, useGrowAsks } from "./grow.asks";
@@ -696,7 +697,7 @@ function Hero(props: {
       aria-label={item.headline}
       className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]"
     >
-      <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto p-5">{visual}</div>
+      <div className="flex min-h-0 min-w-0 flex-col p-5">{visual}</div>
       <aside
         aria-label="About it"
         className="flex min-h-0 flex-col border-s bg-background/40"
@@ -1043,8 +1044,10 @@ function PhoneStepper(props: {
 }
 
 /**
- * The thing itself: its screenshot (tap to zoom) with Play on top, Play
- * showing it live. Nothing loads live until Play: stepping through stays light.
+ * The thing itself. On a wide screen one stage switches between the proof (the
+ * report's images, whole, click to zoom) and Live (the running preview, loaded
+ * only when asked), with `P`. On a phone the proof sits above the story and
+ * Play opens a tab.
  */
 function Visual(props: {
   readonly item: GrowReturn;
@@ -1054,15 +1057,101 @@ function Visual(props: {
   readonly images: ReturnType<typeof useReportImages>;
 }) {
   const { item, images } = props;
+  const [shown, setShown] = useState(0);
   const [zoom, setZoom] = useState<number | null>(null);
-  const image = images[0];
-  // Live in place on Play when there is room: T3's browser in the desktop app, a frame on the web.
-  // On a phone Play opens a tab.
-  const embed = props.wide;
-  if (embed && item.playUrl !== null && props.playing) {
+  const index = Math.min(shown, images.length - 1);
+  const image = images[index];
+  const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
+  const live = props.wide && props.playing && item.playUrl !== null;
+  const zoomDialog =
+    zoom === null ? null : (
+      <ExpandedImageDialog
+        preview={{ images: [...images], index: zoom }}
+        onClose={() => setZoom(null)}
+      />
+    );
+  const proof =
+    image === undefined ? (
+      <NoProof item={item} actions={props.actions} wide={props.wide} />
+    ) : (
+      <button
+        type="button"
+        className="flex min-h-0 flex-1 cursor-zoom-in items-center justify-center p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Open ${image.name}`}
+        onClick={() => setZoom(index)}
+      >
+        <img
+          src={image.src ?? undefined}
+          alt={image.name}
+          className={cn(
+            "rounded-md object-contain",
+            props.wide ? "size-full" : "max-h-[45vh] max-w-full",
+          )}
+        />
+      </button>
+    );
+
+  if (!props.wide) {
     return (
-      <div className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border">
-        {isPreviewSupportedInRuntime() ? (
+      <div className="flex flex-col gap-2 overflow-hidden rounded-xl border bg-muted/40">
+        {proof}
+        {item.playUrl && image !== undefined ? (
+          <Button
+            variant="outline"
+            className="m-2 mt-0"
+            render={<a href={item.playUrl} target="_blank" rel="noopener noreferrer" />}
+          >
+            <PlayIcon />
+            Play
+          </Button>
+        ) : null}
+        {zoomDialog}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border bg-muted/40">
+      <div className="flex items-center gap-2 border-b px-2 py-1.5">
+        <ToggleGroup
+          aria-label="Show"
+          variant="segmented"
+          value={[live ? "live" : "proof"]}
+          onValueChange={(value) => {
+            const next = value[0];
+            if (next === "live" || next === "proof")
+              useReturnsStore.setState({ playing: next === "live" ? item.key : null });
+          }}
+        >
+          <Toggle value="proof" aria-label="Proof">
+            <ImageIcon className="size-3.5" />
+            Proof
+          </Toggle>
+          {item.playUrl ? (
+            <Toggle value="live" aria-label="Live">
+              <PlayIcon className="size-3.5" />
+              Live
+            </Toggle>
+          ) : null}
+        </ToggleGroup>
+        {item.playUrl ? <Kbd>P</Kbd> : null}
+        <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
+          {live ? host : images.length > 1 ? `${index + 1} of ${images.length}` : null}
+        </span>
+        {live && item.playUrl ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Open in a new tab"
+            title="Open in a new tab"
+            render={<a href={item.playUrl} target="_blank" rel="noopener noreferrer" />}
+          >
+            <ExternalLinkIcon />
+          </Button>
+        ) : null}
+      </div>
+      {live && item.playUrl ? (
+        isPreviewSupportedInRuntime() ? (
           <GrowPreview
             environmentId={item.thread.environmentId}
             threadId={item.thread.id}
@@ -1070,113 +1159,90 @@ function Visual(props: {
           />
         ) : (
           <GrowFrame url={item.playUrl} />
-        )}
-      </div>
-    );
-  }
-  const play = item.playUrl ? (
-    embed ? (
-      <Button size="lg" onClick={() => useReturnsStore.setState({ playing: item.key })}>
-        <PlayIcon />
-        Play
-        <Kbd>P</Kbd>
-      </Button>
-    ) : (
-      <Button
-        size="lg"
-        render={<a href={item.playUrl} target="_blank" rel="noopener noreferrer" />}
-      >
-        <PlayIcon />
-        Play
-      </Button>
-    )
-  ) : null;
-  const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (image === undefined) {
-    // No proof: say so where the proof belongs, and ask for it in one tap.
-    const askable = item.kind === "return" || item.kind === "urgent";
-    return (
-      <div
-        className={cn(
-          "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/40 text-center",
-          props.wide ? "min-h-80 flex-1 p-6" : "p-4",
-        )}
-      >
-        <ImageOffIcon className="size-6 text-muted-foreground" />
-        <div className="flex flex-col gap-0.5">
-          <span className="font-medium text-sm">No proof yet</span>
-          <span className="text-muted-foreground text-xs">
-            {item.kind === "working"
-              ? "It comes with the answer."
-              : "It came back without showing what it made."}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {askable ? (
-            <Button variant="outline" onClick={() => void props.actions.askProof(item)}>
-              <ImageIcon />
-              Ask for proof
-            </Button>
+        )
+      ) : (
+        <>
+          {proof}
+          {images.length > 1 ? (
+            <div className="flex shrink-0 gap-2 overflow-x-auto border-t p-2">
+              {images.map((candidate, index) => (
+                <button
+                  key={candidate.name}
+                  type="button"
+                  aria-label={`Show ${candidate.name}`}
+                  aria-current={candidate === image ? "true" : undefined}
+                  className={cn(
+                    "h-14 shrink-0 overflow-hidden rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    candidate === image ? "border-foreground" : "opacity-60 hover:opacity-100",
+                  )}
+                  onClick={() => setShown(index)}
+                >
+                  <img src={candidate.src ?? undefined} alt="" className="h-full w-auto" />
+                </button>
+              ))}
+            </div>
           ) : null}
-          {play}
-        </div>
-        {host ? (
-          <span className="max-w-full truncate text-muted-foreground text-xs">{host}</span>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <div className="relative overflow-hidden rounded-xl border bg-muted/60">
-      {image ? (
-        <button
-          type="button"
-          className="block w-full cursor-zoom-in outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Open ${image.name}`}
-          onClick={() => setZoom(0)}
-        >
-          <img
-            src={image.src ?? undefined}
-            alt={image.name}
-            className={cn(
-              "w-full object-cover object-top",
-              props.wide ? "max-h-[calc(100vh-12rem)]" : "max-h-[38vh]",
-            )}
-          />
-        </button>
-      ) : null}
-      {play ? (
-        <div className="pointer-events-none absolute inset-0 flex items-start justify-end p-3 [&>*]:pointer-events-auto">
-          {play}
-        </div>
-      ) : null}
-      {zoom !== null ? (
-        <ExpandedImageDialog
-          preview={{ images: [...images], index: zoom }}
-          onClose={() => setZoom(null)}
-        />
-      ) : null}
+        </>
+      )}
+      {zoomDialog}
     </div>
   );
 }
 
-/** A preview on the web, where T3's own browser is not there: framed, with a way out to a tab. */
+/** Where the proof belongs when there is none: say so, and ask for it in one tap. */
+function NoProof(props: {
+  readonly item: GrowReturn;
+  readonly actions: ReturnActions;
+  readonly wide: boolean;
+}) {
+  const { item } = props;
+  const askable = item.kind === "return" || item.kind === "urgent";
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-3 text-center",
+        props.wide ? "min-h-0 flex-1 p-6" : "p-4",
+      )}
+    >
+      <ImageOffIcon className="size-6 text-muted-foreground" />
+      <div className="flex flex-col gap-0.5">
+        <span className="font-medium text-sm">No proof yet</span>
+        <span className="text-muted-foreground text-xs">
+          {item.kind === "working"
+            ? "It comes with the answer."
+            : "It came back without showing what it made."}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {askable ? (
+          <Button variant="outline" onClick={() => void props.actions.askProof(item)}>
+            <ImageIcon />
+            Ask for proof
+          </Button>
+        ) : null}
+        {item.playUrl ? (
+          props.wide ? (
+            <Button onClick={() => useReturnsStore.setState({ playing: item.key })}>
+              <PlayIcon />
+              Live
+            </Button>
+          ) : (
+            <Button render={<a href={item.playUrl} target="_blank" rel="noopener noreferrer" />}>
+              <PlayIcon />
+              Play
+            </Button>
+          )
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** A preview on the web, where T3's own browser is not there. */
 function GrowFrame(props: { readonly url: string }) {
   const host = props.url.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
   return (
     <>
-      <div className="flex items-center gap-2 border-b px-3 py-1.5 text-muted-foreground text-xs">
-        <span className="min-w-0 flex-1 truncate">{host}</span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Open in a new tab"
-          title="Open in a new tab"
-          render={<a href={props.url} target="_blank" rel="noopener noreferrer" />}
-        >
-          <ExternalLinkIcon />
-        </Button>
-      </div>
       {/* Unsandboxed: previews need scripts, storage and logins, and run on their own origin. */}
       {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
       <iframe
