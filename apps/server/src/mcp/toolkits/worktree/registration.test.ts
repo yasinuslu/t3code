@@ -18,6 +18,7 @@ import * as ProviderAdapterRegistry from "../../../orchestration-v2/ProviderAdap
 import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as BrainstormService from "../../../brainstorm/BrainstormService.ts";
+import * as GrowService from "../../../grow/GrowService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
@@ -43,6 +44,7 @@ const StubServicesLive = Layer.mergeAll(
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
   Layer.mock(BrainstormService.BrainstormService)({}),
+  Layer.mock(GrowService.GrowService)({}),
   Layer.mock(ServerSecretStore.ServerSecretStore)({}),
 );
 

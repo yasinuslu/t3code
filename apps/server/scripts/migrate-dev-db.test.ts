@@ -142,6 +142,33 @@ it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
     }),
   );
 
+  it.effect("keeps settled thread families only when asked", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const sourceDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-src-" });
+      const destDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-dest-" });
+      const source = yield* createFixtureSource(sourceDir);
+
+      const result = yield* runMigrateDevDb(
+        { baseDir: destDir, source, projects: 5, threadsPerProject: 1, settledPerProject: 1 },
+        { sharedHome: sourceDir },
+      );
+
+      const threads = yield* withDatabase(
+        result.databasePath,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ thread_id: string }>`
+            SELECT thread_id FROM orchestration_v2_projection_threads ORDER BY thread_id`;
+        }),
+      );
+      assert.deepStrictEqual(
+        threads.map((row) => row.thread_id),
+        ["fork-thread", "settled-thread", "stopped-thread"],
+      );
+    }),
+  );
+
   it.effect("fails loudly on a migration slot collision", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

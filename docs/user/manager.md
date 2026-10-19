@@ -23,10 +23,24 @@ If the machine that runs the manager is offline, a notice says so instead of ope
 
 ## Screens
 
-The switch at the top left of the window moves between **Grow** (the idea board) and **Threads**
-(the thread list and chat). Each keeps its place: the selected card, scroll positions, and the thread you
+The switch at the top left of the window moves between **Grow** (what your agents brought back) and **Threads**
+(the thread list and chat). Each keeps its place: the selected item, scroll positions, and the thread you
 had open. The app reopens on the screen you left. `ctrl+alt+1` and `ctrl+alt+3` pick Grow and
 Threads; `ctrl+alt+0` switches between them. Change them in **Settings → Keybindings** under **Mode**.
+
+## Grow
+
+Grow shows what your agents finished today, one at a time: its screenshot or live preview in the
+middle, and beside it what it is, where it came from (the thread that launched or forked it, and
+what you sent it from Grow), where it stands, and what happened. Then one decision. Every return carries a proof image you can read at a glance: agents are told to add one, and when a thread finishes work without one, T3 asks it for one by itself. The list marks which returns have proof, and **Ask again** asks once more. **Ship** tells the agent to land it the way its repository lands work,
+**Reply** answers its question, **Done** clears something with nothing to merge (a report),
+**What if...** asks for a change in the same thread, and **Let go** takes it off the list. Each
+decision waits five seconds with **Undo**. Anything an agent is still working on, like a What
+if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
+what you let go stay findable below, and a let-go item can be brought back. Keys: `j`/`k` move,
+`s` ship, `r` reply, `d` done, `w` what if, `x` let go, `a` asks again for proof, `p` play, `o` opens the conversation (Esc goes back, even from its message box)
+right in Grow (`Esc` goes back),
+`u` undo, `/` search.
 
 Agents keep a status card at the top of their thread current with
 the `thread_status_update` tool; its screenshots are stored with the thread, so they survive a

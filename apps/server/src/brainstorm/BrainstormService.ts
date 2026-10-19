@@ -1048,7 +1048,12 @@ export const make = Effect.gen(function* () {
           )
           .at(-1);
         if (last) {
-          return { threadId, runId: run.id, text: last.text.slice(0, THREAD_REPORT_MAX_CHARS) };
+          return {
+            threadId,
+            runId: run.id,
+            text: last.text.slice(0, THREAD_REPORT_MAX_CHARS),
+            ...(status ? { statusText: status.text } : {}),
+          };
         }
       }
       return status ? statusReport() : { threadId, runId: recentRuns[0]?.id ?? null, text: null };

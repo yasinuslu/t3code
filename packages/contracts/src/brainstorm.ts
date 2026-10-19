@@ -67,6 +67,8 @@ export const BrainstormThreadReport = Schema.Struct({
   runId: Schema.NullOr(RunId),
   /** Capped; null before the thread's first answer. */
   text: Schema.NullOr(Schema.String),
+  /** The status report, when a later answer is the text: its images stay the thread's proof. */
+  statusText: Schema.optional(Schema.String),
 });
 export type BrainstormThreadReport = typeof BrainstormThreadReport.Type;
 

@@ -1,23 +1,20 @@
 /**
- * Home: the Grow workspace under a header with the spaces row. The manager
- * is a thread pinned at the top of the sidebar (see ManagerRoute); Grow
- * still shows it in its chat pane when it is selected.
+ * Home: Grow, what came back from the agents, under a header with the spaces
+ * row. The manager is a thread of its own (see ManagerRoute), one button away
+ * on the app bar.
  */
 import { useEffect, useState } from "react";
 
 import { useHomeThreadShells } from "../../brainstormStore";
 import { isElectron } from "../../env";
 import { useProjects } from "../../state/entities";
-import ChatView from "../ChatView";
 import { NotificationsBell } from "../NotificationsBell";
-import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { useManagerProfileMouseButtons } from "../brainstorm/ManagerProfileSwitcher";
-import { GrowWorkspace } from "../grow/GrowWorkspace";
+import { GrowReturns } from "../grow/GrowReturns";
 import { CodeProfileProbes, SpaceSwitcher } from "../sidebar/SpaceSwitcher";
 import { useSpaceStore } from "../../spaceStore";
-import { selectManagerProfile, useEnsureManagerThread } from "../brainstorm/useOpenManagerThread";
-import { ManagerUnavailable } from "../brainstorm/ManagerUnavailable";
+import { selectManagerProfile } from "../brainstorm/useOpenManagerThread";
 
 /** Time labels move on while the page stays open; a coarse tick is enough. */
 const CLOCK_TICK_MS = 30_000;
@@ -29,7 +26,6 @@ export function HomeDashboard() {
     const timer = window.setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
     return () => window.clearInterval(timer);
   }, []);
-  const manager = useEnsureManagerThread();
   const projects = useProjects();
   // Thumb buttons anywhere on Home switch profiles like they switch spaces over the sidebar.
   useManagerProfileMouseButtons({
@@ -61,35 +57,7 @@ export function HomeDashboard() {
             <NotificationsBell />
           </div>
         </WorkspacePageHeader>
-        <GrowWorkspace
-          threads={threads}
-          now={now}
-          managerPane={
-            <section
-              aria-label="Manager"
-              data-home-manager=""
-              className="flex min-h-0 min-w-0 flex-1 flex-col border-s"
-            >
-              {manager._tag === "Ready" ? (
-                <ChatView
-                  key={`${manager.environmentId}:${manager.threadId}`}
-                  environmentId={manager.environmentId}
-                  threadId={manager.threadId}
-                  routeKind="server"
-                  reserveTitleBarControlInset={false}
-                  autoFocusComposer={false}
-                  embedded
-                />
-              ) : manager._tag === "Failed" ? (
-                <ManagerUnavailable message={manager.message} offline={manager.offline} />
-              ) : (
-                <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                  <Spinner />
-                </div>
-              )}
-            </section>
-          }
-        />
+        <GrowReturns threads={threads} now={now} />
       </div>
     </div>
   );

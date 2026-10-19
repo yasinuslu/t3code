@@ -4,6 +4,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  type GrowUpdateInput,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -13,6 +14,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
+import * as GrowService from "../../../grow/GrowService.ts";
 import * as ThreadLaunch from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ServerConfig from "../../../config.ts";
@@ -40,6 +42,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       deletedAt: null,
     } as OrchestrationV2ThreadShell;
     let launchedSender: ThreadId | undefined;
+    const grown: Array<GrowUpdateInput> = [];
     const dependencies = Layer.mergeAll(
       NodeCrypto.layer,
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
@@ -67,6 +70,12 @@ it.effect("attributes a launched thread's first message to the calling thread", 
         },
       }),
       Layer.mock(Project.ProjectService)({}),
+      Layer.mock(GrowService.GrowService)({
+        update: (input) => {
+          grown.push(input);
+          return Effect.succeed({ threadId: input.threadId, lessons: [], updatedAt: "" });
+        },
+      }),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
       NodeServices.layer,
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-source-link-" }).pipe(
@@ -81,6 +90,8 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
     expect(result.at(-1)?.result).toMatchObject({ projectId, modelSelection });
     expect(launchedSender).toBe(sourceThreadId);
+    // Grow shows the launching thread as where this one came from.
+    expect(grown).toMatchObject([{ parentThreadId: sourceThreadId }]);
   }),
 );
 
@@ -102,6 +113,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
       deletedAt: null,
     } as OrchestrationV2ThreadShell;
     const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+    const grown: Array<GrowUpdateInput> = [];
     const dependencies = Layer.mergeAll(
       NodeCrypto.layer,
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
@@ -134,6 +146,12 @@ it.effect("launches a scratch thread into the Scratch project", () =>
         },
       }),
       Layer.mock(Project.ProjectService)({}),
+      Layer.mock(GrowService.GrowService)({
+        update: (input) => {
+          grown.push(input);
+          return Effect.succeed({ threadId: input.threadId, lessons: [], updatedAt: "" });
+        },
+      }),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
         ensureScratchProject: Effect.succeed({ projectId: scratchProjectId }),
@@ -208,6 +226,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
       updatedAt: "2026-10-01T00:00:00.000Z",
       deletedAt: null,
     };
+    const grown: Array<GrowUpdateInput> = [];
     const dependencies = Layer.mergeAll(
       NodeCrypto.layer,
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
@@ -222,6 +241,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
         getThreadShell: () => Effect.succeed(caller),
       }),
       Layer.mock(ThreadLaunch.ThreadLaunchService)({}),
+      Layer.mock(GrowService.GrowService)({}),
       Layer.mock(Project.ProjectService)({
         create: (input) =>
           Effect.sync(() => {

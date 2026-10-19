@@ -26,6 +26,7 @@ import type {
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
+  ThreadStatusReport,
   ProviderTurnId,
   RunAttemptId,
   RuntimeRequestId,
@@ -52,6 +53,7 @@ import {
   RunId,
   CheckpointScopeId,
   ThreadId,
+  threadStatusReportHasProof,
   TurnItemId,
   NodeId,
 } from "@t3tools/contracts";
@@ -493,6 +495,14 @@ export class ProjectionStoreV2 extends Context.Service<ProjectionStoreV2, Projec
 ) {}
 
 export const ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION = 2;
+
+/** Shell fields for a status report: the text stays server-side, the proof flag travels. */
+function statusShellFields(report: ThreadStatusReport) {
+  return {
+    statusUpdatedAt: report.updatedAt,
+    ...(threadStatusReportHasProof(report.text) ? { statusProof: true as const } : {}),
+  };
+}
 
 function needsRecovery(
   projection: OrchestrationV2ThreadProjection,
@@ -1376,7 +1386,7 @@ export function threadShellFromProjection(
       : { previewLinks: projection.thread.previewLinks }),
     ...(projection.thread.statusReport === undefined
       ? {}
-      : { statusUpdatedAt: projection.thread.statusReport.updatedAt }),
+      : statusShellFields(projection.thread.statusReport)),
     ...(projection.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: projection.thread.activeOrderKey }),
@@ -1619,7 +1629,7 @@ function shellFromState(input: {
       : { previewLinks: input.state.thread.previewLinks }),
     ...(input.state.thread.statusReport === undefined
       ? {}
-      : { statusUpdatedAt: input.state.thread.statusReport.updatedAt }),
+      : statusShellFields(input.state.thread.statusReport)),
     ...(input.state.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: input.state.thread.activeOrderKey }),
