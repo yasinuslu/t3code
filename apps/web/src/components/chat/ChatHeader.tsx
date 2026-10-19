@@ -60,8 +60,8 @@ interface ChatHeaderProps {
   embedded?: boolean;
   /** The provider profile the thread runs on, for drivers that report one. */
   providerConfigDir?: ThreadProviderConfigDir | null;
-  /** The thread's worktree when its server can run sandboxes; shows the sandbox badge. */
-  sandboxWorktreePath?: string | null;
+  /** The thread when its server can run sandboxes; shows the sandbox badge. */
+  sandboxThreadId?: string | null;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
 }
@@ -96,7 +96,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   embedded = false,
   providerConfigDir = null,
-  sandboxWorktreePath = null,
+  sandboxThreadId = null,
   onNewThreadInProject,
   onOpenProjectSettings,
 }: ChatHeaderProps) {
@@ -380,10 +380,10 @@ export const ChatHeader = memo(function ChatHeader({
       </WorkspaceBreadcrumb>
       {isServerThread && !docked ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
       {/* A manager's title already names its profile; a narrow column keeps the room for the title. */}
-      {sandboxWorktreePath ? (
+      {sandboxThreadId ? (
         <ThreadSandboxBadge
           environmentId={activeThreadEnvironmentId}
-          worktreePath={sandboxWorktreePath}
+          threadId={sandboxThreadId}
           variant="badge"
         />
       ) : null}

@@ -820,26 +820,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const sharedProviderSessionIdFor = (input: {
     readonly adapter: ProviderAdapterV2Shape;
     readonly providerInstanceId: ProviderInstanceId;
+    readonly threadId: ThreadId;
     readonly worktreePath: string | null;
   }) =>
     Effect.gen(function* () {
       const capabilities = yield* input.adapter.getCapabilities();
       if (!capabilities.sessions.supportsMultipleProviderThreadsPerSession) return null;
-      const worktreePath = input.worktreePath;
-      const sandboxed =
-        worktreePath !== null &&
-        Option.isSome(sandboxes) &&
-        (yield* sandboxes.value.isSandboxed(worktreePath));
+      // Sandboxed threads of one workspace share a session whose process runs
+      // in their sandbox; other threads there keep the host session.
+      const sandboxWorkspacePath = Option.isSome(sandboxes)
+        ? yield* sandboxes.value.workspaceOf(input.threadId, input.worktreePath)
+        : undefined;
       return idAllocator.derive.providerSession({
         providerInstanceId: input.providerInstanceId,
-        ...(sandboxed ? { sandboxWorktreePath: worktreePath } : {}),
+        ...(sandboxWorkspacePath === undefined ? {} : { sandboxWorkspacePath }),
       });
     });
 
   /**
    * The session a run uses. A shared session always comes from the thread's
-   * current worktree rather than `persisted`: a launch records one before its
-   * worktree and sandbox exist. For host threads that is the same id.
+   * current sandbox rather than `persisted`: a launch records one before its
+   * sandbox exists. For host threads that is the same id.
    */
   const providerSessionIdFor = (input: {
     readonly adapter: ProviderAdapterV2Shape;
@@ -7740,6 +7741,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const preparedSessionId = yield* sharedProviderSessionIdFor({
         adapter: preparedAdapter,
         providerInstanceId: state.run.providerInstanceId,
+        threadId: command.threadId,
         worktreePath: projection.thread.worktreePath,
       }).pipe(mapDispatchError(command));
       if (

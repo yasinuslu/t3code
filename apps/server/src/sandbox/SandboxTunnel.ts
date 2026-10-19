@@ -296,6 +296,8 @@ export interface SandboxTunnelOptions {
   /** Host port to try first for a container port, so URLs stay stable across restarts. */
   readonly preferredHostPort: (containerPort: number) => number;
   readonly onPortsChanged: (ports: ReadonlyArray<SandboxPort>) => void;
+  /** A host-side client connected or sent bytes, e.g. a preview tab; wakes a sleeping sandbox. */
+  readonly onHostActivity?: () => void;
   readonly onExit: (detail: string) => void;
 }
 
@@ -465,6 +467,7 @@ export class SandboxTunnel {
     if (this.paused) socket.pause();
     socket.on("data", (chunk: Buffer) => {
       this.lastActivity = Date.now();
+      this.options.onHostActivity?.();
       this.send(FRAME.data, id, chunk);
     });
     socket.on("end", () => this.send(FRAME.end, id));
@@ -517,6 +520,7 @@ export class SandboxTunnel {
     const server = NodeNet.createServer((socket) => {
       const id = this.nextId;
       this.nextId += 2;
+      this.options.onHostActivity?.();
       this.send(FRAME.connect, id, port16(containerPort));
       this.attach(id, socket);
     });

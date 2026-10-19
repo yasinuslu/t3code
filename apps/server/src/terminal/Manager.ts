@@ -1376,7 +1376,7 @@ interface TerminalManagerOptions {
     readonly threadId: string;
     readonly terminalId: string;
   }) => Effect.Effect<void>;
-  /** Terminals whose cwd is in a sandboxed worktree open a shell in its container. */
+  /** Terminals of a sandboxed thread open a shell in its sandbox. */
   sandboxes?: SandboxService.SandboxService["Service"];
   resolveProviderInstanceEnvironment?: (
     providerInstanceId: string,
@@ -1467,23 +1467,32 @@ export const make = Effect.fn("TerminalManager.make")(function* () {
 /**
  * Killing the `docker exec` client leaves the sandbox shell and its children
  * running, so a sandbox terminal also stops its process tree in the container.
+ * Input and output count as use, which keeps the sandbox awake or wakes it.
  */
-function releaseSandboxOnExit(
+function wrapSandboxProcess(
   process: PtyAdapter.PtyProcess,
   release: () => void,
+  touch: () => void,
 ): PtyAdapter.PtyProcess {
   process.onExit(release);
   return {
     get pid() {
       return process.pid;
     },
-    write: (data) => process.write(data),
+    write: (data) => {
+      touch();
+      process.write(data);
+    },
     resize: (cols, rows) => process.resize(cols, rows),
     kill: (signal) => {
       process.kill(signal);
       release();
     },
-    onData: (callback) => process.onData(callback),
+    onData: (callback) =>
+      process.onData((data) => {
+        touch();
+        callback(data);
+      }),
     onExit: (callback) => process.onExit(callback),
   };
 }
@@ -2247,8 +2256,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   });
 
   /**
-   * Spawns the session's shell. In a sandboxed worktree the shell is bash
-   * inside the container, reached through `docker exec -it`.
+   * Spawns the session's shell. In a sandboxed thread the shell is bash
+   * inside the sandbox, reached through its exec client.
    */
   const spawnShell = Effect.fn("terminal.spawnShell")(function* (
     shellCandidates: ReadonlyArray<ShellCandidate>,
@@ -2259,7 +2268,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       options.sandboxes === undefined
         ? Option.none()
         : yield* options.sandboxes
-            .execTarget(session.cwd)
+            .execTarget({ threadId: session.threadId, cwd: session.cwd })
             .pipe(
               Effect.mapError(
                 (cause) => new PtyAdapter.PtySpawnError({ adapter: "sandbox", cause }),
@@ -2282,7 +2291,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       command.env,
       session,
     ).pipe(Effect.tapError(() => Effect.sync(command.release)));
-    return { ...spawned, process: releaseSandboxOnExit(spawned.process, command.release) };
+    const sandboxes = options.sandboxes;
+    const ref = { threadId: session.threadId, cwd: session.cwd };
+    return {
+      ...spawned,
+      process: wrapSandboxProcess(spawned.process, command.release, () => sandboxes?.touch(ref)),
+    };
   });
 
   const startSession = Effect.fn("terminal.startSession")(function* (

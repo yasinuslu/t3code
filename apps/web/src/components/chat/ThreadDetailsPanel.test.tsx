@@ -61,7 +61,6 @@ describe("ThreadDetailsPanel", () => {
       onPresentationChange: vi.fn(),
       environmentId,
       threadId: "thread:thread-details" as ThreadId,
-      worktreePath: null,
       activeProjectName: undefined,
       activeProjectScripts: [],
       preferredScriptId: null,

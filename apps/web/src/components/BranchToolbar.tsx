@@ -42,9 +42,11 @@ import {
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
 import { PreviousWorktreeItemContent } from "./PreviousWorktreeItemContent";
+import { type SandboxChoice, SandboxToggle } from "./SandboxToggle";
 import { ComposerControl } from "./chat/ComposerControl";
 import {
   Menu,
+  MenuCheckboxItem,
   MenuGroup,
   MenuGroupLabel,
   MenuPopup,
@@ -79,8 +81,8 @@ interface BranchToolbarProps {
   onEnvModeChange: (mode: EnvMode) => void;
   /** The thread's env mode as ChatView resolves it. */
   envMode: EnvMode;
-  /** The thread's server can run new worktrees in sandboxes. */
-  sandboxesAvailable?: boolean;
+  /** A draft's sandbox choice; left out when the server cannot run sandboxes. */
+  sandboxChoice?: SandboxChoice;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
   startFromOrigin: boolean;
@@ -110,7 +112,7 @@ interface MobileRunContextSelectorProps {
   effectiveEnvMode: EnvMode;
   activeWorktreePath: string | null;
   onEnvModeChange: (mode: EnvMode) => void;
-  sandboxesAvailable: boolean;
+  sandboxChoice: SandboxChoice | undefined;
   previousWorktreeLabel: string | null;
   previousWorktreeBranch: string | null;
   onUsePreviousWorktree: () => void;
@@ -130,7 +132,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   effectiveEnvMode,
   activeWorktreePath,
   onEnvModeChange,
-  sandboxesAvailable,
+  sandboxChoice,
   previousWorktreeLabel,
   previousWorktreeBranch,
   onUsePreviousWorktree,
@@ -141,20 +143,18 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     [availableEnvironments, environmentId],
   );
   const WorkspaceIcon =
-    effectiveEnvMode === "sandbox"
-      ? BoxIcon
-      : effectiveEnvMode === "worktree"
-        ? FolderGit2Icon
-        : activeWorktreePath
-          ? FolderGitIcon
-          : FolderIcon;
+    effectiveEnvMode === "worktree"
+      ? FolderGit2Icon
+      : activeWorktreePath
+        ? FolderGitIcon
+        : FolderIcon;
   const workspaceLabel = forceNewWorktree
     ? resolveEnvModeLabel("worktree")
     : envModeLocked
       ? resolveLockedWorkspaceLabel(activeWorktreePath, effectiveEnvMode)
-      : effectiveEnvMode === "local"
-        ? resolveCurrentWorkspaceLabel(activeWorktreePath)
-        : resolveEnvModeLabel(effectiveEnvMode);
+      : effectiveEnvMode === "worktree"
+        ? resolveEnvModeLabel("worktree")
+        : resolveCurrentWorkspaceLabel(activeWorktreePath);
   const isLocked = envLocked || envModeLocked;
   const workspaceIcon = (
     <Tooltip>
@@ -302,20 +302,25 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
                 <span className="min-w-0 truncate">{resolveEnvModeLabel("worktree")}</span>
               </span>
             </MenuRadioItem>
-            {sandboxesAvailable ? (
-              <MenuRadioItem disabled={envModeLocked} value="sandbox" closeOnClick>
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <BoxIcon className="size-3" />
-                  <span className="min-w-0 truncate">{resolveEnvModeLabel("sandbox")}</span>
-                </span>
-              </MenuRadioItem>
-            ) : null}
             {previousWorktreeLabel ? (
               <MenuRadioItem disabled={envModeLocked} value="previous-worktree" closeOnClick>
                 <PreviousWorktreeItemContent branch={previousWorktreeBranch} />
               </MenuRadioItem>
             ) : null}
           </MenuRadioGroup>
+          {sandboxChoice ? (
+            <MenuCheckboxItem
+              variant="switch"
+              disabled={isLocked}
+              checked={sandboxChoice.checked}
+              onCheckedChange={sandboxChoice.onCheckedChange}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <BoxIcon className="size-3" />
+                <span className="min-w-0 truncate">Sandbox</span>
+              </span>
+            </MenuCheckboxItem>
+          ) : null}
         </MenuGroup>
       </MenuPopup>
     </Menu>
@@ -524,7 +529,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   draftId,
   onEnvModeChange,
   envMode,
-  sandboxesAvailable = false,
+  sandboxChoice,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
   startFromOrigin,
@@ -641,8 +646,10 @@ export const BranchToolbar = memo(function BranchToolbar({
             activeWorktreePath={activeWorktreePath}
             workspaceRoot={activeProject.workspaceRoot}
             onEnvModeChange={onEnvModeChange}
-            sandboxesAvailable={sandboxesAvailable}
           />
+        ) : null}
+        {panelSection !== "branch" && sandboxChoice ? (
+          <SandboxToggle choice={sandboxChoice} disabled={envModeLocked} />
         ) : null}
         {panelSection !== "workspace" ? (
           <BranchToolbarBranchSelector
@@ -693,7 +700,7 @@ export const BranchToolbar = memo(function BranchToolbar({
             effectiveEnvMode={effectiveEnvMode}
             activeWorktreePath={activeWorktreePath}
             onEnvModeChange={onEnvModeChange}
-            sandboxesAvailable={sandboxesAvailable}
+            sandboxChoice={sandboxChoice}
             previousWorktreeLabel={previousWorktreeLabel}
             previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
             onUsePreviousWorktree={onUsePreviousWorktree}
@@ -734,11 +741,13 @@ export const BranchToolbar = memo(function BranchToolbar({
               effectiveEnvMode={effectiveEnvMode}
               activeWorktreePath={activeWorktreePath}
               onEnvModeChange={onEnvModeChange}
-              sandboxesAvailable={sandboxesAvailable}
               previousWorktreeLabel={previousWorktreeLabel}
               previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
               onUsePreviousWorktree={onUsePreviousWorktree}
             />
+          ) : null}
+          {showGitControls && sandboxChoice ? (
+            <SandboxToggle choice={sandboxChoice} disabled={envModeLocked} />
           ) : null}
         </div>
       ) : null}

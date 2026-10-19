@@ -375,7 +375,8 @@ export const make = Effect.gen(function* () {
         ? wrapCommandForCompletion(
             script.command,
             // A sandbox terminal is bash in the container, whatever the host shell is.
-            Option.isSome(sandboxes) && (yield* sandboxes.value.isSandboxed(cwd))
+            Option.isSome(sandboxes) &&
+              (yield* sandboxes.value.isSandboxed({ threadId: input.threadId, cwd }))
               ? "posix"
               : completionShell,
             completionSentinel(completionToken),

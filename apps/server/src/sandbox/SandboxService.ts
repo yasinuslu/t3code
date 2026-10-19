@@ -5,13 +5,14 @@ import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 
-import type {
-  SandboxBackendKind,
-  SandboxListStreamEvent,
-  SandboxStatus,
-  SandboxSummary,
-  ServerProvider,
-  ServerSettings,
+import {
+  ThreadId,
+  type SandboxBackendKind,
+  type SandboxListStreamEvent,
+  type SandboxStatus,
+  type SandboxSummary,
+  type ServerProvider,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Context from "effect/Context";
@@ -32,6 +33,7 @@ import * as NetAddress from "effect/unstable/net/NetAddress";
 
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import * as ServerConfig from "../config.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import type {
@@ -60,7 +62,7 @@ import { SANDBOX_KILL_SOURCE, SANDBOX_RELAY_SOURCE, SandboxTunnel } from "./Sand
 
 export class SandboxError extends Schema.TaggedError<SandboxError>()("SandboxError", {
   operation: Schema.Literals(["create", "start", "exec", "stop", "remove"]),
-  worktreePath: Schema.String,
+  workspacePath: Schema.String,
   detail: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {
@@ -71,7 +73,7 @@ export class SandboxError extends Schema.TaggedError<SandboxError>()("SandboxErr
 
 /** Runs commands inside one sandbox. Plain functions, so sync spawn callbacks can use it. */
 export interface SandboxExecTarget {
-  readonly worktreePath: string;
+  readonly workspacePath: string;
   readonly containerName: string;
   /**
    * Backend CLI command that runs `command` inside the sandbox. The caller
@@ -98,24 +100,42 @@ export interface SandboxCommand {
 }
 
 export interface SandboxForwardedPort {
-  readonly worktreePath: string;
+  readonly workspacePath: string;
   readonly containerPort: number;
   readonly hostPort: number;
 }
 
+/** A thread's work, as callers that run commands know it. */
+export interface SandboxThreadRef {
+  readonly threadId: string;
+  /** Where the command runs. It must be inside the thread's sandbox workspace. */
+  readonly cwd: string;
+}
+
+/** Threads whose sandbox processes are gone: it stopped, was removed, or they left it. */
+export interface SandboxStoppedEvent {
+  readonly workspacePath: string;
+  /** Threads that moved in or out of the sandbox, or all of its threads when it stopped. */
+  readonly threadIds: ReadonlyArray<string>;
+  /** The sandbox's processes are gone, not just some threads moved. */
+  readonly processesStopped: boolean;
+}
+
 /**
- * Sandboxes for worktrees. A sandbox is one long-running container or
- * microVM (see `SandboxBackend`) that mounts its worktree (and the
- * repository's git dir) at the same path, plus the user's Claude and Codex
- * config folders. Agents, terminals, and setup scripts whose cwd is inside a
- * sandboxed worktree run in it through the backend's exec, so parallel
- * threads get separate ports, services, and machine state while T3 keeps
- * reading the worktree on the host.
+ * Sandboxes for threads. A sandbox is one long-running container or microVM
+ * (see `SandboxBackend`) that mounts a workspace (a project checkout or a
+ * worktree, plus the repository's git dir) at the same path, plus the user's
+ * Claude and Codex config folders. A thread joins a sandbox independently of
+ * how its workspace was made; sandboxed threads in one workspace share its
+ * sandbox, other threads there stay on the host. Their agents, terminals, and
+ * setup scripts run in it through the backend's exec, so parallel threads get
+ * separate ports, services, and machine state while T3 keeps reading the
+ * workspace on the host.
  *
- * A worktree is registered as sandboxed before anything slow happens, and
- * stays registered when provisioning fails, so work there fails instead of
- * running on the host. The list is persisted, and sandboxes carry labels
- * that rebuild it if the file is lost.
+ * A thread is recorded as sandboxed before anything slow happens, and stays
+ * recorded when provisioning fails, so its work fails instead of running on
+ * the host. The list is persisted, and sandboxes carry labels that rebuild it
+ * if the file is lost.
  */
 export class SandboxService extends Context.Service<
   SandboxService,
@@ -125,43 +145,80 @@ export class SandboxService extends Context.Service<
     /** The runtime new sandboxes use. */
     readonly backend: SandboxBackendKind;
     /**
-     * Marks a new worktree as sandboxed and saves it. Fast; call it before
-     * anything can run in the worktree, then `start`. `providers` supplies
-     * the Claude and Codex versions to install; their home folders, plus
-     * `homes` (see `sandboxProviderHomes`), are mounted.
+     * Records the thread as sandboxed in `workspacePath` and saves it,
+     * creating the workspace's sandbox record when it has none. Fast; call it
+     * before anything of the thread can run, then `start`. `providers`
+     * supplies the Claude and Codex versions to install; their home folders,
+     * plus `homes` (see `sandboxProviderHomes`), are mounted.
      */
-    readonly register: (input: {
-      readonly worktreePath: string;
+    readonly attach: (input: {
+      readonly threadId: string;
+      readonly workspacePath: string;
       /** The project checkout, mounted read-only for setup scripts that copy or link from it. */
       readonly projectRoot: string;
       readonly providers: ReadonlyArray<ServerProvider>;
       readonly homes: ReadonlyArray<string>;
     }) => Effect.Effect<void, SandboxError>;
-    /** Builds the image if needed, then creates and starts a registered sandbox. */
+    /** Builds the image if needed, then creates and starts the thread's sandbox. */
     readonly start: (input: {
-      readonly worktreePath: string;
+      readonly threadId: string;
       readonly onOutput?: (line: string) => Effect.Effect<void>;
     }) => Effect.Effect<SandboxSummary, SandboxError>;
-    /** The started sandbox that owns `cwd`, or none when `cwd` is not sandboxed. */
+    /**
+     * The started sandbox the thread runs in, or none for a host thread.
+     * `homes` are config folders the command will use: one the sandbox does
+     * not mount yet is added by recreating the sandbox when nothing runs in it.
+     */
     readonly execTarget: (
-      cwd: string,
+      ref: SandboxThreadRef & { readonly homes?: ReadonlyArray<string> },
     ) => Effect.Effect<Option.Option<SandboxExecTarget>, SandboxError>;
-    /** Whether `cwd` is inside a sandboxed worktree. Does not start anything. */
-    readonly isSandboxed: (cwd: string) => Effect.Effect<boolean>;
-    /** Stops the sandbox. The next command in the worktree starts it again. */
-    readonly stop: (worktreePath: string) => Effect.Effect<void, SandboxError>;
-    /** Deletes the sandbox. Work in the worktree runs on the host afterwards. */
-    readonly remove: (worktreePath: string) => Effect.Effect<void, SandboxError>;
+    /**
+     * The workspace of the thread's sandbox: the one it was attached to, or
+     * one adopted without its thread list that owns `cwd`.
+     */
+    readonly workspaceOf: (
+      threadId: string,
+      cwd: string | null,
+    ) => Effect.Effect<string | undefined>;
+    /** Whether the thread runs in a sandbox. Does not start anything. */
+    readonly isSandboxed: (ref: SandboxThreadRef) => Effect.Effect<boolean>;
+    /**
+     * A provider turn started for the thread: wakes its sandbox, which then
+     * stays awake until `turnEnded` with the same key (the provider session).
+     */
+    readonly turnStarted: (
+      input: SandboxThreadRef & { readonly key: string },
+    ) => Effect.Effect<void, SandboxError>;
+    readonly turnEnded: (key: string) => void;
+    /** Something of the thread is in use (a terminal keystroke): wakes its sandbox soon. */
+    readonly touch: (ref: SandboxThreadRef) => void;
+    /**
+     * The thread was archived or settled. Once every thread of the sandbox is,
+     * its VM is deleted; the threads stay sandboxed and get a fresh one on use.
+     */
+    readonly retire: (threadId: string) => Effect.Effect<void, SandboxError>;
+    /** The thread was unarchived or unsettled. */
+    readonly unretire: (threadId: string) => void;
+    /** Stops the thread's sandbox. The next command there starts it again. */
+    readonly stop: (threadId: string) => Effect.Effect<void, SandboxError>;
+    /**
+     * Takes the thread out of its sandbox; its later work runs on the host.
+     * The sandbox is deleted when no thread is left in it.
+     */
+    readonly detach: (threadId: string) => Effect.Effect<void, SandboxError>;
+    /** Deletes the sandbox of a workspace that is going away, with all its threads. */
+    readonly remove: (workspacePath: string) => Effect.Effect<void, SandboxError>;
     readonly list: Effect.Effect<ReadonlyArray<SandboxSummary>>;
     /** Emits the full list first, then after every change. */
     readonly stream: Stream.Stream<SandboxListStreamEvent>;
     /** Every forwarded sandbox port, for preview discovery. */
     readonly forwardedPorts: () => ReadonlyArray<SandboxForwardedPort>;
     /**
-     * Worktrees whose sandbox stopped, was removed, or lost its relay. The
-     * processes T3 ran there are gone, so sessions holding them are dead.
+     * Threads whose sandbox processes are gone, and threads that moved in or
+     * out of a sandbox. Sessions holding processes for them are dead or run
+     * in the wrong place.
      */
-    readonly stopped: Stream.Stream<string>;
+    readonly stopped: Stream.Stream<SandboxStoppedEvent>;
   }
 >()("t3/sandbox/SandboxService") {}
 
@@ -172,7 +229,9 @@ const Mount = Schema.Struct({
 });
 
 const RegistryEntry = Schema.Struct({
-  worktreePath: Schema.String,
+  workspacePath: Schema.String,
+  /** Missing on sandboxes adopted from labels: their threads are unknown. */
+  threadIds: Schema.optional(Schema.Array(Schema.String)),
   containerName: Schema.String,
   /** Lists saved before the backend was recorded hold Docker sandboxes. */
   backend: Schema.optional(Schema.Literals(["docker", "microsandbox"])),
@@ -193,15 +252,27 @@ const encodeRegistry = Schema.encodeEffect(RegistryJson);
 const MarkerJson = Schema.fromJsonString(RegistryEntry);
 const decodeMarker = Schema.decodeUnknownEffect(MarkerJson);
 const encodeMarker = Schema.encodeEffect(MarkerJson);
-/** Kept in the worktree's own git admin folder, which `git worktree remove` deletes. */
+/**
+ * Kept in the workspace's own git admin folder: `.git` of a checkout, or the
+ * folder a linked worktree's `.git` file points to, which `git worktree
+ * remove` deletes.
+ */
 const MARKER_FILE = "t3code-sandbox.json";
 
 interface SandboxRecord {
-  readonly worktreePath: string;
+  readonly workspacePath: string;
+  /** The threads that run here. */
+  readonly threadIds: Set<string>;
+  /**
+   * Adopted from labels after the list was lost, so which threads ran here
+   * is unknown: every thread working in the workspace runs here until one
+   * is attached or detached explicitly.
+   */
+  threadsUnknown: boolean;
   readonly containerName: string;
   readonly backend: SandboxBackendKind;
   readonly versions: SandboxCliVersions;
-  readonly mounts: ReadonlyArray<SandboxMount>;
+  mounts: ReadonlyArray<SandboxMount>;
   /** Empty until the first image build finishes. */
   image: string;
   status: SandboxStatus;
@@ -211,8 +282,14 @@ interface SandboxRecord {
   reaped: boolean;
   /** Commands started through `command` that have not been released. */
   activeExecs: number;
-  /** When the last command started or ended, for idle stops. */
+  /** When the sandbox was last used, for idle sleep. */
   lastUsedAt: number;
+  /** Frozen by `sleep`: every exec hangs until `wake`. */
+  sleeping: boolean;
+  /** Provider sessions running a turn here; the sandbox never sleeps under one. */
+  readonly turns: Set<string>;
+  /** Threads that were archived or settled; once all are, the VM is deleted. */
+  readonly retired: Set<string>;
   /** Host port of the exec server, for backends that need one. Read from the backend once known. */
   execPort: number | null;
   readonly lock: Semaphore.Semaphore;
@@ -252,6 +329,12 @@ export const sandboxProviderHomes = (settings: ServerSettings): ReadonlyArray<st
   add(settings.providers.codex.homePath);
   add(settings.providers.codex.shadowHomePath);
   add(settings.providers.claudeAgent.homePath);
+  // Code profiles pick Claude's folder per project, including the folders
+  // account balancing switches a thread between.
+  for (const profile of Object.values(settings.codeProfiles)) {
+    add(profile.claude?.configDir);
+    for (const dir of profile.claude?.extraConfigDirs ?? []) add(dir);
+  }
   for (const instance of Object.values(settings.providerInstances)) {
     if (!Object.values(SANDBOX_DRIVERS).some((driver) => driver === instance.driver)) continue;
     const config = instance.config;
@@ -295,10 +378,10 @@ const onPath = (env: NodeJS.ProcessEnv, command: string) =>
       }
     });
 
-/** Minutes without commands or relay traffic before a sandbox stops. 0 keeps them running. */
+/** Minutes without a turn, command, or relay traffic before a sandbox sleeps. 0 keeps them awake. */
 const idleMinutes = (env: NodeJS.ProcessEnv) => {
   const value = Number.parseInt(env.T3CODE_SANDBOX_IDLE_MINUTES ?? "", 10);
-  return Number.isInteger(value) && value >= 0 ? value : 15;
+  return Number.isInteger(value) && value >= 0 ? value : 3;
 };
 
 const make = Effect.gen(function* () {
@@ -307,6 +390,11 @@ const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const serverConfig = yield* ServerConfig.ServerConfig;
+  const runFork = Effect.runForkWith(yield* Effect.context<never>());
+  const environment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
+  const environmentId = Option.isSome(environment)
+    ? yield* environment.value.getEnvironmentId
+    : undefined;
   const httpServer = yield* HttpServer.HttpServer;
   const supported = SUPPORTED_PLATFORMS.has(platform);
   const hostEnv = { ...process.env };
@@ -318,7 +406,7 @@ const make = Effect.gen(function* () {
   const owner = sandboxOwner(serverConfig.stateDir);
   const records = new Map<string, SandboxRecord>();
   const changes = yield* PubSub.unbounded<void>();
-  const stoppedWorktrees = yield* PubSub.unbounded<string>();
+  const stoppedThreads = yield* PubSub.unbounded<SandboxStoppedEvent>();
   const registryLock = yield* Semaphore.make(1);
   // Lookups wait until labeled sandboxes missing from the saved list are adopted.
   const ready = yield* Deferred.make<void>();
@@ -327,18 +415,18 @@ const make = Effect.gen(function* () {
   let unverified = false;
 
   const fail =
-    (operation: SandboxError["operation"], worktreePath: string, detail: string) =>
+    (operation: SandboxError["operation"], workspacePath: string, detail: string) =>
     (cause?: unknown) =>
       new SandboxError({
         operation,
-        worktreePath,
+        workspacePath,
         detail,
         ...(cause === undefined ? {} : { cause }),
       });
   const fromBackend = (error: SandboxBackendError) =>
     new SandboxError({
       operation: error.operation,
-      worktreePath: error.worktreePath,
+      workspacePath: error.workspacePath,
       detail: error.detail,
       ...(error.cause === undefined ? {} : { cause: error.cause }),
     });
@@ -346,7 +434,7 @@ const make = Effect.gen(function* () {
   /** Runs a short backend CLI command and returns trimmed stdout, failing on a non-zero exit. */
   const cliFor =
     (command: string): SandboxCli =>
-    (operation, worktreePath, args, options = {}) => {
+    (operation, workspacePath, args, options = {}) => {
       let partial = "";
       const onChunk =
         options.onLine === undefined
@@ -371,7 +459,7 @@ const make = Effect.gen(function* () {
         .pipe(
           Effect.mapError((cause): SandboxBackendError => ({
             operation,
-            worktreePath,
+            workspacePath,
             detail:
               cause._tag === "ProcessTimeoutError"
                 ? `${command} ${args[0]} timed out.`
@@ -385,7 +473,7 @@ const make = Effect.gen(function* () {
               ? Effect.succeed(result.stdout.trim())
               : Effect.fail<SandboxBackendError>({
                   operation,
-                  worktreePath,
+                  workspacePath,
                   detail: `${command} ${args[0]} failed: ${(result.stderr.trim() || result.stdout.trim()).slice(-400)}`,
                 }),
           ),
@@ -400,6 +488,7 @@ const make = Effect.gen(function* () {
       registryPath,
       resources: microsandboxResources(hostEnv),
       kvmAvailable: () => fileSystem.exists("/dev/kvm").pipe(Effect.orElseSucceed(() => false)),
+      systemctl: cliFor("systemctl"),
     }),
   };
   const defaultBackend = resolveSandboxBackendKind({
@@ -473,14 +562,14 @@ const make = Effect.gen(function* () {
    * Git settings for commands in a sandbox. Host git config often points at
    * host-only programs (a Nix store wrapper, a password manager signer), so
    * SSH goes through the forwarded agent, the identity comes from the host's
-   * config for this worktree, and SSH commit signing uses the agent when its
+   * config for this workspace, and SSH commit signing uses the agent when its
    * key is one T3 loaded. Otherwise signing is turned off rather than failing
    * every commit.
    */
-  const gitEnvFor = Effect.fn("SandboxService.gitEnvFor")(function* (worktreePath: string) {
+  const gitEnvFor = Effect.fn("SandboxService.gitEnvFor")(function* (workspacePath: string) {
     const gitConfig = (key: string) =>
       processRunner
-        .run({ command: "git", args: ["config", "--get", key], cwd: worktreePath, env: hostEnv })
+        .run({ command: "git", args: ["config", "--get", key], cwd: workspacePath, env: hostEnv })
         .pipe(
           Effect.map((result) => (result.code === 0 ? result.stdout.trim() : "")),
           Effect.orElseSucceed(() => ""),
@@ -515,7 +604,7 @@ const make = Effect.gen(function* () {
     }
     // Pagers from the Nix store exist only on the host; fall back to plain ones.
     const listed = yield* processRunner
-      .run({ command: "git", args: ["config", "--list", "-z"], cwd: worktreePath, env: hostEnv })
+      .run({ command: "git", args: ["config", "--list", "-z"], cwd: workspacePath, env: hostEnv })
       .pipe(
         Effect.map((result) => (result.code === 0 ? result.stdout : "")),
         Effect.orElseSucceed(() => ""),
@@ -565,7 +654,8 @@ const make = Effect.gen(function* () {
     });
 
   const summarize = (record: SandboxRecord): SandboxSummary => ({
-    worktreePath: record.worktreePath,
+    workspacePath: record.workspacePath,
+    threadIds: [...record.threadIds].map((threadId) => ThreadId.make(threadId)),
     containerName: record.containerName,
     backend: record.backend,
     image: record.image || "building",
@@ -574,6 +664,19 @@ const make = Effect.gen(function* () {
     error: record.error,
   });
   const publish = () => PubSub.publishUnsafe(changes, undefined);
+  /** Tells session owners that the threads here lost their sandbox processes. */
+  const announceStopped = (record: SandboxRecord) =>
+    PubSub.publishUnsafe(stoppedThreads, {
+      workspacePath: record.workspacePath,
+      threadIds: [...record.threadIds],
+      processesStopped: true,
+    });
+  const announceMoved = (record: SandboxRecord, threadId: string) =>
+    PubSub.publishUnsafe(stoppedThreads, {
+      workspacePath: record.workspacePath,
+      threadIds: [threadId],
+      processesStopped: false,
+    });
   const setStatus = (record: SandboxRecord, status: SandboxStatus, error: string | null = null) => {
     record.status = status;
     record.error = error;
@@ -581,7 +684,8 @@ const make = Effect.gen(function* () {
   };
 
   const toEntry = (record: SandboxRecord): RegistryEntry => ({
-    worktreePath: record.worktreePath,
+    workspacePath: record.workspacePath,
+    ...(record.threadsUnknown ? {} : { threadIds: [...record.threadIds] }),
     containerName: record.containerName,
     backend: record.backend,
     image: record.image,
@@ -614,8 +718,8 @@ const make = Effect.gen(function* () {
   /** Folders and files mounted at their own path. Only paths that exist are mounted. */
   const mountsFor = Effect.fn("SandboxService.mountsFor")(function* (
     containerName: string,
-    worktreePath: string,
-    gitCommonDir: string,
+    workspacePath: string,
+    gitCommonDir: string | null,
     projectRoot: string,
     providers: ReadonlyArray<ServerProvider>,
     homes: ReadonlyArray<string>,
@@ -632,8 +736,8 @@ const make = Effect.gen(function* () {
     yield* fileSystem.makeDirectory(control, { recursive: true }).pipe(Effect.ignore);
     yield* fileSystem.chmod(control, 0o700).pipe(Effect.ignore);
     const candidates: ReadonlyArray<SandboxMount> = [
-      { path: worktreePath, readOnly: false },
-      { path: gitCommonDir, readOnly: false },
+      { path: workspacePath, readOnly: false },
+      ...(gitCommonDir === null ? [] : [{ path: gitCommonDir, readOnly: false }]),
       { path: control, readOnly: false },
       { path: hostEnv.CLAUDE_CONFIG_DIR ?? path.join(home, ".claude"), readOnly: false },
       { path: hostEnv.CODEX_HOME ?? path.join(home, ".codex"), readOnly: false },
@@ -653,7 +757,7 @@ const make = Effect.gen(function* () {
     for (const mount of candidates) {
       if (!isMountablePath(mount.path)) continue;
       // A writable mount already covers anything inside it; a read-only one
-      // covers only read-only paths, so the worktree and git dir stay writable.
+      // covers only read-only paths, so the workspace and git dir stay writable.
       const covered = mounts.some(
         (existing) =>
           containsPath(existing.path, mount.path, path.sep) &&
@@ -692,7 +796,7 @@ const make = Effect.gen(function* () {
       if (firstHop !== resolved.value && !mounted(firstHop)) files.add(firstHop);
     });
     for (const mount of record.mounts) {
-      if (mount.file || mount.path === record.worktreePath) continue;
+      if (mount.file || mount.path === record.workspacePath) continue;
       const entries = yield* fileSystem
         .readDirectory(mount.path)
         .pipe(Effect.orElseSucceed(() => []));
@@ -731,7 +835,7 @@ const make = Effect.gen(function* () {
       if (Option.isNone(linkTarget) && Option.isNone(contents)) continue;
       yield* cliFor(backend.command)(
         "start",
-        record.worktreePath,
+        record.workspacePath,
         backend.execArgs({
           name: record.containerName,
           tty: false,
@@ -819,7 +923,7 @@ const make = Effect.gen(function* () {
     if (record.execPort === null) {
       return yield* fail(
         "start",
-        record.worktreePath,
+        record.workspacePath,
         "This sandbox has no exec port. Remove the sandbox; the next command creates a new one.",
       )();
     }
@@ -831,7 +935,7 @@ const make = Effect.gen(function* () {
     yield* fileSystem.writeFileString(tokenFile, execToken, { mode: 0o600 }).pipe(Effect.ignore);
     yield* cliFor(backend.command)(
       "start",
-      record.worktreePath,
+      record.workspacePath,
       backend.execArgs({
         name: record.containerName,
         tty: false,
@@ -850,7 +954,7 @@ const make = Effect.gen(function* () {
       if (yield* execServerAlive(record)) return;
       yield* Effect.sleep("250 millis");
     }
-    return yield* fail("start", record.worktreePath, "The sandbox's exec server did not start.")();
+    return yield* fail("start", record.workspacePath, "The sandbox's exec server did not start.")();
   });
 
   const startTunnel = (record: SandboxRecord) => {
@@ -867,13 +971,14 @@ const make = Effect.gen(function* () {
       preferredHostPort: (containerPort) =>
         preferredSandboxHostPort(record.containerName, containerPort),
       onPortsChanged: publish,
+      onHostActivity: () => wakeSoon(record),
       onExit: (detail) => {
         if (record.tunnel !== tunnel) return;
         record.tunnel = null;
         // The relay only exits by itself when the sandbox or its runtime went away.
         if (detail !== "closed") {
           setStatus(record, "stopped");
-          PubSub.publishUnsafe(stoppedWorktrees, record.worktreePath);
+          announceStopped(record);
         } else {
           publish();
         }
@@ -893,16 +998,43 @@ const make = Effect.gen(function* () {
    * Builds the image and creates the sandbox when either is missing, starts
    * a stopped sandbox, and starts the relay. Callers hold the record lock.
    */
+  /** Thaws a sleeping sandbox. Every exec hangs on a frozen VM, so callers wake it first. */
+  const wakeUnlocked = (record: SandboxRecord) =>
+    Effect.gen(function* () {
+      if (!record.sleeping) return;
+      yield* (
+        backendOf(record).wake?.(record.containerName, record.workspacePath) ?? Effect.void
+      ).pipe(Effect.mapError(fromBackend));
+      record.sleeping = false;
+      record.lastUsedAt = Date.now();
+      setStatus(record, "running");
+    });
+
+  /** Wakes a sleeping sandbox in the background, for callers that cannot wait (a preview tab, a keystroke). */
+  const wakeSoon = (record: SandboxRecord) => {
+    record.lastUsedAt = Date.now();
+    if (!record.sleeping) return;
+    runFork(
+      record.lock
+        .withPermits(1)(wakeUnlocked(record))
+        .pipe(
+          Effect.catchCause((cause) => Effect.logWarning("Could not wake a sandbox", { cause })),
+        ),
+    );
+  };
+
   const startUnlocked = (record: SandboxRecord, onOutput: (line: string) => void = () => {}) =>
     Effect.gen(function* () {
       // A lookup can hold a record that Remove deleted while it waited for the lock.
-      if (records.get(record.worktreePath) !== record) return false;
+      if (records.get(record.workspacePath) !== record) return false;
+      yield* wakeUnlocked(record);
+      record.lastUsedAt = Date.now();
       if (record.status === "running" && record.tunnel?.alive === true) return true;
       setStatus(record, "starting");
       const backend = backendOf(record);
       const state = yield* backend.state(record.containerName);
       if (state === "missing") {
-        yield* backend.ensureAvailable(record.worktreePath);
+        yield* backend.ensureAvailable(record.workspacePath);
         record.image = yield* backend.ensureImage(
           { uid, gid, home, versions: record.versions },
           onOutput,
@@ -911,7 +1043,7 @@ const make = Effect.gen(function* () {
         onOutput(`Starting sandbox ${record.containerName}`);
         yield* backend.create({
           name: record.containerName,
-          worktreePath: record.worktreePath,
+          workspacePath: record.workspacePath,
           image: record.image,
           versions: record.versions,
           mounts: record.mounts,
@@ -919,6 +1051,8 @@ const make = Effect.gen(function* () {
           gid,
           home,
           ipv6Loopback: mcpReverse?.host === "::1",
+          threadId: record.threadIds.values().next().value,
+          environmentId,
           ...(backend.execServer
             ? {
                 execHostPort: (record.execPort = yield* freeHostPort(
@@ -932,7 +1066,7 @@ const make = Effect.gen(function* () {
           .makeDirectory(controlDir(record.containerName), { recursive: true })
           .pipe(Effect.ignore);
       } else if (state !== "running") {
-        yield* backend.start(record.containerName, record.worktreePath);
+        yield* backend.start(record.containerName, record.workspacePath);
       }
       if (state !== "running") yield* copyIn(record);
       yield* ensureExecServer(record);
@@ -941,7 +1075,7 @@ const make = Effect.gen(function* () {
         // sandbox; stop them like the host stops orphaned terminals.
         yield* cliFor(backend.command)(
           "start",
-          record.worktreePath,
+          record.workspacePath,
           backend.execArgs({
             name: record.containerName,
             tty: false,
@@ -950,8 +1084,8 @@ const make = Effect.gen(function* () {
         ).pipe(Effect.ignore);
         record.reaped = true;
       }
-      if (!gitEnvs.has(record.worktreePath)) {
-        gitEnvs.set(record.worktreePath, yield* gitEnvFor(record.worktreePath));
+      if (!gitEnvs.has(record.workspacePath)) {
+        gitEnvs.set(record.workspacePath, yield* gitEnvFor(record.workspacePath));
       }
       if (record.tunnel?.alive !== true) startTunnel(record);
       record.lastUsedAt = Date.now();
@@ -962,12 +1096,18 @@ const make = Effect.gen(function* () {
       Effect.tapError((error) => Effect.sync(() => setStatus(record, "error", error.detail))),
     );
 
-  const ensureRunning = (record: SandboxRecord) =>
-    record.lock.withPermits(1)(startUnlocked(record));
-
-  const recordFor = (cwd: string) => {
+  /** The sandbox a thread was attached to. */
+  const threadRecord = (threadId: string) => {
     for (const record of records.values()) {
-      if (containsPath(record.worktreePath, cwd, path.sep)) return record;
+      if (record.threadIds.has(threadId)) return record;
+    }
+    return undefined;
+  };
+
+  /** A sandbox adopted without its thread list that owns `cwd`. */
+  const unknownThreadsRecordFor = (cwd: string) => {
+    for (const record of records.values()) {
+      if (record.threadsUnknown && containsPath(record.workspacePath, cwd, path.sep)) return record;
     }
     return undefined;
   };
@@ -977,11 +1117,15 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       if (!unverified || !containsPath(serverConfig.worktreesDir, cwd, path.sep)) return false;
       yield* reconcileOnce;
-      return unverified && recordFor(cwd) === undefined;
+      if (!unverified) return false;
+      for (const record of records.values()) {
+        if (containsPath(record.workspacePath, cwd, path.sep)) return false;
+      }
+      return true;
     });
 
   const makeExecTarget = (record: SandboxRecord): SandboxExecTarget => ({
-    worktreePath: record.worktreePath,
+    workspacePath: record.workspacePath,
     containerName: record.containerName,
     command: (input) => {
       for (const name of ["CODEX_HOME", "CLAUDE_CONFIG_DIR"]) {
@@ -990,14 +1134,14 @@ const make = Effect.gen(function* () {
         if (!record.mounts.some((mount) => containsPath(mount.path, value, path.sep))) {
           throw fail(
             "exec",
-            record.worktreePath,
+            record.workspacePath,
             `This provider uses ${name}=${value}, which this sandbox does not mount. Start a new sandbox after changing a provider's home folder.`,
           )();
         }
       }
       const execId = NodeCrypto.randomUUID();
       const envFile = path.join(controlDir(record.containerName), `${execId}.env`);
-      const env: Record<string, string> = { ...gitEnvs.get(record.worktreePath) };
+      const env: Record<string, string> = { ...gitEnvs.get(record.workspacePath) };
       for (const name of sandboxEnvNames(input.env, hostEnv)) env[name] = input.env[name]!;
       // The host pty sets TERM on the backend's exec, which does not pass it on.
       if (input.tty && (env.TERM === undefined || env.TERM === "dumb")) env.TERM = "xterm-256color";
@@ -1030,30 +1174,52 @@ const make = Effect.gen(function* () {
   });
 
   /**
-   * The marker file for a worktree: `<git admin dir>/t3code-sandbox.json`,
-   * found through the `.git` file a linked worktree has at its root.
+   * The marker file for a workspace: `<git admin dir>/t3code-sandbox.json`.
+   * The admin dir is `.git` in a checkout, or what the `.git` file of a
+   * linked worktree points to. Folders outside git have no marker.
    */
-  const markerPath = (worktreePath: string) =>
-    fileSystem.readFileString(path.join(worktreePath, ".git")).pipe(
-      Effect.map((text) => /^gitdir:\s*(.+)$/m.exec(text)?.[1]?.trim()),
-      Effect.map((gitDir) =>
-        gitDir === undefined
-          ? undefined
-          : path.join(path.resolve(worktreePath, gitDir), MARKER_FILE),
+  const markerPath = (workspacePath: string) =>
+    Effect.gen(function* () {
+      const dotGit = path.join(workspacePath, ".git");
+      const info = yield* fileSystem.stat(dotGit).pipe(Effect.option);
+      if (Option.isNone(info)) return undefined;
+      if (info.value.type === "Directory") return path.join(dotGit, MARKER_FILE);
+      const gitDir = yield* fileSystem.readFileString(dotGit).pipe(
+        Effect.map((text) => /^gitdir:\s*(.+)$/m.exec(text)?.[1]?.trim()),
+        Effect.orElseSucceed(() => undefined),
+      );
+      return gitDir === undefined
+        ? undefined
+        : path.join(path.resolve(workspacePath, gitDir), MARKER_FILE);
+    });
+
+  /** Saves the record next to its workspace's git data, so a lost list can be rebuilt. */
+  const writeMarker = (record: SandboxRecord) =>
+    Effect.gen(function* () {
+      const marker = yield* markerPath(record.workspacePath);
+      if (marker === undefined) return;
+      const contents = yield* encodeMarker(toEntry(record));
+      yield* writeFileStringAtomically({ filePath: marker, contents });
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.mapError(
+        fail("create", record.workspacePath, "Could not mark the workspace as sandboxed."),
       ),
-      Effect.orElseSucceed(() => undefined),
     );
 
   /**
-   * Rebuilds a sandbox from the marker in its worktree when the saved list
+   * Rebuilds a sandbox from the marker in its workspace when the saved list
    * lost it, so a lost list never lets sandboxed work start on the host.
    */
   const recordFromMarker = (cwd: string) =>
     Effect.gen(function* () {
       // Every ancestor is checked, so a submodule or nested repository inside
-      // a sandboxed worktree still finds the worktree's marker.
+      // a sandboxed workspace still finds the workspace's marker.
       let dir = cwd;
       while (true) {
+        const existing = records.get(dir);
+        if (existing !== undefined) return existing;
         const marker = yield* markerPath(dir);
         const entry =
           marker === undefined
@@ -1062,13 +1228,11 @@ const make = Effect.gen(function* () {
                 Effect.flatMap(decodeMarker),
                 Effect.orElseSucceed(() => undefined),
               );
-        if (entry !== undefined && entry.worktreePath === dir) {
-          const existing = records.get(entry.worktreePath);
-          if (existing !== undefined) return existing;
+        if (entry !== undefined && entry.workspacePath === dir) {
           addLoadedRecord(entry);
           publish();
           yield* persistOrLog;
-          return records.get(entry.worktreePath);
+          return records.get(entry.workspacePath);
         }
         const parent = path.dirname(dir);
         if (parent === dir) return undefined;
@@ -1076,51 +1240,164 @@ const make = Effect.gen(function* () {
       }
     });
 
-  /** The sandbox owning `cwd`, from memory or its worktree's marker. */
-  const lookup = (cwd: string) =>
-    Effect.suspend(() => {
-      const record = recordFor(cwd);
-      return record === undefined ? recordFromMarker(cwd) : Effect.succeed(record);
+  /**
+   * The sandbox the thread runs in: the one it was attached to, or one whose
+   * thread list was lost and that owns `cwd`. A thread attached elsewhere
+   * cannot run outside its sandbox's workspace.
+   */
+  const lookup = (ref: SandboxThreadRef) =>
+    Effect.gen(function* () {
+      const attached = threadRecord(ref.threadId);
+      if (attached !== undefined) {
+        if (!containsPath(attached.workspacePath, ref.cwd, path.sep)) {
+          return yield* fail(
+            "exec",
+            attached.workspacePath,
+            `This thread runs in a sandbox for ${attached.workspacePath}, which cannot reach ${ref.cwd}. Take the thread out of its sandbox to work there.`,
+          )();
+        }
+        return attached;
+      }
+      const unknown = unknownThreadsRecordFor(ref.cwd);
+      if (unknown !== undefined) return unknown;
+      const fromMarker = yield* recordFromMarker(ref.cwd);
+      return fromMarker !== undefined &&
+        (fromMarker.threadsUnknown || fromMarker.threadIds.has(ref.threadId))
+        ? fromMarker
+        : undefined;
     });
 
-  const register: SandboxService["Service"]["register"] = Effect.fn("SandboxService.register")(
+  /** Deletes a sandbox and forgets it. Callers hold the record lock. */
+  const removeUnlocked = (record: SandboxRecord) =>
+    Effect.gen(function* () {
+      yield* wakeUnlocked(record);
+      record.tunnel?.close();
+      record.tunnel = null;
+      // A failed first start can leave no sandbox to delete.
+      yield* backendOf(record)
+        .remove(record.containerName, record.workspacePath)
+        .pipe(Effect.mapError(fromBackend));
+      records.delete(record.workspacePath);
+      gitEnvs.delete(record.workspacePath);
+      publish();
+      announceStopped(record);
+      yield* persistOrLog;
+      const marker = yield* markerPath(record.workspacePath);
+      if (marker !== undefined) yield* fileSystem.remove(marker).pipe(Effect.ignore);
+      yield* fileSystem
+        .remove(controlDir(record.containerName), { recursive: true })
+        .pipe(Effect.ignore);
+    });
+
+  /**
+   * Adds folders the sandbox does not mount yet. Mounts are fixed when a
+   * sandbox is created, so it is deleted and created again with them: the
+   * workspace and config folders are on the host, only the machine's own
+   * state (installed packages, services) starts over. Callers hold the lock.
+   */
+  const addMountsUnlocked = (record: SandboxRecord, folders: ReadonlyArray<string>) =>
+    Effect.gen(function* () {
+      const missing: Array<string> = [];
+      for (const folder of folders) {
+        if (!isMountablePath(folder)) continue;
+        if (record.mounts.some((mount) => containsPath(mount.path, folder, path.sep))) continue;
+        if (missing.some((other) => containsPath(other, folder, path.sep))) continue;
+        if (!(yield* fileSystem.exists(folder).pipe(Effect.orElseSucceed(() => false)))) continue;
+        missing.push(folder);
+      }
+      if (missing.length === 0) return;
+      if (record.activeExecs > 0) {
+        return yield* fail(
+          "exec",
+          record.workspacePath,
+          `This thread needs ${missing.join(", ")}, which its sandbox does not mount, and the sandbox is still running other commands. Stop the sandbox, then send the message again.`,
+        )();
+      }
+      yield* wakeUnlocked(record);
+      record.tunnel?.close();
+      record.tunnel = null;
+      yield* backendOf(record)
+        .remove(record.containerName, record.workspacePath)
+        .pipe(Effect.mapError(fromBackend));
+      record.mounts = [
+        ...record.mounts,
+        ...missing.map((folder) => ({ path: folder, readOnly: false })),
+      ];
+      record.execPort = null;
+      record.reaped = true;
+      setStatus(record, "stopped");
+      announceStopped(record);
+      yield* persistOrLog;
+      yield* writeMarker(record);
+      yield* Effect.logInfo("Recreating a sandbox to mount more folders", {
+        workspacePath: record.workspacePath,
+        folders: missing,
+      });
+    });
+
+  const attach: SandboxService["Service"]["attach"] = Effect.fn("SandboxService.attach")(
     function* (input) {
       yield* Deferred.await(ready);
       if (!supported) {
         return yield* fail(
           "create",
-          input.worktreePath,
+          input.workspacePath,
           "Sandboxes run on Linux and macOS hosts.",
         )();
       }
-      if (!isMountablePath(input.worktreePath)) {
+      const current = threadRecord(input.threadId);
+      if (current?.workspacePath === input.workspacePath) return;
+      if (current !== undefined) yield* detach(input.threadId);
+      const existing = records.get(input.workspacePath);
+      if (existing !== undefined) {
+        existing.threadIds.add(input.threadId);
+        publish();
+        yield* persist.pipe(
+          Effect.andThen(writeMarker(existing)),
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              existing.threadIds.delete(input.threadId);
+              publish();
+            }).pipe(Effect.andThen(persistOrLog)),
+          ),
+        );
+        // Sessions the thread opened on the host must not be reused.
+        announceMoved(existing, input.threadId);
+        return;
+      }
+      if (!isMountablePath(input.workspacePath)) {
         return yield* fail(
           "create",
-          input.worktreePath,
+          input.workspacePath,
           "Sandboxes cannot mount a path that contains a comma or a colon.",
         )();
       }
+      if (containsPath(input.workspacePath, home, path.sep)) {
+        return yield* fail(
+          "create",
+          input.workspacePath,
+          "A sandbox cannot mount a folder that contains your home folder.",
+        )();
+      }
+      // A folder outside git has no git dir to mount or marker to keep.
       const gitCommonDir = yield* processRunner
         .run({
           command: "git",
           args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-          cwd: input.worktreePath,
+          cwd: input.workspacePath,
           env: hostEnv,
         })
         .pipe(
-          Effect.flatMap((result) =>
-            result.code === 0 && result.stdout.trim().length > 0
-              ? Effect.succeed(result.stdout.trim())
-              : Effect.fail(result.stderr),
+          Effect.map((result) =>
+            result.code === 0 && result.stdout.trim().length > 0 ? result.stdout.trim() : null,
           ),
-          Effect.mapError(
-            fail("create", input.worktreePath, "Could not find the worktree's git folder."),
-          ),
+          Effect.orElseSucceed(() => null),
         );
-      records.get(input.worktreePath)?.tunnel?.close();
-      const containerName = sandboxContainerName(input.worktreePath);
+      const containerName = sandboxContainerName(input.workspacePath);
       const record: SandboxRecord = {
-        worktreePath: input.worktreePath,
+        workspacePath: input.workspacePath,
+        threadIds: new Set([input.threadId]),
+        threadsUnknown: false,
         containerName,
         backend: defaultBackend,
         versions: {
@@ -1129,7 +1406,7 @@ const make = Effect.gen(function* () {
         },
         mounts: yield* mountsFor(
           containerName,
-          input.worktreePath,
+          input.workspacePath,
           gitCommonDir,
           input.projectRoot,
           input.providers,
@@ -1142,45 +1419,35 @@ const make = Effect.gen(function* () {
         reaped: true,
         activeExecs: 0,
         lastUsedAt: Date.now(),
+        sleeping: false,
+        turns: new Set(),
+        retired: new Set(),
         execPort: null,
         lock: Semaphore.makeUnsafe(1),
       };
       // Saved before the slow start, so terminals opened during the build wait
       // for the sandbox instead of starting on the host. A failed start leaves
       // the record in place for the next attempt.
-      records.set(record.worktreePath, record);
+      records.set(record.workspacePath, record);
       publish();
-      const marker = yield* markerPath(record.worktreePath);
       yield* persist.pipe(
-        Effect.andThen(
-          marker === undefined
-            ? fail("create", record.worktreePath, "The worktree has no git admin folder.")()
-            : encodeMarker(toEntry(record)).pipe(
-                Effect.flatMap((contents) =>
-                  writeFileStringAtomically({ filePath: marker, contents }),
-                ),
-                Effect.provideService(FileSystem.FileSystem, fileSystem),
-                Effect.provideService(Path.Path, path),
-                Effect.mapError(
-                  fail("create", record.worktreePath, "Could not mark the worktree as sandboxed."),
-                ),
-              ),
-        ),
+        Effect.andThen(writeMarker(record)),
         Effect.tapError(() =>
           Effect.sync(() => {
-            records.delete(record.worktreePath);
+            records.delete(record.workspacePath);
             publish();
           }).pipe(Effect.andThen(persistOrLog)),
         ),
       );
+      announceMoved(record, input.threadId);
     },
   );
 
   const start: SandboxService["Service"]["start"] = Effect.fn("SandboxService.start")(
     function* (input) {
-      const record = records.get(input.worktreePath);
+      const record = threadRecord(input.threadId);
       if (record === undefined) {
-        return yield* fail("start", input.worktreePath, "This worktree has no sandbox.")();
+        return yield* fail("start", "", "This thread has no sandbox.")();
       }
       const onOutput = (line: string) => {
         if (input.onOutput) Effect.runFork(input.onOutput(line));
@@ -1190,67 +1457,139 @@ const make = Effect.gen(function* () {
     },
   );
 
-  const execTarget: SandboxService["Service"]["execTarget"] = (cwd) =>
+  const execTarget: SandboxService["Service"]["execTarget"] = (ref) =>
     Effect.gen(function* () {
       yield* Deferred.await(ready);
-      if (yield* unknownSandbox(cwd)) {
+      if (yield* unknownSandbox(ref.cwd)) {
         return yield* fail(
           "start",
-          cwd,
-          "T3 could not read its sandbox list and the sandbox runtime is not reachable, so it cannot tell whether this worktree runs in a sandbox. Start the runtime and try again.",
+          ref.cwd,
+          "T3 could not read its sandbox list and the sandbox runtime is not reachable, so it cannot tell whether this thread runs in a sandbox. Start the runtime and try again.",
         )();
       }
-      const record = yield* lookup(cwd);
+      const record = yield* lookup(ref);
       if (record === undefined) return Option.none();
-      return (yield* ensureRunning(record)) ? Option.some(makeExecTarget(record)) : Option.none();
+      const started = yield* record.lock.withPermits(1)(
+        addMountsUnlocked(record, ref.homes ?? []).pipe(Effect.andThen(startUnlocked(record))),
+      );
+      return started ? Option.some(makeExecTarget(record)) : Option.none();
     });
 
   /** Stops a sandbox. Callers hold the record lock. */
   const stopUnlocked = (record: SandboxRecord) =>
     Effect.gen(function* () {
+      // A frozen VM cannot shut down.
+      yield* wakeUnlocked(record);
       record.tunnel?.close();
       record.tunnel = null;
       yield* backendOf(record)
-        .stop(record.containerName, record.worktreePath)
+        .stop(record.containerName, record.workspacePath)
         .pipe(Effect.mapError(fromBackend));
       // The sandbox's processes are gone, so nothing is left to reap.
       record.reaped = true;
       record.activeExecs = 0;
       setStatus(record, "stopped");
-      PubSub.publishUnsafe(stoppedWorktrees, record.worktreePath);
+      announceStopped(record);
     });
 
-  const stop: SandboxService["Service"]["stop"] = (worktreePath) =>
+  /** Puts an idle sandbox to sleep, or stops it on backends that cannot sleep. Callers hold the lock. */
+  const sleepUnlocked = (record: SandboxRecord) =>
     Effect.gen(function* () {
-      const record = records.get(worktreePath);
+      const backend = backendOf(record);
+      if (backend.sleep === undefined) return yield* stopUnlocked(record);
+      yield* backend
+        .sleep(record.containerName, record.workspacePath)
+        .pipe(Effect.mapError(fromBackend));
+      record.sleeping = true;
+      setStatus(record, "sleeping");
+    });
+
+  /** The sandbox a thread works in, without any I/O. */
+  const recordFor = (ref: SandboxThreadRef) =>
+    threadRecord(ref.threadId) ?? unknownThreadsRecordFor(ref.cwd);
+
+  const turnStarted: SandboxService["Service"]["turnStarted"] = (input) =>
+    Effect.gen(function* () {
+      const record = recordFor(input);
+      if (record === undefined) return;
+      record.turns.add(input.key);
+      record.retired.delete(input.threadId);
+      yield* record.lock.withPermits(1)(wakeUnlocked(record));
+    });
+
+  const turnEnded: SandboxService["Service"]["turnEnded"] = (key) => {
+    for (const record of records.values()) {
+      if (record.turns.delete(key)) record.lastUsedAt = Date.now();
+    }
+  };
+
+  const touch: SandboxService["Service"]["touch"] = (ref) => {
+    const record = recordFor(ref);
+    if (record !== undefined) wakeSoon(record);
+  };
+
+  const retire: SandboxService["Service"]["retire"] = (threadId) =>
+    Effect.gen(function* () {
+      const record = threadRecord(threadId);
+      if (record === undefined) return;
+      record.retired.add(threadId);
+      if (record.threadsUnknown || [...record.threadIds].some((id) => !record.retired.has(id))) {
+        return;
+      }
+      // The thread stays sandboxed: its next command creates a fresh VM.
+      yield* record.lock.withPermits(1)(
+        Effect.gen(function* () {
+          if (record.turns.size > 0 || records.get(record.workspacePath) !== record) return;
+          yield* wakeUnlocked(record);
+          record.tunnel?.close();
+          record.tunnel = null;
+          yield* backendOf(record)
+            .remove(record.containerName, record.workspacePath)
+            .pipe(Effect.mapError(fromBackend));
+          record.reaped = true;
+          record.activeExecs = 0;
+          setStatus(record, "stopped");
+          announceStopped(record);
+        }),
+      );
+    });
+
+  const unretire: SandboxService["Service"]["unretire"] = (threadId) => {
+    threadRecord(threadId)?.retired.delete(threadId);
+  };
+
+  const stop: SandboxService["Service"]["stop"] = (threadId) =>
+    Effect.gen(function* () {
+      const record = threadRecord(threadId);
       if (record === undefined) return;
       yield* record.lock.withPermits(1)(stopUnlocked(record));
     });
 
-  const remove: SandboxService["Service"]["remove"] = (worktreePath) =>
-    Effect.gen(function* () {
-      const record = records.get(worktreePath);
+  function detach(threadId: string): Effect.Effect<void, SandboxError> {
+    return Effect.gen(function* () {
+      const record = threadRecord(threadId);
       if (record === undefined) return;
       yield* record.lock.withPermits(1)(
         Effect.gen(function* () {
-          record.tunnel?.close();
-          record.tunnel = null;
-          // A failed first start can leave no sandbox to delete.
-          yield* backendOf(record)
-            .remove(record.containerName, worktreePath)
-            .pipe(Effect.mapError(fromBackend));
-          records.delete(worktreePath);
-          gitEnvs.delete(worktreePath);
-          publish();
-          PubSub.publishUnsafe(stoppedWorktrees, worktreePath);
-          yield* persistOrLog;
-          const marker = yield* markerPath(worktreePath);
-          if (marker !== undefined) yield* fileSystem.remove(marker).pipe(Effect.ignore);
-          yield* fileSystem
-            .remove(controlDir(record.containerName), { recursive: true })
-            .pipe(Effect.ignore);
+          if (record.threadIds.size > 1) {
+            record.threadIds.delete(threadId);
+            publish();
+            announceMoved(record, threadId);
+            yield* persistOrLog;
+            yield* writeMarker(record).pipe(Effect.ignore);
+            return;
+          }
+          yield* removeUnlocked(record);
         }),
       );
+    });
+  }
+
+  const remove: SandboxService["Service"]["remove"] = (workspacePath) =>
+    Effect.gen(function* () {
+      const record = records.get(workspacePath);
+      if (record === undefined) return;
+      yield* record.lock.withPermits(1)(removeUnlocked(record));
     });
 
   const list = Effect.sync(() => [...records.values()].map(summarize));
@@ -1273,15 +1612,21 @@ const make = Effect.gen(function* () {
 
   const forwardedPorts: SandboxService["Service"]["forwardedPorts"] = () =>
     [...records.values()].flatMap((record) =>
-      (record.tunnel?.ports ?? []).map((port) => ({ worktreePath: record.worktreePath, ...port })),
+      (record.tunnel?.ports ?? []).map((port) => ({
+        workspacePath: record.workspacePath,
+        ...port,
+      })),
     );
 
-  const worktreeExists = (worktreePath: string) =>
-    fileSystem.exists(worktreePath).pipe(Effect.orElseSucceed(() => false));
+  const worktreeExists = (workspacePath: string) =>
+    fileSystem.exists(workspacePath).pipe(Effect.orElseSucceed(() => false));
 
   const addLoadedRecord = (entry: RegistryEntry) =>
-    records.set(entry.worktreePath, {
+    records.set(entry.workspacePath, {
       ...entry,
+      mounts: [...entry.mounts],
+      threadIds: new Set(entry.threadIds ?? []),
+      threadsUnknown: entry.threadIds === undefined,
       backend: entry.backend ?? "docker",
       status: "stopped",
       error: null,
@@ -1289,6 +1634,9 @@ const make = Effect.gen(function* () {
       reaped: false,
       activeExecs: 0,
       lastUsedAt: Date.now(),
+      sleeping: false,
+      turns: new Set(),
+      retired: new Set(),
       execPort: null,
       lock: Semaphore.makeUnsafe(1),
     });
@@ -1322,8 +1670,9 @@ const make = Effect.gen(function* () {
   for (const entry of saved) addLoadedRecord(entry);
 
   /**
-   * Adopts labeled sandboxes the saved list does not know, drops sandboxes
-   * whose worktree is gone, and reconnects sandboxes that are still running
+   * Adopts labeled sandboxes the saved list does not know (their threads are
+   * unknown, so any thread in their workspace runs in them), drops sandboxes
+   * whose workspace is gone or that no thread uses, and reconnects sandboxes that are still running
    * so their ports show up after a restart. Backends that are not installed
    * are skipped; their sandboxes stay registered and fail closed.
    */
@@ -1337,9 +1686,9 @@ const make = Effect.gen(function* () {
       listed = true;
       for (const instance of owned.value) {
         if (instance.running) running.add(instance.name);
-        if (records.has(instance.worktreePath)) continue;
+        if (records.has(instance.workspacePath)) continue;
         addLoadedRecord({
-          worktreePath: instance.worktreePath,
+          workspacePath: instance.workspacePath,
           containerName: instance.name,
           backend: backend.kind,
           image: instance.image,
@@ -1353,11 +1702,15 @@ const make = Effect.gen(function* () {
       return yield* fail("start", registryPath, "No sandbox runtime could list its sandboxes.")();
     }
     for (const record of [...records.values()]) {
-      if (yield* worktreeExists(record.worktreePath)) continue;
-      records.delete(record.worktreePath);
+      const used = record.threadsUnknown || record.threadIds.size > 0;
+      if (used && (yield* worktreeExists(record.workspacePath))) continue;
+      records.delete(record.workspacePath);
       changed = true;
+      yield* (
+        backendOf(record).wake?.(record.containerName, record.workspacePath) ?? Effect.void
+      ).pipe(Effect.ignore);
       yield* backendOf(record)
-        .remove(record.containerName, record.worktreePath)
+        .remove(record.containerName, record.workspacePath)
         .pipe(Effect.ignore);
     }
     if (unverified) changed = true;
@@ -1378,77 +1731,127 @@ const make = Effect.gen(function* () {
 
   yield* reconcileOnce.pipe(
     Effect.tap(() => Deferred.succeed(ready, undefined)),
+    // Sandboxes an earlier server process left running (it crashed, or
+    // could not stop them) stop now; the next command starts them again.
     Effect.flatMap((runningRecords) =>
-      Effect.forEach(runningRecords, (record) => ensureRunning(record).pipe(Effect.ignore), {
-        discard: true,
-      }),
+      Effect.forEach(
+        runningRecords,
+        (record) =>
+          record.lock
+            .withPermits(1)(
+              Effect.gen(function* () {
+                // It may have been put to sleep before the crash.
+                record.sleeping = true;
+                yield* stopUnlocked(record);
+              }),
+            )
+            .pipe(Effect.ignore),
+        { discard: true },
+      ),
     ),
     Effect.ensuring(Deferred.succeed(ready, undefined)),
     Effect.forkScoped,
   );
 
-  // Idle sandboxes stop so a machine running many of them only pays for the
-  // busy ones. Busy means a command T3 started is still running or bytes
-  // crossed the relay (a preview tab, MCP, git over SSH) within the window.
-  // The next command starts the sandbox again.
+  // An idle sandbox sleeps so a machine running many of them only pays for
+  // the busy ones: its free memory goes back to the host and it takes no
+  // CPU, while its processes keep their state. Idle means no provider turn
+  // runs in it and nothing used it (a command, a keystroke, relay bytes
+  // such as a preview tab or git over SSH) within the window. Any of those
+  // wakes it again.
   const idleMs = idleMinutes(hostEnv) * 60_000;
   if (idleMs > 0) {
     yield* Effect.gen(function* () {
       const now = Date.now();
       for (const record of records.values()) {
-        if (record.status !== "running" || record.activeExecs > 0) continue;
-        if ((record.tunnel?.connections ?? 0) > 0) continue;
+        if (record.status !== "running" || record.sleeping || record.turns.size > 0) continue;
         const lastActive = Math.max(record.lastUsedAt, record.tunnel?.lastActivityAt ?? 0);
         if (now - lastActive < idleMs) continue;
         yield* record.lock
           .withPermits(1)(
-            // Recheck under the lock: a command may have started meanwhile.
-            record.activeExecs > 0 || record.status !== "running"
+            // Recheck under the lock: a turn may have started meanwhile.
+            record.turns.size > 0 || record.status !== "running" || record.sleeping
               ? Effect.void
-              : stopUnlocked(record).pipe(
+              : sleepUnlocked(record).pipe(
                   Effect.tap(() =>
-                    Effect.logInfo("Stopped an idle sandbox", {
-                      worktreePath: record.worktreePath,
+                    Effect.logInfo("An idle sandbox went to sleep", {
+                      workspacePath: record.workspacePath,
                     }),
                   ),
                 ),
           )
           .pipe(
             Effect.catchCause((cause) =>
-              Effect.logWarning("Could not stop an idle sandbox", { cause }),
+              Effect.logWarning("Could not put an idle sandbox to sleep", { cause }),
             ),
           );
       }
     }).pipe(Effect.repeat(Schedule.spaced("1 minute")), Effect.forkScoped);
   }
 
+  // Sandboxes live and die with the server, like child processes. A crash
+  // that skips this is covered by the VM's own idle timeout.
   yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
-      for (const record of records.values()) record.tunnel?.close();
-    }),
+    Effect.forEach(
+      [...records.values()].filter((record) => record.status !== "stopped"),
+      (record) =>
+        stopUnlocked(record).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Could not stop a sandbox on shutdown", { cause }),
+          ),
+        ),
+      { concurrency: "unbounded", discard: true },
+    ).pipe(
+      Effect.timeout("20 seconds"),
+      Effect.ignore,
+      Effect.ensuring(
+        Effect.sync(() => {
+          for (const record of records.values()) record.tunnel?.close();
+        }),
+      ),
+    ),
   );
 
   return SandboxService.of({
     supported,
     backend: defaultBackend,
-    register,
+    attach,
     start,
     execTarget,
-    isSandboxed: (cwd) =>
+    turnStarted,
+    turnEnded,
+    touch,
+    retire,
+    unretire,
+    // A thread whose sandbox cannot reach its folder counts as sandboxed, so
+    // it fails closed in execTarget instead of running on the host.
+    isSandboxed: (ref) =>
       Deferred.await(ready).pipe(
-        Effect.andThen(unknownSandbox(cwd)),
+        Effect.andThen(unknownSandbox(ref.cwd)),
         Effect.flatMap((unknown) =>
           unknown
             ? Effect.succeed(true)
-            : lookup(cwd).pipe(Effect.map((record) => record !== undefined)),
+            : lookup(ref).pipe(
+                Effect.map((record) => record !== undefined),
+                Effect.orElseSucceed(() => true),
+              ),
+        ),
+      ),
+    workspaceOf: (threadId, cwd) =>
+      Deferred.await(ready).pipe(
+        Effect.map(
+          () =>
+            (threadRecord(threadId) ?? (cwd === null ? undefined : unknownThreadsRecordFor(cwd)))
+              ?.workspacePath,
         ),
       ),
     stop,
+    detach,
     remove,
     list,
     stream,
     forwardedPorts,
-    stopped: Stream.fromPubSub(stoppedWorktrees),
+    stopped: Stream.fromPubSub(stoppedThreads),
   });
 });
 

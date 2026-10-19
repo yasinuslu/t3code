@@ -158,9 +158,9 @@ interface StartThreadBootstrap {
     readonly baseBranch: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
-    /** Run the new worktree in a sandbox. */
-    readonly sandbox?: boolean;
   };
+  /** Run the thread in a sandbox of its folder, whichever folder that is. */
+  readonly sandbox?: boolean;
   readonly runSetupScript?: boolean;
 }
 
@@ -646,7 +646,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
     const existingProjection =
       bootstrap === undefined ? yield* getProjection(input.threadId) : null;
     const thread = bootstrap ?? existingProjection!.thread;
-    const workspaceStrategy =
+    const folderStrategy =
       prepareWorktree !== undefined
         ? {
             type: "worktree" as const,
@@ -655,7 +655,6 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
             ...(prepareWorktree.startFromOrigin === undefined
               ? {}
               : { startFromOrigin: prepareWorktree.startFromOrigin }),
-            ...(prepareWorktree.sandbox === true ? { sandbox: true } : {}),
           }
         : bootstrap?.worktreePath
           ? {
@@ -669,6 +668,8 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
                 ? {}
                 : { branch: bootstrap.branch }),
             };
+    const workspaceStrategy =
+      input.bootstrap?.sandbox === true ? { ...folderStrategy, sandbox: true } : folderStrategy;
     return yield* request(ORCHESTRATION_V2_WS_METHODS.launchThread, {
       commandId,
       creationSource: input.creationSource ?? "web",

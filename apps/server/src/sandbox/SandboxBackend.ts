@@ -27,7 +27,7 @@ export interface SandboxBackend {
   /** The host port the sandbox publishes the exec server on, when it has one. */
   readonly execHostPort: (name: string) => Effect.Effect<number | null>;
   /** Fails with a readable reason when the runtime is missing or not running. */
-  readonly ensureAvailable: (worktreePath: string) => Effect.Effect<void, SandboxBackendError>;
+  readonly ensureAvailable: (workspacePath: string) => Effect.Effect<void, SandboxBackendError>;
   /** Builds the base image when missing and returns its reference. */
   readonly ensureImage: (
     spec: SandboxImageSpec,
@@ -36,10 +36,24 @@ export interface SandboxBackend {
   /** Creates and starts a sandbox, replacing one left under the same name. */
   readonly create: (spec: SandboxCreateSpec) => Effect.Effect<void, SandboxBackendError>;
   readonly state: (name: string) => Effect.Effect<SandboxInstanceState>;
-  readonly start: (name: string, worktreePath: string) => Effect.Effect<void, SandboxBackendError>;
-  readonly stop: (name: string, worktreePath: string) => Effect.Effect<void, SandboxBackendError>;
+  readonly start: (name: string, workspacePath: string) => Effect.Effect<void, SandboxBackendError>;
+  readonly stop: (name: string, workspacePath: string) => Effect.Effect<void, SandboxBackendError>;
+  /**
+   * Hands the guest's free memory back to the host and freezes the sandbox:
+   * no CPU, every process inside keeps its state. Backends without it stop
+   * idle sandboxes instead.
+   */
+  readonly sleep?: (
+    name: string,
+    workspacePath: string,
+  ) => Effect.Effect<void, SandboxBackendError>;
+  /** Undoes `sleep`. A no-op on a sandbox that is not asleep or not running. */
+  readonly wake?: (name: string, workspacePath: string) => Effect.Effect<void, SandboxBackendError>;
   /** Deletes the sandbox. Succeeds when it is already gone. */
-  readonly remove: (name: string, worktreePath: string) => Effect.Effect<void, SandboxBackendError>;
+  readonly remove: (
+    name: string,
+    workspacePath: string,
+  ) => Effect.Effect<void, SandboxBackendError>;
   /** Sandboxes labeled with this server's owner hash, for adoption after a lost registry. */
   readonly listOwned: Effect.Effect<ReadonlyArray<SandboxOwnedInstance>, SandboxBackendError>;
   /** Arguments for `command` that run `argv` inside the sandbox with stdio piped. */
@@ -75,7 +89,7 @@ export interface SandboxImageSpec {
 
 export interface SandboxCreateSpec {
   readonly name: string;
-  readonly worktreePath: string;
+  readonly workspacePath: string;
   readonly image: string;
   readonly versions: SandboxCliVersions;
   readonly mounts: ReadonlyArray<SandboxMount>;
@@ -86,11 +100,14 @@ export interface SandboxCreateSpec {
   readonly ipv6Loopback: boolean;
   /** Host loopback port for the exec server, for backends with `execServer`. */
   readonly execHostPort?: number | undefined;
+  /** The thread the sandbox was created for and this server's environment, as labels for host tooling. */
+  readonly threadId?: string | undefined;
+  readonly environmentId?: string | undefined;
 }
 
 export interface SandboxOwnedInstance {
   readonly name: string;
-  readonly worktreePath: string;
+  readonly workspacePath: string;
   readonly image: string;
   readonly versions: SandboxCliVersions;
   readonly mounts: ReadonlyArray<SandboxMount>;
@@ -99,7 +116,7 @@ export interface SandboxOwnedInstance {
 
 export interface SandboxBackendError {
   readonly operation: "create" | "start" | "exec" | "stop" | "remove";
-  readonly worktreePath: string;
+  readonly workspacePath: string;
   readonly detail: string;
   readonly cause?: unknown;
 }
@@ -109,7 +126,7 @@ export const SANDBOX_LABELS = {
   sandbox: "t3code.sandbox",
   /** Hash of the owning server's state dir, so servers on one machine never adopt each other's. */
   owner: "t3code.sandbox.owner",
-  worktree: "t3code.sandbox.worktree",
+  workspace: "t3code.sandbox.workspace",
   claude: "t3code.sandbox.claude",
   codex: "t3code.sandbox.codex",
 } as const;

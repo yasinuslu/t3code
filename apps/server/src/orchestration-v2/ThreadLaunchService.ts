@@ -17,6 +17,7 @@ import {
   type RunId,
   type RuntimeMode,
   type ScheduledTaskId,
+  SandboxRequestError,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -47,7 +48,8 @@ import { makeProviderFailure } from "./ProviderFailure.ts";
 import { randomUuidV4 } from "./RandomUuid.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 
-export type ThreadLaunchWorkspaceStrategy =
+/** Where the thread works. `sandbox` runs it in a sandbox of that folder, whichever folder it is. */
+export type ThreadLaunchWorkspaceStrategy = (
   | { readonly type: "root"; readonly branch?: string | undefined }
   | {
       readonly type: "existing_worktree";
@@ -59,8 +61,8 @@ export type ThreadLaunchWorkspaceStrategy =
       readonly baseRef: string;
       readonly branch?: string | undefined;
       readonly startFromOrigin?: boolean | undefined;
-      readonly sandbox?: boolean | undefined;
-    };
+    }
+) & { readonly sandbox?: boolean | undefined };
 
 export interface ThreadLaunchInitialMessage {
   readonly messageId?: MessageId;
@@ -163,6 +165,11 @@ export class ThreadLaunchService extends Context.Service<
     readonly retryPreparation: (
       input: ThreadLaunchRetryInput,
     ) => Effect.Effect<Orchestrator.OrchestratorV2DispatchResult, Orchestrator.OrchestratorV2Error>;
+    /**
+     * Moves an existing thread into a sandbox of its current folder. The
+     * sandbox starts in the background; the sandbox list shows its progress.
+     */
+    readonly enableSandbox: (threadId: ThreadId) => Effect.Effect<void, SandboxRequestError>;
   }
 >()("t3/orchestration-v2/ThreadLaunchService") {}
 
@@ -207,6 +214,24 @@ const make = Effect.gen(function* () {
         ...(threadId === undefined ? {} : { threadId }),
         cause,
       });
+
+  /** Puts the thread in the sandbox of `workspacePath`, mounting the config dirs its providers use there. */
+  const attachSandbox = (
+    service: SandboxService.SandboxService["Service"],
+    input: {
+      readonly threadId: ThreadId;
+      readonly workspacePath: string;
+      readonly projectRoot: string;
+    },
+  ) =>
+    Effect.gen(function* () {
+      const settings = yield* serverSettings.getSettings;
+      yield* service.attach({
+        ...input,
+        providers: yield* providerRegistry.getProviders,
+        homes: SandboxService.sandboxProviderHomes(settings),
+      });
+    });
 
   const readReceipt = (input: ThreadLaunchInput, commandId: CommandId) =>
     receipts
@@ -254,9 +279,9 @@ const make = Effect.gen(function* () {
     );
 
     const reused = input.reusedWorktree;
-    const tracked = input.workspaceStrategy.type === "worktree" || reused !== undefined;
-    const sandboxed =
-      input.workspaceStrategy.type === "worktree" && input.workspaceStrategy.sandbox === true;
+    const sandboxed = input.workspaceStrategy.sandbox === true;
+    const tracked =
+      input.workspaceStrategy.type === "worktree" || reused !== undefined || sandboxed;
     let createdWorktreePath: string | null = null;
     let setupTerminalId: string | null = null;
     let workspaceRecorded = false;
@@ -270,12 +295,12 @@ const make = Effect.gen(function* () {
           : ["fetch", "checkout", "setup-script", "agent"],
         fiber: yield* Effect.fiber,
       });
-    } else if (reused !== undefined) {
+    } else if (tracked) {
       yield* setupTracker.begin({
         threadId,
         branch: input.workspaceStrategy.branch ?? null,
-        baseRef: reused.baseRef,
-        stages: ["setup-script", "agent"],
+        baseRef: reused?.baseRef ?? null,
+        stages: sandboxed ? ["sandbox", "setup-script", "agent"] : ["setup-script", "agent"],
         fiber: yield* Effect.fiber,
       });
     }
@@ -405,27 +430,26 @@ const make = Effect.gen(function* () {
         worktreePath = worktree.worktree.path;
         branch = worktree.worktree.refName;
         createdWorktreePath = worktreePath;
-        // Registered before the thread shows its worktree, so nothing opened
-        // there can start on the host while the sandbox is still starting.
-        if (sandboxed) {
-          if (Option.isNone(sandboxes)) {
-            return yield* mapError(
-              input,
-              "provision-sandbox",
-              threadId,
-            )("This server cannot run sandboxes.");
-          }
-          yield* sandboxes.value
-            .register({
-              worktreePath,
-              projectRoot: project.workspaceRoot,
-              providers: yield* providerRegistry.getProviders,
-              homes: SandboxService.sandboxProviderHomes(yield* serverSettings.getSettings),
-            })
-            .pipe(Effect.mapError(mapError(input, "provision-sandbox", threadId)));
-        }
         yield* setupTracker.update(threadId, (snapshot) => ({ ...snapshot, worktreePath, branch }));
         yield* setupTracker.stageStatus(threadId, "checkout", "done");
+      }
+
+      // Attached before the thread shows its workspace, so nothing of the
+      // thread can start on the host while the sandbox is still starting.
+      const workspacePath = worktreePath ?? project.workspaceRoot;
+      if (sandboxed) {
+        if (Option.isNone(sandboxes)) {
+          return yield* mapError(
+            input,
+            "provision-sandbox",
+            threadId,
+          )("This server cannot run sandboxes.");
+        }
+        yield* attachSandbox(sandboxes.value, {
+          threadId,
+          workspacePath,
+          projectRoot: project.workspaceRoot,
+        }).pipe(Effect.mapError(mapError(input, "provision-sandbox", threadId)));
       }
 
       // A reused worktree is already recorded, and rewriting it could undo
@@ -488,18 +512,18 @@ const make = Effect.gen(function* () {
 
       // The sandbox starts before the setup script so the script installs
       // dependencies and services inside it.
-      if (sandboxed && worktreePath !== null && Option.isSome(sandboxes)) {
+      if (sandboxed && Option.isSome(sandboxes)) {
         yield* setupTracker.stageStatus(threadId, "sandbox", "running");
         yield* sandboxes.value
           .start({
-            worktreePath,
+            threadId,
             onOutput: (line) => setupTracker.appendTail(threadId, "sandbox", line),
           })
           .pipe(Effect.mapError(mapError(input, "provision-sandbox", threadId)));
         yield* setupTracker.stageStatus(threadId, "sandbox", "done");
       }
 
-      const cwd = worktreePath ?? project.workspaceRoot;
+      const cwd = workspacePath;
       if (runId !== null) {
         yield* threads
           .dispatch({
@@ -797,7 +821,11 @@ const make = Effect.gen(function* () {
                   .pipe(Effect.mapError(mapError(input, "provision-worktree", candidateThreadId))),
                 {
                   onNone: () => input.workspaceStrategy,
-                  onSome: (worktreePath) => ({ type: "existing_worktree", worktreePath }),
+                  onSome: (worktreePath) => ({
+                    type: "existing_worktree",
+                    worktreePath,
+                    ...(input.workspaceStrategy.sandbox === true ? { sandbox: true } : {}),
+                  }),
                 },
               )
             : input.workspaceStrategy;
@@ -922,6 +950,7 @@ const make = Effect.gen(function* () {
                 type: "existing_worktree",
                 worktreePath: boundWorktreePath,
                 branch: workspaceStrategy.branch,
+                ...(workspaceStrategy.sandbox === true ? { sandbox: true } : {}),
               }
             : workspaceStrategy;
         if (shouldSchedule) {
@@ -1005,6 +1034,7 @@ const make = Effect.gen(function* () {
               type: "existing_worktree" as const,
               worktreePath: projection.thread.worktreePath,
               branch: projection.thread.branch,
+              ...(workspacePreparation.sandbox === true ? { sandbox: true } : {}),
             },
             reusedWorktree: { baseRef: workspacePreparation.baseRef },
           }
@@ -1030,7 +1060,47 @@ const make = Effect.gen(function* () {
     );
   };
 
-  return ThreadLaunchService.of({ launch, retryPreparation });
+  const enableSandbox: ThreadLaunchService["Service"]["enableSandbox"] = (threadId) =>
+    Effect.gen(function* () {
+      if (Option.isNone(sandboxes)) return yield* Effect.fail("This server cannot run sandboxes.");
+      const projection = yield* threads.getThreadProjection(threadId);
+      const project = yield* projects.getById(projection.thread.projectId).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.fail("The thread's project no longer exists."),
+            onSome: Effect.succeed,
+          }),
+        ),
+      );
+      const service = sandboxes.value;
+      yield* attachSandbox(service, {
+        threadId,
+        workspacePath: projection.thread.worktreePath ?? project.workspaceRoot,
+        projectRoot: project.workspaceRoot,
+      });
+      yield* service.start({ threadId }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not start a thread's sandbox", { threadId, cause }),
+        ),
+        Effect.forkIn(preparationScope),
+      );
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SandboxRequestError({
+            operation: "enable",
+            threadId,
+            detail:
+              typeof cause === "string"
+                ? cause
+                : cause instanceof Error
+                  ? cause.message
+                  : String(cause),
+          }),
+      ),
+    );
+
+  return ThreadLaunchService.of({ launch, retryPreparation, enableSandbox });
 });
 
 export const layer = Layer.effect(ThreadLaunchService, make);

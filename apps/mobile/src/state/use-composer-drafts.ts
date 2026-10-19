@@ -359,7 +359,7 @@ export interface ComposerDraftWorkspaceSelection {
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly startFromOrigin?: boolean;
-  /** Worktree mode only: run the new worktree in a sandbox. */
+  /** Run the thread in a sandbox of its folder (local or new worktree). */
   readonly sandbox?: boolean;
 }
 

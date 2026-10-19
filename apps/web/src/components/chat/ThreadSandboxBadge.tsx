@@ -1,4 +1,4 @@
-import { findSandboxForWorktree } from "@t3tools/client-runtime/state/vcs";
+import { findSandboxForThread } from "@t3tools/client-runtime/state/vcs";
 import type { EnvironmentId, SandboxSummary } from "@t3tools/contracts";
 import { BoxIcon } from "lucide-react";
 import { memo } from "react";
@@ -26,19 +26,19 @@ export function describeSandbox(sandbox: SandboxSummary): string {
 }
 
 /**
- * Marks a thread whose worktree runs in a sandbox: a small box icon on
+ * Marks a thread that runs in a sandbox: a small box icon on
  * sidebar rows, a "Sandbox" badge in the chat header. Renders nothing for
  * other threads. Mount it only for servers that report `sandboxes`.
  */
 export const ThreadSandboxBadge = memo(function ThreadSandboxBadge(props: {
   readonly environmentId: EnvironmentId;
-  readonly worktreePath: string;
+  readonly threadId: string;
   readonly variant: "icon" | "badge";
 }) {
   const sandboxesQuery = useEnvironmentQuery(
     vcsEnvironment.sandboxes({ environmentId: props.environmentId, input: {} }),
   );
-  const sandbox = findSandboxForWorktree(sandboxesQuery.data?.sandboxes, props.worktreePath);
+  const sandbox = findSandboxForThread(sandboxesQuery.data?.sandboxes, props.threadId);
   if (!sandbox) return null;
   const description = describeSandbox(sandbox);
   const iconClassName =

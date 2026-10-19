@@ -8,15 +8,15 @@ export const shortHash = (value: string, length: number) =>
 /** Owner label value for a server state dir. */
 export const sandboxOwner = (stateDir: string): string => shortHash(stateDir, 16);
 
-/** Stable per worktree, readable in `docker ps` and `msb ls`. */
-export const sandboxContainerName = (worktreePath: string): string => {
+/** Stable per workspace, readable in `docker ps` and `msb ls`. */
+export const sandboxContainerName = (workspacePath: string): string => {
   const slug =
-    NodePath.basename(worktreePath)
+    NodePath.basename(workspacePath)
       .toLowerCase()
       .replace(/[^a-z0-9_.-]+/g, "-")
       .slice(0, 40)
-      .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "") || "worktree";
-  return `t3code-sandbox-${slug}-${shortHash(worktreePath, 8)}`;
+      .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "") || "workspace";
+  return `t3code-sandbox-${slug}-${shortHash(workspacePath, 8)}`;
 };
 
 /**

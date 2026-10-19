@@ -9,7 +9,7 @@ import type { SandboxExecTarget } from "./SandboxService.ts";
 const SCRIPT_RUNTIMES = new Set(["node", "bun", "deno"]);
 
 /**
- * `spawnClaudeCodeProcess` for a sandboxed worktree. The SDK passes the
+ * `spawnClaudeCodeProcess` for a sandboxed thread. The SDK passes the
  * host's Claude executable, which may be a macOS binary; the image's own
  * `claude` (pinned to the host version) runs instead with the same arguments.
  */
@@ -24,7 +24,7 @@ export const sandboxClaudeSpawn =
     const command = target.command({
       command: "claude",
       args,
-      cwd: options.cwd ?? target.worktreePath,
+      cwd: options.cwd ?? target.workspacePath,
       env: options.env,
       tty: false,
     });

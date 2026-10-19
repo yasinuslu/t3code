@@ -1,8 +1,8 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { findSandboxForWorktree } from "@t3tools/client-runtime/state/vcs";
+import { findSandboxForThread } from "@t3tools/client-runtime/state/vcs";
 import type { EnvironmentId, SandboxPort, SandboxStatus, ThreadId } from "@t3tools/contracts";
-import { BoxIcon, SquareIcon, Trash2Icon } from "lucide-react";
+import { BoxIcon, LogOutIcon, SquareIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { resolveDiscoveredServerUrl } from "../../browser/browserTargetResolver";
@@ -27,70 +27,90 @@ import { THREAD_DETAILS_PANEL_ICON_CLASS } from "./threadDetailsPanelStyles";
 const SANDBOX_STATUS_LABELS: Record<SandboxStatus, string> = {
   starting: "Starting",
   running: "Running",
+  sleeping: "Asleep",
   stopped: "Stopped",
   error: "Error",
 };
 
-const REMOVE_SANDBOX_CONFIRMATION = [
-  "Remove the sandbox for this worktree?",
-  "This deletes its machine, services, and installed packages. The worktree files stay.",
-  "Later work in this worktree runs on the host.",
+const DISABLE_SANDBOX_CONFIRMATION = [
+  "Take this thread out of its sandbox?",
+  "Its later work runs on the host. The folder's files stay.",
+  "When no other thread uses the sandbox, its machine, services, and installed packages are deleted.",
+].join("\n");
+
+const ENABLE_SANDBOX_CONFIRMATION = [
+  "Run this thread in a sandbox?",
+  "Its agent, terminals, and setup script move into an isolated machine of the thread's folder. Other threads in the folder stay on the host.",
 ].join("\n");
 
 /**
- * Thread details row for a thread whose worktree runs in a sandbox.
- * Renders nothing for other threads. Mount it only for servers that can run
- * sandboxes: it subscribes to the environment's sandboxes while mounted and
- * the thread has a worktree.
+ * Thread details row for a started thread on a server that can run
+ * sandboxes: shows the thread's sandbox, or offers to move the thread into
+ * one. It subscribes to the environment's sandboxes while mounted.
  */
 export function ThreadSandboxControl({
   environmentId,
   threadId,
-  worktreePath,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
-  worktreePath: string | null;
 }) {
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
   );
   const sandboxesQuery = useEnvironmentQuery(
-    worktreePath !== null ? vcsEnvironment.sandboxes({ environmentId, input: {} }) : null,
+    vcsEnvironment.sandboxes({ environmentId, input: {} }),
   );
-  const sandbox = findSandboxForWorktree(sandboxesQuery.data?.sandboxes, worktreePath);
+  const sandbox = findSandboxForThread(sandboxesQuery.data?.sandboxes, threadId);
   const stopSandbox = useAtomCommand(vcsEnvironment.stopSandbox, { reportFailure: false });
-  const removeSandbox = useAtomCommand(vcsEnvironment.removeSandbox, { reportFailure: false });
+  const enableSandbox = useAtomCommand(vcsEnvironment.enableSandbox, { reportFailure: false });
+  const disableSandbox = useAtomCommand(vcsEnvironment.disableSandbox, { reportFailure: false });
   const openLink = useOpenLink(threadRef);
   const [pending, setPending] = useState(false);
 
-  if (!sandbox) return null;
-
-  const runAction = async (action: "stop" | "remove") => {
-    if (action === "remove") {
-      const confirmed = await readLocalApi()?.dialogs.confirm(REMOVE_SANDBOX_CONFIRMATION, {
-        variant: "destructive",
-      });
+  const runAction = async (action: "stop" | "enable" | "disable") => {
+    if (action !== "stop") {
+      const confirmed = await readLocalApi()?.dialogs.confirm(
+        action === "enable" ? ENABLE_SANDBOX_CONFIRMATION : DISABLE_SANDBOX_CONFIRMATION,
+        action === "disable" ? { variant: "destructive" } : undefined,
+      );
       if (!confirmed) return;
     }
     setPending(true);
-    const command = action === "stop" ? stopSandbox : removeSandbox;
-    const result = await command({
-      environmentId,
-      input: { worktreePath: sandbox.worktreePath },
-    });
+    const command =
+      action === "stop" ? stopSandbox : action === "enable" ? enableSandbox : disableSandbox;
+    const result = await command({ environmentId, input: { threadId } });
     setPending(false);
     if (result._tag === "Success") return;
     const error = squashAtomCommandFailure(result);
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: action === "stop" ? "Could not stop sandbox" : "Could not remove sandbox",
+        title:
+          action === "stop"
+            ? "Could not stop sandbox"
+            : action === "enable"
+              ? "Could not move the thread into a sandbox"
+              : "Could not take the thread out of its sandbox",
         description: error instanceof Error ? error.message : "An error occurred.",
       }),
     );
   };
+
+  if (!sandbox) {
+    return (
+      <ThreadDetailsControl
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={() => void runAction("enable")}
+      >
+        <BoxIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+        <span className="min-w-0 flex-1 truncate">Run in sandbox</span>
+      </ThreadDetailsControl>
+    );
+  }
 
   const openPort = (port: SandboxPort) => {
     // The forwarded port listens on the server's loopback; remote clients need
@@ -151,9 +171,13 @@ export function ThreadSandboxControl({
           <SquareIcon />
           Stop sandbox
         </MenuItem>
-        <MenuItem variant="destructive" disabled={pending} onClick={() => void runAction("remove")}>
-          <Trash2Icon />
-          Remove sandbox
+        <MenuItem
+          variant="destructive"
+          disabled={pending}
+          onClick={() => void runAction("disable")}
+        >
+          <LogOutIcon />
+          Take out of sandbox
         </MenuItem>
       </MenuPopup>
     </Menu>

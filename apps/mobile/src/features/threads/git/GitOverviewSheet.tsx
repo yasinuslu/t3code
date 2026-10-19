@@ -367,7 +367,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
       ) : null}
 
       {currentWorktreePath ? <MetaCard label="Worktree" value={currentWorktreePath} /> : null}
-      <ThreadSandboxCard environmentId={environmentId} worktreePath={currentWorktreePath} />
+      <ThreadSandboxCard environmentId={environmentId} threadId={threadId} />
     </ScrollView>
   );
 

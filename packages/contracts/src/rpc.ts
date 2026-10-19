@@ -123,7 +123,7 @@ import {
   WorktreeSetupStreamEvent,
   WorktreeSetupSubscribeInput,
 } from "./worktreeSetup.ts";
-import { SandboxListStreamEvent, SandboxRequestError, SandboxWorktreeInput } from "./sandbox.ts";
+import { SandboxListStreamEvent, SandboxRequestError, SandboxThreadInput } from "./sandbox.ts";
 import {
   GitActionProgressEvent,
   VcsSwitchRefInput,
@@ -570,7 +570,8 @@ export const WS_METHODS = {
   worktreeSetupCancel: "worktreeSetup.cancel",
   subscribeSandboxes: "subscribeSandboxes",
   sandboxStop: "sandbox.stop",
-  sandboxRemove: "sandbox.remove",
+  sandboxEnable: "sandbox.enable",
+  sandboxDisable: "sandbox.disable",
   subscribeTerminalEvents: "subscribeTerminalEvents",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
@@ -1398,13 +1399,21 @@ const WsSubscribeSandboxesRpc = Rpc.make(WS_METHODS.subscribeSandboxes, {
 });
 
 const WsSandboxStopRpc = Rpc.make(WS_METHODS.sandboxStop, {
-  payload: SandboxWorktreeInput,
+  payload: SandboxThreadInput,
   success: Schema.Void,
   error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
 });
 
-const WsSandboxRemoveRpc = Rpc.make(WS_METHODS.sandboxRemove, {
-  payload: SandboxWorktreeInput,
+/** Moves an existing thread into a sandbox for its workspace, starting one if needed. */
+const WsSandboxEnableRpc = Rpc.make(WS_METHODS.sandboxEnable, {
+  payload: SandboxThreadInput,
+  success: Schema.Void,
+  error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
+});
+
+/** Takes a thread out of its sandbox. The sandbox is deleted when no thread is left in it. */
+const WsSandboxDisableRpc = Rpc.make(WS_METHODS.sandboxDisable, {
+  payload: SandboxThreadInput,
   success: Schema.Void,
   error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
 });
@@ -2006,7 +2015,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsWorktreeSetupCancelRpc,
   WsSubscribeSandboxesRpc,
   WsSandboxStopRpc,
-  WsSandboxRemoveRpc,
+  WsSandboxEnableRpc,
+  WsSandboxDisableRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
   WsGitRunStackedActionRpc,

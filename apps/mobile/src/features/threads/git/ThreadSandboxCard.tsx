@@ -2,8 +2,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { findSandboxForWorktree } from "@t3tools/client-runtime/state/vcs";
-import type { EnvironmentId, SandboxStatus } from "@t3tools/contracts";
+import { findSandboxForThread } from "@t3tools/client-runtime/state/vcs";
+import type { EnvironmentId, SandboxStatus, ThreadId } from "@t3tools/contracts";
 import { useState } from "react";
 import { Alert, Platform, View } from "react-native";
 
@@ -19,57 +19,87 @@ import { SheetListRow } from "./gitSheetComponents";
 const STATUS_LABEL: Record<SandboxStatus, string> = {
   starting: "Starting",
   running: "Running",
+  sleeping: "Asleep",
   stopped: "Stopped",
   error: "Error",
 };
 
-function confirmRemove(onConfirm: () => void) {
-  const title = "Remove sandbox?";
-  const message = "Later work in this worktree then runs on the host.";
+function confirmDisable(onConfirm: () => void) {
+  const title = "Take out of sandbox?";
+  const message =
+    "Later work in this thread runs on the host. The sandbox is deleted when its last thread leaves.";
   if (Platform.OS === "ios") {
     Alert.alert(title, message, [
       { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: onConfirm },
+      { text: "Take out", style: "destructive", onPress: onConfirm },
     ]);
     return;
   }
-  showConfirmDialog({ title, message, confirmText: "Remove", destructive: true, onConfirm });
+  showConfirmDialog({ title, message, confirmText: "Take out", destructive: true, onConfirm });
+}
+
+/** The request error's own detail when the server sent one, else the error message. */
+function failureMessage(cause: unknown): string | undefined {
+  if (typeof cause === "object" && cause !== null && "detail" in cause) {
+    const detail = (cause as { readonly detail: unknown }).detail;
+    if (typeof detail === "string" && detail.length > 0) return detail;
+  }
+  return cause instanceof Error ? cause.message : undefined;
 }
 
 /**
- * Status, forwarded ports, and stop/remove actions for a thread whose worktree
- * runs in a sandbox. Renders nothing for other threads, and only
- * subscribes to the sandbox list when the server can run sandboxes.
+ * Status, forwarded ports, and stop/take-out actions for a sandboxed thread;
+ * a "Run in sandbox" action for a host thread on a server that offers
+ * sandboxes. Only subscribes to the sandbox list when the server can run them.
  */
 export function ThreadSandboxCard(props: {
   readonly environmentId: EnvironmentId;
-  readonly worktreePath: string | null;
+  readonly threadId: ThreadId;
 }) {
   const serverConfig = useEnvironmentServerConfig(props.environmentId);
   const sandboxes = useEnvironmentQuery(
-    serverConfig?.sandboxes === true && props.worktreePath !== null
+    serverConfig?.sandboxes === true
       ? vcsEnvironment.sandboxes({ environmentId: props.environmentId, input: {} })
       : null,
   );
-  const sandbox = findSandboxForWorktree(sandboxes.data?.sandboxes, props.worktreePath);
+  const sandbox = findSandboxForThread(sandboxes.data?.sandboxes, props.threadId);
   const stopSandbox = useAtomCommand(vcsEnvironment.stopSandbox, { reportFailure: false });
-  const removeSandbox = useAtomCommand(vcsEnvironment.removeSandbox, { reportFailure: false });
+  const enableSandbox = useAtomCommand(vcsEnvironment.enableSandbox, { reportFailure: false });
+  const disableSandbox = useAtomCommand(vcsEnvironment.disableSandbox, { reportFailure: false });
   const [busy, setBusy] = useState(false);
 
-  if (!sandbox) return null;
-  const canStop = sandbox.status === "running" || sandbox.status === "starting";
-  const { worktreePath } = sandbox;
   const run = async (failureTitle: string, command: typeof stopSandbox) => {
     setBusy(true);
     try {
-      const result = await command({ environmentId: props.environmentId, input: { worktreePath } });
+      const result = await command({
+        environmentId: props.environmentId,
+        input: { threadId: props.threadId },
+      });
       if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-      const cause = squashAtomCommandFailure(result);
-      Alert.alert(failureTitle, cause instanceof Error ? cause.message : undefined);
+      Alert.alert(failureTitle, failureMessage(squashAtomCommandFailure(result)));
     } finally {
       setBusy(false);
     }
   };
+
+  if (!sandbox) {
+    if (serverConfig?.sandboxes !== true) return null;
+    return (
+      <View className="overflow-hidden bg-card android:rounded-[20px] ios:rounded-[18px] ios:border ios:border-border">
+        <View className="ios:px-3">
+          <SheetListRow
+            icon="cube"
+            title="Run in sandbox"
+            subtitle="Moves this thread into a sandbox of its folder"
+            disabled={busy}
+            onPress={() => void run("Could not enable sandbox", enableSandbox)}
+          />
+        </View>
+      </View>
+    );
+  }
+  const canStop =
+    sandbox.status === "running" || sandbox.status === "starting" || sandbox.status === "sleeping";
 
   return (
     <View className="overflow-hidden bg-card android:rounded-[20px] ios:rounded-[18px] ios:border ios:border-border">
@@ -121,10 +151,12 @@ export function ThreadSandboxCard(props: {
         ) : null}
         <SheetListRow
           icon="trash"
-          title="Remove sandbox"
-          subtitle="Later work runs on the host"
+          title="Take out of sandbox"
+          subtitle="Later work in this thread runs on the host"
           disabled={busy}
-          onPress={() => confirmRemove(() => void run("Could not remove sandbox", removeSandbox))}
+          onPress={() =>
+            confirmDisable(() => void run("Could not take thread out of sandbox", disableSandbox))
+          }
         />
       </View>
     </View>

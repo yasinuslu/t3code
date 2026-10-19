@@ -32,7 +32,7 @@ export interface ProjectThreadStartTurnSpec {
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly startFromOrigin: boolean;
-  /** Worktree mode only: run the new worktree in a sandbox. */
+  /** Run the thread in a sandbox of its folder (local or new worktree). */
   readonly sandbox?: boolean;
   /** Generated temp branch for worktree mode; unused for local mode. */
   readonly worktreeBranchName: string;
@@ -79,11 +79,11 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
               baseBranch: spec.branch!,
               branch: spec.worktreeBranchName,
               ...(spec.startFromOrigin ? { startFromOrigin: true } : {}),
-              ...(spec.sandbox ? { sandbox: true } : {}),
             },
             runSetupScript: true,
           }
         : {}),
+      ...(spec.sandbox ? { sandbox: true } : {}),
     },
     createdAt: spec.createdAt,
   };

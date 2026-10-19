@@ -15,6 +15,7 @@ import {
   type EnvironmentOption,
 } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
+import type { SandboxChoice } from "../SandboxToggle";
 import { BranchToolbarEnvironmentSelector } from "../BranchToolbarEnvironmentSelector";
 import GitActionsControl from "../GitActionsControl";
 import ProjectScriptsControl, {
@@ -44,8 +45,6 @@ export interface ThreadDetailsPanelProps extends Pick<
   environmentId: EnvironmentId;
   threadId: ThreadId;
   draftId?: DraftId;
-  /** The thread's worktree, matched against the environment's sandboxes. */
-  worktreePath: string | null;
   activeProjectName: string | undefined;
   activeProjectScripts: ReadonlyArray<ProjectScript> | undefined;
   preferredScriptId: string | null;
@@ -62,8 +61,10 @@ export interface ThreadDetailsPanelProps extends Pick<
   onEnvModeChange: (mode: EnvMode) => void;
   /** The thread's env mode as ChatView resolves it. */
   envMode: EnvMode;
-  /** The thread's server can run new worktrees in sandboxes. */
+  /** A started thread on a server that can run sandboxes: shows its sandbox row. */
   sandboxesAvailable: boolean;
+  /** A draft's choice to run in a sandbox, when its server can run them. */
+  sandboxChoice?: SandboxChoice;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
   startFromOrigin: boolean;
@@ -104,7 +105,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     startFromOrigin: props.startFromOrigin,
     onStartFromOriginChange: props.onStartFromOriginChange,
     envMode: props.envMode,
-    sandboxesAvailable: props.sandboxesAvailable,
+    ...(props.sandboxChoice ? { sandboxChoice: props.sandboxChoice } : {}),
     ...(props.activeThreadBranchOverride !== undefined
       ? { activeThreadBranchOverride: props.activeThreadBranchOverride }
       : {}),
@@ -178,7 +179,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 <ThreadSandboxControl
                   environmentId={props.environmentId}
                   threadId={props.threadId}
-                  worktreePath={props.worktreePath}
                 />
               ) : null}
 

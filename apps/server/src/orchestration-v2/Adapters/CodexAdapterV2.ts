@@ -1417,7 +1417,13 @@ export const codexAppServerClientFactoryFromSettingsLayer: Layer.Layer<
           const sandbox =
             Option.isNone(sandboxes) || cwd === null
               ? Option.none()
-              : yield* sandboxes.value.execTarget(cwd).pipe(Effect.mapError(openError));
+              : yield* sandboxes.value
+                  .execTarget({
+                    threadId: input.threadId,
+                    cwd,
+                    homes: environment.CODEX_HOME ? [environment.CODEX_HOME] : [],
+                  })
+                  .pipe(Effect.mapError(openError));
           // In a sandbox the image's own `codex` runs the app-server; the
           // host binary may not even be a Linux build.
           const command = Option.isSome(sandbox)
@@ -1426,7 +1432,7 @@ export const codexAppServerClientFactoryFromSettingsLayer: Layer.Layer<
                   sandbox.value.command({
                     command: "codex",
                     args,
-                    cwd: cwd ?? sandbox.value.worktreePath,
+                    cwd: cwd ?? sandbox.value.workspacePath,
                     env: environment,
                     tty: false,
                   }),
@@ -1581,7 +1587,7 @@ export interface CodexAdapterV2Options {
   readonly fileSystem: FileSystem.FileSystem;
   readonly idAllocator: IdAllocatorV2Shape;
   readonly serverConfig: ServerConfig["Service"];
-  /** Tells turns whether their cwd is in a sandboxed worktree. */
+  /** Tells turns whether their thread runs in a sandbox. */
   readonly sandboxes?: SandboxService.SandboxService["Service"];
   /**
    * Sink for post-settle background command completions so the orchestrator
@@ -5613,7 +5619,10 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
                 sandboxed:
                   adapterOptions.sandboxes !== undefined &&
                   turnInput.runtimePolicy.cwd !== null &&
-                  (yield* adapterOptions.sandboxes.isSandboxed(turnInput.runtimePolicy.cwd)),
+                  (yield* adapterOptions.sandboxes.isSandboxed({
+                    threadId: turnInput.threadId,
+                    cwd: turnInput.runtimePolicy.cwd,
+                  })),
               });
               yield* Ref.update(pendingRootTurns, (current) => {
                 const updated = new Map(current);

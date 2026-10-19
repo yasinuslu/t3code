@@ -2025,6 +2025,7 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
             ),
           ),
         retryPreparation: launches.retryPreparation,
+        enableSandbox: launches.enableSandbox,
       }),
       Effect.flip,
     );

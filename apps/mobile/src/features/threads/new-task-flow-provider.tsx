@@ -166,7 +166,7 @@ type NewTaskFlowContextValue = {
   readonly selectedProjectKey: string | null;
   readonly selectedModelKey: string | null;
   readonly workspaceMode: WorkspaceMode;
-  /** Worktree mode only: the new worktree runs in a sandbox. */
+  /** The new thread runs in a sandbox of its folder. */
   readonly sandbox: boolean;
   /** False for threads without a project: their folder has no branch or worktree. */
   readonly canChooseWorkspace: boolean;
@@ -225,6 +225,7 @@ type NewTaskFlowContextValue = {
     options?: ReadonlyArray<ProviderOptionSelection>,
   ) => void;
   readonly setWorkspaceChoice: (choice: NewTaskWorkspaceChoice) => void;
+  readonly setSandbox: (value: boolean) => void;
   readonly selectBranch: (branch: VcsRef) => void;
   readonly setStartFromOrigin: (value: boolean) => void;
   readonly beginEditingPendingTask: (messageId: string) => boolean;
@@ -533,7 +534,6 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     ? (selectedProjectDraft.workspaceSelection?.mode ?? defaultWorkspaceMode)
     : "local";
   const sandbox = resolveNewTaskSandbox({
-    workspaceMode,
     draftSandbox: selectedProjectDraft.workspaceSelection?.sandbox,
     serverConfig: selectedEnvironmentServerConfig,
   });
@@ -894,17 +894,42 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           branch: mode === "local" ? localSelection.branch : selectedBranchName,
           worktreePath: mode === "local" ? localSelection.worktreePath : selectedWorktreePath,
           ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
-          ...(choice === "sandbox" ? { sandbox: true } : {}),
+          ...(sandbox ? { sandbox: true } : {}),
         },
       });
     },
     [
       availableBranches,
       draftStartFromOrigin,
+      sandbox,
       selectedBranchName,
       selectedProject,
       selectedProjectDraftKey,
       selectedWorktreePath,
+    ],
+  );
+
+  const setSandbox = useCallback(
+    (value: boolean) => {
+      if (!selectedProjectDraftKey) {
+        return;
+      }
+      updateComposerDraftSettings(selectedProjectDraftKey, {
+        workspaceSelection: {
+          mode: workspaceMode,
+          branch: selectedBranchName,
+          worktreePath: selectedWorktreePath,
+          ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
+          ...(value ? { sandbox: true } : {}),
+        },
+      });
+    },
+    [
+      draftStartFromOrigin,
+      selectedBranchName,
+      selectedProjectDraftKey,
+      selectedWorktreePath,
+      workspaceMode,
     ],
   );
 
@@ -932,11 +957,13 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         branch: localSelection.branch,
         worktreePath: localSelection.worktreePath,
         ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
+        ...(sandbox ? { sandbox: true } : {}),
       },
     });
   }, [
     availableBranches,
     draftStartFromOrigin,
+    sandbox,
     selectedProject,
     selectedProjectDraftKey,
     workspaceMode,
@@ -1160,7 +1187,6 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
             ? { startFromOrigin: true }
             : {}),
           ...(resolveNewTaskSandbox({
-            workspaceMode: mode,
             draftSandbox: workspaceSelection?.sandbox,
             serverConfig: selectedEnvironmentServerConfig,
           })
@@ -1334,6 +1360,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       switchingToEnvironmentId,
       setSelectedModelKey,
       setWorkspaceChoice,
+      setSandbox,
       selectBranch,
       setStartFromOrigin,
       beginEditingPendingTask,
@@ -1406,6 +1433,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       setSelectedModelKey,
       setStartFromOrigin,
       setWorkspaceChoice,
+      setSandbox,
       startFromOrigin,
       submitting,
       workspaceMode,

@@ -812,7 +812,7 @@ export const claudeAgentSdkQueryRunnerLiveLayer: Layer.Layer<
 );
 
 export function makeClaudeQueryOptions(input: {
-  /** Set for sandboxed worktrees: starts the CLI inside the sandbox. */
+  /** Set for sandboxed threads: starts the CLI inside the sandbox. */
   readonly spawnClaudeCodeProcess?: ClaudeQueryOptions["spawnClaudeCodeProcess"];
   readonly modelSelection: ModelSelection;
   readonly nativeThreadId: string;
@@ -2998,7 +2998,7 @@ export interface ClaudeAdapterV2Options {
   readonly path: Path.Path;
   readonly idAllocator: IdAllocator.IdAllocatorV2Shape;
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
-  /** Runs turns whose cwd is in a sandboxed worktree inside its container. */
+  /** Runs turns of sandboxed threads inside their sandbox. */
   readonly sandboxes?: SandboxService.SandboxService["Service"];
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ServerProviderShape["applyUsageLimits"];
@@ -3049,29 +3049,25 @@ export function makeClaudeAdapterV2(
       Effect.provideService(Path.Path, path),
     );
 
-  // A sandboxed worktree runs the CLI in its container. On macOS the host
-  // keeps Claude's login in the Keychain, which a Linux container cannot
-  // read, so the sandbox needs a token or a credentials file.
-  const claudeSandboxSpawn = (cwd: string | null) =>
+  // A sandboxed thread runs the CLI in its sandbox, which must mount the
+  // session's config dir. On macOS the host keeps Claude's login in the
+  // Keychain, which a Linux sandbox cannot read, so the sandbox needs a token
+  // or a credentials file.
+  const claudeSandboxSpawn = (threadId: string, cwd: string | null, env: NodeJS.ProcessEnv) =>
     Effect.gen(function* () {
       if (adapterOptions.sandboxes === undefined || cwd === null) return undefined;
+      const configDir = env.CLAUDE_CONFIG_DIR ?? path.join(env.HOME ?? "", ".claude");
       const target = yield* adapterOptions.sandboxes
-        .execTarget(cwd)
+        .execTarget({ threadId, cwd, homes: [configDir] })
         .pipe(Effect.mapError((cause) => queryRunnerError(cause, "sandbox")));
       if (Option.isNone(target)) return undefined;
-      const env = adapterOptions.environment;
       if (
         (yield* HostProcessPlatform) === "darwin" &&
         !env.CLAUDE_CODE_OAUTH_TOKEN &&
         !env.ANTHROPIC_API_KEY &&
         !env.ANTHROPIC_AUTH_TOKEN &&
         !(yield* fileSystem
-          .exists(
-            path.join(
-              env.CLAUDE_CONFIG_DIR ?? path.join(env.HOME ?? "", ".claude"),
-              ".credentials.json",
-            ),
-          )
+          .exists(path.join(configDir, ".credentials.json"))
           .pipe(Effect.orElseSucceed(() => false)))
       ) {
         return yield* queryRunnerError(
@@ -7211,7 +7207,11 @@ export function makeClaudeAdapterV2(
           const shouldResume =
             resumeSessionAt !== undefined ||
             (!unprompted && (openedWithResume || hasPersistedProviderTurn));
-          const sandbox = yield* claudeSandboxSpawn(turnInput.runtimePolicy.cwd);
+          const sandbox = yield* claudeSandboxSpawn(
+            turnInput.threadId,
+            turnInput.runtimePolicy.cwd,
+            sessionEnvironment,
+          );
           const queryOptions = makeClaudeQueryOptions({
             ...(sandbox === undefined ? {} : { spawnClaudeCodeProcess: sandbox }),
             modelSelection: turnInput.modelSelection,

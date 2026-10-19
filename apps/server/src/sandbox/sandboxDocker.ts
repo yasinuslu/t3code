@@ -40,7 +40,7 @@ export const dockerRunArgs = (input: SandboxCreateSpec & { readonly owner: strin
   "--label",
   `${SANDBOX_LABELS.owner}=${input.owner}`,
   "--label",
-  `${SANDBOX_LABELS.worktree}=${input.worktreePath}`,
+  `${SANDBOX_LABELS.workspace}=${input.workspacePath}`,
   "--label",
   `${SANDBOX_LABELS.claude}=${input.versions.claude}`,
   "--label",
@@ -75,7 +75,7 @@ const decodeInspected = Schema.decodeUnknownEffect(InspectedContainers);
 
 export type SandboxCli = (
   operation: SandboxBackendError["operation"],
-  worktreePath: string,
+  workspacePath: string,
   args: ReadonlyArray<string>,
   options?: {
     readonly stdin?: string;
@@ -98,8 +98,8 @@ export const makeDockerBackend = (input: {
     command: "docker",
     execServer: false,
     execHostPort: () => Effect.succeed(null),
-    ensureAvailable: (worktreePath) =>
-      cli("start", worktreePath, ["version", "--format", "{{.Server.Version}}"]).pipe(
+    ensureAvailable: (workspacePath) =>
+      cli("start", workspacePath, ["version", "--format", "{{.Server.Version}}"]).pipe(
         Effect.mapError((error) => ({
           ...error,
           detail: `Docker is not running. Start Docker and try again. (${error.detail})`,
@@ -126,19 +126,20 @@ export const makeDockerBackend = (input: {
       }),
     create: (spec) =>
       Effect.gen(function* () {
-        yield* cli("start", spec.worktreePath, ["rm", "--force", spec.name]).pipe(Effect.ignore);
-        yield* cli("start", spec.worktreePath, dockerRunArgs({ ...spec, owner }));
+        yield* cli("start", spec.workspacePath, ["rm", "--force", spec.name]).pipe(Effect.ignore);
+        yield* cli("start", spec.workspacePath, dockerRunArgs({ ...spec, owner }));
       }),
     state: (name) =>
       cli("start", name, ["inspect", "--format", "{{.State.Running}}", name]).pipe(
         Effect.map((running) => (running === "true" ? ("running" as const) : ("stopped" as const))),
         Effect.orElseSucceed(() => "missing" as const),
       ),
-    start: (name, worktreePath) => cli("start", worktreePath, ["start", name]).pipe(Effect.asVoid),
-    stop: (name, worktreePath) =>
-      cli("stop", worktreePath, ["stop", "--time", "3", name]).pipe(Effect.asVoid),
-    remove: (name, worktreePath) =>
-      cli("remove", worktreePath, ["rm", "--force", name]).pipe(
+    start: (name, workspacePath) =>
+      cli("start", workspacePath, ["start", name]).pipe(Effect.asVoid),
+    stop: (name, workspacePath) =>
+      cli("stop", workspacePath, ["stop", "--time", "3", name]).pipe(Effect.asVoid),
+    remove: (name, workspacePath) =>
+      cli("remove", workspacePath, ["rm", "--force", name]).pipe(
         Effect.catchIf(missing, () => Effect.succeed("")),
         Effect.asVoid,
       ),
@@ -162,7 +163,7 @@ export const makeDockerBackend = (input: {
             ? cause
             : {
                 operation: "start" as const,
-                worktreePath: input.registryPath,
+                workspacePath: input.registryPath,
                 detail: "Could not read docker inspect output.",
                 cause,
               },
@@ -170,12 +171,12 @@ export const makeDockerBackend = (input: {
       );
       return containers.flatMap((container) => {
         const labels = container.Config.Labels ?? {};
-        const worktreePath = labels[SANDBOX_LABELS.worktree];
-        if (worktreePath === undefined) return [];
+        const workspacePath = labels[SANDBOX_LABELS.workspace];
+        if (workspacePath === undefined) return [];
         return [
           {
             name: container.Name.replace(/^\//, ""),
-            worktreePath,
+            workspacePath,
             image: container.Config.Image,
             versions: {
               claude: labels[SANDBOX_LABELS.claude] ?? "latest",

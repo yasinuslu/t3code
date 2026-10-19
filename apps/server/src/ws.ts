@@ -3383,27 +3383,31 @@ const makeWsRpcLayer = (
         [WS_METHODS.sandboxStop]: (input) =>
           observeRpcEffect(
             WS_METHODS.sandboxStop,
-            sandboxes.stop(input.worktreePath).pipe(
+            sandboxes.stop(input.threadId).pipe(
               Effect.mapError(
                 (error) =>
                   new SandboxRequestError({
                     operation: "stop",
-                    worktreePath: input.worktreePath,
+                    threadId: input.threadId,
                     detail: error.detail,
                   }),
               ),
             ),
             { "rpc.aggregate": "vcs" },
           ),
-        [WS_METHODS.sandboxRemove]: (input) =>
+        [WS_METHODS.sandboxEnable]: (input) =>
+          observeRpcEffect(WS_METHODS.sandboxEnable, threadLaunch.enableSandbox(input.threadId), {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.sandboxDisable]: (input) =>
           observeRpcEffect(
-            WS_METHODS.sandboxRemove,
-            sandboxes.remove(input.worktreePath).pipe(
+            WS_METHODS.sandboxDisable,
+            sandboxes.detach(input.threadId).pipe(
               Effect.mapError(
                 (error) =>
                   new SandboxRequestError({
-                    operation: "remove",
-                    worktreePath: input.worktreePath,
+                    operation: "disable",
+                    threadId: input.threadId,
                     detail: error.detail,
                   }),
               ),

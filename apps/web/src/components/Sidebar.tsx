@@ -1107,7 +1107,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the pinning capability is confirmed, and stays a passive marker while
   // the descriptor is not loaded. Pinning itself lives in the context menu.
   pinningSupported: boolean;
-  // The thread's server can run sandboxes; worktree rows then show a sandbox mark.
+  // The thread's server can run sandboxes; sandboxed rows then show a mark.
   sandboxesAvailable: boolean;
   isPinned: boolean;
   // Present on rows whose server supports every drop outcome: dnd-kit
@@ -1734,14 +1734,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
-  const sandboxIndicator =
-    props.sandboxesAvailable && thread.worktreePath !== null ? (
-      <ThreadSandboxBadge
-        environmentId={thread.environmentId}
-        worktreePath={thread.worktreePath}
-        variant="icon"
-      />
-    ) : null;
+  const sandboxIndicator = props.sandboxesAvailable ? (
+    <ThreadSandboxBadge environmentId={thread.environmentId} threadId={thread.id} variant="icon" />
+  ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (

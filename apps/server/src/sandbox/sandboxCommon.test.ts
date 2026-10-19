@@ -79,6 +79,7 @@ describe("sandbox exec", () => {
       registryPath: "/r",
       resources: { cpus: 2, memory: "4G" },
       kvmAvailable: () => Effect.succeed(true),
+      systemctl: cli,
     });
     expect(msb.execArgs({ ...input, root: true })).toEqual([
       "exec",
@@ -99,7 +100,7 @@ describe("microsandbox run args", () => {
   it("boots from the base snapshot with mounts at their host paths", () => {
     const args = microsandboxRunArgs({
       name: "sbx",
-      worktreePath: "/work/tree",
+      workspacePath: "/work/tree",
       image: "t3code-sandbox-base-abc",
       versions: { claude: "2.1.300", codex: "0.162.1" },
       mounts: [
@@ -121,7 +122,7 @@ describe("microsandbox run args", () => {
       "--snapshot",
       "t3code-sandbox-base-abc",
     ]);
-    expect(args).toContain("t3code.sandbox.worktree=/work/tree");
+    expect(args).toContain("t3code.sandbox.workspace=/work/tree");
     expect(args.slice(-4)).toEqual([
       "-v",
       "/work/tree:/work/tree",
@@ -133,7 +134,7 @@ describe("microsandbox run args", () => {
   it("mounts a read-only project before its writable git dir", () => {
     const args = microsandboxRunArgs({
       name: "sbx",
-      worktreePath: "/work/tree",
+      workspacePath: "/work/tree",
       image: "base",
       versions: { claude: "latest", codex: "latest" },
       mounts: [
@@ -152,7 +153,7 @@ describe("microsandbox run args", () => {
 });
 
 describe("sandbox names", () => {
-  it("derives a stable, Docker-safe container name per worktree", () => {
+  it("derives a stable, Docker-safe container name per workspace", () => {
     const name = sandboxContainerName("/Users/theo/.t3/worktrees/t3code/Feature Branch!");
     expect(name).toMatch(/^t3code-sandbox-feature-branch-[0-9a-f]{8}$/);
     expect(sandboxContainerName("/Users/theo/.t3/worktrees/t3code/Feature Branch!")).toBe(name);

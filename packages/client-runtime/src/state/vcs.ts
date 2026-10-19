@@ -328,8 +328,8 @@ export function createVcsEnvironmentAtoms<R, E>(
       label: "environment-data:vcs:cancel-worktree-setup",
       tag: WS_METHODS.worktreeSetupCancel,
     }),
-    // Sandboxes on the environment. A thread is sandboxed when its
-    // worktree path matches one; `findSandboxForWorktree` does the lookup.
+    // Sandboxes on the environment. A thread is sandboxed when one lists
+    // its id; `findSandboxForThread` does the lookup.
     sandboxes: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:vcs:sandboxes",
       tag: WS_METHODS.subscribeSandboxes,
@@ -339,9 +339,13 @@ export function createVcsEnvironmentAtoms<R, E>(
       label: "environment-data:vcs:stop-sandbox",
       tag: WS_METHODS.sandboxStop,
     }),
-    removeSandbox: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:remove-sandbox",
-      tag: WS_METHODS.sandboxRemove,
+    enableSandbox: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:enable-sandbox",
+      tag: WS_METHODS.sandboxEnable,
+    }),
+    disableSandbox: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:disable-sandbox",
+      tag: WS_METHODS.sandboxDisable,
     }),
     removeWorktree: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:remove-worktree",
@@ -374,13 +378,13 @@ export function createVcsEnvironmentAtoms<R, E>(
   };
 }
 
-/** The sandbox that runs a thread's worktree, if any. */
-export function findSandboxForWorktree(
+/** The sandbox a thread runs in, if any. */
+export function findSandboxForThread(
   sandboxes: ReadonlyArray<SandboxSummary> | undefined,
-  worktreePath: string | null | undefined,
+  threadId: string | null | undefined,
 ): SandboxSummary | null {
-  if (!sandboxes || !worktreePath) return null;
-  return sandboxes.find((sandbox) => sandbox.worktreePath === worktreePath) ?? null;
+  if (!sandboxes || !threadId) return null;
+  return sandboxes.find((sandbox) => sandbox.threadIds.some((id) => id === threadId)) ?? null;
 }
 
 export * from "./gitActions.ts";

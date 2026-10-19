@@ -2,8 +2,8 @@ import { sanitizeNewRefName } from "@t3tools/shared/git";
 
 type WorkspaceMode = "local" | "worktree";
 
-/** The workspace picker's options. A sandbox is a new worktree that runs in a sandbox. */
-export type NewTaskWorkspaceChoice = "local" | "worktree" | "sandbox";
+/** The workspace picker's options. Sandbox is a separate on/off choice. */
+export type NewTaskWorkspaceChoice = "local" | "worktree";
 
 /**
  * Whether a new task starts in a sandbox. The draft keeps the user's choice;
@@ -11,12 +11,10 @@ export type NewTaskWorkspaceChoice = "local" | "worktree" | "sandbox";
  * (offline or still loading) keeps it so editing a queued task cannot lose it.
  */
 export function resolveNewTaskSandbox(input: {
-  readonly workspaceMode: WorkspaceMode;
   readonly draftSandbox: boolean | undefined;
   readonly serverConfig: { readonly sandboxes?: boolean } | null;
 }): boolean {
   return (
-    input.workspaceMode === "worktree" &&
     input.draftSandbox === true &&
     (input.serverConfig === null || input.serverConfig.sandboxes === true)
   );
@@ -25,10 +23,9 @@ export function resolveNewTaskSandbox(input: {
 export function resolveNewTaskWorkspaceLabel(input: {
   readonly workspaceMode: WorkspaceMode;
   readonly worktreePath: string | null;
-  readonly sandbox: boolean;
-}): "Current checkout" | "Current worktree" | "New worktree" | "New sandbox" {
+}): "Current checkout" | "Current worktree" | "New worktree" {
   if (input.workspaceMode === "worktree") {
-    return input.sandbox ? "New sandbox" : "New worktree";
+    return "New worktree";
   }
   return input.worktreePath ? "Current worktree" : "Current checkout";
 }

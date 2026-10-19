@@ -10,45 +10,32 @@ import {
 } from "./new-task-context-presentation";
 
 describe("resolveNewTaskSandbox", () => {
-  it("keeps a sandbox choice only for new worktrees", () => {
-    const serverConfig = { sandboxes: true };
+  it("keeps a sandbox choice for any workspace", () => {
+    expect(resolveNewTaskSandbox({ draftSandbox: true, serverConfig: { sandboxes: true } })).toBe(
+      true,
+    );
     expect(
-      resolveNewTaskSandbox({ workspaceMode: "worktree", draftSandbox: true, serverConfig }),
-    ).toBe(true);
-    expect(
-      resolveNewTaskSandbox({ workspaceMode: "local", draftSandbox: true, serverConfig }),
+      resolveNewTaskSandbox({ draftSandbox: undefined, serverConfig: { sandboxes: true } }),
     ).toBe(false);
   });
 
   it("drops the choice on a server without sandboxes", () => {
-    expect(
-      resolveNewTaskSandbox({ workspaceMode: "worktree", draftSandbox: true, serverConfig: {} }),
-    ).toBe(false);
+    expect(resolveNewTaskSandbox({ draftSandbox: true, serverConfig: {} })).toBe(false);
   });
 
   it("keeps the choice while the server config is unknown", () => {
-    expect(
-      resolveNewTaskSandbox({ workspaceMode: "worktree", draftSandbox: true, serverConfig: null }),
-    ).toBe(true);
+    expect(resolveNewTaskSandbox({ draftSandbox: true, serverConfig: null })).toBe(true);
   });
 });
 
 describe("resolveNewTaskWorkspaceLabel", () => {
-  it("names a sandboxed worktree", () => {
-    expect(
-      resolveNewTaskWorkspaceLabel({
-        workspaceMode: "worktree",
-        worktreePath: null,
-        sandbox: true,
-      }),
-    ).toBe("New sandbox");
-    expect(
-      resolveNewTaskWorkspaceLabel({
-        workspaceMode: "worktree",
-        worktreePath: null,
-        sandbox: false,
-      }),
-    ).toBe("New worktree");
+  it("names the workspace", () => {
+    expect(resolveNewTaskWorkspaceLabel({ workspaceMode: "worktree", worktreePath: null })).toBe(
+      "New worktree",
+    );
+    expect(resolveNewTaskWorkspaceLabel({ workspaceMode: "local", worktreePath: null })).toBe(
+      "Current checkout",
+    );
   });
 });
 

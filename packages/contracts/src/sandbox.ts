@@ -1,18 +1,28 @@
 import * as Schema from "effect/Schema";
 
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
- * A sandbox belongs to one worktree. The server runs that worktree's agents,
- * terminals, and setup script inside the sandbox (a microVM or a container),
- * so each sandbox has its own ports, services, and files outside the
- * worktree. Clients match a thread to its sandbox by the thread's worktree path.
+ * A sandbox runs threads, not folders. A thread chooses its workspace (the
+ * project checkout, a new worktree, or an existing one) and, separately,
+ * whether it runs in a sandbox. Sandboxed threads in the same workspace share
+ * one sandbox (a microVM or a container) that mounts the workspace at its
+ * own path; their agents, terminals, and setup script run inside it, while
+ * other threads in that workspace stay on the host. Clients match a thread
+ * to its sandbox by thread id.
  */
 /** The runtime a sandbox runs on: a microsandbox microVM or a Docker container. */
 export const SandboxBackendKind = Schema.Literals(["microsandbox", "docker"]);
 export type SandboxBackendKind = typeof SandboxBackendKind.Type;
 
-export const SandboxStatus = Schema.Literals(["starting", "running", "stopped", "error"]);
+/** `sleeping`: idle and frozen, its processes intact; any use wakes it. */
+export const SandboxStatus = Schema.Literals([
+  "starting",
+  "running",
+  "sleeping",
+  "stopped",
+  "error",
+]);
 export type SandboxStatus = typeof SandboxStatus.Type;
 
 const PortNumber = Schema.Int.check(Schema.isGreaterThan(0)).check(Schema.isLessThan(65536));
@@ -25,7 +35,10 @@ export const SandboxPort = Schema.Struct({
 export type SandboxPort = typeof SandboxPort.Type;
 
 export const SandboxSummary = Schema.Struct({
-  worktreePath: TrimmedNonEmptyString,
+  /** The folder the sandbox mounts: a project checkout or a worktree. */
+  workspacePath: TrimmedNonEmptyString,
+  /** The threads that run in this sandbox. */
+  threadIds: Schema.Array(ThreadId),
   containerName: TrimmedNonEmptyString,
   /** Missing from servers that only ran Docker sandboxes. */
   backend: Schema.optionalKey(SandboxBackendKind),
@@ -43,20 +56,26 @@ export const SandboxListStreamEvent = Schema.Struct({
 });
 export type SandboxListStreamEvent = typeof SandboxListStreamEvent.Type;
 
-export const SandboxWorktreeInput = Schema.Struct({
-  worktreePath: TrimmedNonEmptyString,
+export const SandboxThreadInput = Schema.Struct({
+  threadId: ThreadId,
 });
-export type SandboxWorktreeInput = typeof SandboxWorktreeInput.Type;
+export type SandboxThreadInput = typeof SandboxThreadInput.Type;
 
 export class SandboxRequestError extends Schema.TaggedError<SandboxRequestError>()(
   "SandboxRequestError",
   {
-    operation: Schema.Literals(["stop", "remove"]),
-    worktreePath: Schema.String,
+    operation: Schema.Literals(["enable", "stop", "disable"]),
+    threadId: Schema.String,
     detail: Schema.String,
   },
 ) {
   override get message(): string {
-    return `Could not ${this.operation} the sandbox for ${this.worktreePath}: ${this.detail}`;
+    const action =
+      this.operation === "enable"
+        ? "move this thread into a sandbox"
+        : this.operation === "stop"
+          ? "stop the sandbox"
+          : "take this thread out of its sandbox";
+    return `Could not ${action}: ${this.detail}`;
   }
 }

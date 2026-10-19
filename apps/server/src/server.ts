@@ -80,6 +80,7 @@ import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as PreviewLinkStatus from "./preview/PreviewLinkStatus.ts";
 import * as SandboxService from "./sandbox/SandboxService.ts";
+import * as SandboxThreadLifecycle from "./sandbox/SandboxThreadLifecycle.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
@@ -532,6 +533,7 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provideMerge(StorageCleanup.layer), Layer.provide(ProjectionStoreV2.layer)),
+  SandboxThreadLifecycle.layer,
   ThreadPullRequestWorkerLive,
   Layer.effectDiscard(
     Effect.gen(function* () {

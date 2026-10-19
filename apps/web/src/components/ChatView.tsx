@@ -459,9 +459,7 @@ import { NoActiveThreadState } from "./NoActiveThreadState";
 import {
   type EnvironmentOption,
   resolveEffectiveEnvMode,
-  resolveEnvModeLabel,
   resolveLocalCheckoutBranchMismatch,
-  resolveSupportedEnvMode,
   shouldShowComposerContextStrip,
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
@@ -6816,12 +6814,12 @@ export default function ChatView(props: ChatViewProps) {
     !envLocked,
   );
   const sandboxesAvailable = serverConfig?.sandboxes === true;
-  const envMode: DraftThreadEnvMode = resolveSupportedEnvMode(
-    canOverrideServerThreadEnvMode
-      ? (pendingServerThreadEnvMode ?? draftThread?.envMode ?? derivedEnvMode)
-      : derivedEnvMode,
-    sandboxesAvailable,
-  );
+  const envMode: DraftThreadEnvMode = canOverrideServerThreadEnvMode
+    ? (pendingServerThreadEnvMode ?? draftThread?.envMode ?? derivedEnvMode)
+    : derivedEnvMode;
+  // A draft picks its folder and, separately, whether it runs in a sandbox.
+  // A server that cannot run sandboxes ignores a draft's earlier choice.
+  const sandboxRequested = sandboxesAvailable && draftThread?.sandbox === true;
   const activeThreadBranch =
     canOverrideServerThreadEnvMode && pendingServerThreadBranch !== undefined
       ? pendingServerThreadBranch
@@ -9057,19 +9055,16 @@ export default function ChatView(props: ChatViewProps) {
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeMessageCount === 0;
     const baseBranchForWorktree =
-      isFirstMessage && sendEnvMode !== "local" && !activeThread.worktreePath
+      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
         ? activeThreadBranch
         : null;
 
-    // In worktree or sandbox mode, require an explicit base branch so we don't silently
+    // In worktree mode, require an explicit base branch so we don't silently
     // fall back to local execution when branch selection is missing.
     const shouldCreateWorktree =
-      isFirstMessage && sendEnvMode !== "local" && !activeThread.worktreePath;
+      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath;
     if (shouldCreateWorktree && !activeThreadBranch) {
-      setThreadError(
-        threadIdForSend,
-        `Select a base branch before sending in ${resolveEnvModeLabel(sendEnvMode)} mode.`,
-      );
+      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
     }
 
@@ -9736,11 +9731,11 @@ export default function ChatView(props: ChatViewProps) {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
-                      ...(sendEnvMode === "sandbox" ? { sandbox: true } : {}),
                     },
                     runSetupScript: true,
                   }
                 : {}),
+              ...(isLocalDraftThread && sandboxRequested ? { sandbox: true } : {}),
             }
           : undefined;
       const backgroundThreadRef =
@@ -10638,7 +10633,7 @@ export default function ChatView(props: ChatViewProps) {
             envMode: mode,
             newWorktreesStartFromOrigin: activeProjectSettings.settings.newWorktreesStartFromOrigin,
           }),
-          ...(mode !== "local" && draftThread?.worktreePath ? { worktreePath: null } : {}),
+          ...(mode === "worktree" && draftThread?.worktreePath ? { worktreePath: null } : {}),
         });
       }
       scheduleComposerFocus();
@@ -10719,6 +10714,15 @@ export default function ChatView(props: ChatViewProps) {
     setDraftThreadContext,
     workLocallyResendReady,
   ]);
+
+  const sandboxChoice =
+    sandboxesAvailable && isLocalDraftThread && multipleModelSelections === null
+      ? {
+          checked: sandboxRequested,
+          onCheckedChange: (sandbox: boolean) =>
+            setDraftThreadContext(composerDraftTarget, { sandbox }),
+        }
+      : undefined;
 
   const onStartFromOriginChange = (nextStartFromOrigin: boolean) => {
     if (canOverrideServerThreadEnvMode && activeThread) {
@@ -10961,7 +10965,6 @@ export default function ChatView(props: ChatViewProps) {
     environmentId: activeThread.environmentId,
     threadId: activeThread.id,
     ...(draftId ? { draftId } : {}),
-    worktreePath: activeWorktreePath,
     activeProjectName: activeProject?.title,
     activeProjectScripts: activeProject ? activeProjectScripts : undefined,
     preferredScriptId: activeProject
@@ -10985,7 +10988,8 @@ export default function ChatView(props: ChatViewProps) {
     onEnvironmentChange,
     onEnvModeChange,
     envMode,
-    sandboxesAvailable,
+    sandboxesAvailable: sandboxesAvailable && isServerThread,
+    ...(sandboxChoice ? { sandboxChoice } : {}),
     ...(canOverrideServerThreadEnvMode
       ? {
           activeThreadBranchOverride: activeThreadBranch,
@@ -11161,7 +11165,7 @@ export default function ChatView(props: ChatViewProps) {
             rightPanelOpen={inlineRightPanelOwnsTitleBar}
             embedded={embedded}
             providerConfigDir={providerConfigDir}
-            sandboxWorktreePath={sandboxesAvailable ? activeThread.worktreePath : null}
+            sandboxThreadId={sandboxesAvailable && isServerThread ? activeThread.id : null}
             onNewThreadInProject={handleNewThreadInActiveProject}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
@@ -11629,7 +11633,7 @@ export default function ChatView(props: ChatViewProps) {
                                 startFromOrigin={startFromOrigin}
                                 onStartFromOriginChange={onStartFromOriginChange}
                                 envMode={envMode}
-                                sandboxesAvailable={sandboxesAvailable}
+                                {...(sandboxChoice ? { sandboxChoice } : {})}
                                 {...(canOverrideServerThreadEnvMode
                                   ? {
                                       activeThreadBranchOverride: activeThreadBranch,
