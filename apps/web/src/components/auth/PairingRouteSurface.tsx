@@ -119,13 +119,15 @@ export function PairingRouteSurface({
       />
 
       <dl className="mt-5 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-sm">
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-xs text-muted-foreground">Environment</dt>
-          <dd className="min-w-0 truncate font-medium">{target.label ?? "Loading…"}</dd>
-        </div>
-        <div className="mt-1.5 flex items-baseline justify-between gap-3">
+        {target.label ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-xs text-muted-foreground">Environment</dt>
+            <dd className="min-w-0 font-medium break-words">{target.label}</dd>
+          </div>
+        ) : null}
+        <div className="mt-1.5 flex items-baseline justify-between gap-3 first:mt-0">
           <dt className="text-xs text-muted-foreground">Address</dt>
-          <dd className="min-w-0 truncate font-mono text-xs text-foreground/80">{target.host}</dd>
+          <dd className="min-w-0 font-mono text-xs break-all text-foreground/80">{target.host}</dd>
         </div>
       </dl>
 
@@ -172,7 +174,7 @@ export function PairingRouteSurface({
       <div className="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
         {describeSupportedMethods(auth.bootstrapMethods)}
         <p className="mt-2 text-foreground/80">
-          Get a code on {target.label ?? "that machine"}: open T3 Code there, go to Settings →
+          Get a code on {target.label ?? target.host}: open T3 Code there, go to Settings →
           Connections and choose Create link, or run <code className="font-mono">t3 pair</code> in
           its terminal and scan the QR code with this device.
         </p>
