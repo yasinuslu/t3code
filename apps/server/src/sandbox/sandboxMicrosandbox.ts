@@ -1,5 +1,7 @@
-// @effect-diagnostics nodeBuiltinImport:off - finds and signals the VM process under /proc.
+// @effect-diagnostics nodeBuiltinImport:off - finds and signals the VM process under /proc and holds the lifeline.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import type * as NodeNet from "node:net";
 
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -58,9 +60,9 @@ const volumeArgs = (spec: SandboxCreateSpec) =>
     ]);
 
 /**
- * `msb run` arguments for one sandbox. The VM's own idle timeout makes it
- * die with the server like a child process: the relay keeps an exec open
- * while T3 runs, so it only fires once the server is gone, even after a crash.
+ * `msb run` arguments for one sandbox. The VM's own idle timeout backs up the
+ * lifeline below: the relay keeps an exec open while T3 runs, so it only fires
+ * once the server is gone.
  */
 export const microsandboxRunArgs = (
   input: SandboxCreateSpec & { readonly owner: string; readonly resources: MicrosandboxResources },
@@ -138,6 +140,58 @@ const frozen = (cgroupPath: string) => {
   } catch {
     return false;
   }
+};
+
+/**
+ * Waits for its stdin to close, then stops every running sandbox with the
+ * owner label in argv[1], thawing sleeping ones first (a frozen VM hangs
+ * `msb stop`). The server holds the other end, and the kernel closes it when
+ * the server exits for any reason, SIGKILL included.
+ */
+const LIFELINE_SOURCE = String.raw`
+const fs = require("fs"), cp = require("child_process");
+const stopAll = () => {
+  let listed = [];
+  try {
+    listed = JSON.parse(cp.execFileSync("msb", ["list", "--format", "json", "--label", process.argv[1]], { encoding: "utf8", timeout: 30000 }));
+  } catch {}
+  const names = listed.filter((s) => /^running$/i.test(s.status)).map((s) => s.name);
+  for (const pid of fs.readdirSync("/proc")) {
+    if (!/^\d+$/.test(pid)) continue;
+    try {
+      const argv = fs.readFileSync("/proc/" + pid + "/cmdline", "utf8").split("\0");
+      if (argv[1] !== "sandbox" || !names.includes(argv[argv.indexOf("--name") + 1])) continue;
+      const cgroup = fs.readFileSync("/proc/" + pid + "/cgroup", "utf8").trim().split("\n").at(-1).replace(/^0::/, "");
+      const unit = /\/msb\.slice\/([^/]+\.scope)$/.exec(cgroup);
+      if (unit) {
+        try { cp.execFileSync("systemctl", ["--user", "thaw", unit[1]], { stdio: "ignore", timeout: 10000 }); }
+        catch { fs.writeFileSync("/sys/fs/cgroup" + cgroup + "/cgroup.freeze", "0"); }
+      }
+      process.kill(Number(pid), "SIGCONT");
+    } catch {}
+  }
+  for (const name of names) cp.spawn("msb", ["stop", "--quiet", name], { stdio: "ignore" });
+};
+process.stdin.on("data", () => {});
+process.stdin.on("end", stopAll);
+process.stdin.on("error", stopAll);
+`;
+
+/**
+ * Starts the lifeline for this server's sandboxes once. It runs in its own
+ * session, so a signal to the server's process group does not take it down
+ * before it has stopped the VMs.
+ */
+const holdLifeline = (ownerLabel: string) => {
+  const child = NodeChildProcess.spawn(process.execPath, ["-e", LIFELINE_SOURCE, ownerLabel], {
+    // The desktop app's execPath is Electron.
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    detached: true,
+    stdio: ["pipe", "ignore", "ignore"],
+  });
+  child.on("error", () => {});
+  child.unref();
+  (child.stdin as NodeNet.Socket | null)?.unref();
 };
 
 const ListedSandboxes = Schema.fromJsonString(
@@ -244,6 +298,13 @@ export const makeMicrosandboxBackend = (input: {
       return snapshot;
     });
 
+  let lifelineHeld = false;
+  const ensureLifeline = Effect.sync(() => {
+    if (lifelineHeld) return;
+    lifelineHeld = true;
+    holdLifeline(`${SANDBOX_LABELS.owner}=${owner}`);
+  });
+
   const inspect = (name: string) =>
     cli("start", name, ["inspect", "--format", "json", name]).pipe(
       Effect.flatMap(decodeInspected),
@@ -283,11 +344,14 @@ export const makeMicrosandboxBackend = (input: {
       }),
     ensureImage,
     create: (spec) =>
-      cli(
-        "start",
-        spec.workspacePath,
-        microsandboxRunArgs({ ...spec, owner, resources: input.resources }),
-      ).pipe(Effect.asVoid),
+      Effect.gen(function* () {
+        yield* ensureLifeline;
+        yield* cli(
+          "start",
+          spec.workspacePath,
+          microsandboxRunArgs({ ...spec, owner, resources: input.resources }),
+        );
+      }),
     state: (name) =>
       inspect(name).pipe(
         Effect.map((sandbox) =>
@@ -296,7 +360,10 @@ export const makeMicrosandboxBackend = (input: {
         Effect.orElseSucceed(() => "missing" as const),
       ),
     start: (name, workspacePath) =>
-      cli("start", workspacePath, ["start", "--quiet", name]).pipe(Effect.asVoid),
+      ensureLifeline.pipe(
+        Effect.andThen(cli("start", workspacePath, ["start", "--quiet", name])),
+        Effect.asVoid,
+      ),
     stop: (name, workspacePath) =>
       cli("stop", workspacePath, ["stop", "--quiet", name]).pipe(Effect.asVoid),
     sleep: (name, workspacePath) =>

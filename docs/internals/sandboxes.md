@@ -99,9 +99,11 @@ T3 owns the whole life of its VMs, so host tooling only needs a safety net
 (each VM is labelled `t3.managed=runner`, `t3.thread`, `t3.env`):
 
 - **Child of the server.** The server stops every sandbox on shutdown and,
-  on start, stops any an earlier process left running. A crash is covered by
-  the VM's short `--idle-timeout`: the relay keeps an exec open while the
-  server lives, and its stdin closes with the server.
+  on start, stops any an earlier process left running. A kill or crash runs
+  no finalizer, so the first VM also starts a detached lifeline process that
+  holds a pipe from the server: when the kernel closes it, the lifeline thaws
+  and stops the server's VMs within seconds. The VM's short `--idle-timeout`
+  backs that up.
 - **Sleep between turns.** `ProviderSessionManager` reports turn start and
   end. With no turn running and no use for `T3CODE_SANDBOX_IDLE_MINUTES`,
   the backend's `sleep` drops the guest page cache (libkrun's free page
