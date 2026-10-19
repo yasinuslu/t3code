@@ -363,5 +363,9 @@ export function growStep(deck: GrowDeck, current: string | null, direction: 1 | 
 }
 
 /** What Ship sends the thread: the user's go-ahead to land it the way its repo lands work. */
+/** Sent when an item came back with nothing to see: every return carries a proof image. */
+export const PROOF_MESSAGE =
+  "Show me proof. Add an image I understand at a glance to your status card with thread_status_update: a screenshot of the result with the change marked (a short GIF if it moves), or for work with nothing on screen, an image of the evidence. Nothing else changes.";
+
 export const SHIP_MESSAGE =
   "Ship it. Land this the usual way for this repo: open the PR if there is none, get CI green, merge, verify it is live, then settle this thread. If something blocks the merge, tell me in one line.";

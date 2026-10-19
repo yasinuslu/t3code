@@ -10,7 +10,7 @@ import { resolveStorage } from "../../lib/storage";
 
 export interface GrowAsk {
   readonly text: string;
-  readonly kind: "whatIf" | "reply" | "ship";
+  readonly kind: "whatIf" | "reply" | "ship" | "proof";
   /** Epoch ms when it was sent. */
   readonly at: number;
 }

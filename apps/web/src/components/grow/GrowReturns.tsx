@@ -25,6 +25,8 @@ import {
   CircleDotIcon,
   ExternalLinkIcon,
   GitBranchIcon,
+  ImageIcon,
+  ImageOffIcon,
   ListIcon,
   MessageSquareIcon,
   PlayIcon,
@@ -79,6 +81,7 @@ import {
   growReturnKey,
   growSpark,
   growStep,
+  PROOF_MESSAGE,
 } from "./returns.logic";
 
 /** Where the deck is, kept while Home is closed: the shown item, the phone's view, the search. */
@@ -169,6 +172,11 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       });
     },
     bringBack: (item: GrowReturn) => void record(item, null),
+    askProof: async (item: GrowReturn) => {
+      if (await send(item, PROOF_MESSAGE, "proof")) {
+        toastManager.add({ type: "success", title: `Asked ${item.headline} for proof` });
+      }
+    },
     /** The conversation opens inside Grow, so the deck stays one Back away. */
     openThread: (item: GrowReturn) =>
       useReturnsStore.setState({ selected: item.key, phoneView: "card", thread: item.key }),
@@ -644,10 +652,9 @@ function Hero(props: {
   const { digest } = useThreadReport(item.thread);
   const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
   const question = digest.questions[0] ?? null;
-  const hasVisual = images.length > 0 || item.playUrl !== null;
-  const visual = hasVisual ? (
-    <Visual item={item} wide={wide} playing={props.playing} images={images} />
-  ) : null;
+  const visual = (
+    <Visual item={item} actions={actions} wide={wide} playing={props.playing} images={images} />
+  );
   const choices = (stacked: boolean) => (
     <Choices
       item={item}
@@ -679,16 +686,6 @@ function Hero(props: {
         </div>
         <div className="shrink-0 border-t bg-background px-3 pt-2 pb-3">
           <PhoneStepper position={props.position} step={props.step} />
-          {choices(false)}
-        </div>
-      </article>
-    );
-  }
-  if (visual === null) {
-    return (
-      <article aria-label={item.headline} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 p-6">
-          {story}
           {choices(false)}
         </div>
       </article>
@@ -861,25 +858,13 @@ function StoryPath(props: {
         {(asks ?? []).map((ask) => (
           <PathStep
             key={ask.at}
-            icon={
-              ask.kind === "ship" ? (
-                <RocketIcon />
-              ) : ask.kind === "reply" ? (
-                <ReplyIcon />
-              ) : (
-                <SparklesIcon />
-              )
-            }
-            label={
-              ask.kind === "ship"
-                ? "You said ship"
-                : ask.kind === "reply"
-                  ? "You replied"
-                  : "Your what if"
-            }
+            icon={ASK_LOOK[ask.kind].icon}
+            label={ASK_LOOK[ask.kind].label}
             active={ask === lastAsk && item.kind === "working"}
           >
-            {ask.kind === "ship" ? null : <span className="italic">&ldquo;{ask.text}&rdquo;</span>}
+            {ask.kind === "ship" || ask.kind === "proof" ? null : (
+              <span className="italic">&ldquo;{ask.text}&rdquo;</span>
+            )}
             <span className="text-muted-foreground text-xs">
               {" "}
               {formatRelativeTimeLabel(new Date(ask.at).toISOString())}
@@ -905,6 +890,13 @@ function StoryPath(props: {
     </section>
   );
 }
+
+const ASK_LOOK = {
+  ship: { icon: <RocketIcon />, label: "You said ship" },
+  reply: { icon: <ReplyIcon />, label: "You replied" },
+  whatIf: { icon: <SparklesIcon />, label: "Your what if" },
+  proof: { icon: <ImageIcon />, label: "You asked for proof" },
+} as const;
 
 function NowLine(props: { readonly item: GrowReturn }) {
   const { item } = props;
@@ -1056,6 +1048,7 @@ function PhoneStepper(props: {
  */
 function Visual(props: {
   readonly item: GrowReturn;
+  readonly actions: ReturnActions;
   readonly wide: boolean;
   readonly playing: boolean;
   readonly images: ReturnType<typeof useReportImages>;
@@ -1081,7 +1074,6 @@ function Visual(props: {
       </div>
     );
   }
-  if (image === undefined && item.playUrl === null) return null;
   const play = item.playUrl ? (
     embed ? (
       <Button size="lg" onClick={() => useReturnsStore.setState({ playing: item.key })}>
@@ -1100,19 +1092,37 @@ function Visual(props: {
     )
   ) : null;
   const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (image === undefined && props.wide) {
-    return (
-      <div className="flex min-h-80 flex-1 flex-col items-center justify-center gap-3 rounded-xl border bg-muted/60 p-6">
-        {play}
-        <span className="max-w-full truncate text-muted-foreground text-sm">{host}</span>
-      </div>
-    );
-  }
   if (image === undefined) {
+    // No proof: say so where the proof belongs, and ask for it in one tap.
+    const askable = item.kind === "return" || item.kind === "urgent";
     return (
-      <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/60 p-3">
-        {play}
-        <span className="min-w-0 truncate text-muted-foreground text-sm">{host}</span>
+      <div
+        className={cn(
+          "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/40 text-center",
+          props.wide ? "min-h-80 flex-1 p-6" : "p-4",
+        )}
+      >
+        <ImageOffIcon className="size-6 text-muted-foreground" />
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-sm">No proof yet</span>
+          <span className="text-muted-foreground text-xs">
+            {item.kind === "working"
+              ? "It comes with the answer."
+              : "It came back without showing what it made."}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {askable ? (
+            <Button variant="outline" onClick={() => void props.actions.askProof(item)}>
+              <ImageIcon />
+              Ask for proof
+            </Button>
+          ) : null}
+          {play}
+        </div>
+        {host ? (
+          <span className="max-w-full truncate text-muted-foreground text-xs">{host}</span>
+        ) : null}
       </div>
     );
   }

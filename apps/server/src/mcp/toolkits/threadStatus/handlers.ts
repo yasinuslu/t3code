@@ -59,6 +59,13 @@ export const ThreadStatusHandlersLive = ThreadStatusToolkit.toLayer({
           text: linkStoredImages(input.report, stored).trim(),
         })
         .pipe(Effect.mapError(unavailable));
-      return { threadId, storedImages: stored.size };
+      return stored.size > 0
+        ? { threadId, storedImages: stored.size }
+        : {
+            threadId,
+            storedImages: 0,
+            warning:
+              "No proof image. Before the final report, add one (a marked screenshot of the result, a short GIF for motion, or an image of the evidence) as a markdown image with an absolute path.",
+          };
     }),
 });
