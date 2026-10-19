@@ -19,7 +19,8 @@ const toggleVariants = cva(
         default: "h-9 min-w-9 px-[calc(--spacing(2)-1px)] sm:h-8 sm:min-w-8",
         lg: "h-10 min-w-10 px-[calc(--spacing(2.5)-1px)] sm:h-9 sm:min-w-9",
         segmented:
-          "h-7 min-w-0 rounded-md px-3 text-xs before:rounded-[calc(var(--radius-md)-1px)]",
+          // The hit area reaches over the group's padding, so its edge is no dead ring.
+          "h-7 min-w-0 rounded-md px-3 text-xs before:rounded-[calc(var(--radius-md)-1px)] after:absolute after:inset-x-0 after:-inset-y-0.5 first:after:-left-0.5 last:after:-right-0.5",
         sm: "h-8 min-w-8 px-[calc(--spacing(1.5)-1px)] sm:h-7 sm:min-w-7",
         xs: "h-7 min-w-7 px-[calc(--spacing(1)-1px)] sm:h-6 sm:min-w-6 rounded-md",
       },

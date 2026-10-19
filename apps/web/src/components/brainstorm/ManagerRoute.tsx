@@ -42,8 +42,14 @@ export function ManagerRoute() {
     if (request !== "hide") return;
     const { returnTo } = useManagerViewStore.getState();
     useManagerViewStore.setState({ request: null, returnTo: null });
-    router.history.push(returnTo?.href ?? "/");
-    if (returnTo?.grow) openHomeOverlay();
+    // Grow goes back up once the page under it is there: Home closes on a path change.
+    void router
+      .navigate({ href: returnTo?.href ?? "/" })
+      .then(nextFrame)
+      .then(nextFrame)
+      .then(() => {
+        if (returnTo?.grow) openHomeOverlay();
+      });
   }, [request, router]);
 
   // Finding the manager thread may create it, so it runs only when asked for or on screen.
@@ -65,9 +71,15 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
     const previous = previousKey.current;
     // A switch passes through loading; the last manager shown stays the one to compare with.
     if (key !== null) previousKey.current = key;
-    if (request === "show") {
+    // The live value: a second run before this render's request clears must not act again.
+    if (request === "show" && useManagerViewStore.getState().request === "show") {
       if (manager._tag === "Failed") {
-        useManagerViewStore.setState({ request: null });
+        // A space switched to while another profile's manager shows: show that space instead
+        // (the index opens its most recent project), so the sidebar and the page agree.
+        if (useManagerViewStore.getState().shown) {
+          useManagerViewStore.setState({ request: null, returnTo: null });
+          void navigate({ to: "/" });
+        } else useManagerViewStore.setState({ request: null });
         toastManager.add({
           type: "warning",
           title: manager.offline ? "Manager host offline" : "The manager could not open",
