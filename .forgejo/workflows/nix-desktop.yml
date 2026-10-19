@@ -57,3 +57,57 @@ jobs:
           nix run nixpkgs#attic-client -- login "$ATTIC_CACHE" "$ATTIC_ENDPOINT" "$ATTIC_TOKEN"
           xargs nix run nixpkgs#attic-client -- push "$ATTIC_CACHE" < "$RUNNER_TEMP/out-paths.txt"
           rm -rf "$XDG_CONFIG_HOME"
+
+  # SHIP. A green build of a yu-v2 push is what "ship" means: this job pins the commit in
+  # platform-gitops (releases/t3code.json), the single source of truth for what T3 Code runs on
+  # nika and joyboy. The machines watch that file (`nep t3 autoship`, nepjua flake), build the
+  # pinned sha in their own free slot, wait for an idle server, restart it behind a health gate
+  # and roll back on failure. A red build never reaches this job, so nothing ships; rolling back
+  # is reverting the pin commit there. Write access is a deploy key limited to that one repo.
+  ship:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: nix
+    timeout-minutes: 15
+    steps:
+      - name: Pin this commit in platform-gitops
+        env:
+          GITOPS_DEPLOY_KEY: ${{ secrets.GITOPS_DEPLOY_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          sha="$GITHUB_SHA"
+          # The subject is cosmetic: a GitHub rate limit or blip must not stop the ship.
+          subject=$(curl -sf --retry 3 "https://api.github.com/repos/yasinuslu/t3code/commits/$sha" | jq -r '.commit.message | split("\n")[0]' || true)
+          [ -n "$subject" ] || subject="(subject unavailable)"
+          key="$RUNNER_TEMP/gitops_key"
+          trap 'rm -f "$key"' EXIT
+          (umask 077; printf '%s\n' "$GITOPS_DEPLOY_KEY" > "$key")
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
+          git clone -q --depth 1 ssh://git@git.nepjua.org:2222/yasinuslu/platform-gitops.git "$RUNNER_TEMP/gitops"
+          cd "$RUNNER_TEMP/gitops"
+          git config user.name forge-ci
+          git config user.email forge-ci@git.nepjua.org
+          for attempt in 1 2 3 4 5; do
+            pinned=$(jq -r .sha releases/t3code.json)
+            if [ "$pinned" = "$sha" ]; then echo "already pinned: $sha"; exit 0; fi
+            # Never move the pin backwards: a slower run of an older commit can finish after a newer one.
+            rel=$(curl -sf --retry 3 "https://api.github.com/repos/yasinuslu/t3code/compare/$pinned...$sha" | jq -r .status || true)
+            case "$rel" in
+              ahead|diverged) ;;
+              behind|identical) echo "pin $pinned is already at or ahead of $sha"; exit 0 ;;
+              # Fail closed: an unreadable relation must not move the pin backwards.
+              *) echo "cannot tell how $sha relates to the pin $pinned ($rel); not pinning"; exit 1 ;;
+            esac
+            jq -n --arg sha "$sha" --arg subject "$subject" --arg at "$(date -u +%FT%TZ)" --arg run "$RUN_URL" \
+              '{repo: "yasinuslu/t3code", branch: "yu-v2", sha: $sha, subject: $subject, shippedAt: $at, run: $run}' \
+              > releases/t3code.json
+            git add releases/t3code.json
+            git commit -q -m "ship: t3code ${sha:0:7} $subject"
+            git push -q origin HEAD:main && { echo "pinned $sha"; exit 0; }
+            echo "push raced (attempt $attempt); retrying"
+            git fetch -q origin main
+            git reset -q --hard origin/main
+          done
+          echo "could not push the pin"
+          exit 1
