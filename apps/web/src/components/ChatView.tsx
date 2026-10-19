@@ -11002,7 +11002,10 @@ export default function ChatView(props: ChatViewProps) {
       ? { onCheckoutPullRequestRequest: openPullRequestDialog }
       : {}),
     onComposerFocusRequest: scheduleComposerFocus,
-    ...(isServerThread && isGitRepo ? { onOpenChanges: openChangesFromThreadPanel } : {}),
+    // The diff surface lives in the right panel, which an embedded chat does not have.
+    ...(isServerThread && isGitRepo && !embedded
+      ? { onOpenChanges: openChangesFromThreadPanel }
+      : {}),
     versionMismatch:
       showVersionMismatchBanner && versionMismatch
         ? {
@@ -11171,6 +11174,16 @@ export default function ChatView(props: ChatViewProps) {
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}
           />
+          {/* A chat embedded in Home (Grow) keeps the thread's details (branch, PR, commit,
+              merge) one click away; it has no terminal or right panel to toggle. */}
+          {embedded ? (
+            <PanelLayoutControls
+              {...panelToggleControlProps}
+              showUpdateControl={false}
+              showTerminalControl={false}
+              showRightPanelControl={false}
+            />
+          ) : null}
         </header>
         {activeThreadShell ? <ThreadStatusPanel thread={activeThreadShell} /> : null}
 
@@ -11721,7 +11734,7 @@ export default function ChatView(props: ChatViewProps) {
               </AlertDialogPopup>
             </AlertDialog>
 
-            {embedded ? null : <ThreadDetailsPanel {...threadDetailsPanelProps} />}
+            <ThreadDetailsPanel {...threadDetailsPanelProps} />
 
             {pullRequestDialogState ? (
               <PullRequestThreadDialog
