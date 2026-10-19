@@ -44,6 +44,7 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import ChatView from "../ChatView";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
 import { Button } from "../ui/button";
@@ -76,10 +77,12 @@ const useReturnsStore = create<{
   readonly phoneView: "card" | "list";
   readonly query: string;
   readonly playing: string | null;
-}>(() => ({ selected: null, phoneView: "card", query: "", playing: null }));
+  /** The item whose conversation is open in place of its card. */
+  readonly thread: string | null;
+}>(() => ({ selected: null, phoneView: "card", query: "", playing: null, thread: null }));
 
 const select = (key: string | null) =>
-  useReturnsStore.setState({ selected: key, phoneView: "card", playing: null });
+  useReturnsStore.setState({ selected: key, phoneView: "card", playing: null, thread: null });
 
 /** The actions on a return, wired to the thread and its grow card. */
 function useReturnActions(moveOn: (item: GrowReturn) => void) {
@@ -155,7 +158,11 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       });
     },
     bringBack: (item: GrowReturn) => void record(item, null),
-    openThread: (item: GrowReturn) => {
+    /** The conversation opens inside Grow, so the deck stays one Back away. */
+    openThread: (item: GrowReturn) =>
+      useReturnsStore.setState({ selected: item.key, phoneView: "card", thread: item.key }),
+    /** The full thread view, for work the deck is too small for. */
+    leaveForThread: (item: GrowReturn) => {
       closeHomeOverlay();
       void navigate({
         to: "/$environmentId/$threadId",
@@ -189,7 +196,7 @@ export function GrowReturns(props: {
   const loaded = useGrowLoaded();
   const managers = useEveryManagerThreadKey();
   const pending = usePendingDecisions((state) => state.keys);
-  const { selected, phoneView, query, playing } = useReturnsStore();
+  const { selected, phoneView, query, playing, thread } = useReturnsStore();
   const wide = useMediaQuery("md");
   const [whatIfOpen, setWhatIfOpen] = useState(false);
 
@@ -231,6 +238,10 @@ export function GrowReturns(props: {
         case "u":
           if (undo()) used();
           return;
+        case "Escape":
+          if (thread === null) return;
+          useReturnsStore.setState({ thread: null });
+          return used();
         case "/":
           document.querySelector<HTMLElement>("[data-grow-search]")?.focus();
           return used();
@@ -261,7 +272,7 @@ export function GrowReturns(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [actions, current, playing, shown, wide]);
+  }, [actions, current, playing, shown, thread, wide]);
 
   if (!ready) return <ReturnsSkeleton />;
 
@@ -276,17 +287,21 @@ export function GrowReturns(props: {
     />
   );
   const hero = current ? (
-    <Hero
-      key={current.key}
-      item={current}
-      actions={actions}
-      wide={wide}
-      playing={playing === current.key}
-      whatIfOpen={whatIfOpen}
-      setWhatIfOpen={setWhatIfOpen}
-      position={positionOf(shown, current)}
-      step={(direction) => select(growStep(shown, current.key, direction))}
-    />
+    thread === current.key ? (
+      <ThreadPane key={current.key} item={current} actions={actions} wide={wide} />
+    ) : (
+      <Hero
+        key={current.key}
+        item={current}
+        actions={actions}
+        wide={wide}
+        playing={playing === current.key}
+        whatIfOpen={whatIfOpen}
+        setWhatIfOpen={setWhatIfOpen}
+        position={positionOf(shown, current)}
+        step={(direction) => select(growStep(shown, current.key, direction))}
+      />
+    )
   ) : (
     <CaughtUp spark={spark} actions={actions} searching={query !== ""} />
   );
@@ -532,6 +547,52 @@ function RowMark(props: { readonly item: GrowReturn }) {
 }
 
 /** One return, big: what it is, what it asks, and the choices. */
+/** The item's conversation in place of its card: read it, answer it, then Back to the deck. */
+function ThreadPane(props: {
+  readonly item: GrowReturn;
+  readonly actions: ReturnActions;
+  readonly wide: boolean;
+}) {
+  const { item } = props;
+  return (
+    <section
+      aria-label={`Thread: ${item.headline}`}
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      data-grow-thread=""
+    >
+      <div className="flex items-center gap-2 border-b px-3 py-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => useReturnsStore.setState({ thread: null })}
+        >
+          <ArrowLeftIcon />
+          Back
+          {props.wide ? <Kbd>Esc</Kbd> : null}
+        </Button>
+        <span className="min-w-0 flex-1 truncate font-medium text-sm">{item.headline}</span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Open in Threads"
+          title="Open in Threads"
+          onClick={() => props.actions.leaveForThread(item)}
+        >
+          <ExternalLinkIcon />
+        </Button>
+      </div>
+      <ChatView
+        environmentId={item.thread.environmentId}
+        threadId={item.thread.id}
+        routeKind="server"
+        reserveTitleBarControlInset={false}
+        autoFocusComposer={false}
+        embedded
+      />
+    </section>
+  );
+}
+
 function Hero(props: {
   readonly item: GrowReturn;
   readonly actions: ReturnActions;

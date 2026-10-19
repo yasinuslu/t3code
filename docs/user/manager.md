@@ -36,7 +36,8 @@ asks, and one decision. **Ship** tells the agent to land it the way its reposito
 **What if...** asks for a change in the same thread, and **Let go** takes it off the list. Each
 decision waits five seconds with **Undo**. Older returns fold under **Earlier**; what is done and
 what you let go stay findable below, and a let-go item can be brought back. Keys: `j`/`k` move,
-`s` ship, `r` reply, `d` done, `w` what if, `l` let go, `p` play, `o` open the thread,
+`s` ship, `r` reply, `d` done, `w` what if, `l` let go, `p` play, `o` opens the conversation
+right in Grow (`Esc` goes back),
 `u` undo, `/` search.
 
 Agents keep a status card at the top of their thread current with
