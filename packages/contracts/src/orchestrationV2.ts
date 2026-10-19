@@ -1788,6 +1788,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
   /** When the agent last set the thread's status report; the text stays server-side. */
   statusUpdatedAt: Schema.optional(IsoDateTime),
+  /** Whether that report embeds a proof image; absent when it does not. */
+  statusProof: Schema.optional(Schema.Boolean),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),

@@ -32,7 +32,7 @@ Threads; `ctrl+alt+0` switches between them. Change them in **Settings → Keybi
 
 Grow shows what your agents finished today, one at a time: its screenshot or live preview in the
 middle, and beside it what it is, where it came from (the thread that launched or forked it, and
-what you sent it from Grow), where it stands, and what happened. Then one decision. Every return should carry a proof image you can read at a glance; agents are told to add one, and **Ask for proof** asks again when one is missing. **Ship** tells the agent to land it the way its repository lands work,
+what you sent it from Grow), where it stands, and what happened. Then one decision. Every return carries a proof image you can read at a glance: agents are told to add one, and when a thread finishes work without one, T3 asks it for one by itself. The list marks which returns have proof, and **Ask again** asks once more. **Ship** tells the agent to land it the way its repository lands work,
 **Reply** answers its question, **Done** clears something with nothing to merge (a report),
 **What if...** asks for a change in the same thread, and **Let go** takes it off the list. Each
 decision waits five seconds with **Undo**. Anything an agent is still working on, like a What

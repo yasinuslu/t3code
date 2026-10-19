@@ -16,3 +16,10 @@ export const ThreadStatusReport = Schema.Struct({
   updatedAt: IsoDateTime,
 });
 export type ThreadStatusReport = typeof ThreadStatusReport.Type;
+
+const PROOF_IMAGE = /\]\(<?(?:attachment:[\w-]+|\/[^)\s>]+\.(?:png|jpe?g|gif|webp))>?\)/i;
+
+/** Whether a status report embeds a proof image (a stored screenshot or an image path). */
+export function threadStatusReportHasProof(text: string): boolean {
+  return PROOF_IMAGE.test(text);
+}

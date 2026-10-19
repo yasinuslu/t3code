@@ -142,6 +142,8 @@ export interface EnvironmentThreadShell {
   readonly previewLinks?: ReadonlyArray<ThreadPreviewLink>;
   /** When the agent last set the thread's status report; absent until one does. */
   readonly statusUpdatedAt?: string;
+  /** True when that report embeds a proof image. */
+  readonly statusProof?: boolean;
   /**
    * Server-tracked visited watermark. `undefined` means the environment's
    * server predates visited tracking and clients should fall back to any
@@ -251,6 +253,7 @@ export function presentThreadShell(
     branchPullRequest: thread.branchPullRequest ?? null,
     previewLinks: thread.previewLinks ?? NO_PREVIEW_LINKS,
     ...(thread.statusUpdatedAt === undefined ? {} : { statusUpdatedAt: thread.statusUpdatedAt }),
+    ...(thread.statusProof ? { statusProof: true } : {}),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,
     activeProviderThreadId: thread.activeProviderThreadId,

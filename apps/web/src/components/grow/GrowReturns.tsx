@@ -549,6 +549,7 @@ function ReturnRow(props: { readonly item: GrowReturn; readonly current: boolean
       >
         <RowMark item={item} />
         <span className="min-w-0 flex-1 truncate">{item.headline}</span>
+        <ProofMark item={item} />
         <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
           {formatRelativeTimeLabel(item.lastActivityAt).replace(" ago", "")}
         </span>
@@ -582,6 +583,16 @@ function RowMark(props: { readonly item: GrowReturn }) {
     return <PlayIcon aria-label="Playable" className="size-3.5 shrink-0 text-muted-foreground" />;
   }
   return <span aria-hidden className="size-3.5 shrink-0" />;
+}
+
+/** Whether the item came back with a proof image; nothing while it is still being worked on. */
+function ProofMark(props: { readonly item: GrowReturn }) {
+  if (props.item.kind === "working") return null;
+  return props.item.thread.statusProof ? (
+    <ImageIcon aria-label="Has proof" className="size-3.5 shrink-0 text-success" />
+  ) : (
+    <ImageOffIcon aria-label="No proof" className="size-3.5 shrink-0 text-warning" />
+  );
 }
 
 /** A thread's conversation in place of the card: read it, answer it, then Back to the deck. */
@@ -1210,14 +1221,14 @@ function NoProof(props: {
         <span className="text-muted-foreground text-xs">
           {item.kind === "working"
             ? "It comes with the answer."
-            : "It came back without showing what it made."}
+            : "T3 asked it for one when it finished."}
         </span>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2">
         {askable ? (
           <Button variant="outline" onClick={() => void props.actions.askProof(item)}>
             <ImageIcon />
-            Ask for proof
+            Ask again
           </Button>
         ) : null}
         {item.playUrl ? (
