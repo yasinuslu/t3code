@@ -9,8 +9,9 @@
  *   2. Snapshots the real db (`~/.t3/userdata/statev2.sqlite`, read-only
  *      VACUUM INTO) and prunes it to the most recently updated projects and,
  *      per project, the most recent threads that have fully stopped, with
- *      their forks and subagents. Working, settled, and archived threads, and
- *      threads with pending recovery, are skipped, and scheduled tasks and
+ *      their forks and subagents. Working and archived threads, and threads
+ *      with pending recovery, are skipped; settled threads only on request
+ *      (`--settled-per-project`, Grow is made of them). Scheduled tasks and
  *      queued effects are dropped, so the dev server never adopts live work.
  *      Auth sessions, pairing links, command receipts, and provider
  *      runtime rows are dropped — pair a fresh browser against dev.
@@ -150,6 +151,8 @@ export interface RunMigrateDevDbInput {
   readonly source?: string | undefined;
   readonly projects: number;
   readonly threadsPerProject: number;
+  /** Settled thread families to keep per project, on top of the stopped ones. Default 0. */
+  readonly settledPerProject?: number | undefined;
 }
 
 export interface RunMigrateDevDbOptions {
@@ -274,17 +277,20 @@ const pruneSnapshot = Effect.fn("pruneDevDbSnapshot")(function* (input: RunMigra
       COALESCE(json_extract(payload_json, '$.lineage.rootThreadId'), thread_id) AS root_id
     FROM orchestration_v2_projection_threads`;
 
+  // Settled families are as stopped as the rest; they are kept only on request
+  // and ranked separately, so they never crowd out the open ones.
   yield* sql`CREATE TEMP TABLE stopped_families AS
-    SELECT f.root_id, root.project_id, MAX(f.updated_at) AS updated_at
+    SELECT f.root_id, root.project_id, MAX(f.updated_at) AS updated_at,
+      (json_extract(root.payload_json, '$.settledAt') IS NOT NULL
+        OR json_extract(root.payload_json, '$.settledOverride') IS 'settled') AS settled
     FROM thread_families f
     JOIN orchestration_v2_projection_threads root ON root.thread_id = f.root_id
     WHERE root.deleted_at IS NULL
       AND json_extract(root.payload_json, '$.deletedAt') IS NULL
       AND json_extract(root.payload_json, '$.archivedAt') IS NULL
-      AND json_extract(root.payload_json, '$.settledAt') IS NULL
-      AND json_extract(root.payload_json, '$.settledOverride') IS NOT 'settled'
     GROUP BY f.root_id, root.project_id
     HAVING SUM(f.thread_id IN (SELECT thread_id FROM live_threads)) = 0`;
+  const settledPerProject = input.settledPerProject ?? 0;
 
   // Projects with clonable threads outrank empty-but-recent ones: the point
   // of the exercise is thread data, not the project list.
@@ -294,6 +300,7 @@ const pruneSnapshot = Effect.fn("pruneDevDbSnapshot")(function* (input: RunMigra
     LEFT JOIN (
       SELECT project_id, MAX(updated_at) AS last_stopped_at
       FROM stopped_families
+      WHERE settled = 0 OR ${settledPerProject} > 0
       GROUP BY project_id
     ) q ON q.project_id = p.project_id
     WHERE p.deleted_at IS NULL
@@ -307,14 +314,18 @@ const pruneSnapshot = Effect.fn("pruneDevDbSnapshot")(function* (input: RunMigra
       SELECT root_id FROM (
         SELECT
           sf.root_id,
+          sf.settled,
           ROW_NUMBER() OVER (
-            PARTITION BY sf.project_id
+            PARTITION BY sf.project_id, sf.settled
             ORDER BY sf.updated_at DESC
           ) AS recency_rank
         FROM stopped_families sf
         JOIN kept_projects kp ON kp.project_id = sf.project_id
       )
-      WHERE recency_rank <= ${input.threadsPerProject}
+      WHERE recency_rank <= CASE settled
+        WHEN 0 THEN ${input.threadsPerProject}
+        ELSE ${settledPerProject}
+      END
     )`;
 
   // Every V2 table and every V1 table the lazy importer reads is keyed by
@@ -397,8 +408,8 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
 ) {
   // SQLite treats a negative LIMIT as "no limit", which would clone
   // everything. The CLI flags validate this too; this covers direct callers.
-  if (input.projects < 1 || input.threadsPerProject < 0) {
-    return yield* Effect.die("projects must be >= 1 and threadsPerProject >= 0");
+  if (input.projects < 1 || input.threadsPerProject < 0 || (input.settledPerProject ?? 0) < 0) {
+    return yield* Effect.die("projects must be >= 1, threadsPerProject and settledPerProject >= 0");
   }
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -563,6 +574,12 @@ export const migrateDevDbCommand = Command.make(
         "How many recent stopped threads, with their forks and subagents, to keep per project.",
       ),
     ),
+    settledPerProject: Flag.Int("settled-per-project").pipe(
+      Flag.withDefault(0),
+      Flag.withDescription(
+        "How many recent settled threads, with their forks and subagents, to keep per project as well.",
+      ),
+    ),
     baseDir: Flag.String("base-dir").pipe(
       Flag.optional,
       Flag.withDescription("Isolated .t3 directory. Defaults to the current worktree's .t3."),
@@ -572,11 +589,12 @@ export const migrateDevDbCommand = Command.make(
       Flag.withDescription("Source database. Defaults to ~/.t3/userdata/statev2.sqlite."),
     ),
   },
-  ({ projects, threadsPerProject, baseDir, source }) =>
+  ({ projects, threadsPerProject, settledPerProject, baseDir, source }) =>
     Effect.gen(function* () {
       const result = yield* runMigrateDevDb({
         projects,
         threadsPerProject,
+        settledPerProject,
         baseDir: Option.getOrUndefined(baseDir),
         source: Option.getOrUndefined(source),
       });
