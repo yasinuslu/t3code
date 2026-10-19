@@ -52,7 +52,14 @@ export function useThreadReport(thread: EnvironmentThreadShell) {
           },
         }),
   ).data;
-  const digest = useMemo(() => digestThreadReport(report?.text), [report?.text]);
+  const text = report?.text;
+  const statusText = report?.statusText;
+  const digest = useMemo(() => {
+    const latest = digestThreadReport(text);
+    // A later answer without images still has the status report's proof.
+    if (latest.screenshots.length > 0 || !statusText) return latest;
+    return { ...latest, screenshots: digestThreadReport(statusText).screenshots };
+  }, [text, statusText]);
   const previews = useEnvironmentQuery(
     previewEnvironment.list({
       environmentId: thread.environmentId,

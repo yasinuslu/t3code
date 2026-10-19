@@ -542,8 +542,9 @@ function ReturnRow(props: { readonly item: GrowReturn; readonly current: boolean
         type="button"
         aria-current={props.current ? "true" : undefined}
         className={cn(
-          "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-start text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-          props.current && "bg-accent font-medium",
+          "relative flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-start text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+          props.current &&
+            "bg-primary/15 font-medium text-foreground before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary hover:bg-primary/20",
         )}
         onClick={() => select(item.key)}
       >

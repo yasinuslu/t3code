@@ -491,9 +491,10 @@ describe("BrainstormService threadReport", () => {
         answersByRun: [[{ text: "first report" }], [{ text: "second report" }]],
         statusReport: { text: "set in run 1", updatedAt: "2026-10-06T01:30:00.000Z" },
       });
-      expect((yield* harness.brainstorm.threadReport(ThreadId.make("t"))).text).toBe(
-        "second report",
-      );
+      const report = yield* harness.brainstorm.threadReport(ThreadId.make("t"));
+      expect(report.text).toBe("second report");
+      // The older status still travels, so its proof images are not lost.
+      expect(report.statusText).toBe("set in run 1");
     }).pipe(Effect.scoped),
   );
 
