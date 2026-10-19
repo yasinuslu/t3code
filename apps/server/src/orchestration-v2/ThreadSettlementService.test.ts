@@ -294,10 +294,27 @@ describe("resolveAutoSettlementAt", () => {
     expect(
       ThreadSettlementService.resolveAutoSettlementAt({ ...input, autoSettleOnMerge: false }),
     ).toBeNull();
+    // The user wrote after the merge: held open while the thread is recent,
+    const resumed = {
+      ...input,
+      pullRequest: {
+        state: "merged" as const,
+        mergedAt: DateTime.formatIso(at(-3 * 60 * 60 * 1_000)),
+      },
+    };
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...resumed,
+        thread: { ...thread, latestRunCompletedAt: at(-10 * 60 * 1_000) },
+      }),
+    ).toBeNull();
+    // and settled at its last activity once it has been quiet for 30 minutes.
+    expect(ThreadSettlementService.resolveAutoSettlementAt(resumed)).toEqual(at(-90 * 60 * 1_000));
+    // A closed pull request keeps the stricter rule: later user activity wins.
     expect(
       ThreadSettlementService.resolveAutoSettlementAt({
         ...input,
-        pullRequest: { state: "merged", mergedAt: DateTime.formatIso(at(-3 * 60 * 60 * 1_000)) },
+        pullRequest: { state: "closed", closedAt: DateTime.formatIso(at(-3 * 60 * 60 * 1_000)) },
       }),
     ).toBeNull();
     // A thread without messages still has a stable timestamp when its PR closes.
@@ -332,6 +349,35 @@ describe("resolveAutoSettlementAt", () => {
       ThreadSettlementService.resolveAutoSettlementAt({
         ...input,
         thread: { ...woken, latestUserAuthoredMessageAt: at(-30 * 60 * 1_000) },
+      }),
+    ).toBeNull();
+  });
+
+  it("settles a sub-agent created after its inherited pull request merged once it is idle", () => {
+    const subagent = shell({
+      createdAt: at(-60 * 60 * 1_000),
+      latestRunCompletedAt: at(-45 * 60 * 1_000),
+      lineage: {
+        rootThreadId: ThreadId.make("parent"),
+        parentThreadId: ThreadId.make("parent"),
+        relationshipToParent: "subagent",
+      },
+    });
+    const input = {
+      thread: subagent,
+      pullRequest: {
+        state: "merged" as const,
+        mergedAt: DateTime.formatIso(at(-2 * 60 * 60 * 1_000)),
+      },
+      nowMs: NOW_MS,
+      autoSettleAfterDays: null,
+      autoSettleOnMerge: true,
+    };
+    expect(ThreadSettlementService.resolveAutoSettlementAt(input)).toEqual(at(-45 * 60 * 1_000));
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...subagent, latestRunCompletedAt: at(-5 * 60 * 1_000) },
       }),
     ).toBeNull();
   });
@@ -766,7 +812,8 @@ describe("ThreadSettlementServiceV2 worker", () => {
               makeThread("resumed-manual", {
                 branch: "main",
                 linkedPullRequest: previous,
-                latestUserMessageAt: DateTime.makeUnsafe("2026-08-28T00:00:00.000Z"),
+                // Resumed after the merge and still within the idle grace.
+                latestUserMessageAt: DateTime.makeUnsafe("2026-08-28T11:50:00.000Z"),
               }),
             ],
             [makeProject()],
