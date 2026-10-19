@@ -100,10 +100,11 @@ T3 owns the whole life of its VMs, so host tooling only needs a safety net
 
 - **Child of the server.** The server stops every sandbox on shutdown and,
   on start, stops any an earlier process left running. A kill or crash runs
-  no finalizer, so the first VM also starts a detached lifeline process that
-  holds a pipe from the server: when the kernel closes it, the lifeline thaws
-  and stops the server's VMs within seconds. The VM's short `--idle-timeout`
-  backs that up.
+  no finalizer, so the first VM also starts a detached lifeline process, in
+  its own systemd scope when it can, that holds a pipe from the server: when
+  the kernel closes it, the lifeline thaws and stops the server's VMs within
+  seconds. msb's `--idle-timeout` is not used: it counts only msb's own exec
+  traffic, so it stopped VMs while an agent waited on a long model reply.
 - **Sleep between turns.** `ProviderSessionManager` reports turn start and
   end. With no turn running and no use for `T3CODE_SANDBOX_IDLE_MINUTES`,
   the backend's `sleep` drops the guest page cache (libkrun's free page

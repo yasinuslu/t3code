@@ -1033,6 +1033,14 @@ const make = Effect.gen(function* () {
       setStatus(record, "starting");
       const backend = backendOf(record);
       const state = yield* backend.state(record.containerName);
+      // The control folder is mounted, so it must exist before the VM boots,
+      // and a restored state folder may have lost it.
+      yield* fileSystem
+        .makeDirectory(controlDir(record.containerName), { recursive: true })
+        .pipe(
+          Effect.andThen(fileSystem.chmod(controlDir(record.containerName), 0o700)),
+          Effect.ignore,
+        );
       if (state === "missing") {
         yield* backend.ensureAvailable(record.workspacePath);
         record.image = yield* backend.ensureImage(
@@ -1061,10 +1069,6 @@ const make = Effect.gen(function* () {
               }
             : {}),
         });
-        // The env-file folder must exist on the host before any exec.
-        yield* fileSystem
-          .makeDirectory(controlDir(record.containerName), { recursive: true })
-          .pipe(Effect.ignore);
       } else if (state !== "running") {
         yield* backend.start(record.containerName, record.workspacePath);
       }

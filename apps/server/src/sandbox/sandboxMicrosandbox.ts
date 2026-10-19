@@ -60,9 +60,10 @@ const volumeArgs = (spec: SandboxCreateSpec) =>
     ]);
 
 /**
- * `msb run` arguments for one sandbox. The VM's own idle timeout backs up the
- * lifeline below: the relay keeps an exec open while T3 runs, so it only fires
- * once the server is gone.
+ * `msb run` arguments for one sandbox. There is no `--idle-timeout`: msb
+ * counts only its own exec traffic as use, not the published exec port, so it
+ * would stop a VM while an agent waits on a long model reply. The lifeline
+ * below stops VMs when the server dies instead.
  */
 export const microsandboxRunArgs = (
   input: SandboxCreateSpec & { readonly owner: string; readonly resources: MicrosandboxResources },
@@ -83,8 +84,6 @@ export const microsandboxRunArgs = (
   String(input.resources.cpus),
   "--memory",
   input.resources.memory,
-  "--idle-timeout",
-  "2m",
   "--label",
   `${SANDBOX_LABELS.sandbox}=1`,
   "--label",
@@ -180,16 +179,31 @@ process.stdin.on("error", stopAll);
 /**
  * Starts the lifeline for this server's sandboxes once. It runs in its own
  * session, so a signal to the server's process group does not take it down
- * before it has stopped the VMs.
+ * before it has stopped the VMs, and on systemd in its own scope, so stopping
+ * the server's unit (which kills its whole cgroup) does not either. When
+ * `systemd-run` is missing (macOS) or refuses, it starts without the scope.
  */
-const holdLifeline = (ownerLabel: string) => {
-  const child = NodeChildProcess.spawn(process.execPath, ["-e", LIFELINE_SOURCE, ownerLabel], {
+const holdLifeline = (ownerLabel: string, inScope = true) => {
+  const command = [process.execPath, "-e", LIFELINE_SOURCE, ownerLabel];
+  const [file, ...args] = inScope
+    ? ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--", ...command]
+    : command;
+  const child = NodeChildProcess.spawn(file!, args, {
     // The desktop app's execPath is Electron.
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     detached: true,
     stdio: ["pipe", "ignore", "ignore"],
   });
-  child.on("error", () => {});
+  // The lifeline only exits once the server is gone, so an early exit means
+  // the scope could not be made.
+  let fellBack = false;
+  const fallBack = () => {
+    if (!inScope || fellBack) return;
+    fellBack = true;
+    holdLifeline(ownerLabel, false);
+  };
+  child.on("error", fallBack);
+  child.on("exit", fallBack);
   child.unref();
   (child.stdin as NodeNet.Socket | null)?.unref();
 };
