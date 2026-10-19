@@ -59,10 +59,10 @@ function ManagerEntry() {
                 void openManager();
               }}
               className={cn(
-                "flex h-10 w-full items-center gap-2 rounded-md border-l-2 border-primary px-(--sidebar-row-content-inset) text-left text-sidebar-foreground text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                "flex h-10 w-full items-center gap-2 rounded-md px-(--sidebar-row-content-inset) text-left text-sidebar-foreground text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 // Tinted at rest so it never reads as a thread; lit while it is the page shown.
                 shown
-                  ? "bg-primary/20 ring-1 ring-inset ring-primary/50"
+                  ? "bg-primary/25 ring-1 ring-inset ring-primary/70"
                   : "bg-primary/[0.06] hover:bg-primary/12",
               )}
             />
