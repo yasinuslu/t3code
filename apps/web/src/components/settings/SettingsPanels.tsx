@@ -87,6 +87,7 @@ import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
+import { WINDOW_LAYOUT_OPTIONS } from "../../hooks/useStackedLayout";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
   getCustomModelOptionsByInstance,
@@ -545,6 +546,7 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Diff colors"]
         : []),
       ...(settings.chatWidth !== DEFAULT_UNIFIED_SETTINGS.chatWidth ? ["Chat width"] : []),
+      ...(settings.windowLayout !== DEFAULT_UNIFIED_SETTINGS.windowLayout ? ["Window layout"] : []),
       ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
         ? ["Panel animations"]
         : []),
@@ -680,6 +682,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.appearanceContrast,
       settings.diffColorScheme,
       settings.chatWidth,
+      settings.windowLayout,
       settings.enableAgentBrowserAccess,
       settings.confirmQuit,
       settings.confirmThreadArchive,
@@ -801,6 +804,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
+      windowLayout: DEFAULT_UNIFIED_SETTINGS.windowLayout,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
@@ -1460,6 +1464,50 @@ export function AppearanceSettingsPanel() {
                   <SelectItem value="comfortable">Comfortable (default)</SelectItem>
                   <SelectItem value="wide">Wide</SelectItem>
                   <SelectItem value="full">Full</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("window-layout")}
+          description="Portrait puts the panel below the chat, for tall windows such as a rotated monitor. Auto switches by window shape."
+          resetAction={
+            settings.windowLayout !== DEFAULT_UNIFIED_SETTINGS.windowLayout ? (
+              <SettingResetButton
+                label="window layout"
+                onClick={() =>
+                  updateSettings({ windowLayout: DEFAULT_UNIFIED_SETTINGS.windowLayout })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={settings.windowLayout}
+                onValueChange={(value) => {
+                  const option = WINDOW_LAYOUT_OPTIONS.find(
+                    (candidate) => candidate.value === value,
+                  );
+                  if (option) updateSettings({ windowLayout: option.value });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Window layout">
+                  <SelectValue>
+                    {
+                      WINDOW_LAYOUT_OPTIONS.find((option) => option.value === settings.windowLayout)
+                        ?.label
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  {WINDOW_LAYOUT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.value === "auto" ? `${option.label} (default)` : option.label}
+                    </SelectItem>
+                  ))}
                 </SelectPopup>
               </Select>
             </div>

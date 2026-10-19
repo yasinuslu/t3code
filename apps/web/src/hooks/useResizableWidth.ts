@@ -22,8 +22,9 @@ export interface UseResizableWidthOptions {
    * Which edge of the host element carries the drag handle:
    *   - "left"  → panel grows leftward (right-anchored panels)
    *   - "right" → panel grows rightward (left-anchored panels)
+   *   - "top"   → panel grows upward (bottom-anchored panels; the value is a height)
    */
-  readonly edge: "left" | "right";
+  readonly edge: "left" | "right" | "top";
 }
 
 export interface ResizableWidthHandlers {
