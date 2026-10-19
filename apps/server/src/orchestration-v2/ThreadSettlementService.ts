@@ -36,6 +36,8 @@ export interface SettlementPullRequest {
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
+/** How long a thread that continued after its merge stays quiet before it settles. */
+const MERGED_RESUMED_IDLE_MS = 30 * 60 * 1_000;
 
 function toMillis(value: DateTime.Utc | null | undefined): number | null {
   return value == null ? null : DateTime.toEpochMillis(value);
@@ -110,6 +112,12 @@ export function threadHasQueuedTurnStart(
  * A merged or closed pull request settles the thread unless the user wrote to
  * it afterwards. Runs that background work, a PR watch, or another agent
  * started do not count, so they cannot hold a merged thread open.
+ *
+ * A merged pull request is not held open for good by a later user message or
+ * by a thread created after the merge (a sub-agent inheriting its parent's
+ * links): once the thread has been quiet for `MERGED_RESUMED_IDLE_MS` the
+ * finished work settles anyway. Without this, the usual "merge it", then a
+ * follow-up question, left the thread open until the inactivity timer.
  */
 function pullRequestSettles(
   thread: Pick<
@@ -118,6 +126,8 @@ function pullRequestSettles(
   >,
   pullRequest: SettlementPullRequest,
   autoSettleOnMerge: boolean,
+  nowMs: number,
+  activityAtMs: number | null,
 ): boolean {
   if (pullRequest.state !== "closed" && (pullRequest.state !== "merged" || !autoSettleOnMerge)) {
     return false;
@@ -131,7 +141,12 @@ function pullRequestSettles(
   if (userAnchorMs === null) return false;
   const pullRequestAtMs = Date.parse(terminalAt);
   if (Number.isNaN(pullRequestAtMs)) return false;
-  return pullRequestAtMs >= userAnchorMs;
+  if (pullRequestAtMs >= userAnchorMs) return true;
+  return (
+    pullRequest.state === "merged" &&
+    activityAtMs !== null &&
+    nowMs - activityAtMs >= MERGED_RESUMED_IDLE_MS
+  );
 }
 
 /** Cheap checks that run before any source control lookup. */
@@ -199,7 +214,10 @@ export function resolveAutoSettlementAt(input: {
     toMillis(thread.latestRunStartedAt),
     toMillis(thread.latestRunCompletedAt),
   ]);
-  if (pullRequest !== null && pullRequestSettles(thread, pullRequest, input.autoSettleOnMerge)) {
+  if (
+    pullRequest !== null &&
+    pullRequestSettles(thread, pullRequest, input.autoSettleOnMerge, input.nowMs, activityAtMs)
+  ) {
     return activityAtMs === null ? thread.createdAt : DateTime.makeUnsafe(activityAtMs);
   }
   if (input.autoSettleAfterDays === null || activityAtMs === null) return null;
