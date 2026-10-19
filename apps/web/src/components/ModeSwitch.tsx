@@ -1,17 +1,22 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect } from "react";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
+import { MessagesSquareIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { APP_MODES, cycleAppMode, setAppMode, useAppMode } from "../appMode";
+import { useManagerThreadKeys, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import {
   resolveShortcutCommand,
   shortcutForCommand,
   shortcutLabelForCommand,
 } from "../keybindings";
-import { isMacPlatform } from "../lib/utils";
+import { cn, isMacPlatform } from "../lib/utils";
+import { useManagerOverlayStore } from "../managerOverlayStore";
 import { openManager, toggleManager } from "../lib/goToManager";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { primaryServerKeybindingsAtom } from "../state/server";
+import { Button } from "./ui/button";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -95,24 +100,51 @@ export function ModeShortcuts() {
 }
 
 /**
- * The switch between Grow and normal T3. Fixed at the top
- * centre of the page area so it sits in the same spot in every mode, above Home.
+ * The app bar: the view switch (Grow or Threads) and the one way into the
+ * manager overlay, fixed at the top left in every view, right after the
+ * sidebar toggle (Grow has no sidebar, so there it starts at the edge). It
+ * publishes its width as `--app-bar-width`, which the titlebar insets add, so
+ * no header ever runs under it.
  */
 export function ModeSwitch() {
   const mode = useAppMode();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const isMobile = useIsMobile();
+  const managerOpen = useManagerOverlayStore((state) => state.open);
+  const managerWorking = useManagerWorking();
+  const managerShortcut = shortcutLabelForCommand(keybindings, "manager.toggle");
 
-  // Phones have the bottom tab bar (PhoneTabBar); here the switch would sit on the header text.
+  const measure = useCallback((bar: HTMLDivElement) => {
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => {
+      root.style.setProperty(
+        "--app-bar-width",
+        `calc(${bar.offsetWidth}px + var(--workspace-titlebar-control-gap))`,
+      );
+    });
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--app-bar-width");
+    };
+  }, []);
+
+  // Phones have the bottom tab bar (PhoneTabBar) instead.
   if (isMobile) return null;
 
   return (
     <div
-      className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-(--mode-switch-center) z-50 flex h-[var(--workspace-topbar-height)] -translate-x-1/2 items-center [-webkit-app-region:no-drag]"
+      ref={measure}
+      className={cn(
+        "pointer-events-none fixed top-[var(--workspace-controls-top)] z-45 flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
+        mode === "grow"
+          ? "left-[var(--workspace-controls-left)]"
+          : "left-[calc(var(--workspace-controls-left)+var(--workspace-titlebar-control-size)+var(--workspace-titlebar-control-gap))]",
+      )}
       data-mode-switch=""
     >
       <ToggleGroup
-        aria-label="App mode"
+        aria-label="View"
         className="pointer-events-auto"
         value={[mode]}
         onValueChange={(next) => {
@@ -139,6 +171,47 @@ export function ModeSwitch() {
           );
         })}
       </ToggleGroup>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-sm"
+              variant={managerOpen ? "secondary" : "ghost"}
+              className="pointer-events-auto relative"
+              aria-label="Manager"
+              aria-pressed={managerOpen}
+              data-app-bar-manager=""
+              onClick={toggleManager}
+            />
+          }
+        >
+          <MessagesSquareIcon />
+          {managerWorking ? (
+            <span
+              aria-label="Manager is working"
+              className="absolute top-1 right-1 size-1.5 rounded-full bg-info"
+            />
+          ) : null}
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">
+          Manager{managerShortcut ? ` (${managerShortcut})` : ""}
+        </TooltipPopup>
+      </Tooltip>
     </div>
+  );
+}
+
+/** A manager of any profile is running a turn. */
+function useManagerWorking() {
+  const managerKeys = useManagerThreadKeys();
+  const allThreads = useThreadShellsWithoutBrainstorms();
+  return useMemo(
+    () =>
+      allThreads.some(
+        (thread) =>
+          managerKeys.has(`${thread.environmentId}:${thread.id}`) &&
+          threadRuntimeIsActive(thread.runtime),
+      ),
+    [allThreads, managerKeys],
   );
 }

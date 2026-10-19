@@ -26,6 +26,14 @@ import { selectManagerProfile, useEnsureManagerThread } from "./useOpenManagerTh
 const OPEN_POPUP_SELECTOR =
   '[role="dialog"]:not([data-manager-overlay]), [role="alertdialog"], [role="menu"], [role="listbox"]';
 
+/** Whether `element` is shown and not covered at its center. */
+function isOnTop(element: Element): boolean {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  return top !== null && element.contains(top);
+}
+
 export function ManagerOverlay() {
   const open = useManagerOverlayStore((state) => state.open);
   return open ? <ManagerOverlayLayer /> : null;
@@ -70,24 +78,29 @@ function ManagerOverlayLayer() {
     if (pathname !== openedAt.current) closeManagerOverlay();
   }, [pathname]);
 
-  // Esc hides the manager unless something in it handles Esc first: a composer
-  // menu, a popup, or a running turn's stop (those mark the event handled).
+  // Esc hides the manager unless a popup (a composer menu, a dialog) is open; it
+  // never stops a running turn, which goes on while hidden. Capture phase: the
+  // rich-text composer marks every Esc handled at its target, so a bubbling
+  // listener would never see one.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      // Only a popup shown above the manager counts; a menu left open in the
+      // covered app (the Grow dock's composer) sits under it and must not keep it up.
       const openPopup = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].some(
         (element) =>
           element.closest("[inert]") === null &&
           element.closest('[data-slot="toast-viewport"]') === null &&
-          element.getClientRects().length > 0,
+          isOnTop(element),
       );
       if (openPopup) return;
       event.preventDefault();
+      event.stopImmediatePropagation();
       closeManagerOverlay();
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
   // A link to the thread already underneath does not change the path. File
@@ -111,7 +124,7 @@ function ManagerOverlayLayer() {
     <OverlayLayerContext value={2}>
       <div
         ref={layerRef}
-        className="fixed inset-0 z-55 flex items-center justify-center bg-black/40 sm:p-6"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 sm:p-6"
         onClickCapture={onClickCapture}
         onPointerDown={(event) => {
           // A press on the dimmed backdrop, not inside the panel, puts the manager away.

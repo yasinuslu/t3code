@@ -138,7 +138,7 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, useForkFeatures } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -266,7 +266,6 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
-import { SidebarManagerEntry } from "./sidebar/SidebarManagerEntry";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import {
   CodeProfileProbes,
@@ -2541,6 +2540,7 @@ export default function Sidebar() {
     projectScopeKey,
     setProjectScopeKey,
   });
+  const forkFeatures = useForkFeatures();
   const activeSpace = spaces.find((space) => space.id === activeSpaceId) ?? null;
   const handleSpaceSwipe = useSpaceSwipe(switchSpace);
   useSpaceMouseButtons(switchSpace);
@@ -4929,7 +4929,13 @@ export default function Sidebar() {
       <ThreadContextDragGhost />
       <SpaceMembershipPopoverLayer />
       <SidebarChromeHeader isElectron={isElectron} />
-      <SidebarManagerEntry />
+      {/* With the fork's app bar in the titlebar row, the spaces sit right below it, in
+          the same top-left spot as on Grow, rather than in the footer. */}
+      {forkFeatures ? (
+        <div className="px-2 pb-1" data-sidebar-spaces-top="">
+          <SpaceSwitcher onSwitch={switchSpace} />
+        </div>
+      ) : null}
       <CodeProfileProbes projects={projects} />
       <SidebarContent
         className="min-h-full"
@@ -5531,7 +5537,9 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      <SidebarChromeFooter spaces={<SpaceSwitcher onSwitch={switchSpace} />} />
+      <SidebarChromeFooter
+        spaces={forkFeatures ? null : <SpaceSwitcher onSwitch={switchSpace} />}
+      />
     </SpaceRowProjectContext.Provider>
   );
 }

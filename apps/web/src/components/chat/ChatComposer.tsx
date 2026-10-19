@@ -1,6 +1,7 @@
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
+import { OverlayLayerContext } from "../../homeOverlayStore";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
@@ -59,6 +60,7 @@ import {
   memo,
   type ComponentProps,
   type ReactNode,
+  useContext,
   useCallback,
   useEffect,
   useId,
@@ -996,6 +998,9 @@ function composerCommandMenuPositionsEqual(
 }
 
 function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children: ReactNode }) {
+  // Portaled to the body, so in the manager overlay (z-50, inside the app root) it matches its
+  // layer and wins by coming later in the document.
+  const overLayer = useContext(OverlayLayerContext) >= 2;
   const [position, setPosition] = useState<ComposerCommandMenuPosition | null>(null);
 
   useLayoutEffect(() => {
@@ -1060,7 +1065,7 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 
   return createPortal(
     <div
-      className="pointer-events-auto fixed z-40 flex flex-col"
+      className={cn("pointer-events-auto fixed flex flex-col", overLayer ? "z-50" : "z-40")}
       data-composer-drawer-layer="true"
       style={{
         bottom: position.bottom,

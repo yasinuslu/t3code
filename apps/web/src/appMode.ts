@@ -1,5 +1,5 @@
 /**
- * The app's two screens, one switch. Grow is the Home overlay; T3 ("normal")
+ * The app's two screens, one switch. Grow is the Home overlay; Threads ("normal")
  * is the app with Home closed: the thread list and chat, which stay mounted
  * underneath Home and so keep their place. The manager chat is not a screen:
  * it floats over either one (see `managerOverlayStore`).
@@ -17,7 +17,7 @@ export const APP_MODES: ReadonlyArray<{
   readonly command: "mode.grow" | "mode.normal";
 }> = [
   { mode: "grow", label: "Grow", command: "mode.grow" },
-  { mode: "normal", label: "T3", command: "mode.normal" },
+  { mode: "normal", label: "Threads", command: "mode.normal" },
 ];
 
 export const readAppMode = (): AppMode => (useHomeOverlayStore.getState().open ? "grow" : "normal");

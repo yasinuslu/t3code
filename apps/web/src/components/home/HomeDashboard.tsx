@@ -1,30 +1,21 @@
 /**
- * Home: the Grow workspace under a header with the profile and machine of the
- * manager in view. The manager itself floats over every screen as an overlay
- * (see ManagerOverlay); Grow still shows it in its chat pane when it is selected.
+ * Home: the Grow workspace under a header with the spaces row. The manager
+ * itself floats over every screen as an overlay (see ManagerOverlay); Grow
+ * still shows it in its chat pane when it is selected.
  */
-import { MessagesSquareIcon } from "lucide-react";
-import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useState } from "react";
 
 import { useHomeThreadShells } from "../../brainstormStore";
 import { isElectron } from "../../env";
-import { shortcutLabelForCommand } from "../../keybindings";
-import { primaryServerKeybindingsAtom } from "../../state/server";
 import { useProjects } from "../../state/entities";
 import ChatView from "../ChatView";
 import { NotificationsBell } from "../NotificationsBell";
-import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
-import {
-  ManagerProfileSwitcher,
-  useManagerProfileMouseButtons,
-} from "../brainstorm/ManagerProfileSwitcher";
+import { useManagerProfileMouseButtons } from "../brainstorm/ManagerProfileSwitcher";
 import { GrowWorkspace } from "../grow/GrowWorkspace";
-import { CodeProfileProbes } from "../sidebar/SpaceSwitcher";
-import { openManager } from "../../lib/goToManager";
+import { CodeProfileProbes, SpaceSwitcher } from "../sidebar/SpaceSwitcher";
+import { useSpaceStore } from "../../spaceStore";
 import { selectManagerProfile, useEnsureManagerThread } from "../brainstorm/useOpenManagerThread";
 import { ManagerUnavailable } from "../brainstorm/ManagerOverlay";
 
@@ -40,8 +31,6 @@ export function HomeDashboard() {
   }, []);
   const manager = useEnsureManagerThread();
   const projects = useProjects();
-  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const managerShortcut = shortcutLabelForCommand(keybindings, "manager.toggle");
   // Thumb buttons anywhere on Home switch profiles like they switch spaces over the sidebar.
   useManagerProfileMouseButtons({
     regionSelector: "[data-home-dashboard-root]",
@@ -65,23 +54,11 @@ export function HomeDashboard() {
           // Home covers the sidebar, so its header clears the window controls itself.
           className="pl-(--home-header-start)"
         >
-          <h1 className="font-medium text-sm">Grow</h1>
-          <ManagerProfileSwitcher includeAll onSelect={selectManagerProfile} />
-          <ManagerMachineSwitcher />
+          {/* The same spaces row as the thread list's, in the same top-left spot after
+              the app bar; the manager follows the active space's profile. */}
+          <SpaceSwitcher onSwitch={(spaceId) => useSpaceStore.getState().setActiveSpace(spaceId)} />
           <div className="ms-auto flex shrink-0 items-center gap-1">
             <NotificationsBell />
-            <Button
-              size="xs"
-              variant="outline"
-              data-home-open-manager=""
-              onClick={() => void openManager()}
-            >
-              <MessagesSquareIcon />
-              Manager
-              {managerShortcut ? (
-                <span className="text-muted-foreground max-sm:hidden">{managerShortcut}</span>
-              ) : null}
-            </Button>
           </div>
         </WorkspacePageHeader>
         <GrowWorkspace

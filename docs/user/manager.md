@@ -13,9 +13,9 @@ time. Clicking a thread link in its answer takes you to that thread and hides th
 
 In the desktop app the shortcut works system-wide: from another app it brings T3 Code forward with
 the manager open. If another app already owns the chord (or on a Linux Wayland session, which has
-no global shortcuts), it still works while T3 Code is in front. You can also click **Manager** at
-the top of the sidebar, the speech-bubble button at the start of a thread's header or in Grow's
-header, or choose **Show or hide the manager** in the command palette. Change the shortcut in
+no global shortcuts), it still works while T3 Code is in front. You can also click the
+speech-bubble button next to the Grow and Threads switch at the top left, or choose **Show or hide
+the manager** in the command palette. Change the shortcut in
 **Settings → Keybindings** under **Manager: Toggle**.
 
 If the machine that runs the manager is offline, the overlay says so instead of showing a stale
@@ -23,13 +23,12 @@ chat, and opens the manager by itself once that machine reconnects.
 
 ## Screens
 
-The switch at the top centre of the window moves between **Grow** (the idea board) and **T3** (the
-thread list and chat). Each keeps its place: the selected card, scroll positions, and the thread you
+The switch at the top left of the window moves between **Grow** (the idea board) and **Threads**
+(the thread list and chat). Each keeps its place: the selected card, scroll positions, and the thread you
 had open. The app reopens on the screen you left. `ctrl+alt+1` and `ctrl+alt+3` pick Grow and
-T3; `ctrl+alt+0` switches between them. Change them in **Settings → Keybindings** under **Mode**.
+Threads; `ctrl+alt+0` switches between them. Change them in **Settings → Keybindings** under **Mode**.
 
-The manager has no row in the sidebar's thread list. A thread that is the manager shows a
-**Manager** badge in its header. Agents keep a status card at the top of their thread current with
+The manager has no row in the sidebar's thread list. Agents keep a status card at the top of their thread current with
 the `thread_status_update` tool; its screenshots are stored with the thread, so they survive a
 deleted worktree.
 
@@ -41,12 +40,11 @@ profile's folder, it runs with that profile's provider settings and account. Its
 tools see only its profile: its goals and tasks, and the threads of that profile's projects. Work
 for another profile belongs to that profile's manager.
 
-Switch profiles with the switcher in the manager's header (Grow has the same one). Picking a
+Switch profiles with the switcher in the manager's header. Picking a
 profile shows its manager and makes its space the active space, so Grow and the sidebar follow.
 **All** shows every profile's work and keeps the manager you had; managers themselves never see
 across profiles. Switching spaces in the sidebar switches the manager too, and the manager opens on
-the last profile you picked. A manager opened as a page has the same switcher next to its
-**Manager** badge.
+the last profile you picked. A manager opened as a page has the same switcher in its header.
 
 Before you pick one, the manager shown is the default profile's: the profile that a symlink directly
 under `~/code` points into, or else the first profile by name. Without any profile brain there is
