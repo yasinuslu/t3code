@@ -1,6 +1,6 @@
 import { ExternalLinkIcon, PaperclipIcon } from "lucide-react";
 import { markdownImageSourceFragment } from "@t3tools/client-runtime/markdown-images";
-import { githubMediaFetchUrl } from "@t3tools/shared/githubMedia";
+import { pullRequestMediaFetchUrl } from "@t3tools/shared/githubMedia";
 import type { AssetResource, EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { createContext, useContext, useMemo } from "react";
 import type { Options as ReactMarkdownOptions } from "react-markdown";
@@ -104,7 +104,8 @@ export function PullRequestMarkdown({
             />
           );
         }
-        const githubMediaUrl = segment.media === "video" ? githubMediaFetchUrl(segment.url) : null;
+        const githubMediaUrl =
+          segment.media === "video" ? pullRequestMediaFetchUrl(segment.url) : null;
         if (githubMediaUrl !== null) {
           return (
             <PullRequestGitHubVideo
