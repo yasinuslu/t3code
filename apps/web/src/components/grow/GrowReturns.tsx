@@ -243,11 +243,6 @@ export function GrowReturns(props: {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
-      // Esc leaves an open conversation even from its composer, unless a menu there took it.
-      if (event.key === "Escape" && thread !== null && !event.defaultPrevented) {
-        useReturnsStore.setState({ thread: null });
-        return event.preventDefault();
-      }
       if (isTyping(event.target)) return;
       // While a conversation is open, the deck's keys stay off; o toggles back.
       if (thread !== null) {
@@ -302,6 +297,21 @@ export function GrowReturns(props: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [actions, current, playing, shown, thread, wide]);
+
+  // Esc leaves an open conversation even from its message box, which keeps Esc
+  // from bubbling; caught before it, and left alone while a menu or dialog is open.
+  useEffect(() => {
+    if (thread === null) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      useReturnsStore.setState({ thread: null });
+    };
+    window.addEventListener("keydown", onEscape, true);
+    return () => window.removeEventListener("keydown", onEscape, true);
+  }, [thread]);
 
   if (!ready) return <ReturnsSkeleton />;
 
