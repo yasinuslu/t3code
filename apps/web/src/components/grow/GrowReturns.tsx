@@ -285,6 +285,9 @@ export function GrowReturns(props: {
       } else if (event.key === "x" && open) {
         actions.letGo(item);
         used();
+      } else if (event.key === "a" && open && !item.thread.statusProof) {
+        void actions.askProof(item);
+        used();
       } else if (event.key === "o") {
         actions.openThread(item);
         used();
@@ -1249,6 +1252,7 @@ function NoProof(props: {
           <Button variant="outline" onClick={() => void props.actions.askProof(item)}>
             <ImageIcon />
             Ask again
+            {props.wide ? <Kbd>A</Kbd> : null}
           </Button>
         ) : null}
         {item.playUrl ? (
