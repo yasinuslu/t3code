@@ -97,6 +97,7 @@ import {
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
   WS_METHODS,
+  SandboxRequestError,
   WsRpcGroup,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
@@ -208,6 +209,7 @@ import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
+import * as SandboxService from "./sandbox/SandboxService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -1247,6 +1249,7 @@ const makeWsRpcLayer = (
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const sandboxes = yield* SandboxService.SandboxService;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
@@ -1719,6 +1722,7 @@ const makeWsRpcLayer = (
             shellResumeCompletionMarker: true,
             threadResumeCompletionMarker: true,
             threadSnapshotPagination: true,
+            ...(sandboxes.supported ? { sandboxes: true } : {}),
             ...Option.match(scratchWorkspaceRoot, {
               onNone: () => ({}),
               onSome: (root) => ({ scratchWorkspaceRoot: root }),
@@ -3370,6 +3374,40 @@ const makeWsRpcLayer = (
             worktreeSetupTracker
               .cancel(input.threadId)
               .pipe(Effect.map((cancelled) => ({ cancelled }))),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.subscribeSandboxes]: () =>
+          observeRpcStream(WS_METHODS.subscribeSandboxes, sandboxes.stream, {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.sandboxStop]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.sandboxStop,
+            sandboxes.stop(input.worktreePath).pipe(
+              Effect.mapError(
+                (error) =>
+                  new SandboxRequestError({
+                    operation: "stop",
+                    worktreePath: input.worktreePath,
+                    detail: error.detail,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.sandboxRemove]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.sandboxRemove,
+            sandboxes.remove(input.worktreePath).pipe(
+              Effect.mapError(
+                (error) =>
+                  new SandboxRequestError({
+                    operation: "remove",
+                    worktreePath: input.worktreePath,
+                    detail: error.detail,
+                  }),
+              ),
+            ),
             { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.vcsRefreshStatus]: (input) =>
