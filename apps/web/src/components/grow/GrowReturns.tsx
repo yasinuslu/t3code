@@ -276,8 +276,7 @@ export function GrowReturns(props: {
         actions.openThread(item);
         used();
       } else if ((event.key === "p" || event.key === "Enter") && item.playUrl !== null) {
-        if (wide && isPreviewSupportedInRuntime())
-          useReturnsStore.setState({ playing: playing === item.key ? null : item.key });
+        if (wide) useReturnsStore.setState({ playing: playing === item.key ? null : item.key });
         else window.open(item.playUrl, "_blank", "noopener");
         used();
       }
@@ -1064,16 +1063,21 @@ function Visual(props: {
   const { item, images } = props;
   const [zoom, setZoom] = useState<number | null>(null);
   const image = images[0];
-  // The live preview needs the desktop app; elsewhere Play opens a tab.
-  const embed = props.wide && isPreviewSupportedInRuntime();
+  // Live in place when there is room: T3's browser in the desktop app, a frame on the web.
+  // On a phone Play opens a tab.
+  const embed = props.wide;
   if (embed && item.playUrl !== null && (props.playing || image === undefined)) {
     return (
       <div className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border">
-        <GrowPreview
-          environmentId={item.thread.environmentId}
-          threadId={item.thread.id}
-          url={item.playUrl}
-        />
+        {isPreviewSupportedInRuntime() ? (
+          <GrowPreview
+            environmentId={item.thread.environmentId}
+            threadId={item.thread.id}
+            url={item.playUrl}
+          />
+        ) : (
+          <GrowFrame url={item.playUrl} />
+        )}
       </div>
     );
   }
@@ -1143,6 +1147,35 @@ function Visual(props: {
         />
       ) : null}
     </div>
+  );
+}
+
+/** A preview on the web, where T3's own browser is not there: framed, with a way out to a tab. */
+function GrowFrame(props: { readonly url: string }) {
+  const host = props.url.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
+  return (
+    <>
+      <div className="flex items-center gap-2 border-b px-3 py-1.5 text-muted-foreground text-xs">
+        <span className="min-w-0 flex-1 truncate">{host}</span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Open in a new tab"
+          title="Open in a new tab"
+          render={<a href={props.url} target="_blank" rel="noopener noreferrer" />}
+        >
+          <ExternalLinkIcon />
+        </Button>
+      </div>
+      {/* Unsandboxed: previews need scripts, storage and logins, and run on their own origin. */}
+      {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
+      <iframe
+        title={host}
+        src={props.url}
+        className="min-h-0 w-full flex-1 bg-white"
+        allow="autoplay; fullscreen; clipboard-read; clipboard-write"
+      />
+    </>
   );
 }
 
