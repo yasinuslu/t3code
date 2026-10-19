@@ -11734,7 +11734,9 @@ export default function ChatView(props: ChatViewProps) {
               </AlertDialogPopup>
             </AlertDialog>
 
-            <ThreadDetailsPanel {...threadDetailsPanelProps} />
+            {/* Both views of one thread share the panel's open state, so the one Home covers
+                stands down; otherwise it would close or double the panel the user sees. */}
+            {coveredByOverlay ? null : <ThreadDetailsPanel {...threadDetailsPanelProps} />}
 
             {pullRequestDialogState ? (
               <PullRequestThreadDialog
