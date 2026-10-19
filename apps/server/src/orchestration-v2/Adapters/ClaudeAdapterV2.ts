@@ -37,6 +37,7 @@ import type {
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
+import { PROMPT_NOT_RUN_FAILURE_CODE } from "@t3tools/shared/orchestrationV2ThreadError";
 import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
@@ -1374,10 +1375,18 @@ const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input:
   } satisfies SDKUserMessage;
 });
 
-// Stable per run attempt, so a replayed prompt offer matches its recording.
+// Stable per run attempt and message, so a replayed prompt offer matches its recording.
+// The message id is part of it because run ordinals are not unique across servers: a preview
+// server running on a copy of the state DB hands the same thread the same next run id, and
+// Claude drops a prompt whose uuid its session already holds as a duplicate.
 // Claude echoes it back as user_message_uuid on the turn that answers it.
-export function claudePromptUuid(attemptId: string): NonNullable<SDKUserMessage["uuid"]> {
-  const hex = NodeCrypto.createHash("sha256").update(`t3-claude-prompt:${attemptId}`).digest("hex");
+export function claudePromptUuid(
+  attemptId: string,
+  messageId: string,
+): NonNullable<SDKUserMessage["uuid"]> {
+  const hex = NodeCrypto.createHash("sha256")
+    .update(`t3-claude-prompt:${attemptId}:${messageId}`)
+    .digest("hex");
   const variant = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
@@ -6680,7 +6689,7 @@ export function makeClaudeAdapterV2(
                 failure: makeProviderFailure({
                   message:
                     "Claude did not run this prompt: it reported the message as already delivered (duplicate message id). Send it again.",
-                  code: "prompt_not_run",
+                  code: PROMPT_NOT_RUN_FAILURE_CODE,
                   class: "provider_error",
                 }),
               });
@@ -7399,7 +7408,7 @@ export function makeClaudeAdapterV2(
               pendingSubagentLaunchesByToolUseId: new Map(),
               promptUuid: isClaudeProviderContinuationTurn(turnInput)
                 ? null
-                : claudePromptUuid(turnInput.attemptId),
+                : claudePromptUuid(turnInput.attemptId, turnInput.message.messageId),
               promptEcho: isClaudeProviderContinuationTurn(turnInput) ? "confirmed" : "pending",
               promptStarted: false,
               gatedFramesBeforeEcho: 0,
@@ -7424,7 +7433,7 @@ export function makeClaudeAdapterV2(
                     turnInput.runtimePolicy.cwd,
                     sessionEnvironment,
                   ),
-                  uuid: claudePromptUuid(turnInput.attemptId),
+                  uuid: claudePromptUuid(turnInput.attemptId, turnInput.message.messageId),
                 });
             const querySession = yield* openQuery(turnInput, nativeThreadId);
             yield* Ref.set(activeTurn, context);

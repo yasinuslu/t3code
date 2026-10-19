@@ -80,6 +80,7 @@ import { t3OrchestrationSystemPrompt } from "../../provider/T3OrchestrationInstr
 import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
 import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3tools/shared/model";
 import { causeErrorTag } from "@t3tools/shared/observability";
+import { PROMPT_NOT_RUN_FAILURE_CODE } from "@t3tools/shared/orchestrationV2ThreadError";
 
 import { providerMessageTextWithAttachmentPaths } from "../AttachmentPrompt.ts";
 import * as IdAllocator from "../IdAllocator.ts";
@@ -3744,6 +3745,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                   status: "failed",
                   failure: makeProviderFailure({
                     message: OPENCODE_2_STILL_STOPPING,
+                    code: PROMPT_NOT_RUN_FAILURE_CODE,
                     class: "provider_error",
                   }),
                 });
@@ -3816,6 +3818,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                     failure: makeProviderFailure({
                       message:
                         "The OpenCode session no longer exists. Send the message again to continue in a new session.",
+                      code: PROMPT_NOT_RUN_FAILURE_CODE,
                       class: "provider_error",
                     }),
                   },
