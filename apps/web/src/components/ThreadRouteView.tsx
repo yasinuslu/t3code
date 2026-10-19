@@ -1,5 +1,6 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
@@ -7,12 +8,14 @@ import ChatView from "./ChatView";
 import { resolveDraftPromotionNavigationTarget, threadHasStarted } from "./ChatView.logic";
 import { waitForDraftHeroTransition } from "./chat/draftHeroTransition";
 import { SidebarInset } from "./ui/sidebar";
+import { toastManager } from "./ui/toast";
 import {
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
   useBackgroundDraftSubmissionPending,
   useComposerDraftStore,
 } from "../composerDraftStore";
+import { environmentCatalog } from "../connection/catalog";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { useEnvironmentThreadRefs, useThreadRefs, useThreadShell } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
@@ -22,6 +25,8 @@ import {
   resolveThreadRouteRenderState,
   type ThreadRouteTarget,
 } from "../threadRoutes";
+
+const UNKNOWN_ENVIRONMENT_GRACE_MS = 15_000;
 
 /**
  * The single chat surface behind both `/draft/$draftId` and
@@ -71,6 +76,7 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
     serverThreadRef === null ? null : environmentShell.stateAtom(serverThreadRef.environmentId),
   );
   const serverThreadShell = serverThread;
+  const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
   const environmentThreadRefs = useEnvironmentThreadRefs(serverThreadRef?.environmentId ?? null);
   const bootstrapComplete = shell.data?.snapshot._tag === "Some";
   const draftThread = useComposerDraftStore((store) =>
@@ -140,6 +146,29 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
     }
     void navigate({ to: "/", replace: true });
   }, [canonicalThreadRef, draftSession, navigate, target.kind]);
+
+  // A thread link (`t3code://threads/...`) can name an environment this client does not know,
+  // which would otherwise sit on a blank pane forever. Say so and go home. Host-managed and
+  // relay environments register after the saved ones, so a cold start gets a grace period
+  // before an unknown environment counts as missing (the primary one is discovered by a 3 s poll). Drafts never reach this.
+  const unknownEnvironmentId =
+    target.kind === "server" &&
+    catalog.isReady &&
+    !catalog.entries.has(target.threadRef.environmentId)
+      ? target.threadRef.environmentId
+      : null;
+  useEffect(() => {
+    if (unknownEnvironmentId === null) return;
+    const timer = setTimeout(() => {
+      toastManager.add({
+        type: "warning",
+        title: "Thread not found",
+        description: "That environment is not connected to this app.",
+      });
+      void navigate({ to: "/", replace: true });
+    }, UNKNOWN_ENVIRONMENT_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [navigate, unknownEnvironmentId]);
 
   useEffect(() => {
     if (target.kind !== "server" || !bootstrapComplete) {
