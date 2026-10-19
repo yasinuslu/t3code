@@ -11,6 +11,7 @@ import {
   useSpaceStore,
 } from "../../spaceStore";
 import type { ThreadRouteTarget } from "../../threadRoutes";
+import { requestManagerShown, useManagerViewStore } from "../../managerViewStore";
 
 interface SpaceProjectGroup {
   readonly projectKey: string;
@@ -147,6 +148,11 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       if (spaceId === store.activeSpaceId) return;
       store.setActiveSpace(spaceId);
       setProjectScopeKey(store.projectScopeKeyBySpaceId[spaceId] ?? null);
+      // While the manager shows, it stays: the new space's profile manager takes its place.
+      if (useManagerViewStore.getState().shown) {
+        requestManagerShown();
+        return;
+      }
       const route = store.lastRouteBySpaceId[spaceId];
       const inSpace = (projectKey: string) => isInSpace(projectSpaces(projectKey), spaceId);
       if (route?.kind === "server") {

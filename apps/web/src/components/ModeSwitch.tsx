@@ -12,7 +12,7 @@ import {
   shortcutLabelForCommand,
 } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
-import { useManagerOverlayStore } from "../managerOverlayStore";
+import { useManagerViewStore } from "../managerViewStore";
 import { openManager, toggleManager } from "../lib/goToManager";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -22,7 +22,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * One shortcut per mode, one that cycles them, and the Manager shortcut that
- * shows or hides the manager over any screen. App-global, like the right-panel chords.
+ * shows the manager from any screen and goes back. App-global, like the right-panel chords.
  */
 export function ModeShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -100,8 +100,8 @@ export function ModeShortcuts() {
 }
 
 /**
- * The app bar: the view switch (Grow or Threads) and the one way into the
- * manager overlay, fixed at the top left in every view, right after the
+ * The app bar: the view switch (Grow or Threads) and a quick way to the
+ * manager thread, fixed at the top left in every view, right after the
  * sidebar toggle (Grow has no sidebar, so there it starts at the edge). It
  * publishes its width as `--app-bar-width`, which the titlebar insets add, so
  * no header ever runs under it.
@@ -110,7 +110,7 @@ export function ModeSwitch() {
   const mode = useAppMode();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const isMobile = useIsMobile();
-  const managerOpen = useManagerOverlayStore((state) => state.open);
+  const managerOpen = useManagerViewStore((state) => state.shown) && mode === "normal";
   const managerWorking = useManagerWorking();
   const managerShortcut = shortcutLabelForCommand(keybindings, "manager.toggle");
 

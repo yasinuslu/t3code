@@ -6,7 +6,6 @@ import { type AppMode, setAppMode, useAppMode } from "../appMode";
 import { useIsManagerThread } from "../brainstormStore";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import { toggleManager } from "../lib/goToManager";
-import { useManagerOverlayStore } from "../managerOverlayStore";
 import { cn } from "../lib/utils";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { useSidebar } from "./ui/sidebar";
@@ -64,8 +63,8 @@ function useKeyboardUp(): boolean {
 }
 
 function activeTabOf(mode: AppMode, managerShown: boolean): PhoneTab {
-  if (managerShown) return "manager";
-  return mode === "grow" ? "grow" : "threads";
+  if (mode === "grow") return "grow";
+  return managerShown ? "manager" : "threads";
 }
 
 /**
@@ -76,14 +75,13 @@ function activeTabOf(mode: AppMode, managerShown: boolean): PhoneTab {
 export function PhoneTabBar() {
   const isMobile = useIsMobile();
   const mode = useAppMode();
-  const managerOpen = useManagerOverlayStore((state) => state.open);
   const { setOpenMobile } = useSidebar();
   const route = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
   const onManagerThread = useIsManagerThread(route?.environmentId ?? "", route?.threadId ?? "");
   const keyboardUp = useKeyboardUp();
 
   if (!isMobile || keyboardUp) return null;
-  const active = activeTabOf(mode, managerOpen || onManagerThread);
+  const active = activeTabOf(mode, onManagerThread);
 
   const select = (tab: PhoneTab) => {
     if (tab === "grow") setAppMode("grow");

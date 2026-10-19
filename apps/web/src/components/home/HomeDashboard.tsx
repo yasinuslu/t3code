@@ -1,6 +1,6 @@
 /**
  * Home: the Grow workspace under a header with the spaces row. The manager
- * itself floats over every screen as an overlay (see ManagerOverlay); Grow
+ * is a thread pinned at the top of the sidebar (see ManagerRoute); Grow
  * still shows it in its chat pane when it is selected.
  */
 import { useEffect, useState } from "react";
@@ -17,7 +17,7 @@ import { GrowWorkspace } from "../grow/GrowWorkspace";
 import { CodeProfileProbes, SpaceSwitcher } from "../sidebar/SpaceSwitcher";
 import { useSpaceStore } from "../../spaceStore";
 import { selectManagerProfile, useEnsureManagerThread } from "../brainstorm/useOpenManagerThread";
-import { ManagerUnavailable } from "../brainstorm/ManagerOverlay";
+import { ManagerUnavailable } from "../brainstorm/ManagerUnavailable";
 
 /** Time labels move on while the page stays open; a coarse tick is enough. */
 const CLOCK_TICK_MS = 30_000;

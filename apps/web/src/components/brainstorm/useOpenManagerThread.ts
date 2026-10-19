@@ -1,24 +1,14 @@
-import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 
 import { useBrainstormStore, useManagerProfile } from "../../brainstormStore";
-import { openManager as showManagerOverlay } from "../../lib/goToManager";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
-import { readThreadShell, useThreadShell, waitForThreadShell } from "../../state/entities";
+import { useThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
-import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
 import { formatEnvironmentQueryError } from "../../state/query";
-import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import {
-  SINGLE_MANAGER_KEY,
-  isEnvironmentUnreachable,
-  managerSlot,
-  resolveManagerEnvironmentId,
-} from "./brainstorm.logic";
+import { isEnvironmentUnreachable, managerSlot } from "./brainstorm.logic";
 
 function parseThreadKey(key: string) {
   const separator = key.indexOf(":");
@@ -141,45 +131,4 @@ export function selectManagerProfile(profile: string | null): void {
   spaces.recordCodeProfiles([profile], {});
   const space = useSpaceStore.getState().spaces.find((candidate) => candidate.profile === profile);
   if (space) spaces.setActiveSpace(space.id);
-}
-
-/**
- * Opens a profile's manager as a thread page (from the manager's own header,
- * when it is already open as one). Creates the manager first when it is new.
- */
-export function useOpenManagerThreadPage() {
-  const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
-  const serverConfigs = useAtomValue(environmentServerConfigsAtom);
-  const openManager = useOpenManagerCommand();
-  const navigate = useNavigate();
-  return useCallback(
-    async (profile: string | null) => {
-      const store = useBrainstormStore.getState();
-      const environmentId = resolveManagerEnvironmentId(
-        primaryEnvironmentId,
-        serverConfigs,
-        profile,
-        store.lastManagerEnvironmentByProfile[profile ?? SINGLE_MANAGER_KEY] ?? null,
-      );
-      // Before the server lists its profiles, which manager is meant is not known yet.
-      if (environmentId === null || store.profiles === null) {
-        return showManagerOverlay();
-      }
-      const stored = store.managerThreadKeyBySlot[managerSlot(environmentId, profile)];
-      // A remembered key can outlive its thread (a restored state, a deleted manager); the
-      // thread page would then bounce to a new draft, so only a thread the client sees is reused.
-      const storedShell = stored === undefined ? null : readThreadShell(parseThreadKey(stored));
-      const key =
-        stored !== undefined && storedShell !== null && storedShell.archivedAt == null
-          ? stored
-          : await openManager(environmentId, profile).then((result) =>
-              result._tag === "Success" ? result.key : null,
-            );
-      if (key === null) return showManagerOverlay();
-      // A manager just created reaches the shell stream after the command returns.
-      await waitForThreadShell(parseThreadKey(key));
-      await navigate({ to: "/$environmentId/$threadId", params: parseThreadKey(key) });
-    },
-    [navigate, openManager, primaryEnvironmentId, serverConfigs],
-  );
 }

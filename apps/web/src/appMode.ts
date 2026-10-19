@@ -1,13 +1,12 @@
 /**
  * The app's two screens, one switch. Grow is the Home overlay; Threads ("normal")
  * is the app with Home closed: the thread list and chat, which stay mounted
- * underneath Home and so keep their place. The manager chat is not a screen:
- * it floats over either one (see `managerOverlayStore`).
+ * underneath Home and so keep their place. The manager is a thread pinned at
+ * the top of the sidebar (see `managerViewStore`).
  */
 import { useCallback, useEffect, useRef } from "react";
 
 import { closeHomeOverlay, openHomeOverlay, useHomeOverlayStore } from "./homeOverlayStore";
-import { closeManagerOverlay } from "./managerOverlayStore";
 
 export type AppMode = "grow" | "normal";
 
@@ -25,9 +24,7 @@ export const readAppMode = (): AppMode => (useHomeOverlayStore.getState().open ?
 export const useAppMode = (): AppMode =>
   useHomeOverlayStore((state) => state.open) ? "grow" : "normal";
 
-/** Switching screens puts the manager away, so the chosen screen is what shows. */
 export function setAppMode(mode: AppMode) {
-  closeManagerOverlay();
   if (mode === "normal") closeHomeOverlay();
   else openHomeOverlay();
 }

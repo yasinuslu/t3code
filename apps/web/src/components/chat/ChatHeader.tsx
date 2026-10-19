@@ -21,8 +21,6 @@ import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { OverlayLayerContext } from "../../homeOverlayStore";
 import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
-import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
-import { selectManagerProfile, useOpenManagerThreadPage } from "../brainstorm/useOpenManagerThread";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -102,13 +100,12 @@ export const ChatHeader = memo(function ChatHeader({
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
   const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
-  // Inside Grow or the manager overlay rather than on its own page.
+  // Inside Grow rather than on its own page.
   const inOverlay = useContext(OverlayLayerContext) > 0;
-  // The manager inside an overlay: only its name and badge.
+  // The manager docked in Grow: only its name and badge.
   const docked = (inOverlay && isManager) || embedded;
   // The update button widens the titlebar controls this header stops short of.
   const updateButtonVisible = useDesktopUpdateTitlebarVisible();
-  const openManagerThreadPage = useOpenManagerThreadPage();
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
     [activeThreadEnvironmentId, activeThreadId],
@@ -268,23 +265,9 @@ export const ChatHeader = memo(function ChatHeader({
       )}
       onContextMenu={handleHeaderContextMenu}
     >
-      {/* On its own page (narrow windows), a manager switches to another profile's here, ahead
-          of the breadcrumb so it never clips; Home has its own switcher. */}
-      {isManager && !docked ? (
-        <>
-          <ManagerProfileSwitcher
-            className="shrink-0"
-            onSelect={(profile) => {
-              selectManagerProfile(profile);
-              void openManagerThreadPage(profile);
-            }}
-          />
-          <ManagerMachineSwitcher
-            className="shrink-0"
-            onSelect={(profile) => void openManagerThreadPage(profile)}
-          />
-        </>
-      ) : null}
+      {/* The spaces in the sidebar pick the profile; a manager that runs on more than one
+          machine picks the machine here, ahead of the breadcrumb so it never clips. */}
+      {isManager && !docked ? <ManagerMachineSwitcher className="shrink-0" /> : null}
       <WorkspaceBreadcrumb
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
