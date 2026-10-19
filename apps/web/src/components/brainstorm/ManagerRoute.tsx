@@ -9,15 +9,34 @@ import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-
 import { useEffect, useRef } from "react";
 
 import { useIsManagerThread } from "../../brainstormStore";
-import { closeHomeOverlay, openHomeOverlay, useHomeOverlayStore } from "../../homeOverlayStore";
+import {
+  closeHomeOverlay,
+  holdHomeOverlayOpen,
+  openHomeOverlay,
+  useHomeOverlayStore,
+} from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { useManagerViewStore } from "../../managerViewStore";
 import { resolveThreadRouteRef } from "../../threadRoutes";
 import { toastManager } from "../ui/toast";
 import { useEnsureManagerThread } from "./useOpenManagerThread";
 
+// Longest Grow stays up for the manager to render before it gives way regardless.
+const THREAD_VIEW_WAIT_MS = 1500;
+
 const nextFrame = () =>
   new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+/** Resolves once the thread view for `threadId` is on screen, or after a moment if it never is. */
+async function threadViewRendered(threadId: string) {
+  const deadline = performance.now() + THREAD_VIEW_WAIT_MS;
+  while (
+    document.querySelector(`[data-thread-view="${threadId}"]`) === null &&
+    performance.now() < deadline
+  ) {
+    await nextFrame();
+  }
+}
 
 async function focusComposer() {
   // The thread view mounts over the next frames; focus once it has.
@@ -94,13 +113,24 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
         // Asking again while it shows keeps the way back to the page before it.
         returnTo: state.shown && !grow ? state.returnTo : { href, grow },
       }));
-      closeHomeOverlay();
       if (props.currentKey !== key) {
+        // Grow stays over the page until the manager is there, so the page under it
+        // (Threads, a draft) never shows on the way.
+        const release = holdHomeOverlayOpen();
         void navigate({
           to: "/$environmentId/$threadId",
           params: { environmentId: manager.environmentId, threadId: manager.threadId },
-        }).then(focusComposer);
-      } else void focusComposer();
+        })
+          .then(() => threadViewRendered(manager.threadId))
+          .finally(() => {
+            closeHomeOverlay();
+            release();
+          })
+          .then(focusComposer);
+      } else {
+        closeHomeOverlay();
+        void focusComposer();
+      }
       return;
     }
     // Switching the space or the machine while a manager shows shows that one's manager.

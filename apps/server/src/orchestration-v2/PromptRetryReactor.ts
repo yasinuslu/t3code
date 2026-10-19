@@ -14,6 +14,7 @@ import {
 } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
@@ -32,11 +33,11 @@ export const RESEND_BACKOFF_MS: ReadonlyArray<number> = [1_000, 4_000, 15_000];
 
 /**
  * The id of a resend. Each carries its position in the chain of resends, which
- * is how the chain is counted, and a random part so a second server holding a
- * copy of this thread's state never resends under an id this one already used.
+ * is how the chain is counted, and the time it was sent so a second server holding a
+ * copy of this thread's state does not resend under an id this one already used.
  */
-export function resendMessageId(attempt: number, nonce: string): MessageId {
-  return MessageId.make(`${RESEND_MESSAGE_PREFIX}${attempt}:${nonce}`);
+export function resendMessageId(attempt: number, sentAt: string): MessageId {
+  return MessageId.make(`${RESEND_MESSAGE_PREFIX}${attempt}:${sentAt}`);
 }
 
 /** How many resends led to `messageId`: 0 for a message someone sent. */
@@ -132,7 +133,10 @@ const make = (backoff: ReadonlyArray<number>) =>
         type: "message.dispatch",
         commandId: CommandId.make(`server:prompt-retry:resend:${current.run.id}`),
         threadId: failed.threadId,
-        messageId: resendMessageId(attempt + 1, crypto.randomUUID()),
+        messageId: resendMessageId(
+          attempt + 1,
+          DateTime.toEpochMillis(yield* DateTime.now).toString(36),
+        ),
         text: current.message.text,
         ...contextOf(current.message),
         attachments: current.message.attachments,

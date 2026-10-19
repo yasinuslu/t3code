@@ -77,6 +77,19 @@ export function openHomeOnStartup() {
   startupHopsUntil = Date.now() + 8000;
   openHomeOverlay();
 }
+// A hop that moves the page under Home (the manager) keeps Home up until the destination has
+// rendered, so the page it leaves is never shown on the way.
+let heldOpen = 0;
+export function holdHomeOverlayOpen(): () => void {
+  heldOpen += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    heldOpen -= 1;
+  };
+}
+export const homeOverlayHeldOpen = () => heldOpen > 0;
 export const closeHomeOverlay = () => useHomeOverlayStore.getState().setOpen(false);
 export const toggleHomeOverlay = () => useHomeOverlayStore.getState().toggle();
 
