@@ -1,0 +1,491 @@
+// @effect-diagnostics nodeBuiltinImport:off - finds and signals the VM process under /proc and holds the lifeline.
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import type * as NodeNet from "node:net";
+
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+
+import {
+  SANDBOX_LABELS,
+  sandboxBaseEnv,
+  sandboxProvisionScript,
+  type SandboxBackend,
+  type SandboxBackendError,
+  type SandboxCreateSpec,
+  type SandboxImageSpec,
+} from "./SandboxBackend.ts";
+import { shortHash } from "./sandboxCommon.ts";
+import { SANDBOX_EXEC_GUEST_PORT } from "./sandboxExecServer.ts";
+import type { SandboxCli } from "./sandboxDocker.ts";
+
+/**
+ * microsandbox (`msb`) runs each sandbox as a libkrun microVM: its own kernel,
+ * so a sandbox cannot see host processes or files beyond its mounts. Folders
+ * are shared over virtiofs at their host paths and keep the host uid.
+ *
+ * msb cannot build Dockerfiles. The base image is a snapshot instead: a
+ * builder VM boots `node:24-bookworm`, runs `sandboxProvisionScript` as root,
+ * stops, and is snapshotted. Sandboxes boot from that snapshot with
+ * `msb run --snapshot`, which takes about two seconds.
+ */
+const BASE_IMAGE = "node:24-bookworm";
+
+/** Resources per sandbox. nika runs many of these, so the defaults stay small. */
+export interface MicrosandboxResources {
+  readonly cpus: number;
+  readonly memory: string;
+}
+
+export const microsandboxResources = (env: NodeJS.ProcessEnv): MicrosandboxResources => {
+  const cpus = Number.parseInt(env.T3CODE_SANDBOX_CPUS ?? "", 10);
+  return {
+    cpus: Number.isInteger(cpus) && cpus > 0 ? cpus : 2,
+    memory: /^\d+[MG]$/i.test(env.T3CODE_SANDBOX_MEMORY ?? "") ? env.T3CODE_SANDBOX_MEMORY! : "4G",
+  };
+};
+
+/** Snapshots are content addressed, so a new CLI version provisions a new one. */
+export const microsandboxSnapshotName = (spec: SandboxImageSpec): string =>
+  `t3code-sandbox-base-${shortHash(JSON.stringify([BASE_IMAGE, sandboxProvisionScript(spec)]), 12)}`;
+
+// Parents first: msb mounts in order, so a read-only parent listed later
+// would hide a writable child such as the project's git dir.
+const volumeArgs = (spec: SandboxCreateSpec) =>
+  spec.mounts
+    .toSorted((a, b) => a.path.length - b.path.length)
+    .flatMap((mount) => [
+      mount.file ? "--mount-file" : "-v",
+      `${mount.path}:${mount.path}${mount.readOnly ? ":ro" : ""}`,
+    ]);
+
+/**
+ * `msb run` arguments for one sandbox. There is no `--idle-timeout`: msb
+ * counts only its own exec traffic as use, not the published exec port, so it
+ * would stop a VM while an agent waits on a long model reply. The lifeline
+ * below stops VMs when the server dies instead.
+ */
+export const microsandboxRunArgs = (
+  input: SandboxCreateSpec & { readonly owner: string; readonly resources: MicrosandboxResources },
+): ReadonlyArray<string> => [
+  "run",
+  "--quiet",
+  "--detach",
+  "--replace",
+  "--snapshot",
+  input.image,
+  "--name",
+  input.name,
+  "--hostname",
+  "t3-sandbox",
+  "--user",
+  `${input.uid}:${input.gid}`,
+  "--cpus",
+  String(input.resources.cpus),
+  "--memory",
+  input.resources.memory,
+  "--label",
+  `${SANDBOX_LABELS.sandbox}=1`,
+  "--label",
+  `${SANDBOX_LABELS.owner}=${input.owner}`,
+  "--label",
+  `${SANDBOX_LABELS.workspace}=${input.workspacePath}`,
+  "--label",
+  `${SANDBOX_LABELS.claude}=${input.versions.claude}`,
+  "--label",
+  `${SANDBOX_LABELS.codex}=${input.versions.codex}`,
+  // Host tooling (such as a reaper for idle VMs) reads these: T3 runs this
+  // VM's whole lifecycle, and which thread and environment own it.
+  "--label",
+  "t3.managed=runner",
+  ...(input.threadId === undefined ? [] : ["--label", `t3.thread=${input.threadId}`]),
+  ...(input.environmentId === undefined ? [] : ["--label", `t3.env=${input.environmentId}`]),
+  ...Object.entries(sandboxBaseEnv(input.home)).flatMap(([name, value]) => [
+    "--env",
+    `${name}=${value}`,
+  ]),
+  ...(input.execHostPort === undefined
+    ? []
+    : ["--port", `127.0.0.1:${input.execHostPort}:${SANDBOX_EXEC_GUEST_PORT}`]),
+  ...volumeArgs(input),
+];
+
+/**
+ * The VM process of a running sandbox and its cgroup. Through the nika `msb`
+ * wrapper each VM runs in its own scope under msb.slice; elsewhere the cgroup is
+ * shared and the process is signalled instead.
+ */
+const vmProcess = (name: string) => {
+  for (const entry of NodeFS.readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const argv = NodeFS.readFileSync(`/proc/${entry}/cmdline`, "utf8").split("\0");
+      if (argv[1] !== "sandbox" || !/(^|\/)(\.msb-unwrapped|msb)$/.test(argv[0] ?? "")) continue;
+      if (argv[argv.indexOf("--name") + 1] !== name) continue;
+      const cgroup = NodeFS.readFileSync(`/proc/${entry}/cgroup`, "utf8").trim().split("\n").at(-1);
+      const cgroupPath = cgroup?.replace(/^0::/, "") ?? "";
+      const unit = /\/msb\.slice\/([^/]+\.scope)$/.exec(cgroupPath)?.[1];
+      return { pid: Number(entry), scope: unit === undefined ? null : { unit, cgroupPath } };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+};
+
+const frozen = (cgroupPath: string) => {
+  try {
+    return NodeFS.readFileSync(`/sys/fs/cgroup${cgroupPath}/cgroup.freeze`, "utf8").trim() === "1";
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Waits for its stdin to close, then stops every running sandbox with the
+ * owner label in argv[1], thawing sleeping ones first (a frozen VM hangs
+ * `msb stop`). The server holds the other end, and the kernel closes it when
+ * the server exits for any reason, SIGKILL included.
+ */
+const LIFELINE_SOURCE = String.raw`
+const fs = require("fs"), cp = require("child_process");
+const stopAll = () => {
+  let listed = [];
+  try {
+    listed = JSON.parse(cp.execFileSync("msb", ["list", "--format", "json", "--label", process.argv[1]], { encoding: "utf8", timeout: 30000 }));
+  } catch {}
+  const names = listed.filter((s) => /^running$/i.test(s.status)).map((s) => s.name);
+  for (const pid of fs.readdirSync("/proc")) {
+    if (!/^\d+$/.test(pid)) continue;
+    try {
+      const argv = fs.readFileSync("/proc/" + pid + "/cmdline", "utf8").split("\0");
+      if (argv[1] !== "sandbox" || !names.includes(argv[argv.indexOf("--name") + 1])) continue;
+      const cgroup = fs.readFileSync("/proc/" + pid + "/cgroup", "utf8").trim().split("\n").at(-1).replace(/^0::/, "");
+      const unit = /\/msb\.slice\/([^/]+\.scope)$/.exec(cgroup);
+      if (unit) {
+        try { cp.execFileSync("systemctl", ["--user", "thaw", unit[1]], { stdio: "ignore", timeout: 10000 }); }
+        catch { fs.writeFileSync("/sys/fs/cgroup" + cgroup + "/cgroup.freeze", "0"); }
+      }
+      process.kill(Number(pid), "SIGCONT");
+    } catch {}
+  }
+  for (const name of names) cp.spawn("msb", ["stop", "--quiet", name], { stdio: "ignore" });
+};
+process.stdin.on("data", () => {});
+process.stdin.on("end", stopAll);
+process.stdin.on("error", stopAll);
+`;
+
+/**
+ * Starts the lifeline for this server's sandboxes once. It runs in its own
+ * session, so a signal to the server's process group does not take it down
+ * before it has stopped the VMs, and on systemd in its own scope, so stopping
+ * the server's unit (which kills its whole cgroup) does not either. When
+ * `systemd-run` is missing (macOS) or refuses, it starts without the scope.
+ */
+const holdLifeline = (ownerLabel: string, inScope = true) => {
+  const command = [process.execPath, "-e", LIFELINE_SOURCE, ownerLabel];
+  const [file, ...args] = inScope
+    ? ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--", ...command]
+    : command;
+  const child = NodeChildProcess.spawn(file!, args, {
+    // The desktop app's execPath is Electron.
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    detached: true,
+    stdio: ["pipe", "ignore", "ignore"],
+  });
+  // The lifeline only exits once the server is gone, so an early exit means
+  // the scope could not be made.
+  let fellBack = false;
+  const fallBack = () => {
+    if (!inScope || fellBack) return;
+    fellBack = true;
+    holdLifeline(ownerLabel, false);
+  };
+  child.on("error", fallBack);
+  child.on("exit", fallBack);
+  child.unref();
+  (child.stdin as NodeNet.Socket | null)?.unref();
+};
+
+const ListedSandboxes = Schema.fromJsonString(
+  Schema.Array(Schema.Struct({ name: Schema.String, status: Schema.String })),
+);
+const InspectedSandbox = Schema.fromJsonString(
+  Schema.Struct({
+    status: Schema.String,
+    config: Schema.Struct({
+      labels: Schema.NullOr(Schema.Record(Schema.String, Schema.String)),
+      mounts: Schema.Array(
+        Schema.Struct({
+          type: Schema.String,
+          guest: Schema.String,
+          host: Schema.optional(Schema.String),
+          options: Schema.optional(Schema.Struct({ readonly: Schema.Boolean })),
+        }),
+      ),
+      network: Schema.optional(
+        Schema.Struct({
+          ports: Schema.optional(
+            Schema.Array(Schema.Struct({ guest_port: Schema.Number, host_port: Schema.Number })),
+          ),
+        }),
+      ),
+    }),
+  }),
+);
+const decodeListed = Schema.decodeUnknownEffect(ListedSandboxes);
+const decodeInspected = Schema.decodeUnknownEffect(InspectedSandbox);
+
+export const makeMicrosandboxBackend = (input: {
+  readonly cli: SandboxCli;
+  readonly owner: string;
+  readonly registryPath: string;
+  readonly resources: MicrosandboxResources;
+  readonly kvmAvailable: () => Effect.Effect<boolean>;
+  readonly systemctl: SandboxCli;
+}): SandboxBackend => {
+  const { cli, owner } = input;
+  const missing = (error: SandboxBackendError) => /not found/i.test(error.detail);
+  const decodeError =
+    (workspacePath: string) =>
+    (cause: SandboxBackendError | Schema.SchemaError): SandboxBackendError =>
+      "detail" in cause
+        ? cause
+        : { operation: "start", workspacePath, detail: "Could not read msb output.", cause };
+
+  const ensureImage: SandboxBackend["ensureImage"] = (spec, onOutput) =>
+    Effect.gen(function* () {
+      const snapshot = microsandboxSnapshotName(spec);
+      const exists = yield* cli("start", snapshot, ["snapshot", "inspect", snapshot]).pipe(
+        Effect.as(true),
+        Effect.orElseSucceed(() => false),
+      );
+      if (exists) return snapshot;
+      const builder = `${snapshot}-builder`;
+      onOutput(`Building sandbox base ${snapshot} (first sandbox only, a few minutes)`);
+      yield* cli("start", snapshot, ["remove", "--force", builder]).pipe(Effect.ignore);
+      yield* cli(
+        "start",
+        snapshot,
+        ["create", "--quiet", "--name", builder, "--cpus", "4", "--memory", "4G", BASE_IMAGE],
+        { timeoutMs: 10 * 60_000 },
+      );
+      yield* cli(
+        "start",
+        snapshot,
+        [
+          "exec",
+          "--quiet",
+          "--user",
+          "root",
+          builder,
+          "--",
+          "/bin/sh",
+          "-c",
+          sandboxProvisionScript(spec),
+        ],
+        { onLine: onOutput, timeoutMs: 30 * 60_000 },
+      ).pipe(
+        Effect.tapError(() =>
+          cli("start", snapshot, ["remove", "--force", builder]).pipe(Effect.ignore),
+        ),
+      );
+      yield* cli("start", snapshot, ["stop", builder]);
+      yield* cli(
+        "start",
+        snapshot,
+        [
+          "snapshot",
+          "create",
+          "--quiet",
+          "--force",
+          "--label",
+          `${SANDBOX_LABELS.sandbox}=1`,
+          "--from",
+          builder,
+          snapshot,
+        ],
+        { timeoutMs: 10 * 60_000 },
+      );
+      yield* cli("start", snapshot, ["remove", "--force", builder]).pipe(Effect.ignore);
+      return snapshot;
+    });
+
+  let lifelineHeld = false;
+  const ensureLifeline = Effect.sync(() => {
+    if (lifelineHeld) return;
+    lifelineHeld = true;
+    holdLifeline(`${SANDBOX_LABELS.owner}=${owner}`);
+  });
+
+  const inspect = (name: string) =>
+    cli("start", name, ["inspect", "--format", "json", name]).pipe(
+      Effect.flatMap(decodeInspected),
+      Effect.mapError(decodeError(name)),
+    );
+
+  return {
+    kind: "microsandbox",
+    label: "microsandbox",
+    command: "msb",
+    execServer: true,
+    execHostPort: (name) =>
+      inspect(name).pipe(
+        Effect.map(
+          (sandbox) =>
+            sandbox.config.network?.ports?.find(
+              (port) => port.guest_port === SANDBOX_EXEC_GUEST_PORT,
+            )?.host_port ?? null,
+        ),
+        Effect.orElseSucceed(() => null),
+      ),
+    ensureAvailable: (workspacePath) =>
+      Effect.gen(function* () {
+        yield* cli("start", workspacePath, ["--version"]).pipe(
+          Effect.mapError((error) => ({
+            ...error,
+            detail: `microsandbox (msb) is not installed or not on PATH. (${error.detail})`,
+          })),
+        );
+        if (!(yield* input.kvmAvailable())) {
+          return yield* Effect.fail<SandboxBackendError>({
+            operation: "start",
+            workspacePath,
+            detail: "microsandbox needs /dev/kvm, which this machine does not expose.",
+          });
+        }
+      }),
+    ensureImage,
+    create: (spec) =>
+      Effect.gen(function* () {
+        yield* ensureLifeline;
+        yield* cli(
+          "start",
+          spec.workspacePath,
+          microsandboxRunArgs({ ...spec, owner, resources: input.resources }),
+        );
+      }),
+    state: (name) =>
+      inspect(name).pipe(
+        Effect.map((sandbox) =>
+          /^running$/i.test(sandbox.status) ? ("running" as const) : ("stopped" as const),
+        ),
+        Effect.orElseSucceed(() => "missing" as const),
+      ),
+    start: (name, workspacePath) =>
+      ensureLifeline.pipe(
+        Effect.andThen(cli("start", workspacePath, ["start", "--quiet", name])),
+        Effect.asVoid,
+      ),
+    stop: (name, workspacePath) =>
+      cli("stop", workspacePath, ["stop", "--quiet", name]).pipe(Effect.asVoid),
+    sleep: (name, workspacePath) =>
+      Effect.gen(function* () {
+        // libkrun's free page reporting hands the dropped page cache back to
+        // the host within a few seconds (2.7 GB down to 0.2 GB on nika).
+        yield* cli(
+          "stop",
+          workspacePath,
+          [
+            "exec",
+            "--quiet",
+            "--user",
+            "root",
+            name,
+            "--",
+            "sh",
+            "-c",
+            "sync; echo 3 > /proc/sys/vm/drop_caches",
+          ],
+          { timeoutMs: 30_000 },
+        ).pipe(Effect.ignore);
+        yield* Effect.sleep("5 seconds");
+        const vm = vmProcess(name);
+        if (vm === null) return;
+        if (vm.scope !== null) {
+          yield* input.systemctl("stop", workspacePath, ["--user", "freeze", vm.scope.unit]);
+          return;
+        }
+        yield* Effect.try({
+          try: () => process.kill(vm.pid, "SIGSTOP"),
+          catch: (cause): SandboxBackendError => ({
+            operation: "stop",
+            workspacePath,
+            detail: "Could not pause the sandbox VM.",
+            cause,
+          }),
+        });
+      }),
+    wake: (name, workspacePath) =>
+      Effect.gen(function* () {
+        const vm = vmProcess(name);
+        if (vm === null) return;
+        if (vm.scope !== null && frozen(vm.scope.cgroupPath)) {
+          yield* input.systemctl("start", workspacePath, ["--user", "thaw", vm.scope.unit]);
+        }
+        // Harmless on a running process; undoes a SIGSTOP sleep.
+        yield* Effect.sync(() => {
+          try {
+            process.kill(vm.pid, "SIGCONT");
+          } catch {}
+        });
+      }),
+    remove: (name, workspacePath) =>
+      cli("remove", workspacePath, ["remove", "--force", "--quiet", name]).pipe(
+        Effect.catchIf(missing, () => Effect.void),
+        Effect.asVoid,
+      ),
+    listOwned: Effect.gen(function* () {
+      const listed = yield* cli("start", input.registryPath, [
+        "list",
+        "--format",
+        "json",
+        "--label",
+        `${SANDBOX_LABELS.owner}=${owner}`,
+      ]).pipe(Effect.flatMap(decodeListed), Effect.mapError(decodeError(input.registryPath)));
+      const owned = yield* Effect.forEach(listed, (entry) =>
+        inspect(entry.name).pipe(
+          Effect.map((sandbox) => ({ entry, sandbox })),
+          Effect.option,
+        ),
+      );
+      return owned.flatMap((found) => {
+        if (found._tag === "None") return [];
+        const { entry, sandbox } = found.value;
+        const labels = sandbox.config.labels ?? {};
+        const workspacePath = labels[SANDBOX_LABELS.workspace];
+        if (workspacePath === undefined) return [];
+        return [
+          {
+            name: entry.name,
+            workspacePath,
+            // The snapshot is not recorded on the sandbox; a re-create rebuilds the name.
+            image: "",
+            versions: {
+              claude: labels[SANDBOX_LABELS.claude] ?? "latest",
+              codex: labels[SANDBOX_LABELS.codex] ?? "latest",
+            },
+            mounts: sandbox.config.mounts
+              .filter((mount) => mount.type === "Bind" && mount.host === mount.guest)
+              .map((mount) => ({
+                path: mount.guest,
+                readOnly: mount.options?.readonly ?? false,
+              })),
+            running: /^running$/i.test(entry.status),
+          },
+        ];
+      });
+    }),
+    execArgs: ({ name, cwd, tty, root, argv }) => [
+      "exec",
+      "--quiet",
+      ...(tty ? ["--tty"] : []),
+      ...(cwd === undefined ? [] : ["--workdir", cwd]),
+      ...(root ? ["--user", "root"] : []),
+      name,
+      "--",
+      ...argv,
+    ],
+  };
+};

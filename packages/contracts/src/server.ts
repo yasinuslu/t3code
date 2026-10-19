@@ -660,6 +660,11 @@ export const ServerConfig = Schema.Struct({
   /** Whether thread subscriptions can emit an opt-in catch-up completion marker. */
   threadResumeCompletionMarker: Schema.optionalKey(Schema.Boolean),
   /**
+   * Whether this server can run new worktrees in sandboxes (Linux and macOS
+   * hosts). The runtime itself is checked when a sandbox starts.
+   */
+  sandboxes: Schema.optionalKey(Schema.Boolean),
+  /**
    * Whether thread detail reads accept a turn window (`turnLimit`/
    * `beforeCursor`) and return `page` metadata. Clients must not send window
    * fields to servers that don't advertise this.

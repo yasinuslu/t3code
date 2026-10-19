@@ -20,6 +20,7 @@ import {
 } from "./ProviderFailure.ts";
 import * as IdAllocator from "./IdAllocator.ts";
 import { ContextHandoffBudgetError } from "./ContextHandoffDelivery.ts";
+import { SandboxError } from "../sandbox/SandboxService.ts";
 import { ProviderAdapterTurnStartError } from "./ProviderAdapter.ts";
 import {
   ClaudeAgentSdkQueryRunnerError,
@@ -126,6 +127,24 @@ it("preserves actionable handoff errors wrapped by turn startup", () => {
   assert.equal(
     makeProviderFailure({ cause: Cause.fail(cause) }).message,
     new ContextHandoffBudgetError().message,
+  );
+});
+
+it("shows why a sandbox could not run the turn", () => {
+  const cause = new ProviderAdapterTurnStartError({
+    driver: ProviderDriverKind.make("claudeAgent"),
+    threadId: ThreadId.make("thread:sandbox-error"),
+    providerThreadId: ProviderThreadId.make("provider-thread:sandbox-error"),
+    runId: RunId.make("run:sandbox-error"),
+    cause: new SandboxError({
+      operation: "exec",
+      workspacePath: "/repo",
+      detail: "The sandbox does not mount /home/me/.claude.",
+    }),
+  });
+  assert.strictEqual(
+    makeProviderFailure({ cause }).message,
+    "The thread's sandbox could not run this turn: The sandbox does not mount /home/me/.claude.",
   );
 });
 

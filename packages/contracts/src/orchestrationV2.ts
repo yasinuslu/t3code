@@ -528,21 +528,29 @@ export const OrchestrationV2RunBackgroundWorkCancelled = Schema.Struct({
 export type OrchestrationV2RunBackgroundWorkCancelled =
   typeof OrchestrationV2RunBackgroundWorkCancelled.Type;
 
+/**
+ * Where a launched thread works. `sandbox` is independent of the folder: any
+ * strategy can run the thread's agent, terminals, and setup script in a
+ * sandbox for that folder.
+ */
 export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("root"),
     branch: Schema.optional(TrimmedNonEmptyString),
+    sandbox: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("existing_worktree"),
     worktreePath: TrimmedNonEmptyString,
     branch: Schema.optional(TrimmedNonEmptyString),
+    sandbox: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("worktree"),
     baseRef: TrimmedNonEmptyString,
     branch: Schema.optional(TrimmedNonEmptyString),
     startFromOrigin: Schema.optional(Schema.Boolean),
+    sandbox: Schema.optional(Schema.Boolean),
   }),
 ]);
 export type OrchestrationV2ThreadLaunchWorkspaceStrategy =

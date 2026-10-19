@@ -123,6 +123,7 @@ import {
   WorktreeSetupStreamEvent,
   WorktreeSetupSubscribeInput,
 } from "./worktreeSetup.ts";
+import { SandboxListStreamEvent, SandboxRequestError, SandboxThreadInput } from "./sandbox.ts";
 import {
   GitActionProgressEvent,
   VcsSwitchRefInput,
@@ -567,6 +568,10 @@ export const WS_METHODS = {
   subscribeVcsStatus: "subscribeVcsStatus",
   subscribeWorktreeSetup: "subscribeWorktreeSetup",
   worktreeSetupCancel: "worktreeSetup.cancel",
+  subscribeSandboxes: "subscribeSandboxes",
+  sandboxStop: "sandbox.stop",
+  sandboxEnable: "sandbox.enable",
+  sandboxDisable: "sandbox.disable",
   subscribeTerminalEvents: "subscribeTerminalEvents",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
@@ -1386,6 +1391,33 @@ const WsSubscribeWorktreeSetupRpc = Rpc.make(WS_METHODS.subscribeWorktreeSetup, 
   stream: true,
 });
 
+const WsSubscribeSandboxesRpc = Rpc.make(WS_METHODS.subscribeSandboxes, {
+  payload: Schema.Struct({}),
+  success: SandboxListStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsSandboxStopRpc = Rpc.make(WS_METHODS.sandboxStop, {
+  payload: SandboxThreadInput,
+  success: Schema.Void,
+  error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
+});
+
+/** Moves an existing thread into a sandbox for its workspace, starting one if needed. */
+const WsSandboxEnableRpc = Rpc.make(WS_METHODS.sandboxEnable, {
+  payload: SandboxThreadInput,
+  success: Schema.Void,
+  error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
+});
+
+/** Takes a thread out of its sandbox. The sandbox is deleted when no thread is left in it. */
+const WsSandboxDisableRpc = Rpc.make(WS_METHODS.sandboxDisable, {
+  payload: SandboxThreadInput,
+  success: Schema.Void,
+  error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
+});
+
 const WsWorktreeSetupCancelRpc = Rpc.make(WS_METHODS.worktreeSetupCancel, {
   payload: WorktreeSetupCancelInput,
   success: WorktreeSetupCancelResult,
@@ -1981,6 +2013,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeVcsStatusRpc,
   WsSubscribeWorktreeSetupRpc,
   WsWorktreeSetupCancelRpc,
+  WsSubscribeSandboxesRpc,
+  WsSandboxStopRpc,
+  WsSandboxEnableRpc,
+  WsSandboxDisableRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
   WsGitRunStackedActionRpc,

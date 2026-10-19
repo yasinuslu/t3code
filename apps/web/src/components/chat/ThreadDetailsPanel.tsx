@@ -15,6 +15,7 @@ import {
   type EnvironmentOption,
 } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
+import type { SandboxChoice } from "../SandboxToggle";
 import { BranchToolbarEnvironmentSelector } from "../BranchToolbarEnvironmentSelector";
 import GitActionsControl from "../GitActionsControl";
 import ProjectScriptsControl, {
@@ -28,6 +29,7 @@ import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
+import { ThreadSandboxControl } from "./ThreadSandboxControl";
 
 interface VersionMismatchIssue {
   readonly clientVersion: string;
@@ -59,6 +61,10 @@ export interface ThreadDetailsPanelProps extends Pick<
   onEnvModeChange: (mode: EnvMode) => void;
   /** The thread's env mode as ChatView resolves it. */
   envMode: EnvMode;
+  /** A started thread on a server that can run sandboxes: shows its sandbox row. */
+  sandboxesAvailable: boolean;
+  /** A draft's choice to run in a sandbox, when its server can run them. */
+  sandboxChoice?: SandboxChoice;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
   startFromOrigin: boolean;
@@ -99,6 +105,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     startFromOrigin: props.startFromOrigin,
     onStartFromOriginChange: props.onStartFromOriginChange,
     envMode: props.envMode,
+    ...(props.sandboxChoice ? { sandboxChoice: props.sandboxChoice } : {}),
     ...(props.activeThreadBranchOverride !== undefined
       ? { activeThreadBranchOverride: props.activeThreadBranchOverride }
       : {}),
@@ -166,6 +173,13 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
 
               {density === "full" ? (
                 <BranchToolbar layout="panel" panelSection="workspace" {...branchToolbarProps} />
+              ) : null}
+
+              {density !== "essential" && props.sandboxesAvailable ? (
+                <ThreadSandboxControl
+                  environmentId={props.environmentId}
+                  threadId={props.threadId}
+                />
               ) : null}
 
               {density !== "essential" && props.showOpenInPicker ? (

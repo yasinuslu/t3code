@@ -29,6 +29,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { NotificationsBell } from "../NotificationsBell";
 import { useDesktopUpdateTitlebarVisible } from "./DesktopUpdateTitlebarButton";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { ThreadSandboxBadge } from "./ThreadSandboxBadge";
 import {
   ProviderConfigDirIndicator,
   type ThreadProviderConfigDir,
@@ -59,6 +60,8 @@ interface ChatHeaderProps {
   embedded?: boolean;
   /** The provider profile the thread runs on, for drivers that report one. */
   providerConfigDir?: ThreadProviderConfigDir | null;
+  /** The thread when its server can run sandboxes; shows the sandbox badge. */
+  sandboxThreadId?: string | null;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
 }
@@ -93,6 +96,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   embedded = false,
   providerConfigDir = null,
+  sandboxThreadId = null,
   onNewThreadInProject,
   onOpenProjectSettings,
 }: ChatHeaderProps) {
@@ -376,6 +380,13 @@ export const ChatHeader = memo(function ChatHeader({
       </WorkspaceBreadcrumb>
       {isServerThread && !docked ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
       {/* A manager's title already names its profile; a narrow column keeps the room for the title. */}
+      {sandboxThreadId ? (
+        <ThreadSandboxBadge
+          environmentId={activeThreadEnvironmentId}
+          threadId={sandboxThreadId}
+          variant="badge"
+        />
+      ) : null}
       {providerConfigDir && !isManager ? (
         <div className="flex min-w-0 max-w-[min(20rem,40%)] shrink items-center @max-[28rem]:hidden">
           <ProviderConfigDirIndicator value={providerConfigDir} compact={docked} />

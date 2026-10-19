@@ -6813,9 +6813,13 @@ export default function ChatView(props: ChatViewProps) {
     activeThread.worktreePath === null &&
     !envLocked,
   );
+  const sandboxesAvailable = serverConfig?.sandboxes === true;
   const envMode: DraftThreadEnvMode = canOverrideServerThreadEnvMode
     ? (pendingServerThreadEnvMode ?? draftThread?.envMode ?? derivedEnvMode)
     : derivedEnvMode;
+  // A draft picks its folder and, separately, whether it runs in a sandbox.
+  // A server that cannot run sandboxes ignores a draft's earlier choice.
+  const sandboxRequested = sandboxesAvailable && draftThread?.sandbox === true;
   const activeThreadBranch =
     canOverrideServerThreadEnvMode && pendingServerThreadBranch !== undefined
       ? pendingServerThreadBranch
@@ -9731,6 +9735,7 @@ export default function ChatView(props: ChatViewProps) {
                     runSetupScript: true,
                   }
                 : {}),
+              ...(isLocalDraftThread && sandboxRequested ? { sandbox: true } : {}),
             }
           : undefined;
       const backgroundThreadRef =
@@ -10710,6 +10715,15 @@ export default function ChatView(props: ChatViewProps) {
     workLocallyResendReady,
   ]);
 
+  const sandboxChoice =
+    sandboxesAvailable && isLocalDraftThread && multipleModelSelections === null
+      ? {
+          checked: sandboxRequested,
+          onCheckedChange: (sandbox: boolean) =>
+            setDraftThreadContext(composerDraftTarget, { sandbox }),
+        }
+      : undefined;
+
   const onStartFromOriginChange = (nextStartFromOrigin: boolean) => {
     if (canOverrideServerThreadEnvMode && activeThread) {
       setPendingServerThreadStartFromOriginByThreadId((current) =>
@@ -10974,6 +10988,8 @@ export default function ChatView(props: ChatViewProps) {
     onEnvironmentChange,
     onEnvModeChange,
     envMode,
+    sandboxesAvailable: sandboxesAvailable && isServerThread,
+    ...(sandboxChoice ? { sandboxChoice } : {}),
     ...(canOverrideServerThreadEnvMode
       ? {
           activeThreadBranchOverride: activeThreadBranch,
@@ -11149,6 +11165,7 @@ export default function ChatView(props: ChatViewProps) {
             rightPanelOpen={inlineRightPanelOwnsTitleBar}
             embedded={embedded}
             providerConfigDir={providerConfigDir}
+            sandboxThreadId={sandboxesAvailable && isServerThread ? activeThread.id : null}
             onNewThreadInProject={handleNewThreadInActiveProject}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
@@ -11616,6 +11633,7 @@ export default function ChatView(props: ChatViewProps) {
                                 startFromOrigin={startFromOrigin}
                                 onStartFromOriginChange={onStartFromOriginChange}
                                 envMode={envMode}
+                                {...(sandboxChoice ? { sandboxChoice } : {})}
                                 {...(canOverrideServerThreadEnvMode
                                   ? {
                                       activeThreadBranchOverride: activeThreadBranch,

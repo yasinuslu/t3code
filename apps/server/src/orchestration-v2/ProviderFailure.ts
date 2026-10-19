@@ -38,6 +38,13 @@ function causeMessage(cause: unknown): string | undefined {
           return new ContextHandoffBudgetError().message;
         case "ClaudeBackgroundWorkBlocksQueryReplacementError":
           return stringField(cause, "message");
+        // Written by T3 for the user: why the thread's sandbox could not run it.
+        case "SandboxError": {
+          const detail = stringField(cause, "detail");
+          if (detail !== undefined)
+            return `The thread's sandbox could not run this turn: ${detail}`;
+          break;
+        }
         case "ContextHandoffDeliveryUncertainError":
           return "T3 could not confirm whether conversation history reached the provider. Retry the turn to recover the session.";
         case "ProviderAdapterTurnStartError":
@@ -86,7 +93,7 @@ export function isProviderTurnRefusedBeforeInput(cause: unknown): boolean {
   return false;
 }
 
-function stringField(value: unknown, key: "message" | "code"): string | undefined {
+function stringField(value: unknown, key: "message" | "code" | "detail"): string | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   try {
     const candidate = (value as Record<string, unknown>)[key];
