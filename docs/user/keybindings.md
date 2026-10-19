@@ -41,8 +41,8 @@ in Settings.
 
 ## Manager
 
-`ctrl+alt+space` (Ctrl+Option+Space on a Mac) shows or hides [the manager](./manager.md) over
-any screen, terminal included. In the desktop app it works system-wide: from another app it brings
+`ctrl+alt+space` (Ctrl+Option+Space on a Mac) shows [the manager](./manager.md) from
+any screen, terminal included, and pressed again goes back to where you were. In the desktop app it works system-wide: from another app it brings
 T3 Code forward with the manager open. Rebind it under **Manager: Toggle**; the desktop app takes
 the new chord system-wide too.
 

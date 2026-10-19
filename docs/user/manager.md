@@ -1,15 +1,16 @@
 # The manager
 
 The manager is an ordinary thread that runs your goals: it plans tasks, starts and steers worker
-threads, and brings you in only for real decisions. Each code profile has its own manager. It floats
-over the app, so you can reach it from wherever you are.
+threads, and brings you in only for real decisions. Each code profile has its own manager. Its row
+is pinned at the top of the sidebar, above every other thread, so you can reach it from wherever you are.
 
 ## Showing the manager
 
-Press `ctrl+alt+space` (Ctrl+Option+Space on a Mac, three neighbouring keys for the left hand).
-The manager opens over whatever screen you are on, Grow, a thread or settings, with its composer
-focused. Press it again, or Esc, to hide it; a draft you left in the composer is still there next
-time. Clicking a thread link in its answer takes you to that thread and hides the manager.
+Click the **Manager** row at the top of the sidebar, or press `ctrl+alt+space` (Ctrl+Option+Space
+on a Mac, three neighbouring keys for the left hand) from any screen, Grow, a thread or settings.
+The manager opens like any thread, next to the sidebar, with its composer focused. Press the
+shortcut again to go back to where you were. Clicking another thread, or a thread link in its
+answer, takes you there.
 
 In the desktop app the shortcut works system-wide: from another app it brings T3 Code forward with
 the manager open. If another app already owns the chord (or on a Linux Wayland session, which has
@@ -18,8 +19,7 @@ speech-bubble button next to the Grow and Threads switch at the top left, or cho
 the manager** in the command palette. Change the shortcut in
 **Settings → Keybindings** under **Manager: Toggle**.
 
-If the machine that runs the manager is offline, the overlay says so instead of showing a stale
-chat, and opens the manager by itself once that machine reconnects.
+If the machine that runs the manager is offline, a notice says so instead of opening a stale chat.
 
 ## Screens
 
@@ -28,7 +28,7 @@ The switch at the top left of the window moves between **Grow** (the idea board)
 had open. The app reopens on the screen you left. `ctrl+alt+1` and `ctrl+alt+3` pick Grow and
 Threads; `ctrl+alt+0` switches between them. Change them in **Settings → Keybindings** under **Mode**.
 
-The manager has no row in the sidebar's thread list. Agents keep a status card at the top of their thread current with
+Agents keep a status card at the top of their thread current with
 the `thread_status_update` tool; its screenshots are stored with the thread, so they survive a
 deleted worktree.
 
@@ -40,11 +40,10 @@ profile's folder, it runs with that profile's provider settings and account. Its
 tools see only its profile: its goals and tasks, and the threads of that profile's projects. Work
 for another profile belongs to that profile's manager.
 
-Switch profiles with the switcher in the manager's header. Picking a
-profile shows its manager and makes its space the active space, so Grow and the sidebar follow.
-**All** shows every profile's work and keeps the manager you had; managers themselves never see
-across profiles. Switching spaces in the sidebar switches the manager too, and the manager opens on
-the last profile you picked. A manager opened as a page has the same switcher in its header.
+Switch profiles with the spaces at the top of the sidebar, or with the mouse's back and forward
+buttons over the sidebar. While the manager is showing, picking a profile's space shows that
+profile's manager at once. **All** shows every profile's work and keeps the manager you had;
+managers themselves never see across profiles. The manager opens on the last profile you picked.
 
 Before you pick one, the manager shown is the default profile's: the profile that a symlink directly
 under `~/code` points into, or else the first profile by name. Without any profile brain there is
@@ -64,7 +63,7 @@ machines opens each manager on the machine that lists it.
 
 When two machines list the same profile, each runs its own manager for it: a separate chat with its
 own history, nothing shared or moved between them. The manager's header then shows a machine
-switcher next to the profile switcher; pick a machine to open its manager. It remembers your pick per
+switcher; pick a machine to open its manager. It remembers your pick per
 profile and otherwise starts on the machine you connected to. A machine that is offline is shown
 as offline and is not opened, and a dot on a machine means its manager is working or has news.
 

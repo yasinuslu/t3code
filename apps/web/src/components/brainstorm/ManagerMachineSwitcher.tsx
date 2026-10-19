@@ -2,7 +2,7 @@
  * Switches between the machines that each run their own manager for the
  * profile in view (every machine that lists it in Managers hosted here). Each
  * machine's manager is a separate chat; switching moves nothing between them.
- * Shown next to the profile switcher; renders nothing with fewer than two.
+ * Shown in a manager's header; renders nothing with fewer than two.
  */
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
@@ -14,11 +14,7 @@ import { hasUnseenCompletion, resolveSidebarThreadStatus } from "../Sidebar.logi
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { SINGLE_MANAGER_KEY, isEnvironmentUnreachable, managerSlot } from "./brainstorm.logic";
 
-export function ManagerMachineSwitcher(props: {
-  /** Runs after the pick is stored, e.g. to open that machine's manager page. */
-  readonly onSelect?: (profile: string | null) => void;
-  readonly className?: string;
-}) {
+export function ManagerMachineSwitcher(props: { readonly className?: string }) {
   const profile = useManagerProfile();
   const hosts = useManagerHostIds(profile);
   const current = useManagerEnvironmentId(profile);
@@ -35,7 +31,6 @@ export function ManagerMachineSwitcher(props: {
         // Pressing the active segment again keeps it.
         if (picked === undefined) return;
         setLastManagerEnvironment(profile ?? SINGLE_MANAGER_KEY, picked);
-        props.onSelect?.(profile);
       }}
     >
       {hosts.map((environmentId) => (

@@ -266,6 +266,7 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarManagerEntry } from "./sidebar/SidebarManagerEntry";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import {
   CodeProfileProbes,
@@ -4936,6 +4937,7 @@ export default function Sidebar() {
           <SpaceSwitcher onSwitch={switchSpace} />
         </div>
       ) : null}
+      <SidebarManagerEntry />
       <CodeProfileProbes projects={projects} />
       <SidebarContent
         className="min-h-full"

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { cycleAppMode, readAppMode, setAppMode } from "./appMode";
 import { useHomeOverlayStore } from "./homeOverlayStore";
-import { openManagerOverlay, useManagerOverlayStore } from "./managerOverlayStore";
 
 describe("app mode", () => {
   it("maps Grow and T3 onto Home's open state", () => {
@@ -20,11 +19,5 @@ describe("app mode", () => {
     expect(readAppMode()).toBe("normal");
     cycleAppMode();
     expect(readAppMode()).toBe("grow");
-  });
-
-  it("puts the manager away when the screen changes", () => {
-    openManagerOverlay();
-    setAppMode("normal");
-    expect(useManagerOverlayStore.getState().open).toBe(false);
   });
 });

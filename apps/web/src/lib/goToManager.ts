@@ -1,9 +1,9 @@
+import { useHomeOverlayStore } from "../homeOverlayStore";
 import {
-  closeManagerOverlay,
-  openManagerOverlay,
-  useManagerOverlayStore,
-} from "../managerOverlayStore";
-import { dispatchSnapShotComposerFocus } from "./desktopSnapShot";
+  requestManagerHidden,
+  requestManagerShown,
+  useManagerViewStore,
+} from "../managerViewStore";
 
 // Toasts are non-modal dialogs and are not in the way.
 const OPEN_POPUP_SELECTOR =
@@ -16,7 +16,6 @@ function visibleOpenPopup(): Element | null {
   const popups = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].filter(
     (element) =>
       element.closest("[inert]") === null &&
-      element.closest("[data-manager-overlay]") === null &&
       // Toasts are dialogs to assistive tech but never hold the keyboard.
       element.closest('[data-slot="toast-viewport"]') === null &&
       element.getClientRects().length > 0,
@@ -45,21 +44,18 @@ async function dismissOpenPopups(): Promise<void> {
 }
 
 /**
- * Shows the manager over whatever screen is open, with its composer focused.
- * Popups in the way close first. Already open, it only focuses the composer.
+ * Opens the manager thread of the profile in view next to the sidebar, from any
+ * screen (Grow too), with its composer focused. Popups in the way close first.
  */
 export async function openManager(): Promise<void> {
   await dismissOpenPopups();
-  openManagerOverlay();
-  // The manager's view mounts on the next render; focus once it has.
-  await nextFrame();
-  dispatchSnapShotComposerFocus();
-  await nextFrame();
-  dispatchSnapShotComposerFocus();
+  requestManagerShown();
 }
 
-/** The manager shortcut: shows the manager, or puts it away when it is showing. */
+/** The manager shortcut: shows the manager, or goes back to where it was opened from. */
 export function toggleManager(): void {
-  if (useManagerOverlayStore.getState().open) closeManagerOverlay();
-  else void openManager();
+  // Under Grow the manager is not what shows, so the shortcut brings it up.
+  if (useManagerViewStore.getState().shown && !useHomeOverlayStore.getState().open) {
+    requestManagerHidden();
+  } else void openManager();
 }
