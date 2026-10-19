@@ -122,6 +122,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
           params: { environmentId: manager.environmentId, threadId: manager.threadId },
         })
           .then(() => threadViewRendered(manager.threadId))
+          .catch(() => undefined)
           .finally(() => {
             closeHomeOverlay();
             release();
