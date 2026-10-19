@@ -30,11 +30,13 @@ Threads; `ctrl+alt+0` switches between them. Change them in **Settings → Keybi
 
 ## Grow
 
-Grow shows what your agents finished today, one at a time: its screenshot or live preview, what it
-asks, and one decision. **Ship** tells the agent to land it the way its repository lands work,
+Grow shows what your agents finished today, one at a time: its screenshot or live preview in the
+middle, and beside it what it is, where it came from (the thread that launched or forked it, and
+what you sent it from Grow), where it stands, and what happened. Then one decision. **Ship** tells the agent to land it the way its repository lands work,
 **Reply** answers its question, **Done** clears something with nothing to merge (a report),
 **What if...** asks for a change in the same thread, and **Let go** takes it off the list. Each
-decision waits five seconds with **Undo**. Older returns fold under **Earlier**; what is done and
+decision waits five seconds with **Undo**. Anything an agent is still working on, like a What
+if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
 what you let go stay findable below, and a let-go item can be brought back. Keys: `j`/`k` move,
 `s` ship, `r` reply, `d` done, `w` what if, `l` let go, `p` play, `o` opens the conversation
 right in Grow (`Esc` goes back),

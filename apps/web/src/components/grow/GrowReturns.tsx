@@ -1,15 +1,17 @@
 /**
- * Grow: what the agents made comes back here, one thing at a time. The hero
- * shows it (its screenshot, or the live preview behind Play), what it asks,
- * and three choices: the main one (Reply to its question, Ship work that can
- * land, or Done for what has nothing to merge), What if, Let go. The list
- * beside it is the rest of the queue by project, then what is done and what
- * was let go. On a phone the
- * hero takes the screen and the list is one tap away.
+ * Grow: what the agents made comes back here, one thing at a time. The item
+ * shows the thing itself (its screenshot, or the live preview behind Play)
+ * and beside it what it is, where it came from and goes, and what happened,
+ * then three choices: the main one (Reply to its question, Ship work that can
+ * land, or Done for what has nothing to merge), What if, Let go. The list is
+ * what is being worked on, the rest of the queue by project, then what is
+ * done and what was let go. On a phone the item takes the screen and the list
+ * is one tap away.
  *
  * Nothing here needs agents to fill in extra fields: everything is read off
  * the thread (previews, pull requests, status report, run state). The only
- * thing recorded is the decision, in the thread's grow card.
+ * things recorded are the decision, in the thread's grow card, and what the
+ * user sent from here, on this device (grow.asks).
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { GrowDecision } from "@t3tools/contracts";
@@ -20,7 +22,9 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CircleDotIcon,
   ExternalLinkIcon,
+  GitBranchIcon,
   ListIcon,
   MessageSquareIcon,
   PlayIcon,
@@ -28,6 +32,7 @@ import {
   RocketIcon,
   SearchIcon,
   SparklesIcon,
+  SplitIcon,
   Undo2Icon,
   XIcon,
 } from "lucide-react";
@@ -53,20 +58,25 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group"
 import { Kbd } from "../ui/kbd";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
+import { type GrowAsk, recordGrowAsk, useGrowAsks } from "./grow.asks";
 import { decide, undo, usePendingDecisions } from "./grow.decide";
 import { GrowPreview } from "./GrowPreview";
 import {
   type GrowDeck,
+  type GrowRelations,
   type GrowReturn,
   SHIP_MESSAGE,
   buildGrowDeck,
+  buildGrowRelations,
   filterGrowDeck,
   growCurrent,
   cleanLabel,
   growNextAfter,
+  growParentKey,
   growPrimary,
   growProjectKey,
   growQueue,
+  growReturnKey,
   growSpark,
   growStep,
 } from "./returns.logic";
@@ -77,7 +87,7 @@ const useReturnsStore = create<{
   readonly phoneView: "card" | "list";
   readonly query: string;
   readonly playing: string | null;
-  /** The item whose conversation is open in place of its card. */
+  /** The thread whose conversation is open in place of the item: the item's own, or one related to it. */
   readonly thread: string | null;
 }>(() => ({ selected: null, phoneView: "card", query: "", playing: null, thread: null }));
 
@@ -96,7 +106,7 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       input: { threadId: item.thread.id, decision },
     });
 
-  const send = async (item: GrowReturn, text: string) => {
+  const send = async (item: GrowReturn, text: string, kind: GrowAsk["kind"]) => {
     const result = await startTurn({
       environmentId: item.thread.environmentId,
       input: {
@@ -110,6 +120,7 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       toastManager.add({ type: "error", title: `Could not reach ${item.headline}` });
       return false;
     }
+    recordGrowAsk(item.key, { text, kind, at: Date.now() });
     return true;
   };
 
@@ -121,17 +132,17 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         title: `Shipping ${item.headline}`,
         run: async () => {
           // Recorded after the message, so the decision outlives the message (see heldDecision).
-          if (await send(item, SHIP_MESSAGE)) await record(item, "adopt");
+          if (await send(item, SHIP_MESSAGE, "ship")) await record(item, "adopt");
         },
       });
     },
-    whatIf: (item: GrowReturn, text: string) => {
+    whatIf: (item: GrowReturn, text: string, kind: "whatIf" | "reply") => {
       moveOn(item);
       decide({
         key: item.key,
         title: `Sending to ${item.headline}`,
         run: async () => {
-          if ((await send(item, text)) && item.card?.decision !== undefined) {
+          if ((await send(item, text, kind)) && item.card?.decision !== undefined) {
             await record(item, null);
           }
         },
@@ -162,11 +173,11 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
     openThread: (item: GrowReturn) =>
       useReturnsStore.setState({ selected: item.key, phoneView: "card", thread: item.key }),
     /** The full thread view, for work the deck is too small for. */
-    leaveForThread: (item: GrowReturn) => {
+    leaveForThread: (thread: EnvironmentThreadShell) => {
       closeHomeOverlay();
       void navigate({
         to: "/$environmentId/$threadId",
-        params: { environmentId: item.thread.environmentId, threadId: item.thread.id },
+        params: { environmentId: thread.environmentId, threadId: thread.id },
       });
     },
   };
@@ -205,6 +216,7 @@ export function GrowReturns(props: {
     [cards, managers.keys, pending, props.now, props.threads],
   );
   const shown = useMemo(() => filterGrowDeck(deck, query), [deck, query]);
+  const relations = useMemo(() => buildGrowRelations(props.threads, cards), [cards, props.threads]);
   const actions = useReturnActions((item) => select(growNextAfter(shown, item.key)));
   const current = growCurrent(shown, selected);
   const queue = growQueue(shown);
@@ -279,29 +291,41 @@ export function GrowReturns(props: {
   const header = (
     <ReturnsHeader
       today={deck.urgent.length + deck.returns.length}
-      working={deck.working}
+      working={deck.working.length}
       query={query}
       phoneList={
         !wide && phoneView === "card" ? () => useReturnsStore.setState({ phoneView: "list" }) : null
       }
     />
   );
-  const hero = current ? (
-    thread === current.key ? (
-      <ThreadPane key={current.key} item={current} actions={actions} wide={wide} />
-    ) : (
-      <Hero
-        key={current.key}
-        item={current}
-        actions={actions}
-        wide={wide}
-        playing={playing === current.key}
-        whatIfOpen={whatIfOpen}
-        setWhatIfOpen={setWhatIfOpen}
-        position={positionOf(shown, current)}
-        step={(direction) => select(growStep(shown, current.key, direction))}
-      />
-    )
+  // A related thread opens as its item when it is in the deck, else as its conversation, in place.
+  const openRelated = (related: EnvironmentThreadShell) => {
+    const key = growReturnKey(related);
+    if (growCurrent(shown, key)?.key === key) select(key);
+    else useReturnsStore.setState({ thread: key });
+  };
+  const threadShell = thread === null ? undefined : relations.byKey.get(thread);
+  const hero = threadShell ? (
+    <ThreadPane
+      thread={threadShell}
+      title={current?.key === thread ? current.headline : cleanLabel(threadShell.title)}
+      actions={actions}
+      wide={wide}
+    />
+  ) : current ? (
+    <Hero
+      key={current.key}
+      item={current}
+      actions={actions}
+      relations={relations}
+      open={openRelated}
+      wide={wide}
+      playing={playing === current.key}
+      whatIfOpen={whatIfOpen}
+      setWhatIfOpen={setWhatIfOpen}
+      position={positionOf(shown, current)}
+      step={(direction) => select(growStep(shown, current.key, direction))}
+    />
   ) : (
     <CaughtUp spark={spark} actions={actions} searching={query !== ""} />
   );
@@ -425,7 +449,7 @@ function ReturnsHeader(props: {
   );
 }
 
-/** The queue by project, then the older ones, what shipped and what was let go (folded). */
+/** What is being worked on, the queue by project, then the older ones, what shipped and what was let go (folded). */
 function ReturnsList(props: { readonly deck: GrowDeck; readonly current: string | null }) {
   const { deck } = props;
   const projectTitle = useProjectTitle();
@@ -444,6 +468,9 @@ function ReturnsList(props: { readonly deck: GrowDeck; readonly current: string 
   );
   return (
     <nav aria-label="Returns" className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-6">
+      {deck.working.length > 0 ? (
+        <ListSection title="Working">{deck.working.map(row)}</ListSection>
+      ) : null}
       {deck.urgent.length > 0 ? (
         <ListSection title="Needs you now" tone="warning">
           {deck.urgent.map(row)}
@@ -536,6 +563,9 @@ function RowMark(props: { readonly item: GrowReturn }) {
       <CheckIcon aria-label="Done" className="size-3.5 shrink-0 text-success" />
     );
   }
+  if (item.kind === "working") {
+    return <CircleDotIcon aria-label="Working" className="size-3.5 shrink-0 text-info" />;
+  }
   if (item.kind === "urgent") {
     const look = item.reason ? WORK_REASON_LOOK[item.reason] : null;
     return <span aria-hidden className={cn("size-2 shrink-0 rounded-full", look?.dot)} />;
@@ -546,17 +576,17 @@ function RowMark(props: { readonly item: GrowReturn }) {
   return <span aria-hidden className="size-3.5 shrink-0" />;
 }
 
-/** One return, big: what it is, what it asks, and the choices. */
-/** The item's conversation in place of its card: read it, answer it, then Back to the deck. */
+/** A thread's conversation in place of the card: read it, answer it, then Back to the deck. */
 function ThreadPane(props: {
-  readonly item: GrowReturn;
+  readonly thread: EnvironmentThreadShell;
+  readonly title: string;
   readonly actions: ReturnActions;
   readonly wide: boolean;
 }) {
-  const { item } = props;
+  const { thread } = props;
   return (
     <section
-      aria-label={`Thread: ${item.headline}`}
+      aria-label={`Thread: ${props.title}`}
       className="flex min-h-0 min-w-0 flex-1 flex-col"
       data-grow-thread=""
     >
@@ -570,20 +600,21 @@ function ThreadPane(props: {
           Back
           {props.wide ? <Kbd>Esc</Kbd> : null}
         </Button>
-        <span className="min-w-0 flex-1 truncate font-medium text-sm">{item.headline}</span>
+        <span className="min-w-0 flex-1 truncate font-medium text-sm">{props.title}</span>
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label="Open in Threads"
           title="Open in Threads"
-          onClick={() => props.actions.leaveForThread(item)}
+          onClick={() => props.actions.leaveForThread(thread)}
         >
           <ExternalLinkIcon />
         </Button>
       </div>
       <ChatView
-        environmentId={item.thread.environmentId}
-        threadId={item.thread.id}
+        key={growReturnKey(thread)}
+        environmentId={thread.environmentId}
+        threadId={thread.id}
         routeKind="server"
         reserveTitleBarControlInset={false}
         autoFocusComposer={false}
@@ -593,9 +624,16 @@ function ThreadPane(props: {
   );
 }
 
+/**
+ * One item, read in the order a glance needs: the thing itself in the middle,
+ * and beside it what it is, where it came from and where it goes, and what
+ * happened inside. The conversation is one click further.
+ */
 function Hero(props: {
   readonly item: GrowReturn;
   readonly actions: ReturnActions;
+  readonly relations: GrowRelations;
+  readonly open: (thread: EnvironmentThreadShell) => void;
   readonly wide: boolean;
   readonly playing: boolean;
   readonly whatIfOpen: boolean;
@@ -605,60 +643,145 @@ function Hero(props: {
 }) {
   const { item, actions, wide } = props;
   const { digest } = useThreadReport(item.thread);
-  const projectTitle = useProjectTitle();
+  const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
   const question = digest.questions[0] ?? null;
-  const reason = item.kind === "urgent" && item.reason ? WORK_REASON_LOOK[item.reason] : null;
+  const hasVisual = images.length > 0 || item.playUrl !== null;
+  const visual = hasVisual ? (
+    <Visual item={item} wide={wide} playing={props.playing} images={images} />
+  ) : null;
+  const choices = (stacked: boolean) => (
+    <Choices
+      item={item}
+      actions={actions}
+      question={question !== null}
+      whatIfOpen={props.whatIfOpen}
+      setWhatIfOpen={props.setWhatIfOpen}
+      wide={wide}
+      stacked={stacked}
+    />
+  );
+  const story = (
+    <Story
+      item={item}
+      actions={actions}
+      relations={props.relations}
+      open={props.open}
+      digest={digest}
+      position={wide ? props.position : null}
+    />
+  );
 
+  if (!wide) {
+    return (
+      <article aria-label={item.headline} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-1 pb-4">
+          {visual}
+          {story}
+        </div>
+        <div className="shrink-0 border-t bg-background px-3 pt-2 pb-3">
+          <PhoneStepper position={props.position} step={props.step} />
+          {choices(false)}
+        </div>
+      </article>
+    );
+  }
+  if (visual === null) {
+    return (
+      <article aria-label={item.headline} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 p-6">
+          {story}
+          {choices(false)}
+        </div>
+      </article>
+    );
+  }
   return (
     <article
       aria-label={item.headline}
-      className={cn("flex min-h-0 flex-1 flex-col", wide ? "overflow-y-auto" : "")}
+      className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]"
     >
-      <div
-        className={cn(
-          "mx-auto flex w-full max-w-4xl flex-col gap-4",
-          wide ? "p-6" : "min-h-0 flex-1 overflow-y-auto px-3 pt-1 pb-4",
-        )}
+      <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto p-5">{visual}</div>
+      <aside
+        aria-label="About it"
+        className="flex min-h-0 flex-col border-s bg-background/40"
+        data-grow-story=""
       >
-        <Visual item={item} wide={wide} playing={props.playing} screenshots={digest.screenshots} />
-        <div className="flex flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
-            <span>{projectTitle(item.thread)}</span>
-            <span aria-hidden>·</span>
-            <span>{formatRelativeTimeLabel(item.lastActivityAt)}</span>
-            {item.pullRequest ? (
-              <a
-                href={item.pullRequest.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 hover:text-foreground"
-              >
-                {item.pullRequest.state === "merged" ? (
-                  <PullRequestGlyph.merged className="size-3.5" />
-                ) : (
-                  <PullRequestGlyph.pullRequest className="size-3.5" />
-                )}
-                PR #{item.pullRequest.number}
-                {item.pullRequest.state ? ` ${item.pullRequest.state}` : ""}
-              </a>
-            ) : null}
-            {props.position && wide ? (
-              <span className="ms-auto tabular-nums">
-                {props.position.index + 1} of {props.position.total}
-              </span>
-            ) : null}
-          </div>
-          <h2 className="font-semibold text-2xl leading-tight">{item.headline}</h2>
-          {item.headline !== cleanLabel(item.thread.title) ? (
-            <p className="truncate text-muted-foreground text-sm">
-              {cleanLabel(item.thread.title)}
-            </p>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">{story}</div>
+        <div className="shrink-0 border-t p-4">{choices(true)}</div>
+      </aside>
+    </article>
+  );
+}
+
+const STATUS_LOOK = {
+  urgent: { label: "Needs you", dot: "bg-warning" },
+  answer: { label: "Waiting for your answer", dot: "bg-warning" },
+  ready: { label: "Ready for you", dot: "bg-info" },
+  working: { label: "Working", dot: "bg-info" },
+  merged: { label: "Merged", dot: "bg-success" },
+  shipping: { label: "Shipping", dot: "bg-info" },
+  done: { label: "Done", dot: "bg-success" },
+  letGo: { label: "Let go", dot: "bg-muted-foreground" },
+} as const;
+
+function statusOf(item: GrowReturn, question: boolean): keyof typeof STATUS_LOOK {
+  switch (item.kind) {
+    case "urgent":
+      return "urgent";
+    case "working":
+      return "working";
+    case "letGo":
+      return "letGo";
+    case "shipped":
+      return item.merged ? "merged" : item.shippable ? "shipping" : "done";
+    case "return":
+      return question ? "answer" : "ready";
+  }
+}
+
+/** What it is, where it came from and goes, and what happened: what an agent wrote, as highlights. */
+function Story(props: {
+  readonly item: GrowReturn;
+  readonly actions: ReturnActions;
+  readonly relations: GrowRelations;
+  readonly open: (thread: EnvironmentThreadShell) => void;
+  readonly digest: ReturnType<typeof useThreadReport>["digest"];
+  readonly position: { readonly index: number; readonly total: number } | null;
+}) {
+  const { item, digest } = props;
+  const projectTitle = useProjectTitle();
+  const question = digest.questions[0] ?? null;
+  const status =
+    item.kind === "urgent" && item.reason
+      ? { label: WORK_REASON_LOOK[item.reason].label, dot: WORK_REASON_LOOK[item.reason].dot }
+      : STATUS_LOOK[statusOf(item, question !== null)];
+  const subtitle = cleanLabel(item.thread.title);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section aria-label="What it is" className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
+          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+            <span aria-hidden className={cn("size-2 rounded-full", status.dot)} />
+            {status.label}
+          </span>
+          <span aria-hidden>·</span>
+          <span>{projectTitle(item.thread)}</span>
+          <span aria-hidden>·</span>
+          <span>{formatRelativeTimeLabel(item.lastActivityAt)}</span>
+          {props.position ? (
+            <span className="ms-auto tabular-nums">
+              {props.position.index + 1} of {props.position.total}
+            </span>
           ) : null}
         </div>
-        {reason ? (
-          <p className="flex items-center gap-2 font-medium text-sm">
-            <span aria-hidden className={cn("size-2 rounded-full", reason.dot)} />
-            {reason.label}
+        <h2 className="font-semibold text-2xl leading-tight">{item.headline}</h2>
+        {subtitle !== item.headline ? (
+          <p className="truncate text-muted-foreground text-sm">{subtitle}</p>
+        ) : null}
+        {digest.summary ? (
+          <p className="text-sm leading-relaxed">
+            <WithLinks text={digest.summary} />
           </p>
         ) : null}
         {question ? (
@@ -666,36 +789,207 @@ function Hero(props: {
             <span className="font-medium">Asks: </span>
             <WithLinks text={question} />
           </div>
-        ) : digest.summary ? (
-          <p className="line-clamp-3 text-muted-foreground text-sm">
-            <WithLinks text={digest.summary} />
-          </p>
         ) : null}
-        {wide ? (
-          <Choices
-            item={item}
-            actions={actions}
-            question={question !== null}
-            whatIfOpen={props.whatIfOpen}
-            setWhatIfOpen={props.setWhatIfOpen}
-            wide
-          />
+      </section>
+      <StoryPath item={item} relations={props.relations} open={props.open} />
+      {digest.bullets.length > 0 ? (
+        <section aria-label="What happened" className="flex flex-col gap-2">
+          <h3 className="font-medium text-muted-foreground text-xs">What happened</h3>
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {digest.bullets.map((bullet) => (
+              <li key={bullet} className="flex gap-2">
+                <span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-foreground/60" />
+                <span className="min-w-0">
+                  <WithLinks text={bullet} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      <Button
+        variant="outline"
+        size="sm"
+        className="self-start"
+        onClick={() => props.actions.openThread(item)}
+      >
+        <MessageSquareIcon />
+        Whole conversation
+        <Kbd>O</Kbd>
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Where it came from (the thread it branched off, or who started it), what
+ * you sent it from Grow, where it stands now (pull request, preview), and the
+ * threads that came out of it. Each step opens without leaving Grow.
+ */
+function StoryPath(props: {
+  readonly item: GrowReturn;
+  readonly relations: GrowRelations;
+  readonly open: (thread: EnvironmentThreadShell) => void;
+}) {
+  const { item, relations } = props;
+  const asks = useGrowAsks((state) => state.asks[item.key]);
+  const parentKey = growParentKey(item.thread, item.card);
+  const parent = parentKey === null ? undefined : relations.byKey.get(parentKey);
+  const children = relations.children.get(item.key) ?? [];
+  const lastAsk = asks?.at(-1);
+  const started =
+    item.thread.createdBy === "agent"
+      ? "Started by an agent"
+      : item.thread.createdBy === "user"
+        ? "Started by you"
+        : "Started";
+
+  return (
+    <section aria-label="Where it came from and where it goes" className="flex flex-col gap-2">
+      <h3 className="font-medium text-muted-foreground text-xs">
+        Where it came from, where it goes
+      </h3>
+      <ol className="flex flex-col">
+        <PathStep icon={<GitBranchIcon />} label="From">
+          {parent ? (
+            <PathLink onClick={() => props.open(parent)}>{cleanLabel(parent.title)}</PathLink>
+          ) : (
+            <span>
+              {started}, {formatRelativeTimeLabel(item.thread.createdAt)}
+            </span>
+          )}
+        </PathStep>
+        {(asks ?? []).map((ask) => (
+          <PathStep
+            key={ask.at}
+            icon={
+              ask.kind === "ship" ? (
+                <RocketIcon />
+              ) : ask.kind === "reply" ? (
+                <ReplyIcon />
+              ) : (
+                <SparklesIcon />
+              )
+            }
+            label={
+              ask.kind === "ship"
+                ? "You said ship"
+                : ask.kind === "reply"
+                  ? "You replied"
+                  : "Your what if"
+            }
+            active={ask === lastAsk && item.kind === "working"}
+          >
+            {ask.kind === "ship" ? null : <span className="italic">&ldquo;{ask.text}&rdquo;</span>}
+            <span className="text-muted-foreground text-xs">
+              {" "}
+              {formatRelativeTimeLabel(new Date(ask.at).toISOString())}
+              {ask === lastAsk && item.kind === "working" ? ", working on it" : ""}
+            </span>
+          </PathStep>
+        ))}
+        <PathStep icon={<CircleDotIcon />} label="Now" last={children.length === 0}>
+          <NowLine item={item} />
+        </PathStep>
+        {children.length > 0 ? (
+          <PathStep icon={<SplitIcon />} label="Led to" last>
+            <span className="flex flex-col items-start gap-0.5">
+              {children.map((child) => (
+                <PathLink key={child.id} onClick={() => props.open(child)}>
+                  {cleanLabel(child.title)}
+                </PathLink>
+              ))}
+            </span>
+          </PathStep>
         ) : null}
-      </div>
-      {wide ? null : (
-        <div className="shrink-0 border-t bg-background px-3 pt-2 pb-3">
-          <PhoneStepper position={props.position} step={props.step} />
-          <Choices
-            item={item}
-            actions={actions}
-            question={question !== null}
-            whatIfOpen={props.whatIfOpen}
-            setWhatIfOpen={props.setWhatIfOpen}
-            wide={false}
-          />
-        </div>
+      </ol>
+    </section>
+  );
+}
+
+function NowLine(props: { readonly item: GrowReturn }) {
+  const { item } = props;
+  const link = "underline underline-offset-2 hover:text-foreground";
+  const parts: Array<{ readonly key: string; readonly node: ReactNode }> = [];
+  if (item.kind === "working") parts.push({ key: "working", node: "An agent is on it" });
+  if (item.pullRequest) {
+    parts.push({
+      key: "pr",
+      node: (
+        <a href={item.pullRequest.url} target="_blank" rel="noopener noreferrer" className={link}>
+          PR #{item.pullRequest.number}
+          {item.pullRequest.state ? ` ${item.pullRequest.state}` : ""}
+        </a>
+      ),
+    });
+  } else if (item.thread.branch) {
+    parts.push({ key: "branch", node: `on ${item.thread.branch}, no PR yet` });
+  }
+  if (item.playUrl) {
+    parts.push({
+      key: "preview",
+      node: (
+        <a href={item.playUrl} target="_blank" rel="noopener noreferrer" className={link}>
+          {item.playUrl.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "")}
+        </a>
+      ),
+    });
+  }
+  if (parts.length === 0) parts.push({ key: "none", node: "A conversation, nothing to land" });
+  return (
+    <span className="flex flex-wrap gap-x-1.5">
+      {parts.map((part, index) => (
+        <span key={part.key} className="inline-flex min-w-0 gap-1.5">
+          {index > 0 ? (
+            <span aria-hidden className="text-muted-foreground">
+              ·
+            </span>
+          ) : null}
+          <span className="min-w-0 truncate">{part.node}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function PathStep(props: {
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly active?: boolean;
+  readonly last?: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <li className={cn("relative flex gap-3", props.last ? null : "pb-3")}>
+      {props.last ? null : (
+        <span aria-hidden className="absolute start-[0.6875rem] top-6 bottom-0 w-px bg-border" />
       )}
-    </article>
+      <span
+        aria-hidden
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground [&>svg]:size-3.5",
+          props.active && "border-info text-info",
+        )}
+      >
+        {props.icon}
+      </span>
+      <div className="flex min-w-0 flex-col gap-0.5 pt-0.5 text-sm">
+        <span className="text-muted-foreground text-xs">{props.label}</span>
+        <div className="min-w-0">{props.children}</div>
+      </div>
+    </li>
+  );
+}
+
+function PathLink(props: { readonly onClick: () => void; readonly children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className="max-w-full truncate text-start underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
   );
 }
 
@@ -757,22 +1051,24 @@ function PhoneStepper(props: {
   );
 }
 
-/** The thing itself: its screenshot (tap to zoom), with Play on top; Play shows it live. */
+/**
+ * The thing itself: its screenshot (tap to zoom) with Play on top, Play
+ * showing it live. With no screenshot the desktop app shows it live at once.
+ */
 function Visual(props: {
   readonly item: GrowReturn;
   readonly wide: boolean;
   readonly playing: boolean;
-  readonly screenshots: ReturnType<typeof useThreadReport>["digest"]["screenshots"];
+  readonly images: ReturnType<typeof useReportImages>;
 }) {
-  const { item } = props;
-  const images = useReportImages(item.thread.environmentId, item.thread.id, props.screenshots);
+  const { item, images } = props;
   const [zoom, setZoom] = useState<number | null>(null);
   const image = images[0];
   // The live preview needs the desktop app; elsewhere Play opens a tab.
   const embed = props.wide && isPreviewSupportedInRuntime();
-  if (props.playing && embed && item.playUrl !== null) {
+  if (embed && item.playUrl !== null && (props.playing || image === undefined)) {
     return (
-      <div className="flex h-[min(70vh,48rem)] min-h-80 flex-col overflow-hidden rounded-xl border">
+      <div className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border">
         <GrowPreview
           environmentId={item.thread.environmentId}
           threadId={item.thread.id}
@@ -800,6 +1096,14 @@ function Visual(props: {
     )
   ) : null;
   const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (image === undefined && props.wide) {
+    return (
+      <div className="flex min-h-80 flex-1 flex-col items-center justify-center gap-3 rounded-xl border bg-muted/60 p-6">
+        {play}
+        <span className="max-w-full truncate text-muted-foreground text-sm">{host}</span>
+      </div>
+    );
+  }
   if (image === undefined) {
     return (
       <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/60 p-3">
@@ -822,7 +1126,7 @@ function Visual(props: {
             alt={image.name}
             className={cn(
               "w-full object-cover object-top",
-              props.wide ? "max-h-[52vh]" : "max-h-[38vh]",
+              props.wide ? "max-h-[calc(100vh-12rem)]" : "max-h-[38vh]",
             )}
           />
         </button>
@@ -850,15 +1154,19 @@ function Choices(props: {
   readonly whatIfOpen: boolean;
   readonly setWhatIfOpen: (open: boolean) => void;
   readonly wide: boolean;
+  /** One choice per row, for the narrow rail beside the visual. */
+  readonly stacked: boolean;
 }) {
-  const { item, actions, wide } = props;
-  const openThread = (
-    <Button variant="ghost" size={wide ? "sm" : "default"} onClick={() => actions.openThread(item)}>
-      <MessageSquareIcon />
-      Open thread
-      {wide ? <Kbd>O</Kbd> : null}
-    </Button>
-  );
+  const { item, actions, wide, stacked } = props;
+  const row = stacked ? "flex flex-col gap-2" : "grid grid-cols-3 gap-2";
+  if (item.kind === "working") {
+    return (
+      <p className="flex items-center gap-2 text-muted-foreground text-sm">
+        <CircleDotIcon className="size-4 shrink-0 text-info" />
+        An agent is on it. It comes back here when done.
+      </p>
+    );
+  }
   if (item.kind === "shipped") {
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -887,7 +1195,6 @@ function Choices(props: {
             Open
           </Button>
         ) : null}
-        {openThread}
       </div>
     );
   }
@@ -898,7 +1205,6 @@ function Choices(props: {
           <Undo2Icon />
           Bring back
         </Button>
-        {openThread}
       </div>
     );
   }
@@ -909,7 +1215,7 @@ function Choices(props: {
         reply={props.question}
         onSend={(text) => {
           props.setWhatIfOpen(false);
-          actions.whatIf(item, text);
+          actions.whatIf(item, text, props.question ? "reply" : "whatIf");
         }}
         onCancel={() => props.setWhatIfOpen(false)}
       />
@@ -923,6 +1229,7 @@ function Choices(props: {
       keyHint="S"
       primary={!props.question}
       wide={wide}
+      stacked={stacked}
       onClick={() => actions.ship(item)}
     />
   );
@@ -934,6 +1241,7 @@ function Choices(props: {
       keyHint="D"
       primary={!props.question}
       wide={wide}
+      stacked={stacked}
       onClick={() => actions.done(item)}
     />
   );
@@ -944,12 +1252,13 @@ function Choices(props: {
       icon={<XIcon />}
       keyHint="L"
       wide={wide}
+      stacked={stacked}
       onClick={() => actions.letGo(item)}
     />
   );
   if (item.kind === "urgent") {
     return (
-      <div className="grid grid-cols-3 gap-2">
+      <div className={row}>
         <Choice
           label="Answer"
           hint="In the thread"
@@ -957,6 +1266,7 @@ function Choices(props: {
           keyHint="O"
           primary
           wide={wide}
+          stacked={stacked}
           onClick={() => actions.openThread(item)}
         />
         <Choice
@@ -965,6 +1275,7 @@ function Choices(props: {
           icon={<SparklesIcon />}
           keyHint="W"
           wide={wide}
+          stacked={stacked}
           onClick={() => props.setWhatIfOpen(true)}
         />
         {letGo}
@@ -973,37 +1284,36 @@ function Choices(props: {
   }
   const primary = growPrimary(item, props.question);
   return (
-    <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-3 gap-2">
-        {primary === "reply" ? (
-          <>
-            <Choice
-              label="Reply"
-              hint="Answer its question"
-              icon={<ReplyIcon />}
-              keyHint="R"
-              primary
-              wide={wide}
-              onClick={() => props.setWhatIfOpen(true)}
-            />
-            {item.shippable ? ship : done}
-          </>
-        ) : (
-          <>
-            {primary === "ship" ? ship : done}
-            <Choice
-              label="What if..."
-              hint="Change it, same thread"
-              icon={<SparklesIcon />}
-              keyHint="W"
-              wide={wide}
-              onClick={() => props.setWhatIfOpen(true)}
-            />
-          </>
-        )}
-        {letGo}
-      </div>
-      <div className="flex justify-center">{openThread}</div>
+    <div className={row}>
+      {primary === "reply" ? (
+        <>
+          <Choice
+            label="Reply"
+            hint="Answer its question"
+            icon={<ReplyIcon />}
+            keyHint="R"
+            primary
+            wide={wide}
+            stacked={stacked}
+            onClick={() => props.setWhatIfOpen(true)}
+          />
+          {item.shippable ? ship : done}
+        </>
+      ) : (
+        <>
+          {primary === "ship" ? ship : done}
+          <Choice
+            label="What if..."
+            hint="Change it, same thread"
+            icon={<SparklesIcon />}
+            keyHint="W"
+            wide={wide}
+            stacked={stacked}
+            onClick={() => props.setWhatIfOpen(true)}
+          />
+        </>
+      )}
+      {letGo}
     </div>
   );
 }
@@ -1015,8 +1325,24 @@ function Choice(props: {
   readonly keyHint: string;
   readonly primary?: boolean;
   readonly wide: boolean;
+  readonly stacked: boolean;
   readonly onClick: () => void;
 }) {
+  if (props.stacked) {
+    return (
+      <Button
+        variant={props.primary ? "default" : "outline"}
+        size="lg"
+        className="justify-start"
+        onClick={props.onClick}
+      >
+        {props.icon}
+        {props.label}
+        <span className="ms-auto truncate font-normal text-xs opacity-70">{props.hint}</span>
+        {props.wide ? <Kbd>{props.keyHint}</Kbd> : null}
+      </Button>
+    );
+  }
   return (
     <div className="flex min-w-0 flex-col items-stretch gap-1">
       <Button

@@ -32,7 +32,9 @@ export type ReturnKind =
   /** Merged, or the user said ship and it is on its way. */
   | "shipped"
   /** The user let it go; findable, and the pile sparks come from. */
-  | "letGo";
+  | "letGo"
+  /** An agent is on it right now, after a What if or anything else. */
+  | "working";
 
 export interface GrowReturn {
   readonly key: string;
@@ -65,7 +67,8 @@ export interface GrowDeck {
   readonly older: ReadonlyArray<GrowReturn>;
   readonly shipped: ReadonlyArray<GrowReturn>;
   readonly letGo: ReadonlyArray<GrowReturn>;
-  readonly working: number;
+  /** Running now, so a What if stays findable while its answer is made. */
+  readonly working: ReadonlyArray<GrowReturn>;
 }
 
 export const growReturnKey = (thread: Pick<EnvironmentThreadShell, "environmentId" | "id">) =>
@@ -168,7 +171,7 @@ export function buildGrowDeck(
   const older: GrowReturn[] = [];
   const shipped: GrowReturn[] = [];
   const letGo: GrowReturn[] = [];
-  let working = 0;
+  const working: GrowReturn[] = [];
   for (const thread of threads) {
     const key = growReturnKey(thread);
     if (
@@ -182,10 +185,6 @@ export function buildGrowDeck(
       continue;
     }
     const placement = classifyWorkThread(thread, now);
-    if (placement?.group === "working") {
-      working += 1;
-      continue;
-    }
     const card = cards.get(key);
     const pullRequest = pullRequestOf(thread);
     const merged = pullRequest?.state === "merged";
@@ -207,6 +206,10 @@ export function buildGrowDeck(
           ? !isReport(thread)
           : pullRequest.state === "open" || pullRequest.state === null,
     });
+    if (placement?.group === "working") {
+      working.push(entry("working"));
+      continue;
+    }
     const decision = heldDecision(thread, card);
     if (decision === "shelve" || decision === "pivot") {
       letGo.push(entry("letGo"));
@@ -239,7 +242,7 @@ export function buildGrowDeck(
     older: older.sort(newestFirst),
     shipped: shipped.sort(newestFirst),
     letGo: letGo.sort(newestFirst),
-    working,
+    working: working.sort(newestFirst),
   };
 }
 
@@ -255,6 +258,49 @@ function byProject(sorted: ReadonlyArray<GrowReturn>): GrowReturn[] {
   return [...groups.values()].flat();
 }
 
+/**
+ * The thread this one came from: the one it was forked off, else the one the
+ * manager recorded on its grow card. Subagents are left out, like in the deck.
+ */
+export function growParentKey(
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "lineage">,
+  card: GrowCard | undefined,
+): string | null {
+  const parentId =
+    thread.lineage.relationshipToParent === "fork"
+      ? thread.lineage.parentThreadId
+      : (card?.parentThreadId ?? null);
+  return parentId === null ? null : `${thread.environmentId}:${parentId}`;
+}
+
+export interface GrowRelations {
+  readonly byKey: ReadonlyMap<string, EnvironmentThreadShell>;
+  /** Threads that came from a thread, oldest first, by the parent's key. */
+  readonly children: ReadonlyMap<string, ReadonlyArray<EnvironmentThreadShell>>;
+}
+
+export function buildGrowRelations(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  cards: ReadonlyMap<string, GrowCard>,
+): GrowRelations {
+  const byKey = new Map<string, EnvironmentThreadShell>();
+  const children = new Map<string, EnvironmentThreadShell[]>();
+  for (const thread of threads) {
+    const key = growReturnKey(thread);
+    byKey.set(key, thread);
+    if (thread.lineage.relationshipToParent === "subagent" || thread.deletedAt !== null) continue;
+    const parent = growParentKey(thread, cards.get(key));
+    if (parent === null) continue;
+    const siblings = children.get(parent);
+    if (siblings) siblings.push(thread);
+    else children.set(parent, [thread]);
+  }
+  for (const siblings of children.values()) {
+    siblings.sort((left, right) => epochMs(left.createdAt) - epochMs(right.createdAt));
+  }
+  return { byKey, children };
+}
+
 /** Everything the user is asked to decide, in the order the deck walks it. */
 export function growQueue(deck: GrowDeck): ReadonlyArray<GrowReturn> {
   return [...deck.urgent, ...deck.returns, ...deck.older];
@@ -262,7 +308,7 @@ export function growQueue(deck: GrowDeck): ReadonlyArray<GrowReturn> {
 
 /** Every item the deck can show, the queue first. */
 export function growDeckItems(deck: GrowDeck): ReadonlyArray<GrowReturn> {
-  return [...growQueue(deck), ...deck.shipped, ...deck.letGo];
+  return [...deck.working, ...growQueue(deck), ...deck.shipped, ...deck.letGo];
 }
 
 /**
@@ -290,7 +336,7 @@ export function filterGrowDeck(deck: GrowDeck, query: string): GrowDeck {
     older: keep(deck.older),
     shipped: keep(deck.shipped),
     letGo: keep(deck.letGo),
-    working: deck.working,
+    working: keep(deck.working),
   };
 }
 

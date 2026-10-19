@@ -2,6 +2,7 @@ import { MessageId, ThreadId, OrchestratorMcpFailure, ProjectId } from "@t3tools
 import { formatThreadMarkdownLink } from "@t3tools/shared/threadLinks";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as GrowService from "../../../grow/GrowService.ts";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
 import * as Project from "../../../project/ProjectService.ts";
@@ -38,37 +39,147 @@ const mutation = Effect.gen(function* () {
     });
   return yield* Project.ProjectService;
 });
-export const ProjectHandlersLive = ProjectToolkit.toLayer({
-  t3_thread_launch: (input) =>
-    Effect.gen(function* () {
-      const { caller, scope } = yield* readMutationCaller();
-      if (caller.runtimeMode !== "full-access" || caller.interactionMode !== "default")
-        return yield* new OrchestratorMcpFailure({
-          code: "capability_denied",
-          message: "Project launches require a full-access/default calling thread.",
-        });
-      const commandId = yield* newCommandId();
-      const threadId = ThreadId.make(commandId);
-      const messageId = MessageId.make(commandId);
-      const attachments = input.attachments ?? [];
-      if (attachments.some((attachment) => !Claims.attachmentIsPendingUpload(attachment)))
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "A new thread accepts only pending attachment uploads.",
-        });
-      if (
-        input.scratch === true &&
-        (input.projectId !== undefined || input.workspaceStrategy !== undefined)
-      )
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message:
-            "scratch:true picks its own project and folder; omit projectId and workspaceStrategy.",
-        });
-      const projectId =
-        input.scratch === true
-          ? (yield* ManagedProjectFolders.ManagedProjectFolders.pipe(
-              Effect.flatMap((folders) => folders.ensureScratchProject),
+export const ProjectHandlersLive = ProjectToolkit.toLayer(
+  Effect.gen(function* () {
+    const grow = yield* GrowService.GrowService;
+    return ProjectToolkit.of({
+      t3_thread_launch: (input) =>
+        Effect.gen(function* () {
+          const { caller, scope } = yield* readMutationCaller();
+          if (caller.runtimeMode !== "full-access" || caller.interactionMode !== "default")
+            return yield* new OrchestratorMcpFailure({
+              code: "capability_denied",
+              message: "Project launches require a full-access/default calling thread.",
+            });
+          const commandId = yield* newCommandId();
+          const threadId = ThreadId.make(commandId);
+          const messageId = MessageId.make(commandId);
+          const attachments = input.attachments ?? [];
+          if (attachments.some((attachment) => !Claims.attachmentIsPendingUpload(attachment)))
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: "A new thread accepts only pending attachment uploads.",
+            });
+          if (
+            input.scratch === true &&
+            (input.projectId !== undefined || input.workspaceStrategy !== undefined)
+          )
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message:
+                "scratch:true picks its own project and folder; omit projectId and workspaceStrategy.",
+            });
+          const projectId =
+            input.scratch === true
+              ? (yield* ManagedProjectFolders.ManagedProjectFolders.pipe(
+                  Effect.flatMap((folders) => folders.ensureScratchProject),
+                  Effect.mapError(
+                    (error) =>
+                      new OrchestratorMcpFailure({
+                        code: "orchestration_error",
+                        message: error.message,
+                      }),
+                  ),
+                )).projectId
+              : (input.projectId ?? caller.projectId);
+          const result = yield* ThreadMessageIntake.launchThread({
+            commandId,
+            threadId,
+            projectId,
+            title: input.title,
+            modelSelection: input.modelSelection ?? caller.modelSelection,
+            // An inherited model names the caller's account only by accident, so it
+            // balances unless told not to; a named model is pinned unless asked.
+            ...(input.accountBalance === undefined
+              ? input.modelSelection === undefined
+                ? { accountBalance: "auto" as const }
+                : {}
+              : { accountBalance: input.accountBalance }),
+            runtimeMode: input.runtimeMode ?? caller.runtimeMode,
+            interactionMode: input.interactionMode ?? caller.interactionMode,
+            workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
+            ...(input.message === undefined && attachments.length === 0
+              ? {}
+              : {
+                  initialMessage: {
+                    messageId,
+                    senderThreadId: scope.threadId,
+                    text: input.message ?? "",
+                    attachments,
+                  },
+                }),
+            createdBy: "agent",
+            creationSource: "mcp",
+          }).pipe(
+            Effect.mapError((error) =>
+              error._tag === "AttachmentClaimError"
+                ? new OrchestratorMcpFailure({
+                    code: "orchestration_error",
+                    message: error.message,
+                  })
+                : unavailable(),
+            ),
+          );
+          const thread = result.projection.thread;
+          // Grow shows where a thread came from; a launch has no fork lineage to say so.
+          yield* grow.update({
+            threadId: thread.id,
+            parentThreadId: scope.threadId,
+          });
+          const run = result.projection.runs.find((run) => run.userMessageId === messageId);
+          return {
+            threadId: thread.id,
+            link: formatThreadMarkdownLink({
+              environmentId: scope.environmentId,
+              threadId: thread.id,
+              title: thread.title,
+            }),
+            projectId: thread.projectId,
+            modelSelection: thread.modelSelection,
+            runId: run?.id ?? null,
+            status: run?.status ?? null,
+          };
+        }),
+      t3_project_list: (input) =>
+        Effect.gen(function* () {
+          const projects = yield* access;
+          const snapshot = yield* projects.snapshot.pipe(Effect.mapError(unavailable));
+          const rows = snapshot.projects.filter((project) => project.deletedAt === null);
+          const start = input.cursor ?? 0,
+            end = start + (input.limit ?? 20);
+          return { projects: rows.slice(start, end), nextCursor: end < rows.length ? end : null };
+        }),
+      t3_project_read: (input) =>
+        Effect.gen(function* () {
+          const projects = yield* access;
+          const result = yield* projects
+            .getById(input.projectId)
+            .pipe(Effect.mapError(unavailable));
+          if (Option.isNone(result))
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: "The project was not found.",
+            });
+          return result.value;
+        }),
+      t3_project_create: ({ workspaceRoot, ...input }) =>
+        Effect.gen(function* () {
+          const projects = yield* mutation;
+          if (workspaceRoot === undefined) {
+            // Project creation records no model default (only an update does), so
+            // reject what this mode would otherwise drop silently.
+            if (
+              input.scripts !== undefined ||
+              input.createWorkspaceRootIfMissing !== undefined ||
+              input.defaultModelSelection !== undefined
+            )
+              return yield* new OrchestratorMcpFailure({
+                code: "invalid_request",
+                message:
+                  "A project started from its title takes only a title; set scripts or defaultModelSelection afterwards with t3_project_update.",
+              });
+            const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
+            const created = yield* folders.createNamedProject({ name: input.title }).pipe(
               Effect.mapError(
                 (error) =>
                   new OrchestratorMcpFailure({
@@ -76,147 +187,54 @@ export const ProjectHandlersLive = ProjectToolkit.toLayer({
                     message: error.message,
                   }),
               ),
-            )).projectId
-          : (input.projectId ?? caller.projectId);
-      const result = yield* ThreadMessageIntake.launchThread({
-        commandId,
-        threadId,
-        projectId,
-        title: input.title,
-        modelSelection: input.modelSelection ?? caller.modelSelection,
-        // An inherited model names the caller's account only by accident, so it
-        // balances unless told not to; a named model is pinned unless asked.
-        ...(input.accountBalance === undefined
-          ? input.modelSelection === undefined
-            ? { accountBalance: "auto" as const }
-            : {}
-          : { accountBalance: input.accountBalance }),
-        runtimeMode: input.runtimeMode ?? caller.runtimeMode,
-        interactionMode: input.interactionMode ?? caller.interactionMode,
-        workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
-        ...(input.message === undefined && attachments.length === 0
-          ? {}
-          : {
-              initialMessage: {
-                messageId,
-                senderThreadId: scope.threadId,
-                text: input.message ?? "",
-                attachments,
-              },
-            }),
-        createdBy: "agent",
-        creationSource: "mcp",
-      }).pipe(
-        Effect.mapError((error) =>
-          error._tag === "AttachmentClaimError"
-            ? new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message })
-            : unavailable(),
-        ),
-      );
-      const thread = result.projection.thread;
-      const run = result.projection.runs.find((run) => run.userMessageId === messageId);
-      return {
-        threadId: thread.id,
-        link: formatThreadMarkdownLink({
-          environmentId: scope.environmentId,
-          threadId: thread.id,
-          title: thread.title,
+            );
+            const project = yield* projects.getById(created.projectId).pipe(
+              Effect.mapError(unavailable),
+              Effect.flatMap(
+                Option.match({
+                  onNone: () => Effect.fail(unavailable()),
+                  onSome: Effect.succeed,
+                }),
+              ),
+            );
+            return {
+              ...project,
+              ...(created.commitError === undefined ? {} : { commitError: created.commitError }),
+            };
+          }
+          const commandId = yield* newCommandId();
+          return yield* projects
+            .create({ ...input, workspaceRoot, commandId, projectId: ProjectId.make(commandId) })
+            .pipe(Effect.mapError(projectFailure));
         }),
-        projectId: thread.projectId,
-        modelSelection: thread.modelSelection,
-        runId: run?.id ?? null,
-        status: run?.status ?? null,
-      };
-    }),
-  t3_project_list: (input) =>
-    Effect.gen(function* () {
-      const projects = yield* access;
-      const snapshot = yield* projects.snapshot.pipe(Effect.mapError(unavailable));
-      const rows = snapshot.projects.filter((project) => project.deletedAt === null);
-      const start = input.cursor ?? 0,
-        end = start + (input.limit ?? 20);
-      return { projects: rows.slice(start, end), nextCursor: end < rows.length ? end : null };
-    }),
-  t3_project_read: (input) =>
-    Effect.gen(function* () {
-      const projects = yield* access;
-      const result = yield* projects.getById(input.projectId).pipe(Effect.mapError(unavailable));
-      if (Option.isNone(result))
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "The project was not found.",
-        });
-      return result.value;
-    }),
-  t3_project_create: ({ workspaceRoot, ...input }) =>
-    Effect.gen(function* () {
-      const projects = yield* mutation;
-      if (workspaceRoot === undefined) {
-        // Project creation records no model default (only an update does), so
-        // reject what this mode would otherwise drop silently.
-        if (
-          input.scripts !== undefined ||
-          input.createWorkspaceRootIfMissing !== undefined ||
-          input.defaultModelSelection !== undefined
-        )
-          return yield* new OrchestratorMcpFailure({
-            code: "invalid_request",
-            message:
-              "A project started from its title takes only a title; set scripts or defaultModelSelection afterwards with t3_project_update.",
-          });
-        const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
-        const created = yield* folders
-          .createNamedProject({ name: input.title })
-          .pipe(
+      t3_project_update: (input) =>
+        Effect.gen(function* () {
+          const projects = yield* mutation;
+          return yield* projects
+            .update({ ...input, commandId: yield* newCommandId() })
+            .pipe(Effect.mapError(projectFailure));
+        }),
+      t3_project_delete: (input) =>
+        Effect.gen(function* () {
+          const projects = yield* mutation;
+          return yield* projects
+            .delete({ ...input, commandId: yield* newCommandId() })
+            .pipe(Effect.mapError(projectFailure));
+        }),
+      t3_project_clone: (input) =>
+        Effect.gen(function* () {
+          yield* mutation;
+          const repositories = yield* Repositories.SourceControlRepositoryService;
+          return yield* repositories.cloneRepository(input).pipe(
             Effect.mapError(
               (error) =>
-                new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+                new OrchestratorMcpFailure({
+                  code: "orchestration_error",
+                  message: error.detail,
+                }),
             ),
           );
-        const project = yield* projects
-          .getById(created.projectId)
-          .pipe(
-            Effect.mapError(unavailable),
-            Effect.flatMap(
-              Option.match({ onNone: () => Effect.fail(unavailable()), onSome: Effect.succeed }),
-            ),
-          );
-        return {
-          ...project,
-          ...(created.commitError === undefined ? {} : { commitError: created.commitError }),
-        };
-      }
-      const commandId = yield* newCommandId();
-      return yield* projects
-        .create({ ...input, workspaceRoot, commandId, projectId: ProjectId.make(commandId) })
-        .pipe(Effect.mapError(projectFailure));
-    }),
-  t3_project_update: (input) =>
-    Effect.gen(function* () {
-      const projects = yield* mutation;
-      return yield* projects
-        .update({ ...input, commandId: yield* newCommandId() })
-        .pipe(Effect.mapError(projectFailure));
-    }),
-  t3_project_delete: (input) =>
-    Effect.gen(function* () {
-      const projects = yield* mutation;
-      return yield* projects
-        .delete({ ...input, commandId: yield* newCommandId() })
-        .pipe(Effect.mapError(projectFailure));
-    }),
-  t3_project_clone: (input) =>
-    Effect.gen(function* () {
-      yield* mutation;
-      const repositories = yield* Repositories.SourceControlRepositoryService;
-      return yield* repositories.cloneRepository(input).pipe(
-        Effect.mapError(
-          (error) =>
-            new OrchestratorMcpFailure({
-              code: "orchestration_error",
-              message: error.detail,
-            }),
-        ),
-      );
-    }),
-});
+        }),
+    });
+  }),
+);

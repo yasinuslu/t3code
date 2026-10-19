@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildGrowDeck,
+  buildGrowRelations,
   cleanLabel,
   filterGrowDeck,
   growCurrent,
@@ -72,7 +73,7 @@ describe("buildGrowDeck", () => {
     expect(keys(deck.urgent)).toEqual(["asks"]);
     expect(keys(deck.returns).toSorted()).toEqual(["finished", "made"]);
     expect(keys(deck.shipped)).toEqual(["merged"]);
-    expect(deck.working).toBe(1);
+    expect(deck.working).toHaveLength(1);
   });
 
   it("keeps a decision until the user writes to the thread again", () => {
@@ -231,5 +232,32 @@ describe("growSpark and filterGrowDeck", () => {
     );
     expect(growSpark(deck)?.thread.id).toBe("old-drop");
     expect(keys(filterGrowDeck(deck, "FRESH").letGo)).toEqual(["fresh-drop"]);
+  });
+});
+
+describe("buildGrowRelations", () => {
+  it("links forks and manager-recorded parents to their parent, leaving out subagents", () => {
+    const relations = buildGrowRelations(
+      [
+        shell("root"),
+        shell("fork", {
+          createdAt: hoursAgo(2),
+          lineage: { relationshipToParent: "fork", parentThreadId: "root" },
+        }),
+        shell("launched", { createdAt: hoursAgo(3) }),
+        shell("helper", { lineage: { relationshipToParent: "subagent", parentThreadId: "root" } }),
+      ],
+      new Map([
+        [
+          "env:launched",
+          { threadId: "launched", parentThreadId: "root", lessons: [] } as unknown as GrowCard,
+        ],
+      ]),
+    );
+    expect(keys((relations.children.get("env:root") ?? []).map((thread) => ({ thread })))).toEqual([
+      "launched",
+      "fork",
+    ]);
+    expect(relations.byKey.get("env:helper")?.id).toBe("helper");
   });
 });
