@@ -109,6 +109,7 @@ export const layerFromProviderInstanceRegistry: Layer.Layer<
                         instanceId,
                         operation: "session",
                         detail: "This provider's sign-in is changing. Try again after it finishes.",
+                        promptNotRun: true,
                       });
                   }
                   let admitted: Effect.Effect<

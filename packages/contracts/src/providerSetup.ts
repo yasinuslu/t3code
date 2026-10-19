@@ -194,6 +194,8 @@ export class ProviderSetupError extends Schema.TaggedError<ProviderSetupError>()
     operation: Schema.String,
     detail: Schema.String,
     cause: Schema.optional(Schema.Defect()),
+    /** Set when a turn's session could not open yet and no prompt was handed over, so sending it again is safe. */
+    promptNotRun: Schema.optional(Schema.Boolean),
   },
 ) {
   override get message(): string {

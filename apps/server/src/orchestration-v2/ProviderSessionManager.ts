@@ -80,6 +80,8 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
     instanceId: ProviderInstanceId,
     providerSessionId: ProviderSessionId,
     cause: Schema.optional(Schema.Defect()),
+    /** Set when the open failed before the prompt was handed over, so sending it again is safe. */
+    promptNotRun: Schema.optional(Schema.Boolean),
   },
 ) {
   override get message(): string {
@@ -1967,6 +1969,7 @@ export const layerWithOptions = (
                   providerSessionId: input.providerSessionId,
                   cause:
                     "The sandbox stopped while the session was opening. Send the message again.",
+                  promptNotRun: true,
                 });
               }
               yield* withActivityError(

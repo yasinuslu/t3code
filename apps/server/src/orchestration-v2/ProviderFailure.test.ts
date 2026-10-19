@@ -2,11 +2,15 @@ import { assert, it } from "@effect/vitest";
 import {
   NodeId,
   ProviderDriverKind,
+  ProviderInstanceId,
+  ProviderSessionId,
+  ProviderSetupError,
   ProviderThreadId,
   ProviderTurnId,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
+import { PROMPT_NOT_RUN_FAILURE_CODE } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -22,6 +26,7 @@ import * as IdAllocator from "./IdAllocator.ts";
 import { ContextHandoffBudgetError } from "./ContextHandoffDelivery.ts";
 import { SandboxError } from "../sandbox/SandboxService.ts";
 import { ProviderAdapterTurnStartError } from "./ProviderAdapter.ts";
+import { ProviderSessionOpenError } from "./ProviderSessionManager.ts";
 import {
   ClaudeAgentSdkQueryRunnerError,
   ClaudeBackgroundWorkBlocksQueryReplacementError,
@@ -254,3 +259,35 @@ it.effect("keys terminal failure items by provider turn across retries and fallb
     assert.equal(firstAttempt.ordinal, 101);
   }).pipe(Effect.provide(IdAllocator.layer)),
 );
+
+// A sandbox that stops while the session opens never saw the prompt, so the
+// failure carries the code that makes the server send the message again.
+it("marks an open that failed before the prompt was handed over as not run", () => {
+  const stopped = new ProviderSessionOpenError({
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    providerSessionId: ProviderSessionId.make("session-1"),
+    cause: "The sandbox stopped while the session was opening. Send the message again.",
+    promptNotRun: true,
+  });
+  assert.equal(makeProviderFailure({ cause: stopped }).code, PROMPT_NOT_RUN_FAILURE_CODE);
+  assert.equal(
+    makeProviderFailure({ cause: new Error("outer", { cause: stopped }) }).code,
+    PROMPT_NOT_RUN_FAILURE_CODE,
+  );
+  const signingIn = new ProviderSetupError({
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    operation: "session",
+    detail: "This provider's sign-in is changing. Try again after it finishes.",
+    promptNotRun: true,
+  });
+  assert.equal(makeProviderFailure({ cause: signingIn }).code, PROMPT_NOT_RUN_FAILURE_CODE);
+  assert.equal(
+    makeProviderFailure({
+      cause: new ProviderSessionOpenError({
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        providerSessionId: ProviderSessionId.make("session-1"),
+      }),
+    }).code,
+    null,
+  );
+});
