@@ -38,7 +38,7 @@ what you sent it from Grow), where it stands, and what happened. Then one decisi
 decision waits five seconds with **Undo**. Anything an agent is still working on, like a What
 if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
 what you let go stay findable below, and a let-go item can be brought back. Keys: `j`/`k` move,
-`s` ship, `r` reply, `d` done, `w` what if, `x` let go, `p` play, `o` opens the conversation
+`s` ship, `r` reply, `d` done, `w` what if, `x` let go, `p` play, `o` opens the conversation (`o` or Esc goes back, even from its message box)
 right in Grow (`Esc` goes back),
 `u` undo, `/` search.
 

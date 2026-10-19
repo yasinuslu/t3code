@@ -243,7 +243,20 @@ export function GrowReturns(props: {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+      // Esc leaves an open conversation even from its composer, unless a menu there took it.
+      if (event.key === "Escape" && thread !== null && !event.defaultPrevented) {
+        useReturnsStore.setState({ thread: null });
+        return event.preventDefault();
+      }
       if (isTyping(event.target)) return;
+      // While a conversation is open, the deck's keys stay off; o toggles back.
+      if (thread !== null) {
+        if (event.key === "o") {
+          useReturnsStore.setState({ thread: null });
+          event.preventDefault();
+        }
+        return;
+      }
       const item = current;
       const step = (direction: 1 | -1) => select(growStep(shown, item?.key ?? null, direction));
       const used = () => event.preventDefault();
@@ -259,10 +272,6 @@ export function GrowReturns(props: {
         case "u":
           if (undo()) used();
           return;
-        case "Escape":
-          if (thread === null) return;
-          useReturnsStore.setState({ thread: null });
-          return used();
         case "/":
           document.querySelector<HTMLElement>("[data-grow-search]")?.focus();
           return used();
