@@ -278,7 +278,7 @@ export function GrowReturns(props: {
       } else if ((event.key === "w" || event.key === "r") && open) {
         setWhatIfOpen(true);
         used();
-      } else if (event.key === "l" && open) {
+      } else if (event.key === "x" && open) {
         actions.letGo(item);
         used();
       } else if (event.key === "o") {
@@ -1371,7 +1371,7 @@ function Choices(props: {
       label="Let go"
       hint="Off the list, still findable"
       icon={<XIcon />}
-      keyHint="L"
+      keyHint="X"
       wide={wide}
       stacked={stacked}
       onClick={() => actions.letGo(item)}
