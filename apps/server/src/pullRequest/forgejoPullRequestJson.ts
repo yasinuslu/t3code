@@ -208,8 +208,23 @@ export function forgejoCommit(commit: typeof ForgejoCommit.Type): PullRequestCom
   };
 }
 
+// Forgejo returns Actions statuses with a site-relative target_url ("/owner/repo/actions/runs/1/jobs/0").
+export function resolveForgejoTargetUrl(
+  targetUrl: string | null | undefined,
+  baseUrl: string,
+): string | null {
+  const trimmed = targetUrl?.trim();
+  if (!trimmed) return null;
+  try {
+    return new URL(trimmed, baseUrl).href;
+  } catch {
+    return null;
+  }
+}
+
 export function forgejoChecks(
   statuses: ReadonlyArray<typeof ForgejoStatus.Type>,
+  baseUrl: string,
 ): ReadonlyArray<PullRequestCheck> {
   return dedupeChecks(
     statuses.map((status) => ({
@@ -218,7 +233,7 @@ export function forgejoChecks(
       check: {
         name: status.context || "check",
         description: status.description || null,
-        url: status.target_url || null,
+        url: resolveForgejoTargetUrl(status.target_url, baseUrl),
         status:
           status.status === "success"
             ? "success"
