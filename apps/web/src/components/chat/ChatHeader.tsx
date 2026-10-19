@@ -5,7 +5,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon, CompassIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import {
   memo,
   useContext,
@@ -19,14 +19,10 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { InHomeOverlayContext } from "../../homeOverlayStore";
+import { OverlayLayerContext } from "../../homeOverlayStore";
 import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
 import { ManagerProfileSwitcher } from "../brainstorm/ManagerProfileSwitcher";
-import {
-  openManagerHome,
-  selectManagerProfile,
-  useOpenManagerThreadPage,
-} from "../brainstorm/useOpenManagerThread";
+import { selectManagerProfile, useOpenManagerThreadPage } from "../brainstorm/useOpenManagerThread";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -49,7 +45,6 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
 import { useIsManagerThread } from "~/brainstormStore";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { ThreadPreviewLinks } from "../preview/ThreadPreviewLinkChip";
 import { useThreadShell } from "~/state/entities";
@@ -107,12 +102,12 @@ export const ChatHeader = memo(function ChatHeader({
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
   const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
-  // Docked on Home, the manager needs no way back to where it already is.
-  const onHome = useContext(InHomeOverlayContext);
+  // Inside Grow or the manager overlay rather than on its own page.
+  const inOverlay = useContext(OverlayLayerContext) > 0;
+  // The manager inside an overlay: only its name and badge.
+  const docked = (inOverlay && isManager) || embedded;
   // The update button widens the titlebar controls this header stops short of.
   const updateButtonVisible = useDesktopUpdateTitlebarVisible();
-  // The manager docked on Home: a narrow pane, so only its name and badge.
-  const docked = (onHome && isManager) || embedded;
   const openManagerThreadPage = useOpenManagerThreadPage();
   const activeThreadRef = useMemo(
     () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
@@ -268,30 +263,11 @@ export const ChatHeader = memo(function ChatHeader({
   return (
     <div
       className={cn(
-        // Stops short of the mode switch at the window's centre (see index.css).
-        "box-content flex min-w-0 max-w-[max(var(--mode-switch-clear),8rem)] flex-1 items-center gap-2 sm:gap-3",
+        "@container flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
         embedded ? "pr-3" : rightPanelOpen ? "pr-10" : updateButtonVisible ? "pr-56" : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
-      {onHome ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="icon-xs"
-                variant="ghost-muted"
-                aria-label="Home"
-                data-chat-header-home=""
-                onClick={openManagerHome}
-              />
-            }
-          >
-            <CompassIcon />
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">Home: your work and the manager</TooltipPopup>
-        </Tooltip>
-      )}
       {/* On its own page (narrow windows), a manager switches to another profile's here, ahead
           of the breadcrumb so it never clips; Home has its own switcher. */}
       {isManager && !docked ? (
@@ -414,16 +390,11 @@ export const ChatHeader = memo(function ChatHeader({
             </Tooltip>
           )}
         </WorkspaceBreadcrumbItem>
-        {isManager ? (
-          <Badge variant="secondary" size="sm" className="shrink-0" data-manager-badge="">
-            <CompassIcon aria-hidden />
-            Manager
-          </Badge>
-        ) : null}
       </WorkspaceBreadcrumb>
       {isServerThread && !docked ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
-      {providerConfigDir ? (
-        <div className="flex min-w-0 max-w-80 shrink items-center">
+      {/* A manager's title already names its profile; a narrow column keeps the room for the title. */}
+      {providerConfigDir && !isManager ? (
+        <div className="flex min-w-0 max-w-[min(20rem,40%)] shrink items-center @max-[28rem]:hidden">
           <ProviderConfigDirIndicator value={providerConfigDir} compact={docked} />
         </div>
       ) : null}

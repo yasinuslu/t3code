@@ -28,7 +28,7 @@ import {
   readImageDimensions,
   type ImageDimensions,
 } from "@t3tools/shared/imageDimensions";
-import { githubMediaFetchUrl, githubMediaFileName } from "@t3tools/shared/githubMedia";
+import { githubMediaFileName, pullRequestMediaFetchUrl } from "@t3tools/shared/githubMedia";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -682,7 +682,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       break;
     }
     case "github-media": {
-      const fetchUrl = githubMediaFetchUrl(input.resource.url);
+      const fetchUrl = pullRequestMediaFetchUrl(input.resource.url);
       if (fetchUrl === null) {
         return yield* new AssetGitHubMediaUrlValidationError({});
       }

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
-import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useEnvironmentIdentificationMode, useForkFeatures } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
@@ -38,6 +38,8 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }) {
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
+  // The fork's app bar (ModeSwitch) takes this row; the spaces below name the scope.
+  const appBar = useForkFeatures();
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
     environmentIdentificationMode === "artwork",
@@ -64,13 +66,17 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       {/* One visible line: the pill wraps onto the clipped second line once it no longer fits.
           The padding keeps the brand's focus ring inside the clip. */}
       <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
-        <SidebarBrand onBackdrop={backdropVariant !== null} />
-        <ActiveSpaceLabel
-          className={cn(
-            "hidden text-sm font-medium md:inline-flex",
-            backdropVariant ? "text-white/80" : "text-muted-foreground",
-          )}
-        />
+        {appBar ? null : (
+          <>
+            <SidebarBrand onBackdrop={backdropVariant !== null} />
+            <ActiveSpaceLabel
+              className={cn(
+                "hidden text-sm font-medium md:inline-flex",
+                backdropVariant ? "text-white/80" : "text-muted-foreground",
+              )}
+            />
+          </>
+        )}
         {pillLabel ? (
           <div className="ml-1 flex h-7 items-center">
             <Badge data-environment-identification="pill" size="sm" variant="secondary">
@@ -90,6 +96,7 @@ export function SidebarBrandWidthProbe({
 }: {
   onWidthChange: (width: number) => void;
 }) {
+  const appBar = useForkFeatures();
   const observeWidth = useCallback(
     (probe: HTMLDivElement) => {
       const observer = new ResizeObserver(([entry]) => {
@@ -108,7 +115,7 @@ export function SidebarBrandWidthProbe({
       ref={observeWidth}
     >
       <div className="ml-[var(--workspace-titlebar-content-left)] flex">
-        <SidebarBrandMark onBackdrop={false} />
+        {appBar ? null : <SidebarBrandMark onBackdrop={false} />}
       </div>
     </div>
   );

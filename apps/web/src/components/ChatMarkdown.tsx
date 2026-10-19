@@ -34,7 +34,7 @@ import type {
   ThreadPullRequestKey,
 } from "@t3tools/contracts";
 import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
-import { githubMediaFetchUrl } from "@t3tools/shared/githubMedia";
+import { pullRequestMediaFetchUrl } from "@t3tools/shared/githubMedia";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -234,8 +234,8 @@ interface ChatMarkdownProps {
   extraRemarkPlugins?: NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
   /** Renders a `t3-context://` link as a chip; without it the link shows its label as text. */
   renderContextReference?: ((reference: ChatMarkdownContextReference) => ReactNode) | undefined;
-  /** Loads GitHub-hosted media through `cwd`'s GitHub credential, which a private repository's
-      uploads need; without it those images and videos load unauthenticated and 404. */
+  /** Loads GitHub-hosted media and Forgejo attachments through the server's credential for that
+      host, which a private repository's uploads need; without it they load unauthenticated and fail. */
   githubMedia?: boolean | undefined;
   /** Levels added to each markdown heading in the accessibility tree so the
       text nests under the heading that introduces it, such as a chat message's
@@ -3367,7 +3367,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const kind = mediaKindFromPath(classifiedSrc) ?? "image";
     const directUri = imageSource._tag === "Direct" ? imageSource.uri : null;
     const githubMediaUrl =
-      directUri === null ? null : githubMediaFetchUrl(resolveProtocolRelativeMediaUrl(directUri));
+      directUri === null
+        ? null
+        : pullRequestMediaFetchUrl(resolveProtocolRelativeMediaUrl(directUri));
     if (
       githubMedia &&
       cwd !== undefined &&

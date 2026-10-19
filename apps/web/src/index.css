@@ -2334,11 +2334,12 @@ code {
 }
 
 /* Home opens as an overlay over the app (components/home/HomeOverlay.tsx). It
-   covers the sidebar, so its header clears the window controls itself. */
+   covers the sidebar, so its header starts after the app bar (ModeSwitch), which
+   sits at the window controls' edge there. */
 .home-overlay {
   --home-header-start: max(
     var(--workspace-gutter-start),
-    calc(var(--workspace-controls-left) + 0.25rem)
+    calc(var(--workspace-controls-left) + var(--app-bar-width, 0.25rem))
   );
 }
 
@@ -2360,39 +2361,8 @@ body:has(.home-overlay) [data-workspace-titlebar-controls]:not(.home-overlay *) 
   }
 }
 
-/* The mode switch is centred on the page area (the window less an expanded sidebar).
-   Header content stops short of it: `--mode-switch-clear` is the room between a
-   header's left edge and the switch. */
-[data-slot="sidebar-wrapper"] {
-  --mode-switch-center: 50vw;
-  --mode-switch-clear: calc(50vw - 7.5rem);
-}
-[data-slot="sidebar-wrapper"][data-sidebar-state="expanded"] {
-  --mode-switch-center: calc((100vw + var(--sidebar-width)) / 2);
-  --mode-switch-clear: calc((100vw - var(--sidebar-width)) / 2 - 7.5rem);
-}
-/* Home covers the sidebar, so its headers start at the window's edge. */
-.home-overlay {
-  --mode-switch-clear: calc(var(--mode-switch-center) - 7.5rem);
-}
-[data-grow-mode="threads"] [data-grow-chat] {
-  --mode-switch-clear: calc(var(--mode-switch-center) - 7.5rem - var(--grow-rail));
-}
-/* Board mode's chat starts right of the switch. */
-[data-grow-mode="board"] [data-grow-chat] {
-  --mode-switch-clear: 100vw;
-}
-
-/* Phones (below `md`, useIsMobile): the screens live in the bottom tab bar
-   (PhoneTabBar), so there is no mode switch to keep header text clear of. */
+/* Phones (below `md`, useIsMobile): the screens live in the bottom tab bar (PhoneTabBar). */
 @media (max-width: 767px) {
-  [data-slot="sidebar-wrapper"],
-  [data-slot="sidebar-wrapper"][data-sidebar-state="expanded"],
-  .home-overlay,
-  [data-grow-mode] [data-grow-chat] {
-    --mode-switch-clear: 100vw;
-  }
-
   /* The tab bar's room: the window shrinks above it; Home is fixed, so it pads itself. */
   [data-slot="sidebar-wrapper"]:has([data-phone-tabbar-bar]) {
     --phone-tabbar-height: calc(3.5rem + 1px + env(safe-area-inset-bottom));

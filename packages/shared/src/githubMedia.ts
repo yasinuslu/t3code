@@ -68,3 +68,30 @@ export function githubMediaFileName(fetchUrl: string): string {
   const name = decoded.replace(/[\p{Cc}\\/]/gu, "");
   return name.length > 0 ? name : "github-media";
 }
+
+/** What Forgejo and Gitea write into a body for a dropped file, with or without the repository. */
+const FORGE_ATTACHMENT_PATH_PATTERN =
+  /^(?:\/[^/]+\/[^/]+)?\/attachments\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu;
+
+/**
+ * The URL to fetch for a Forgejo attachment, or null when `source` does not have that shape. A
+ * private repository's attachments redirect to the login page without a credential. The client
+ * cannot tell a forge from any other host, so this matches the shape only; the server serves it
+ * only from a host it holds a Forgejo login for.
+ */
+export function forgeAttachmentFetchUrl(source: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(source);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const id = FORGE_ATTACHMENT_PATH_PATTERN.exec(url.pathname)?.[1];
+  return id ? `https://${url.host.toLowerCase()}/attachments/${id.toLowerCase()}` : null;
+}
+
+/** Pull request media the server can fetch with a credential: GitHub's, then a forge's. */
+export function pullRequestMediaFetchUrl(source: string): string | null {
+  return githubMediaFetchUrl(source) ?? forgeAttachmentFetchUrl(source);
+}

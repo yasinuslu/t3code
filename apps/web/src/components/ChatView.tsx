@@ -172,7 +172,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
-import { useCoveredByHome } from "../homeOverlayStore";
+import { useCoveredByOverlay } from "../homeOverlayStore";
 import { useDiffPanelStore } from "../diffPanelStore";
 import {
   type ComposerSubmissionIntent,
@@ -1844,11 +1844,11 @@ export default function ChatView(props: ChatViewProps) {
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   // Under the open Home overlay this view stays mounted but must not take keys,
   // pastes or composer focus meant for Home.
-  const coveredByHome = useCoveredByHome();
-  const coveredByHomeRef = useRef(coveredByHome);
+  const coveredByOverlay = useCoveredByOverlay();
+  const coveredByOverlayRef = useRef(coveredByOverlay);
   useLayoutEffect(() => {
-    coveredByHomeRef.current = coveredByHome;
-  }, [coveredByHome]);
+    coveredByOverlayRef.current = coveredByOverlay;
+  }, [coveredByOverlay]);
   const branchToolbarRef = useRef<BranchToolbarHandle>(null);
   const pasteAsTextShortcutUntilRef = useRef(0);
   const [restingComposerControlsHost, setRestingComposerControlsHost] =
@@ -4594,7 +4594,7 @@ export default function ChatView(props: ChatViewProps) {
   // The composer handle is shared app-wide (command palette context), so a view hidden under
   // Home must not focus "its" composer: the handle may point at the one Home shows.
   const focusComposer = useCallback(() => {
-    if (coveredByHomeRef.current) return;
+    if (coveredByOverlayRef.current) return;
     composerRef.current?.focusAtEnd();
   }, [composerRef]);
   const canInterruptRunningThread = deriveCanInterruptRunningThread(
@@ -4618,7 +4618,7 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     if (!autoFocusComposer) return;
     return subscribeSnapShotComposerFocus(() => {
-      if (!coveredByHomeRef.current) focusComposer();
+      if (!coveredByOverlayRef.current) focusComposer();
     });
   }, [autoFocusComposer, focusComposer]);
   const scheduleComposerFocus = useCallback(() => {
@@ -7780,7 +7780,7 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
-      if (coveredByHomeRef.current) return;
+      if (coveredByOverlayRef.current) return;
       if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
         event.stopPropagation();
         return;
@@ -8118,7 +8118,7 @@ export default function ChatView(props: ChatViewProps) {
   // Route it to the composer like a typed key, which also expands it.
   useEffect(() => {
     const keyHandler = (event: KeyboardEvent) => {
-      if (coveredByHomeRef.current) return;
+      if (coveredByOverlayRef.current) return;
       if (
         shouldRedirectInputToComposer(event) &&
         isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))
@@ -8127,7 +8127,7 @@ export default function ChatView(props: ChatViewProps) {
       }
     };
     const handler = (event: ClipboardEvent) => {
-      if (coveredByHomeRef.current) return;
+      if (coveredByOverlayRef.current) return;
       if (!activeThreadId || isCommandPaletteOpen()) return;
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
@@ -11026,7 +11026,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const threadPanelHeaderControl = (
     <div
-      className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 flex h-[var(--workspace-topbar-height)] items-center [-webkit-app-region:no-drag]"
+      className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-45 flex h-[var(--workspace-topbar-height)] items-center [-webkit-app-region:no-drag]"
       data-workspace-titlebar-controls
     >
       <PanelLayoutControls
@@ -11042,7 +11042,7 @@ export default function ChatView(props: ChatViewProps) {
       className={cn(
         // Keep one viewport anchor inside the header's no-drag region. The
         // header can shrink behind the right panel without moving the controls.
-        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
+        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-45 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
       )}
       data-workspace-titlebar-controls
     >
@@ -11663,7 +11663,7 @@ export default function ChatView(props: ChatViewProps) {
             {activeThreadRef &&
             activePreviewMiniPlayer &&
             previewMiniPlayerVisible &&
-            !coveredByHome &&
+            !coveredByOverlay &&
             !embedded ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(activePreviewMiniPlayer.source)}`}

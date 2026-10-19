@@ -4,8 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 
 import { useBrainstormStore, useManagerProfile } from "../../brainstormStore";
-import { openHomeOverlay, useHomeOverlayStore } from "../../homeOverlayStore";
-import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
+import { openManager as showManagerOverlay } from "../../lib/goToManager";
 import { ALL_SPACE_ID, useSpaceStore } from "../../spaceStore";
 import { brainstormEnvironment, useManagerEnvironmentId } from "../../state/brainstorm";
 import { readThreadShell, useThreadShell, waitForThreadShell } from "../../state/entities";
@@ -31,7 +30,12 @@ function parseThreadKey(key: string) {
 
 export type ManagerThreadState =
   | { readonly _tag: "Loading" }
-  | { readonly _tag: "Failed"; readonly message: string }
+  | {
+      readonly _tag: "Failed";
+      readonly message: string;
+      /** The manager's machine is offline or not connected, rather than an error. */
+      readonly offline: boolean;
+    }
   | { readonly _tag: "Ready"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
 /** A manager key the client can use: this environment's manager, not archived. */
@@ -65,7 +69,7 @@ function useOpenManagerCommand() {
 }
 
 /**
- * The manager thread Home shows (see `useManagerProfile`), created on first
+ * The manager thread in view (see `useManagerProfile`), created on first
  * use on the environment that hosts that profile's manager (see
  * `resolveManagerEnvironmentId`). The server makes each profile's manager in
  * that profile's brain project and returns the same thread after that, so
@@ -98,28 +102,32 @@ export function useEnsureManagerThread(): ManagerThreadState {
       cancelled = true;
     };
   }, [connected, environmentId, managerThreadKey, openManager, profile, profilesKnown]);
+  // A known manager on a machine that dropped would show a stale, dead chat.
+  if (isEnvironmentUnreachable(phase)) {
+    return {
+      _tag: "Failed",
+      offline: true,
+      message: `${environment?.label ?? "Its machine"} is offline; the manager runs there.`,
+    };
+  }
   if (managerThreadKey !== null) return { _tag: "Ready", ...parseThreadKey(managerThreadKey) };
   if (failure !== null && failure.profile === profile) {
-    return { _tag: "Failed", message: failure.message };
+    return { _tag: "Failed", offline: false, message: failure.message };
   }
   // Managers are split by profile and this one's machine has not connected.
   if (environmentId === null && profilesKnown) {
     return {
       _tag: "Failed",
+      offline: true,
       message: `${profile === null ? "The" : `The ${profile}`} manager's machine is not connected; the manager runs there.`,
     };
   }
-  if (isEnvironmentUnreachable(phase))
-    return {
-      _tag: "Failed",
-      message: `${environment?.label ?? "Its machine"} is offline; the manager runs there.`,
-    };
   return { _tag: "Loading" };
 }
 
 /**
  * Makes `profile` the profile in view: its space becomes the active space
- * and its manager the one Home shows. `null` shows every profile's work
+ * and its manager the one in view. `null` shows every profile's work
  * (the All space) and keeps the manager.
  */
 export function selectManagerProfile(profile: string | null): void {
@@ -136,8 +144,8 @@ export function selectManagerProfile(profile: string | null): void {
 }
 
 /**
- * Opens a profile's manager as a thread page, for windows too narrow for
- * Home's docked manager. Creates the manager first when it is new.
+ * Opens a profile's manager as a thread page (from the manager's own header,
+ * when it is already open as one). Creates the manager first when it is new.
  */
 export function useOpenManagerThreadPage() {
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
@@ -155,7 +163,7 @@ export function useOpenManagerThreadPage() {
       );
       // Before the server lists its profiles, which manager is meant is not known yet.
       if (environmentId === null || store.profiles === null) {
-        return openManagerHome();
+        return showManagerOverlay();
       }
       const stored = store.managerThreadKeyBySlot[managerSlot(environmentId, profile)];
       // A remembered key can outlive its thread (a restored state, a deleted manager); the
@@ -167,17 +175,11 @@ export function useOpenManagerThreadPage() {
           : await openManager(environmentId, profile).then((result) =>
               result._tag === "Success" ? result.key : null,
             );
-      if (key === null) return openManagerHome();
+      if (key === null) return showManagerOverlay();
       // A manager just created reaches the shell stream after the command returns.
       await waitForThreadShell(parseThreadKey(key));
       await navigate({ to: "/$environmentId/$threadId", params: parseThreadKey(key) });
     },
     [navigate, openManager, primaryEnvironmentId, serverConfigs],
   );
-}
-
-/** Opens Home, where the manager is docked, with the manager's composer focused. */
-export function openManagerHome(): void {
-  if (useHomeOverlayStore.getState().open) dispatchSnapShotComposerFocus();
-  else openHomeOverlay();
 }

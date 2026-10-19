@@ -27,6 +27,7 @@ import { ASSET_ROUTE_PREFIX, issueAssetUrl, resolveAsset } from "./AssetAccess.t
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
 import { openMediaFile } from "./MediaFile.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
+import * as ForgejoCli from "../sourceControl/ForgejoCli.ts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
 import { githubMediaResponse } from "./GitHubMediaFetch.ts";
 
@@ -78,6 +79,7 @@ describe("AssetAccess", () => {
             })),
         }),
       ),
+      Effect.provide(Layer.mock(ForgejoCli.ForgejoCli)({})),
       Effect.provideService(
         HttpClient.HttpClient,
         HttpClient.make((request) => {
@@ -1197,12 +1199,24 @@ describe("AssetAccess", () => {
       const awkward = yield* issue("https://raw.githubusercontent.com/o/r/main/100%.png");
       expect(awkward.relativeUrl.endsWith("/100%25.png")).toBe(true);
 
+      // A Forgejo attachment, with or without its repository in the path. The server only
+      // fetches it from a host it holds a forge login for.
+      const forge = yield* issue(
+        "https://Git.Example.org/owner/repo/attachments/6E7B3081-55c9-4870-8bbe-91f260279661",
+      );
+      expect(yield* resolve(forge.relativeUrl)).toMatchObject({
+        url: "https://git.example.org/attachments/6e7b3081-55c9-4870-8bbe-91f260279661",
+      });
+
       for (const url of [
         "https://example.com/shot.png",
         "https://example.com/shot.png?token=private-media-token",
         "http://github.com/user-attachments/assets/1a1842fb",
         "https://github.com/owner/repo/pull/1",
         "https://github.com/owner/repo/blob/main/",
+        "http://git.example.org/attachments/6e7b3081-55c9-4870-8bbe-91f260279661",
+        "https://git.example.org/attachments/not-a-uuid",
+        "https://git.example.org/a/b/c/attachments/6e7b3081-55c9-4870-8bbe-91f260279661",
       ]) {
         const error = yield* issue(url).pipe(Effect.flip);
         expect(error._tag).toBe("AssetGitHubMediaUrlValidationError");

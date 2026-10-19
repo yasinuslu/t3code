@@ -1,20 +1,25 @@
-import { setAppMode } from "../appMode";
-import { closeHomeOverlay } from "../homeOverlayStore";
+import {
+  closeManagerOverlay,
+  openManagerOverlay,
+  useManagerOverlayStore,
+} from "../managerOverlayStore";
 import { dispatchSnapShotComposerFocus } from "./desktopSnapShot";
 
 // Toasts are non-modal dialogs and are not in the way.
 const OPEN_POPUP_SELECTOR =
   '[role="dialog"]:not([aria-modal="false"]), [role="alertdialog"], [role="menu"], [role="listbox"]';
 
-/** Home docks the manager from this width up; narrower windows show it as a page. */
-const DOCKED_MANAGER_QUERY = "(min-width: 1024px)";
-
 const nextFrame = () =>
   new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
 function visibleOpenPopup(): Element | null {
   const popups = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].filter(
-    (element) => element.closest("[inert]") === null && element.getClientRects().length > 0,
+    (element) =>
+      element.closest("[inert]") === null &&
+      element.closest("[data-manager-overlay]") === null &&
+      // Toasts are dialogs to assistive tech but never hold the keyboard.
+      element.closest('[data-slot="toast-viewport"]') === null &&
+      element.getClientRects().length > 0,
   );
   return popups.at(-1) ?? null;
 }
@@ -40,22 +45,21 @@ async function dismissOpenPopups(): Promise<void> {
 }
 
 /**
- * Lands the user in the Manager chat with its composer focused, from any
- * screen: popups close, the mode switch moves to Manager, and a window too
- * narrow for the docked manager gets the manager thread as a page. Already
- * there, it only focuses the composer.
+ * Shows the manager over whatever screen is open, with its composer focused.
+ * Popups in the way close first. Already open, it only focuses the composer.
  */
-export async function goToManager(openManagerPage: () => Promise<void>): Promise<void> {
+export async function openManager(): Promise<void> {
   await dismissOpenPopups();
-  if (window.matchMedia(DOCKED_MANAGER_QUERY).matches) {
-    setAppMode("classic");
-  } else {
-    closeHomeOverlay();
-    await openManagerPage();
-  }
+  openManagerOverlay();
   // The manager's view mounts on the next render; focus once it has.
   await nextFrame();
   dispatchSnapShotComposerFocus();
   await nextFrame();
   dispatchSnapShotComposerFocus();
+}
+
+/** The manager shortcut: shows the manager, or puts it away when it is showing. */
+export function toggleManager(): void {
+  if (useManagerOverlayStore.getState().open) closeManagerOverlay();
+  else void openManager();
 }

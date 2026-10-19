@@ -68,52 +68,6 @@ export function membershipChangesToAdopt(
   return changes;
 }
 
-export interface BoardGoal {
-  readonly key: string;
-  readonly spaceId: string;
-  readonly spaceName: string;
-  readonly title: string;
-  readonly done: boolean;
-  readonly notes: ReadonlyArray<string>;
-  readonly tasks: ReadonlyArray<BrainstormTask>;
-}
-
-/**
- * The board's goals: every list's goals for All, else the filtered space's,
- * each with its tasks (open first). Done goals stay out unless asked for, and
- * each list's Inbox comes after its goals.
- */
-export function boardGoals(
-  lists: ReadonlyArray<BrainstormTaskList>,
-  spaceId: string,
-  includeDone = false,
-): BoardGoal[] {
-  const goals: BoardGoal[] = [];
-  const inboxes: BoardGoal[] = [];
-  for (const list of lists) {
-    if (spaceId !== ALL_SPACE_ID && list.spaceId !== spaceId) continue;
-    for (const goal of list.goals) {
-      if (goal.done && !includeDone) continue;
-      const tasks = list.tasks.filter((task) => task.goal === goal.title);
-      const entry: BoardGoal = {
-        key: `${list.spaceId}:${goal.number}:${goal.title}`,
-        spaceId: list.spaceId,
-        spaceName: list.spaceName,
-        title: goal.title,
-        done: goal.done,
-        notes: goal.notes,
-        tasks: [...tasks.filter((task) => !task.done), ...tasks.filter((task) => task.done)],
-      };
-      if (goal.title === INBOX_GOAL) {
-        if (tasks.some((task) => !task.done) || includeDone) inboxes.push(entry);
-      } else {
-        goals.push(entry);
-      }
-    }
-  }
-  return [...goals, ...inboxes];
-}
-
 /**
  * Every environment that runs `profile`'s manager, primary first: those that
  * name the profile in `managerProfiles`, else one that hosts every manager
@@ -211,18 +165,6 @@ export function resolveManagerProfile(input: {
     input.profiles[0] ??
     null
   );
-}
-
-/** Goals of a space: All's are everyone's, a profile space's live in that profile's brain. */
-export function goalsOfSpace(
-  lists: ReadonlyArray<BrainstormTaskList>,
-  space: { readonly id: string; readonly profile: string | null } | null,
-): BoardGoal[] {
-  if (space === null || space.id === ALL_SPACE_ID) return boardGoals(lists, ALL_SPACE_ID);
-  const own = lists.filter((list) =>
-    space.profile !== null ? list.profile === space.profile : list.spaceId === space.id,
-  );
-  return boardGoals(own, ALL_SPACE_ID);
 }
 
 /** The manager profile switcher's value for All; profile names never contain a colon. */

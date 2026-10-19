@@ -1129,6 +1129,19 @@ export interface DesktopBridge {
   getClientPlatform?: () => string;
   setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear?: (listener: () => void) => () => void;
+  /**
+   * Takes the `manager.toggle` chord system-wide (`mod` already resolved); null
+   * releases it. Resolves to whether the OS granted it.
+   */
+  setManagerShortcut?: (
+    chord: {
+      key: string;
+      control: boolean;
+      alt: boolean;
+      meta: boolean;
+      shift: boolean;
+    } | null,
+  ) => Promise<boolean>;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;
   /**
    * The OS locale as a BCP-47 tag, which the renderer cannot read for itself:

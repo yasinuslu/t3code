@@ -41,6 +41,16 @@ const toDetailResult = <A, R>(effect: Effect.Effect<A, KeybindingsConfigError, R
     Effect.result,
   );
 
+/** Written raw, for retired commands that no longer encode. */
+const writeRawKeybindingsConfig = (configPath: string, rules: ReadonlyArray<unknown>) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    yield* fileSystem.makeDirectory(path.dirname(configPath), { recursive: true });
+    // @effect-diagnostics-next-line preferSchemaOverJson:off
+    yield* fileSystem.writeFileString(configPath, JSON.stringify(rules));
+  });
+
 const writeKeybindingsConfig = (configPath: string, rules: readonly KeybindingRule[]) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -365,18 +375,40 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
-  it.effect("gives an existing Ctrl+Alt+M manager binding the one-handed mod+e", () =>
+  it.effect("moves the old manager chords to the one manager.toggle chord", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
       const keybindings = yield* Keybindings.Keybindings;
-      const existing = { key: "ctrl+alt+m", command: "manager.open" } as const;
-      yield* writeKeybindingsConfig(keybindingsConfigPath, [existing]);
+      yield* writeRawKeybindingsConfig(keybindingsConfigPath, [
+        { key: "ctrl+alt+m", command: "manager.open" },
+        { key: "mod+e", command: "manager.open", when: "!terminalFocus" },
+        { key: "ctrl+alt+2", command: "mode.classic" },
+      ]);
 
       yield* keybindings.syncDefaultKeybindingsOnStartup;
       const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
       assert.deepStrictEqual(
-        persisted.filter((entry) => entry.command === "manager.open"),
-        [existing, { key: "mod+e", command: "manager.open", when: "!terminalFocus" }],
+        persisted.filter(
+          (entry) => entry.command.startsWith("manager.") || entry.key === "ctrl+alt+2",
+        ),
+        [{ key: "ctrl+alt+space", command: "manager.toggle" }],
+      );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("keeps a rebound manager chord as the user set it", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      yield* writeRawKeybindingsConfig(keybindingsConfigPath, [
+        { key: "alt+q", command: "manager.open" },
+      ]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.deepStrictEqual(
+        persisted.filter((entry) => entry.command === "manager.toggle"),
+        [{ key: "alt+q", command: "manager.toggle" }],
       );
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );

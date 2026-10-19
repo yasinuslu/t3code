@@ -1,5 +1,5 @@
 import * as Mime from "effect/unstable/http/Mime";
-import { githubMediaFileName } from "@t3tools/shared/githubMedia";
+import { githubMediaFetchUrl, githubMediaFileName } from "@t3tools/shared/githubMedia";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -12,6 +12,7 @@ import {
   type HttpClientResponse,
 } from "effect/unstable/http";
 
+import * as ForgejoCli from "../sourceControl/ForgejoCli.ts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
 
 /**
@@ -25,11 +26,11 @@ const CREDENTIALED_HOSTS = new Set([
   "raw.githubusercontent.com",
   "media.githubusercontent.com",
 ]);
-const isCredentialedHost = (url: string) => {
+const hostOf = (url: string) => {
   try {
-    return CREDENTIALED_HOSTS.has(new URL(url).hostname.toLowerCase());
+    return new URL(url).host.toLowerCase();
   } catch {
-    return false;
+    return null;
   }
 };
 
@@ -97,15 +98,21 @@ const githubToken = Effect.fn("GitHubMediaFetch.githubToken")(function* (input: 
   return redacted;
 });
 
+/** A credential and the only hosts it may be sent to. */
+interface MediaCredential {
+  readonly authorization: Redacted.Redacted;
+  readonly hosts: ReadonlySet<string>;
+}
+
 /**
  * Follows GitHub's redirect to the signed object itself, and never carries the credential off
  * GitHub: the object URL authorizes with its own signature, and the store it lives in has no
- * business seeing a token.
+ * business seeing a token. A forge's credential likewise stays on the forge.
  */
 const fetchFollowingRedirects = Effect.fn("GitHubMediaFetch.fetchFollowingRedirects")(function* (
   url: string,
   headers: Record<string, string>,
-  token: Redacted.Redacted | null,
+  credential: MediaCredential | null,
 ) {
   const httpClient = HttpClient.withScope(yield* HttpClient.HttpClient);
   let target = url;
@@ -113,8 +120,11 @@ const fetchFollowingRedirects = Effect.fn("GitHubMediaFetch.fetchFollowingRedire
     // The credential rides only on a request to GitHub itself. A redirect leads to a signed
     // object URL that authorizes on its own, and the store it lives in has no business seeing
     // a token — deciding that from the target, not from the hop count, is what makes it so.
+    const targetHost = hostOf(target);
     const authorization =
-      token !== null && isCredentialedHost(target) ? `Bearer ${Redacted.value(token)}` : null;
+      credential !== null && targetHost !== null && credential.hosts.has(targetHost)
+        ? Redacted.value(credential.authorization)
+        : null;
     const response: HttpClientResponse.HttpClientResponse = yield* httpClient
       .execute(
         HttpClientRequest.get(target).pipe(
@@ -138,21 +148,61 @@ const fetchFollowingRedirects = Effect.fn("GitHubMediaFetch.fetchFollowingRedire
 });
 
 /**
+ * The credential for a forge attachment, or null when this server holds no Forgejo login for its
+ * host. That login is the allowlist: without one the server fetches nothing, so the route is no
+ * open proxy.
+ */
+const forgeCredential = Effect.fn("GitHubMediaFetch.forgeCredential")(function* (input: {
+  readonly cwd: string;
+  readonly url: string;
+}) {
+  const host = hostOf(input.url);
+  const forgejo = yield* ForgejoCli.ForgejoCli;
+  if (host === null || forgejo.hostToken === undefined) return null;
+  const token = yield* forgejo.hostToken({ cwd: input.cwd, host });
+  return token === null
+    ? null
+    : ({
+        authorization: Redacted.make(`token ${token}`),
+        hosts: new Set([host]),
+      } satisfies MediaCredential);
+});
+
+/**
  * Serves media a pull request body points at on GitHub through the `gh` credential, which is the
- * only thing that distinguishes a readable private attachment from a 404.
+ * only thing that distinguishes a readable private attachment from a 404, and a Forgejo
+ * attachment through the `fj` login for its host.
  */
 export const githubMediaResponse = Effect.fn("GitHubMediaFetch.githubMediaResponse")(function* (
   asset: { readonly url: string; readonly cwd: string; readonly expiresAt: number },
   requestHeaders: Record<string, string | undefined>,
 ) {
-  // Both media hosts are served by github.com's account, which is the host `gh` stores it under.
-  const token = yield* githubToken({ cwd: asset.cwd, host: "github.com" });
+  let credential: MediaCredential | null;
+  if (githubMediaFetchUrl(asset.url) !== null) {
+    // Both media hosts are served by github.com's account, which is the host `gh` stores it under.
+    const token = yield* githubToken({ cwd: asset.cwd, host: "github.com" });
+    credential =
+      token === null
+        ? null
+        : {
+            authorization: Redacted.make(`Bearer ${Redacted.value(token)}`),
+            hosts: CREDENTIALED_HOSTS,
+          };
+  } else {
+    credential = yield* forgeCredential({ cwd: asset.cwd, url: asset.url });
+    if (credential === null) {
+      return HttpServerResponse.empty({
+        status: 404,
+        headers: { "cache-control": "private, no-store", "x-content-type-options": "nosniff" },
+      });
+    }
+  }
   const forwarded: Record<string, string> = {};
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = requestHeaders[name];
     if (value !== undefined) forwarded[name] = value;
   }
-  const response = yield* fetchFollowingRedirects(asset.url, forwarded, token);
+  const response = yield* fetchFollowingRedirects(asset.url, forwarded, credential);
   // An upload GitHub hosts never changes under its URL, so the only thing a cached copy must
   // not outlive is the signed URL that granted it — which is the same bound the URL itself has.
   const remainingSeconds = Math.floor((asset.expiresAt - (yield* Clock.currentTimeMillis)) / 1000);

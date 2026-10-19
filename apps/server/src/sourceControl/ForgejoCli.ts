@@ -149,6 +149,11 @@ export class ForgejoCli extends Context.Service<
     readonly api: (
       input: ForgejoApiInput,
     ) => Effect.Effect<VcsProcess.VcsProcessOutput, ForgejoCliError>;
+    /** The fj token for `host` (`name[:port]`), or null when this server has no login there. */
+    readonly hostToken?: (input: {
+      readonly cwd: string;
+      readonly host: string;
+    }) => Effect.Effect<string | null>;
   }
 >()("t3/sourceControl/ForgejoCli") {}
 
@@ -718,7 +723,20 @@ export const make = Effect.gen(function* () {
       });
     return result;
   });
-  return ForgejoCli.of({ execute, listLogins, getAccount, resolveRepository, api });
+  const hostToken: NonNullable<ForgejoCli["Service"]["hostToken"]> = Effect.fn(
+    "ForgejoCli.hostToken",
+  )(function* (input) {
+    const keys = yield* readKeys(input.cwd).pipe(Effect.orElseSucceed(() => null));
+    if (keys === null) return null;
+    const host = input.host.toLowerCase();
+    const login = publicLogins(keys).find((item) => new URL(item.url).host === host);
+    if (!login) return null;
+    // Same renewal the API path gets; a stored token is still worth a try if fj is gone.
+    return yield* authenticateFj(input.cwd, login).pipe(
+      Effect.orElseSucceed(() => keys.hosts[login.name]?.token ?? null),
+    );
+  });
+  return ForgejoCli.of({ execute, listLogins, getAccount, resolveRepository, api, hostToken });
 });
 
 export const layer = Layer.effect(ForgejoCli, make);

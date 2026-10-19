@@ -1,37 +1,55 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isOpenManagerShortcut } from "./ManagerShortcut.ts";
+import { isManagerShortcut, managerChordAccelerator } from "./ManagerShortcut.ts";
 
-const input = (overrides: Partial<Parameters<typeof isOpenManagerShortcut>[0]> = {}) => ({
+const chord = { key: " ", control: true, alt: true, meta: false, shift: false };
+
+const input = (overrides: Partial<Parameters<typeof isManagerShortcut>[0]> = {}) => ({
   type: "keyDown" as const,
-  key: "e",
-  meta: true,
-  control: false,
-  alt: false,
+  // Option+Space types a no-break space on macOS; the physical key still matches.
+  key: " ",
+  code: "Space",
+  meta: false,
+  control: true,
+  alt: true,
   shift: false,
   isAutoRepeat: false,
   ...overrides,
 });
 
-describe("isOpenManagerShortcut", () => {
-  it("is Cmd+E on macOS, a left-hand chord", () => {
-    expect(isOpenManagerShortcut(input(), "darwin")).toBe(true);
-    expect(isOpenManagerShortcut(input({ key: "E" }), "darwin")).toBe(true);
-  });
-
-  it("ignores other chords, repeats and key releases", () => {
-    expect(isOpenManagerShortcut(input({ shift: true }), "darwin")).toBe(false);
-    expect(isOpenManagerShortcut(input({ alt: true }), "darwin")).toBe(false);
-    expect(isOpenManagerShortcut(input({ key: "r" }), "darwin")).toBe(false);
-    expect(isOpenManagerShortcut(input({ isAutoRepeat: true }), "darwin")).toBe(false);
-    expect(isOpenManagerShortcut(input({ type: "keyUp" }), "darwin")).toBe(false);
-  });
-
-  it("leaves Ctrl+E to terminals on Windows and Linux", () => {
-    const ctrlE = input({ meta: false, control: true });
-    expect(isOpenManagerShortcut(ctrlE, "linux")).toBe(false);
+describe("managerChordAccelerator", () => {
+  it("names the default chord the way Electron registers it", () => {
+    expect(managerChordAccelerator(chord, "darwin")).toBe("Control+Alt+Space");
     expect(
-      isOpenManagerShortcut(input({ key: "m", meta: false, control: true, alt: true }), "linux"),
-    ).toBe(true);
+      managerChordAccelerator(
+        { ...chord, key: "e", control: false, alt: false, meta: true },
+        "darwin",
+      ),
+    ).toBe("Command+E");
+    expect(managerChordAccelerator({ ...chord, key: "f2", alt: false }, "linux")).toBe(
+      "Control+F2",
+    );
+  });
+
+  it("refuses a bare key, which would take it from every app", () => {
+    expect(managerChordAccelerator({ ...chord, control: false, alt: false }, "darwin")).toBeNull();
+    expect(
+      managerChordAccelerator({ ...chord, shift: true, control: false, alt: false }, "linux"),
+    ).toBeNull();
+  });
+});
+
+describe("isManagerShortcut", () => {
+  it("matches the reported chord by its physical key", () => {
+    expect(isManagerShortcut(input(), chord)).toBe(true);
+  });
+
+  it("ignores other chords, repeats, key releases and an unreported chord", () => {
+    expect(isManagerShortcut(input({ shift: true }), chord)).toBe(false);
+    expect(isManagerShortcut(input({ alt: false }), chord)).toBe(false);
+    expect(isManagerShortcut(input({ code: "KeyM", key: "m" }), chord)).toBe(false);
+    expect(isManagerShortcut(input({ isAutoRepeat: true }), chord)).toBe(false);
+    expect(isManagerShortcut(input({ type: "keyUp" }), chord)).toBe(false);
+    expect(isManagerShortcut(input(), null)).toBe(false);
   });
 });

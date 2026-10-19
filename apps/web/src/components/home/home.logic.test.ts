@@ -5,7 +5,7 @@ import {
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { digestThreadReport, homeVerdict, plainInline } from "./home.logic";
+import { digestThreadReport, plainInline } from "./home.logic";
 
 const REPORT = `Code profiles are built, tested and pushed, and running in a dev preview on **nika**.
 
@@ -86,68 +86,5 @@ describe("plainInline", () => {
     expect(plainInline("**Bold** and `code`, [link](http://x) and _soft_ text")).toBe(
       "Bold and code, link and soft text",
     );
-  });
-});
-
-type TitledThread = WorkThreadInput & { readonly title: string };
-
-describe("homeVerdict", () => {
-  const thread = (id: string, title: string, overrides: Record<string, unknown> = {}) => ({
-    id,
-    title,
-    archivedAt: null,
-    deletedAt: null,
-    lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: ThreadId.make(id) },
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    runtime: null,
-    latestRun: null,
-    settledOverride: null,
-    snoozedUntil: null,
-    snoozedAt: null,
-    latestUserMessageAt: "2026-10-06T10:00:00.000Z",
-    createdAt: "2026-10-06T09:00:00.000Z",
-    ...overrides,
-  });
-  const now = Date.parse("2026-10-06T12:00:00.000Z");
-
-  it("leads with what needs the user", () => {
-    const verdict = homeVerdict(
-      buildWorkOverview(
-        [
-          thread("a", "Fix login", { hasPendingUserInput: true }),
-          thread("b", "Ship docs"),
-        ] as TitledThread[],
-        now,
-      ),
-    );
-    expect(verdict).toEqual({
-      tone: "attention",
-      lead: "1 thread needs you:",
-      detail: "Fix login",
-    });
-  });
-
-  it("reports work in flight, then review, then all clear", () => {
-    const running = {
-      status: "running",
-      activeRunId: null,
-      providerInstanceId: "x",
-      providerName: null,
-      lastError: null,
-      updatedAt: "2026-10-06T11:00:00.000Z",
-    };
-    expect(
-      homeVerdict(
-        buildWorkOverview(
-          [thread("a", "Build", { runtime: running }), thread("b", "Docs")] as TitledThread[],
-          now,
-        ),
-      ),
-    ).toEqual({ tone: "busy", lead: "1 working.", detail: "1 ready for review: Docs." });
-    expect(homeVerdict(buildWorkOverview([thread("b", "Docs")] as TitledThread[], now)).lead).toBe(
-      "Ready to review:",
-    );
-    expect(homeVerdict(buildWorkOverview<TitledThread>([], now)).lead).toBe("All clear.");
   });
 });

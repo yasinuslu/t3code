@@ -50,9 +50,10 @@ export const AssetResource = Schema.Union([
   Schema.TaggedStruct("native-app-icon", {
     app: ToolActivityNativeAppReference,
   }),
-  // An upload a pull request body points at on GitHub. A private repository serves these only
-  // to a request that carries a credential, which the client has none of, so the server fetches
-  // them with the `gh` credential the repository at `cwd` authenticates with.
+  // An upload a pull request body points at on GitHub, or a Forgejo attachment (the tag predates
+  // forge support and stays for wire compatibility). A private repository serves these only to a
+  // request that carries a credential, which the client has none of, so the server fetches them
+  // with the `gh` credential, or the `fj` login for the forge's host, from `cwd`.
   Schema.TaggedStruct("github-media", {
     cwd: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),

@@ -569,8 +569,10 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   Layer.provideMerge(OrchestrationEventInfrastructureLayerLive),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
   Layer.provideMerge(ServerSettingsLayerLive),
-  // The asset route uses the registry's GitHub credential for private PR media.
-  Layer.provideMerge(Layer.mergeAll(SourceControlProviderRegistryLayerLive, GitHubCli.layer)),
+  // The asset route uses the GitHub and Forgejo credentials for private PR media.
+  Layer.provideMerge(
+    Layer.mergeAll(SourceControlProviderRegistryLayerLive, GitHubCli.layer, ForgejoCli.layer),
+  ),
   Layer.provideMerge(GitLayerLive),
   Layer.provideMerge(VcsLayerLive),
   Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive, DeviceLayerLive)),

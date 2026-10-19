@@ -1,72 +1,39 @@
 /**
- * The app's three modes, one switch. Grow and Classic are the two views of the
- * Home overlay; Normal is the app with Home closed: the thread list and chat,
- * which stay mounted underneath Home and so keep their place.
+ * The app's two screens, one switch. Grow is the Home overlay; Threads ("normal")
+ * is the app with Home closed: the thread list and chat, which stay mounted
+ * underneath Home and so keep their place. The manager chat is not a screen:
+ * it floats over either one (see `managerOverlayStore`).
  */
 import { useCallback, useEffect, useRef } from "react";
-import { create } from "zustand";
 
 import { closeHomeOverlay, openHomeOverlay, useHomeOverlayStore } from "./homeOverlayStore";
+import { closeManagerOverlay } from "./managerOverlayStore";
 
-export type AppMode = "grow" | "classic" | "normal";
-export type HomeView = "grow" | "classic";
+export type AppMode = "grow" | "normal";
 
 export const APP_MODES: ReadonlyArray<{
   readonly mode: AppMode;
   readonly label: string;
-  readonly command: "mode.grow" | "mode.classic" | "mode.normal";
+  readonly command: "mode.grow" | "mode.normal";
 }> = [
   { mode: "grow", label: "Grow", command: "mode.grow" },
-  { mode: "classic", label: "Manager", command: "mode.classic" },
-  { mode: "normal", label: "T3", command: "mode.normal" },
+  { mode: "normal", label: "Threads", command: "mode.normal" },
 ];
 
-// v2: Grow is the default view; the old stored "list" and "board" values are ignored.
-const HOME_VIEW_KEY = "t3code:home-view:v2";
+export const readAppMode = (): AppMode => (useHomeOverlayStore.getState().open ? "grow" : "normal");
 
-const readView = (): HomeView => {
-  try {
-    const stored = window.localStorage.getItem(HOME_VIEW_KEY);
-    return stored === JSON.stringify("classic") ? "classic" : "grow";
-  } catch {
-    return "grow";
-  }
-};
+export const useAppMode = (): AppMode =>
+  useHomeOverlayStore((state) => state.open) ? "grow" : "normal";
 
-const useHomeViewStore = create<{ readonly view: HomeView }>()(() => ({ view: readView() }));
-
-useHomeViewStore.subscribe((state) => {
-  try {
-    window.localStorage.setItem(HOME_VIEW_KEY, JSON.stringify(state.view));
-  } catch {
-    // Storage can be unavailable; the view then resets to Grow on restart.
-  }
-});
-
-/** Which view Home shows; written only by `setAppMode`. */
-export const useHomeView = () => useHomeViewStore((state) => state.view);
-
-export const readAppMode = (): AppMode =>
-  !useHomeOverlayStore.getState().open ? "normal" : useHomeViewStore.getState().view;
-
-export const useAppMode = (): AppMode => {
-  const open = useHomeOverlayStore((state) => state.open);
-  const view = useHomeView();
-  return open ? view : "normal";
-};
-
+/** Switching screens puts the manager away, so the chosen screen is what shows. */
 export function setAppMode(mode: AppMode) {
-  if (mode === "normal") {
-    closeHomeOverlay();
-    return;
-  }
-  useHomeViewStore.setState({ view: mode });
-  openHomeOverlay();
+  closeManagerOverlay();
+  if (mode === "normal") closeHomeOverlay();
+  else openHomeOverlay();
 }
 
 export function cycleAppMode() {
-  const modes = APP_MODES.map((entry) => entry.mode);
-  setAppMode(modes[(modes.indexOf(readAppMode()) + 1) % modes.length] ?? "grow");
+  setAppMode(readAppMode() === "grow" ? "normal" : "grow");
 }
 
 /**

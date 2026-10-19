@@ -2,19 +2,13 @@ import { useLocation } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 
 import {
-  InHomeOverlayContext,
+  OverlayLayerContext,
   closeHomeOverlay,
   inStartupHops,
   useHomeOverlayStore,
 } from "../../homeOverlayStore";
 import { MARKDOWN_FILE_LINK_CLASS_NAME } from "../../markdown-links";
-import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
-import { isEditableFocused } from "../../lib/editableFocus";
 import { HomeDashboard } from "./HomeDashboard";
-
-const OPEN_POPUP_SELECTOR =
-  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
-const COMPOSER_EDITOR_SELECTOR = '[data-testid="composer-editor"]';
 
 /**
  * Home as a full-window layer over the app. The page underneath stays
@@ -51,13 +45,7 @@ function HomeOverlayLayer() {
     };
   }, []);
 
-  // The manager composer takes focus once its view has subscribed.
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(dispatchSnapShotComposerFocus);
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  // Navigating anywhere (a card, a link in the manager's answer, a shortcut)
+  // Navigating anywhere (a card, a link in a chat's answer, a shortcut)
   // shows the destination. /home opens Home and goes to the start page, which
   // redirects on by itself; those hops keep Home open.
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -69,31 +57,9 @@ function HomeOverlayLayer() {
     if (before !== pathname && before !== "/home" && before !== "/") closeHomeOverlay();
   }, [pathname]);
 
-  // Esc closes Home unless something in it handles Esc itself (composer
-  // menus, popups, a running turn's stop) or a text field other than the
-  // manager composer, whose draft is kept anyway, has focus.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
-      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      // Grow is the default screen: Esc there never throws the user out of it.
-      if (document.querySelector('[data-home-view="grow"]') !== null) return;
-      const openPopup = [...document.querySelectorAll(OPEN_POPUP_SELECTOR)].some(
-        (element) => element.closest("[inert]") === null && element.getClientRects().length > 0,
-      );
-      if (openPopup) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (isEditableFocused(target) && target?.closest(COMPOSER_EDITOR_SELECTOR) === null) return;
-      event.preventDefault();
-      closeHomeOverlay();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   // A link to the thread already underneath does not change the path. File
-  // chips are anchors to host paths that open in the manager's own panel, so
-  // they keep Home open.
+  // chips are anchors to host paths that open in the chat's own panel, so
+  // they keep Home open. Esc never closes Home: Grow is a screen, not a popup.
   const onClickCapture = (event: MouseEvent) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
@@ -110,7 +76,7 @@ function HomeOverlayLayer() {
   };
 
   return (
-    <InHomeOverlayContext value={true}>
+    <OverlayLayerContext value={1}>
       <div
         ref={layerRef}
         data-home-overlay=""
@@ -120,6 +86,6 @@ function HomeOverlayLayer() {
       >
         <HomeDashboard />
       </div>
-    </InHomeOverlayContext>
+    </OverlayLayerContext>
   );
 }

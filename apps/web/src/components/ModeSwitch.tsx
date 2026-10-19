@@ -1,26 +1,31 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect } from "react";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
+import { MessagesSquareIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { APP_MODES, cycleAppMode, setAppMode, useAppMode } from "../appMode";
-import { useManagerProfile } from "../brainstormStore";
+import { useManagerThreadKeys, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { useIsMobile } from "../hooks/useMediaQuery";
-import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
-import { goToManager } from "../lib/goToManager";
+import {
+  resolveShortcutCommand,
+  shortcutForCommand,
+  shortcutLabelForCommand,
+} from "../keybindings";
+import { cn, isMacPlatform } from "../lib/utils";
+import { useManagerOverlayStore } from "../managerOverlayStore";
+import { openManager, toggleManager } from "../lib/goToManager";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { useOpenManagerThreadPage } from "./brainstorm/useOpenManagerThread";
+import { Button } from "./ui/button";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * One shortcut per mode, one that cycles them, and the Manager shortcut that
- * works from any screen. App-global, like the right-panel chords.
+ * shows or hides the manager over any screen. App-global, like the right-panel chords.
  */
 export function ModeShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const openManagerThreadPage = useOpenManagerThreadPage();
-  const managerProfile = useManagerProfile();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -31,15 +36,14 @@ export function ModeShortcuts() {
       ) {
         return;
       }
-      // The Manager shortcut has to work in a terminal too. Its `when` only
-      // spares Ctrl+E there (the shell's end-of-line), which is not a chord on a Mac.
+      // These chords work in a terminal too, so a rebinding can spare it with `when`.
       const command = resolveShortcutCommand(event, keybindings, {
-        context: { terminalFocus: !isMacPlatform(navigator.platform) && isTerminalFocused() },
+        context: { terminalFocus: isTerminalFocused() },
       });
-      if (command === "manager.open" || command === "mode.classic") {
+      if (command === "manager.toggle") {
         event.preventDefault();
         event.stopPropagation();
-        void goToManager(() => openManagerThreadPage(managerProfile));
+        toggleManager();
         return;
       }
       if (command === "mode.cycle") {
@@ -57,42 +61,90 @@ export function ModeShortcuts() {
     // Capture, so a focused editor or the chat cannot swallow the chord.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [keybindings, managerProfile, openManagerThreadPage]);
+  }, [keybindings]);
+
+  // The desktop app takes the manager chord system-wide, so it works with
+  // another app in front; it follows rebinding in keybindings.json.
+  useEffect(() => {
+    const setManagerShortcut = window.desktopBridge?.setManagerShortcut;
+    if (!setManagerShortcut) return;
+    const shortcut = shortcutForCommand(keybindings, "manager.toggle");
+    const mac = isMacPlatform(navigator.platform);
+    void setManagerShortcut(
+      shortcut === null
+        ? null
+        : {
+            key: shortcut.key,
+            control: shortcut.ctrlKey || (shortcut.modKey && !mac),
+            alt: shortcut.altKey,
+            meta: shortcut.metaKey || (shortcut.modKey && mac),
+            shift: shortcut.shiftKey,
+          },
+    ).catch(() => undefined);
+    // Turning the fork features off unmounts this and frees the chord.
+    return () => void setManagerShortcut(null).catch(() => undefined);
+  }, [keybindings]);
 
   // The desktop shell catches the chord below the page, where an iframe or a
-  // preview cannot swallow it, and sends it here.
+  // preview cannot swallow it, and system-wide while another app is in front.
   useEffect(
     () =>
       window.desktopBridge?.onMenuAction?.((action) => {
-        if (action === "open-manager") {
-          void goToManager(() => openManagerThreadPage(managerProfile));
-        }
+        if (action === "toggle-manager") toggleManager();
+        else if (action === "open-manager") void openManager();
       }),
-    [managerProfile, openManagerThreadPage],
+    [],
   );
 
   return null;
 }
 
 /**
- * The switch between Grow, the classic Manager and normal T3. Fixed at the top
- * centre of the page area so it sits in the same spot in every mode, above Home.
+ * The app bar: the view switch (Grow or Threads) and the one way into the
+ * manager overlay, fixed at the top left in every view, right after the
+ * sidebar toggle (Grow has no sidebar, so there it starts at the edge). It
+ * publishes its width as `--app-bar-width`, which the titlebar insets add, so
+ * no header ever runs under it.
  */
 export function ModeSwitch() {
   const mode = useAppMode();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const isMobile = useIsMobile();
+  const managerOpen = useManagerOverlayStore((state) => state.open);
+  const managerWorking = useManagerWorking();
+  const managerShortcut = shortcutLabelForCommand(keybindings, "manager.toggle");
 
-  // Phones have the bottom tab bar (PhoneTabBar); here the switch would sit on the header text.
+  const measure = useCallback((bar: HTMLDivElement) => {
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => {
+      root.style.setProperty(
+        "--app-bar-width",
+        `calc(${bar.offsetWidth}px + var(--workspace-titlebar-control-gap))`,
+      );
+    });
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--app-bar-width");
+    };
+  }, []);
+
+  // Phones have the bottom tab bar (PhoneTabBar) instead.
   if (isMobile) return null;
 
   return (
     <div
-      className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-(--mode-switch-center) z-50 flex h-[var(--workspace-topbar-height)] -translate-x-1/2 items-center [-webkit-app-region:no-drag]"
+      ref={measure}
+      className={cn(
+        "pointer-events-none fixed top-[var(--workspace-controls-top)] z-45 flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
+        mode === "grow"
+          ? "left-[var(--workspace-controls-left)]"
+          : "left-[calc(var(--workspace-controls-left)+var(--workspace-titlebar-control-size)+var(--workspace-titlebar-control-gap))]",
+      )}
       data-mode-switch=""
     >
       <ToggleGroup
-        aria-label="App mode"
+        aria-label="View"
         className="pointer-events-auto"
         value={[mode]}
         onValueChange={(next) => {
@@ -101,11 +153,7 @@ export function ModeSwitch() {
         }}
       >
         {APP_MODES.map((entry) => {
-          // The Manager tab advertises the chord that gets there from anywhere.
-          const shortcut =
-            (entry.mode === "classic"
-              ? shortcutLabelForCommand(keybindings, "manager.open")
-              : null) ?? shortcutLabelForCommand(keybindings, entry.command);
+          const shortcut = shortcutLabelForCommand(keybindings, entry.command);
           return (
             <Tooltip key={entry.mode}>
               <TooltipTrigger
@@ -123,6 +171,47 @@ export function ModeSwitch() {
           );
         })}
       </ToggleGroup>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-sm"
+              variant={managerOpen ? "secondary" : "ghost"}
+              className="pointer-events-auto relative"
+              aria-label="Manager"
+              aria-pressed={managerOpen}
+              data-app-bar-manager=""
+              onClick={toggleManager}
+            />
+          }
+        >
+          <MessagesSquareIcon />
+          {managerWorking ? (
+            <span
+              aria-label="Manager is working"
+              className="absolute top-1 right-1 size-1.5 rounded-full bg-info"
+            />
+          ) : null}
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">
+          Manager{managerShortcut ? ` (${managerShortcut})` : ""}
+        </TooltipPopup>
+      </Tooltip>
     </div>
+  );
+}
+
+/** A manager of any profile is running a turn. */
+function useManagerWorking() {
+  const managerKeys = useManagerThreadKeys();
+  const allThreads = useThreadShellsWithoutBrainstorms();
+  return useMemo(
+    () =>
+      allThreads.some(
+        (thread) =>
+          managerKeys.has(`${thread.environmentId}:${thread.id}`) &&
+          threadRuntimeIsActive(thread.runtime),
+      ),
+    [allThreads, managerKeys],
   );
 }

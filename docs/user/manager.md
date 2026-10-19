@@ -1,56 +1,36 @@
-# Home and the manager
+# The manager
 
-**Home** is where you follow your work. It shows threads as cards next to the manager, an ordinary
-thread that runs your goals: it plans tasks, starts and steers worker threads, and brings you in only
-for real decisions. Each code profile has its own manager.
+The manager is an ordinary thread that runs your goals: it plans tasks, starts and steers worker
+threads, and brings you in only for real decisions. Each code profile has its own manager. It floats
+over the app, so you can reach it from wherever you are.
 
-## Getting Home
+## Showing the manager
 
-Press `mod+e` (`ctrl+alt+m` also works, even in a focused terminal). From any screen it opens the
-Manager mode with the manager's composer focused: Grow, any thread, settings, an open dialog or the
-command palette. Pressed again there, it just focuses the composer. In the desktop app it also works
-while an embedded preview or an iframe has the keyboard (on Windows and Linux that is `ctrl+alt+m`,
-since `ctrl+e` belongs to the terminal); in a browser tab, a page inside an iframe keeps its keys.
-You can also click
-**Home** at the top of the sidebar or the compass at the start of a thread's header, or choose **Go
-home** in the command palette. Home opens with the manager's composer focused. Change the shortcut in
-**Settings → Keybindings** under **Manager: Open**.
+Press `ctrl+alt+space` (Ctrl+Option+Space on a Mac, three neighbouring keys for the left hand).
+The manager opens over whatever screen you are on, Grow, a thread or settings, with its composer
+focused. Press it again, or Esc, to hide it; a draft you left in the composer is still there next
+time. Clicking a thread link in its answer takes you to that thread and hides the manager.
 
-## Modes
+In the desktop app the shortcut works system-wide: from another app it brings T3 Code forward with
+the manager open. If another app already owns the chord (or on a Linux Wayland session, which has
+no global shortcuts), it still works while T3 Code is in front. You can also click the
+speech-bubble button next to the Grow and Threads switch at the top left, or choose **Show or hide
+the manager** in the command palette. Change the shortcut in
+**Settings → Keybindings** under **Manager: Toggle**.
 
-The switch at the top centre of the window moves between **Grow** (the idea board), **Manager**
-(the card list with the manager docked) and **T3** (the thread list and chat, with Home closed). It
-sits in the same place in every mode. Each mode keeps its place: the selected card, scroll
-positions, and the thread you had open. The app reopens in the mode you left it in.
+If the machine that runs the manager is offline, the overlay says so instead of showing a stale
+chat, and opens the manager by itself once that machine reconnects.
 
-`ctrl+alt+1`, `ctrl+alt+2` and `ctrl+alt+3` pick Grow, Manager and T3; `ctrl+alt+0` cycles them.
-Change them in **Settings → Keybindings** under **Mode**.
+## Screens
 
-## The work cards
+The switch at the top left of the window moves between **Grow** (the idea board) and **Threads**
+(the thread list and chat). Each keeps its place: the selected card, scroll positions, and the thread you
+had open. The app reopens on the screen you left. `ctrl+alt+1` and `ctrl+alt+3` pick Grow and
+Threads; `ctrl+alt+0` switches between them. Change them in **Settings → Keybindings** under **Mode**.
 
-A banner at the top says in one line what needs you, or what is moving. Below it, the active space's
-threads from every connected machine are grouped:
-
-- **Needs you**: waiting on an approval or an answer, or the last turn failed.
-- **Working**: running a turn or waiting on their own background work.
-- **Ready for review**: finished threads you have not settled.
-- **Recently done**: threads settled in the last day.
-
-Each card shows the thread's state, project, profile and machine, then **Try it** for the dev
-servers and preview pages the thread points at, **Open thread**, and its pull requests. Under them
-are the first lines of the thread's latest report, its screenshots, and any open questions it asked.
-Click a screenshot to see all of the card's screenshots full size; arrow keys or a swipe move between
-them. Agents can keep the card current while they work with the `thread_status_update` tool, and its
-screenshots are stored with the thread, so they survive a deleted worktree. The same card sits at the
-top of the thread itself; collapse it to one line with its header.
-**Goals** from the active space's brain follow (every brain's under **All**), with their progress and
-open tasks.
-
-## The manager
-
-The manager is docked on the right of Home as a normal thread view. It has no row in the sidebar's
-thread list; **Home** at the top of the sidebar opens it, and on narrow windows that opens the
-manager thread itself. A thread that is the manager shows a **Manager** badge in its header.
+The manager has no row in the sidebar's thread list. Agents keep a status card at the top of their thread current with
+the `thread_status_update` tool; its screenshots are stored with the thread, so they survive a
+deleted worktree.
 
 ## One manager per profile
 
@@ -60,23 +40,22 @@ profile's folder, it runs with that profile's provider settings and account. Its
 tools see only its profile: its goals and tasks, and the threads of that profile's projects. Work
 for another profile belongs to that profile's manager.
 
-Switch profiles with the switcher in Home's header. Picking a profile shows its manager and makes
-its space the active space, so the cards, goals and sidebar follow. **All** shows every profile's
-cards and goals and keeps the manager you had; managers themselves never see across profiles.
-Switching spaces in the sidebar switches the manager too, and Home opens on the last profile you
-picked. On narrow windows, open the manager with the button in Home's header; a manager opened as
-a page has the same switcher next to its **Manager** badge.
+Switch profiles with the switcher in the manager's header. Picking a
+profile shows its manager and makes its space the active space, so Grow and the sidebar follow.
+**All** shows every profile's work and keeps the manager you had; managers themselves never see
+across profiles. Switching spaces in the sidebar switches the manager too, and the manager opens on
+the last profile you picked. A manager opened as a page has the same switcher in its header.
 
-Before you pick one, Home shows the default profile's manager: the profile that a symlink directly
+Before you pick one, the manager shown is the default profile's: the profile that a symlink directly
 under `~/code` points into, or else the first profile by name. Without any profile brain there is
 one manager for everything, in the project you used most recently. Unpin, rename or archive a manager
-like any thread; after archiving, Home starts a new one.
+like any thread; after archiving, the next open starts a new one.
 
 The managers run on the machine you connected to, unless one of your connected machines has
 **Settings → General → Host the manager** turned on: then every device opens the managers, their goals
 and their tasks on that machine, and its tools reach that machine's threads. Turn it on for a machine
 that stays on, so the manager keeps working while a laptop is closed. While that machine is offline,
-Home says so instead of opening a manager elsewhere.
+the manager says so instead of opening one elsewhere.
 
 To run each profile's manager where that profile's work happens, list the profiles in **Settings →
 General → Managers hosted here** on each machine (for example `sn` on a laptop, `yu` on a desktop).
@@ -84,8 +63,8 @@ A machine that lists profiles runs only those managers. Every device that connec
 machines opens each manager on the machine that lists it.
 
 When two machines list the same profile, each runs its own manager for it: a separate chat with its
-own history, nothing shared or moved between them. Home's header then shows a machine switcher
-next to the profile switcher; pick a machine to open its manager. Home remembers your pick per
+own history, nothing shared or moved between them. The manager's header then shows a machine
+switcher next to the profile switcher; pick a machine to open its manager. It remembers your pick per
 profile and otherwise starts on the machine you connected to. A machine that is offline is shown
 as offline and is not opened, and a dot on a machine means its manager is working or has news.
 
@@ -144,7 +123,7 @@ notes. A top-level `- [ ]` or `- [x]` item is a task (`*` and `+` bullets work t
 lines under it are its notes. A `thread: <id>` line links the task to a thread. When a linked thread
 finishes a turn successfully and all of the task's threads are finished, the task is marked done.
 
-A file from before goals gets an `## Inbox` heading over its tasks the first time the manager or Home reads
+A file from before goals gets an `## Inbox` heading over its tasks the first time the manager reads
 it; nothing else in it changes. Every edit re-reads the file first and changes only the lines it
-touches, and changes made in an editor show up on Home as soon as the file is saved. Each goal
+touches, and changes made in an editor show up as soon as the file is saved. Each goal
 lives in the brain of the profile it belongs to.

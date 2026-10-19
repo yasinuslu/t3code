@@ -127,11 +127,6 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
       when: "composerFocus && draftThreadRoute",
     },
   },
-  {
-    id: "manager.open:mod+e",
-    alongside: { key: "ctrl+alt+m", command: "manager.open" },
-    rule: { key: "mod+e", command: "manager.open", when: "!terminalFocus" },
-  },
 ];
 
 function keybindingShortcutContext(rule: KeybindingRule): string | null {
@@ -154,7 +149,11 @@ function hasSameShortcutContext(left: KeybindingRule, right: KeybindingRule): bo
  * The startup backfill cannot heal these on its own: it skips any command the
  * config already claims, so the retired shortcut would survive forever.
  */
-const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{ from: KeybindingRule; to: KeybindingRule }> = [
+const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{
+  from: KeybindingRule;
+  /** null drops the untouched old default. */
+  to: KeybindingRule | null;
+}> = [
   // `rightPanel.toggle` gave up `mod+alt+b` so the right-panel surface chords
   // could claim `ctrl+alt+b` everywhere: on Windows and Linux `mod` is Ctrl, so
   // the two were the same physical chord and the surface chord would have won.
@@ -162,6 +161,14 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{ from: KeybindingRule; to: Keybi
     from: { key: "mod+alt+b", command: "rightPanel.toggle" },
     to: { key: "mod+alt+\\", command: "rightPanel.toggle" },
   },
+  // The manager became an overlay with one chord. The old ones arrive here
+  // already renamed from `manager.open` and `mode.classic`.
+  {
+    from: { key: "ctrl+alt+m", command: "manager.toggle" },
+    to: { key: "ctrl+alt+space", command: "manager.toggle" },
+  },
+  { from: { key: "mod+e", command: "manager.toggle", when: "!terminalFocus" }, to: null },
+  { from: { key: "ctrl+alt+2", command: "manager.toggle" }, to: null },
 ];
 
 /**
@@ -171,6 +178,9 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{ from: KeybindingRule; to: Keybi
  * "have issues", which also stops new defaults from being backfilled.
  */
 const RETIRED_COMMANDS: Readonly<Record<string, KeybindingRule["command"]>> = {
+  // The Manager screen is gone; the manager is an overlay that one chord toggles.
+  "manager.open": "manager.toggle",
+  "mode.classic": "manager.toggle",
   // Orchestrator V2 replaced the Agents surface with child threads and the
   // thread details panel, which Ctrl+Alt+A toggles now.
   "rightPanel.toggleAgents": "threadPanel.toggle",
@@ -181,9 +191,9 @@ const RETIRED_COMMANDS: Readonly<Record<string, KeybindingRule["command"]>> = {
  * naming one are dropped, and the startup sync writes the file without them.
  */
 const REMOVED_COMMANDS: ReadonlySet<string> = new Set([
-  // The brainstorm popup is gone; manager.open opens the manager thread instead.
+  // The brainstorm popup is gone; manager.toggle shows the manager instead.
   "brainstorm.toggle",
-  // Briefly a work overlay on a preview branch; Home (manager.open) replaced it.
+  // Briefly a work overlay on a preview branch; the manager overlay replaced it.
   "workOverlay.toggle",
 ]);
 
@@ -223,10 +233,16 @@ function rewriteRetiredDefaults(config: ReadonlyArray<KeybindingRule>): {
   let next = config;
   const rewrites: Array<{ command: KeybindingRule["command"]; from: string; to: string }> = [];
   for (const retired of RETIRED_DEFAULT_SHORTCUTS) {
-    if (!next.some((entry) => isSameKeybindingRule(entry, retired.from))) continue;
-    if (next.some((entry) => hasSameShortcutContext(entry, retired.to))) continue;
-    next = next.map((entry) => (isSameKeybindingRule(entry, retired.from) ? retired.to : entry));
-    rewrites.push({ command: retired.to.command, from: retired.from.key, to: retired.to.key });
+    const { from, to } = retired;
+    if (!next.some((entry) => isSameKeybindingRule(entry, from))) continue;
+    if (to === null) {
+      next = next.filter((entry) => !isSameKeybindingRule(entry, from));
+      rewrites.push({ command: from.command, from: from.key, to: "(removed)" });
+      continue;
+    }
+    if (next.some((entry) => hasSameShortcutContext(entry, to))) continue;
+    next = next.map((entry) => (isSameKeybindingRule(entry, from) ? to : entry));
+    rewrites.push({ command: to.command, from: from.key, to: to.key });
   }
   return { config: next, rewrites };
 }
