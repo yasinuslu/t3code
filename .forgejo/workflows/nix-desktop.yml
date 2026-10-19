@@ -77,7 +77,9 @@ jobs:
         run: |
           set -euo pipefail
           sha="$GITHUB_SHA"
-          subject=$(curl -sf "https://api.github.com/repos/yasinuslu/t3code/commits/$sha" | jq -r '.commit.message | split("\n")[0]')
+          # The subject is cosmetic: a GitHub rate limit or blip must not stop the ship.
+          subject=$(curl -sf --retry 3 "https://api.github.com/repos/yasinuslu/t3code/commits/$sha" | jq -r '.commit.message | split("\n")[0]' || true)
+          [ -n "$subject" ] || subject="(subject unavailable)"
           key="$RUNNER_TEMP/gitops_key"
           trap 'rm -f "$key"' EXIT
           (umask 077; printf '%s\n' "$GITOPS_DEPLOY_KEY" > "$key")
@@ -90,8 +92,13 @@ jobs:
             pinned=$(jq -r .sha releases/t3code.json)
             if [ "$pinned" = "$sha" ]; then echo "already pinned: $sha"; exit 0; fi
             # Never move the pin backwards: a slower run of an older commit can finish after a newer one.
-            rel=$(curl -sf "https://api.github.com/repos/yasinuslu/t3code/compare/$pinned...$sha" | jq -r .status || echo unknown)
-            if [ "$rel" = behind ]; then echo "pin $pinned is already ahead of $sha"; exit 0; fi
+            rel=$(curl -sf --retry 3 "https://api.github.com/repos/yasinuslu/t3code/compare/$pinned...$sha" | jq -r .status || true)
+            case "$rel" in
+              ahead|diverged) ;;
+              behind|identical) echo "pin $pinned is already at or ahead of $sha"; exit 0 ;;
+              # Fail closed: an unreadable relation must not move the pin backwards.
+              *) echo "cannot tell how $sha relates to the pin $pinned ($rel); not pinning"; exit 1 ;;
+            esac
             jq -n --arg sha "$sha" --arg subject "$subject" --arg at "$(date -u +%FT%TZ)" --arg run "$RUN_URL" \
               '{repo: "yasinuslu/t3code", branch: "yu-v2", sha: $sha, subject: $subject, shippedAt: $at, run: $run}' \
               > releases/t3code.json
