@@ -1,0 +1,235 @@
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { GrowCard } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  buildGrowDeck,
+  cleanLabel,
+  filterGrowDeck,
+  growCurrent,
+  growHeadline,
+  growNextAfter,
+  growPrimary,
+  growQueue,
+  growSpark,
+  growStep,
+} from "./returns.logic";
+
+const NOW = Date.parse("2026-10-19T12:00:00.000Z");
+const hoursAgo = (hours: number) => new Date(NOW - hours * 3_600_000).toISOString();
+
+const shell = (id: string, overrides: Record<string, unknown> = {}): EnvironmentThreadShell =>
+  ({
+    id,
+    environmentId: "env",
+    projectId: "p1",
+    title: id,
+    archivedAt: null,
+    deletedAt: null,
+    lineage: { relationshipToParent: null },
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    runtime: null,
+    latestRun: { runId: "run" },
+    settledOverride: null,
+    settledAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    latestUserMessageAt: null,
+    createdAt: hoursAgo(1),
+    pullRequests: [],
+    previewLinks: [],
+    ...overrides,
+  }) as unknown as EnvironmentThreadShell;
+
+const preview = (label?: string) => [{ url: "https://x.pv.nepjua.org/?demo=a", label }];
+const pr = (state: string) => [
+  { url: "https://pr/1", number: 1, source: "agent", snapshot: { state } },
+];
+const card = (threadId: string, decision: GrowCard["decision"], updatedAt: string) =>
+  [
+    `env:${threadId}`,
+    { threadId, decision, updatedAt, lessons: [] } as unknown as GrowCard,
+  ] as const;
+
+const keys = (items: ReadonlyArray<{ readonly thread: { readonly id: string } }>) =>
+  items.map((item) => item.thread.id);
+
+describe("buildGrowDeck", () => {
+  it("sorts threads into what needs the user, returns, shipped and working", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("asks", { hasPendingUserInput: true }),
+        shell("busy", { runtime: { status: "running" }, previewLinks: preview() }),
+        shell("made", { previewLinks: preview(), settledOverride: "settled" }),
+        shell("chat", { settledOverride: "settled" }),
+        shell("merged", { pullRequests: pr("merged"), settledOverride: "settled" }),
+        shell("finished"),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.urgent)).toEqual(["asks"]);
+    expect(keys(deck.returns).toSorted()).toEqual(["finished", "made"]);
+    expect(keys(deck.shipped)).toEqual(["merged"]);
+    expect(deck.working).toBe(1);
+  });
+
+  it("keeps a decision until the user writes to the thread again", () => {
+    const decidedAt = hoursAgo(2);
+    const deck = buildGrowDeck(
+      [
+        shell("dropped", { previewLinks: preview(), latestUserMessageAt: hoursAgo(3) }),
+        shell("revived", { previewLinks: preview(), latestUserMessageAt: hoursAgo(1) }),
+        shell("shipping", {
+          previewLinks: preview(),
+          latestUserMessageAt: hoursAgo(3),
+          latestRun: { completedAt: hoursAgo(1) },
+        }),
+      ],
+      new Map([
+        card("dropped", "shelve", decidedAt),
+        card("revived", "shelve", decidedAt),
+        card("shipping", "adopt", decidedAt),
+      ]),
+      NOW,
+    );
+    expect(keys(deck.letGo)).toEqual(["dropped"]);
+    expect(keys(deck.returns)).toEqual(["revived"]);
+    expect(keys(deck.shipped)).toEqual(["shipping"]);
+    expect(deck.shipped[0]?.merged).toBe(false);
+  });
+
+  it("folds earlier returns and drops the ones past two weeks", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("today", { previewLinks: preview() }),
+        shell("lastWeek", { previewLinks: preview(), createdAt: hoursAgo(24 * 6) }),
+        shell("ancient", { previewLinks: preview(), createdAt: hoursAgo(24 * 20) }),
+        shell("empty", { title: "New thread", latestRun: null }),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.returns)).toEqual(["today"]);
+    expect(keys(deck.older)).toEqual(["lastWeek"]);
+  });
+
+  it("keeps a project's returns together, newest project first", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("a-old", { projectId: "a", createdAt: hoursAgo(5) }),
+        shell("b-new", { projectId: "b", createdAt: hoursAgo(1) }),
+        shell("a-new", { projectId: "a", createdAt: hoursAgo(2) }),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.returns)).toEqual(["b-new", "a-new", "a-old"]);
+  });
+
+  it("skips pending decisions, excluded threads and subagents", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("pending"),
+        shell("manager"),
+        shell("sub", { lineage: { relationshipToParent: "subagent" } }),
+        shell("kept"),
+      ],
+      new Map(),
+      NOW,
+      { pending: new Set(["env:pending"]), excluded: new Set(["env:manager"]) },
+    );
+    expect(keys(growQueue(deck))).toEqual(["kept"]);
+  });
+});
+
+describe("growPrimary", () => {
+  const deck = buildGrowDeck(
+    [
+      shell("changes"),
+      shell("open-pr", { pullRequests: pr("open") }),
+      shell("closed-pr", { pullRequests: pr("closed"), previewLinks: preview() }),
+      shell("report", { title: "Report: weekly", previewLinks: preview() }),
+    ],
+    new Map(),
+    NOW,
+  );
+  const primary = (id: string, asks = false) => {
+    const item = growQueue(deck).find((candidate) => candidate.thread.id === id);
+    if (item === undefined) throw new Error(id);
+    return growPrimary(item, asks);
+  };
+
+  it("ships only what can land, and answers a question first", () => {
+    expect(primary("changes")).toBe("ship");
+    expect(primary("open-pr")).toBe("ship");
+    expect(primary("closed-pr")).toBe("done");
+    expect(primary("report")).toBe("done");
+    expect(primary("open-pr", true)).toBe("reply");
+  });
+});
+
+describe("cleanLabel", () => {
+  it("drops demo ids and URLs the agent left in a title", () => {
+    expect(cleanLabel("Feud card: both acts (?demo=crisis-feud)")).toBe("Feud card: both acts");
+    expect(cleanLabel("Look at https://x.pv.nepjua.org/?demo=a now")).toBe("Look at now");
+    expect(cleanLabel("https://x.org")).toBe("https://x.org");
+  });
+});
+
+describe("growHeadline", () => {
+  it("prefers what the agent named the preview over a generic label", () => {
+    expect(growHeadline(shell("t", { previewLinks: preview("Studio upgrade") }))).toBe(
+      "Studio upgrade",
+    );
+    expect(growHeadline(shell("t", { previewLinks: preview("Önizleme") }))).toBe("t");
+    expect(growHeadline(shell("t", { previewLinks: preview("https://x.org") }))).toBe("t");
+  });
+});
+
+describe("growCurrent", () => {
+  const deck = buildGrowDeck(
+    [
+      shell("one", { createdAt: hoursAgo(1) }),
+      shell("two", { createdAt: hoursAgo(2) }),
+      shell("three", { createdAt: hoursAgo(3) }),
+    ],
+    new Map(),
+    NOW,
+  );
+
+  it("shows the selection while it is there and moves on past a decided one", () => {
+    expect(growCurrent(deck, "env:two")?.thread.id).toBe("two");
+    expect(growCurrent(deck, "env:gone")?.thread.id).toBe("one");
+    expect(growNextAfter(deck, "env:two")).toBe("env:three");
+    expect(growNextAfter(deck, "env:three")).toBe("env:two");
+  });
+
+  it("steps through the deck and stops at the ends", () => {
+    expect(growStep(deck, "env:one", 1)).toBe("env:two");
+    expect(growStep(deck, "env:one", -1)).toBe("env:one");
+    expect(growStep(deck, "env:three", 1)).toBe("env:three");
+  });
+});
+
+describe("growSpark and filterGrowDeck", () => {
+  it("resurfaces the longest-waiting playable let-go idea and filters by name", () => {
+    const decidedAt = hoursAgo(0.5);
+    const deck = buildGrowDeck(
+      [
+        shell("fresh-drop", { previewLinks: preview(), createdAt: hoursAgo(1) }),
+        shell("old-drop", { previewLinks: preview(), createdAt: hoursAgo(30) }),
+        shell("no-play", { createdAt: hoursAgo(60) }),
+      ],
+      new Map([
+        card("fresh-drop", "shelve", decidedAt),
+        card("old-drop", "shelve", decidedAt),
+        card("no-play", "shelve", decidedAt),
+      ]),
+      NOW,
+    );
+    expect(growSpark(deck)?.thread.id).toBe("old-drop");
+    expect(keys(filterGrowDeck(deck, "FRESH").letGo)).toEqual(["fresh-drop"]);
+  });
+});

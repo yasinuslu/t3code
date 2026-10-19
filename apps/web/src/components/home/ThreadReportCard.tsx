@@ -161,24 +161,7 @@ function ReportScreenshots(props: {
   readonly threadId: EnvironmentThreadShell["id"];
   readonly screenshots: ReadonlyArray<ReportScreenshot>;
 }) {
-  const resources = useMemo(
-    () =>
-      props.screenshots.map((shot): AssetResource =>
-        "attachmentId" in shot
-          ? { _tag: "attachment", attachmentId: shot.attachmentId }
-          : { _tag: "media-file", threadId: props.threadId, path: shot.path },
-      ),
-    [props.screenshots, props.threadId],
-  );
-  const urls = useAssetUrls(props.environmentId, resources);
-  const images = useMemo(
-    () =>
-      props.screenshots.flatMap((shot, index): ExpandedImageItem[] => {
-        const src = urls[index];
-        return src ? [{ src, name: shot.alt }] : [];
-      }),
-    [props.screenshots, urls],
-  );
+  const images = useReportImages(props.environmentId, props.threadId, props.screenshots);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   if (images.length === 0) return null;
   return (
@@ -207,6 +190,33 @@ function ReportScreenshots(props: {
       ) : null}
     </div>
   );
+}
+
+/** A report's screenshots as viewer images, served from the thread's machine; the ones not served yet are left out. */
+export function useReportImages(
+  environmentId: EnvironmentId,
+  threadId: EnvironmentThreadShell["id"],
+  screenshots: ReadonlyArray<ReportScreenshot>,
+): ExpandedImageItem[] {
+  const resources = useMemo(
+    () =>
+      screenshots.map((shot): AssetResource =>
+        "attachmentId" in shot
+          ? { _tag: "attachment", attachmentId: shot.attachmentId }
+          : { _tag: "media-file", threadId, path: shot.path },
+      ),
+    [screenshots, threadId],
+  );
+  const urls = useAssetUrls(environmentId, resources);
+  const images = useMemo(
+    () =>
+      screenshots.flatMap((shot, index): ExpandedImageItem[] => {
+        const src = urls[index];
+        return src ? [{ src, name: shot.alt }] : [];
+      }),
+    [screenshots, urls],
+  );
+  return images;
 }
 
 const PANEL_OPEN_KEY = "t3code:thread-status-panel-open";

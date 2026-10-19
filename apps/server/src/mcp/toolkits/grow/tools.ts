@@ -20,11 +20,11 @@ const GrowCardEntry = Schema.Struct({
 
 const GrowUpdateTool = Tool.make("grow_update", {
   description: [
-    "Move a thread's card on the Grow board on Home, which follows the owner's loop: idea, exploring, play, regroup, building on main, in use.",
-    "When your prototype is something the user can click, call link_preview with its URL and grow_update with stage `play` and a one-line `became`.",
+    "Update a thread's Grow card. Grow on Home brings back what agents made, one at a time, for the owner to ship, change or let go.",
+    "It reads the thread's previews, pull requests and status report, so to show up there well, call link_preview with a short label naming what it is.",
     "When the user tells you what they learned, liked or disliked, record it with `addLessons`, in their words.",
-    "The regroup decision (`decision`: adopt, pivot or shelve) is the user's: record it only when they made it.",
-    "Without a stage the board derives one from the thread. Defaults to this thread.",
+    "The `decision` (adopt is ship, shelve is let go, pivot) is the user's: record it only when they made it.",
+    "`stage` and `became` are kept on the card for the manager. Defaults to this thread.",
   ].join(" "),
   parameters: Schema.Struct({
     threadId: Schema.optional(
