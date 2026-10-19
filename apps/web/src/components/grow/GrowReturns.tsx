@@ -244,7 +244,7 @@ export function GrowReturns(props: {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       if (isTyping(event.target)) return;
-      // While a conversation is open, the deck's keys stay off; o toggles back.
+      // While a conversation is open, the deck's keys stay off; Esc goes back.
       if (thread !== null) {
         if (event.key === "o") {
           useReturnsStore.setState({ thread: null });
