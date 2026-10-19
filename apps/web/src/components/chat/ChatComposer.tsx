@@ -1,3 +1,4 @@
+import { useIsManagerThread } from "../../brainstormStore";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
@@ -1796,6 +1797,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     editingQueuedAttachments,
     onRemoveEditingQueuedAttachment,
   } = props;
+  const isManager = useIsManagerThread(_activeThreadEnvironmentId ?? "", activeThreadId ?? "");
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const composerDraftTargetKey = composerTargetKey(composerDraftTarget);
   // Opening a running thread resyncs for a few frames. Show the sync row, and
@@ -7435,7 +7437,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 ? "Enable a provider in Settings to send a message"
                                 : phase === "disconnected"
                                   ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                                  : isManager
+                                    ? "Message the manager"
+                                    : "Ask anything, @tag files/folders, $use skills, or / for commands"
                     }
                     disabled={
                       isConnecting ||

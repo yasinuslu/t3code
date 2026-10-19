@@ -5,7 +5,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
+import { Badge } from "../ui/badge";
 import {
   memo,
   useContext,
@@ -271,7 +272,15 @@ export const ChatHeader = memo(function ChatHeader({
     >
       {/* The spaces in the sidebar pick the profile; a manager that runs on more than one
           machine picks the machine here, ahead of the breadcrumb so it never clips. */}
-      {isManager && !docked ? <ManagerMachineSwitcher className="shrink-0" /> : null}
+      {isManager && !docked ? (
+        <>
+          <Badge size="lg" className="shrink-0">
+            <MessagesSquareIcon aria-hidden />
+            Manager
+          </Badge>
+          <ManagerMachineSwitcher className="shrink-0" />
+        </>
+      ) : null}
       <WorkspaceBreadcrumb
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
