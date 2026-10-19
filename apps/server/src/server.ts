@@ -7,6 +7,7 @@ import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReact
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
 import * as AccountFailoverReactor from "./orchestration-v2/AccountFailoverReactor.ts";
 import * as ProofRequestReactor from "./orchestration-v2/ProofRequestReactor.ts";
+import * as PromptRetryReactor from "./orchestration-v2/PromptRetryReactor.ts";
 import * as PreviewLinkReportReactor from "./orchestration-v2/PreviewLinkReportReactor.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
@@ -709,6 +710,13 @@ const makeRoutesLayer = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ProofRequestReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
+  // Resends a message the provider refused to run, so no thread waits on the user for it.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* PromptRetryReactor.PromptRetryReactor;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(PromptRetryReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
   // Last, so no route layer can replace the server's one TracerDisabledWhen.
   untracedRequestsLayer,
 ).pipe(

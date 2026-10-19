@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 import {
   OverlayLayerContext,
   closeHomeOverlay,
+  homeOverlayHeldOpen,
   inStartupHops,
   useHomeOverlayStore,
 } from "../../homeOverlayStore";
@@ -53,7 +54,7 @@ function HomeOverlayLayer() {
   useEffect(() => {
     const before = previousPathname.current;
     previousPathname.current = pathname;
-    if (inStartupHops()) return;
+    if (inStartupHops() || homeOverlayHeldOpen()) return;
     if (before !== pathname && before !== "/home" && before !== "/") closeHomeOverlay();
   }, [pathname]);
 

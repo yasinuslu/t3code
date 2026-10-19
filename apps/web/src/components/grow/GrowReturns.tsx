@@ -98,6 +98,8 @@ const useReturnsStore = create<{
 const select = (key: string | null) =>
   useReturnsStore.setState({ selected: key, phoneView: "card", playing: null, thread: null });
 
+const proofAsksInFlight = new Set<string>();
+
 /** The actions on a return, wired to the thread and its grow card. */
 function useReturnActions(moveOn: (item: GrowReturn) => void) {
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
@@ -110,11 +112,17 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       input: { threadId: item.thread.id, decision },
     });
 
-  const send = async (item: GrowReturn, text: string, kind: GrowAsk["kind"]) => {
+  const send = async (
+    item: GrowReturn,
+    text: string,
+    kind: GrowAsk["kind"],
+    dispatchMode?: "queue",
+  ) => {
     const result = await startTurn({
       environmentId: item.thread.environmentId,
       input: {
         threadId: item.thread.id,
+        ...(dispatchMode === undefined ? {} : { dispatchMode }),
         message: { messageId: newMessageId(), role: "user", text, attachments: [] },
         runtimeMode: item.thread.runtimeMode,
         interactionMode: item.thread.interactionMode,
@@ -173,9 +181,17 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       });
     },
     bringBack: (item: GrowReturn) => void record(item, null),
+    // Queued behind whatever the thread is doing, so a busy thread takes the ask when it is
+    // free; pressing A again while one is on its way sends nothing more.
     askProof: async (item: GrowReturn) => {
-      if (await send(item, PROOF_MESSAGE, "proof")) {
-        toastManager.add({ type: "success", title: `Asked ${item.headline} for proof` });
+      if (proofAsksInFlight.has(item.key)) return;
+      proofAsksInFlight.add(item.key);
+      try {
+        if (await send(item, PROOF_MESSAGE, "proof", "queue")) {
+          toastManager.add({ type: "success", title: `Asked ${item.headline} for proof` });
+        }
+      } finally {
+        proofAsksInFlight.delete(item.key);
       }
     },
     /** The conversation opens inside Grow, so the deck stays one Back away. */

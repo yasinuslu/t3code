@@ -5,6 +5,12 @@ import type {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
+/**
+ * Failure code of a turn the provider refused before running any of it. Sending the same
+ * message again is safe, so the server does it (see PromptRetryReactor).
+ */
+export const PROMPT_NOT_RUN_FAILURE_CODE = "prompt_not_run";
+
 /** Only a failed root turn of the current run owns the thread's failure state. */
 export function latestRootProviderFailure(
   run: OrchestrationV2Run | null,

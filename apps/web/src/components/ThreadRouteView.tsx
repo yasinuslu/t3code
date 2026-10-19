@@ -219,7 +219,10 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   }
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
+    <SidebarInset
+      data-thread-view={view !== null && target.kind === "server" ? target.threadRef.threadId : ""}
+      className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+    >
       {view}
     </SidebarInset>
   );

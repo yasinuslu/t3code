@@ -119,6 +119,11 @@ function makeClaudeTestAppThread(input: {
   };
 }
 
+// The uuid the adapter gives the prompt makeClaudeTestTurnInput builds for this attempt.
+function claudePromptUuidOf(attemptId: RunAttemptId) {
+  return ClaudeAdapterV2.claudePromptUuid(attemptId, `message-${attemptId}`);
+}
+
 function makeClaudeTestTurnInput(input: {
   readonly threadId: ThreadId;
   readonly providerThread: OrchestrationV2ProviderThread;
@@ -152,6 +157,22 @@ function makeClaudeTestTurnInput(input: {
     runtimePolicy: input.runtimePolicy ?? CLAUDE_TEST_RUNTIME_POLICY,
   };
 }
+
+describe("claudePromptUuid", () => {
+  it("is stable for a replayed prompt and differs for another message on the same attempt", () => {
+    const attempt = "run-attempt:run:thread:t1:ordinal:7:attempt:1";
+    assert.equal(
+      ClaudeAdapterV2.claudePromptUuid(attempt, "message:a"),
+      ClaudeAdapterV2.claudePromptUuid(attempt, "message:a"),
+    );
+    // A server holding a copy of the thread's state reaches the same run ordinal, and so the
+    // same attempt id, for its own next message; Claude drops a repeated uuid as a duplicate.
+    assert.notEqual(
+      ClaudeAdapterV2.claudePromptUuid(attempt, "message:a"),
+      ClaudeAdapterV2.claudePromptUuid(attempt, "message:b"),
+    );
+  });
+});
 
 describe("ClaudeAdapterV2 runtime query policy", () => {
   it.each([false, true])("requests thinking summaries with resume=%s", (resume) => {
@@ -4342,7 +4363,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           const stamp = (frame: SDKMessage, attemptId: RunAttemptId) =>
             claudeSdkFrame({
               ...frame,
-              user_message_uuid: ClaudeAdapterV2.claudePromptUuid(attemptId),
+              user_message_uuid: claudePromptUuidOf(attemptId),
             });
           const runOf = (attemptId: RunAttemptId) => RunId.make(`run-${attemptId}`);
           const planToolUse = claudeSdkFrame({
@@ -4641,7 +4662,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         const stamp = (frame: SDKMessage, attemptId: RunAttemptId) =>
           claudeSdkFrame({
             ...frame,
-            user_message_uuid: ClaudeAdapterV2.claudePromptUuid(attemptId),
+            user_message_uuid: claudePromptUuidOf(attemptId),
           });
 
         yield* harness.runtime.startTurn(
@@ -4764,7 +4785,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         const stamp = (frame: SDKMessage, attemptId: RunAttemptId) =>
           claudeSdkFrame({
             ...frame,
-            user_message_uuid: ClaudeAdapterV2.claudePromptUuid(attemptId),
+            user_message_uuid: claudePromptUuidOf(attemptId),
           });
 
         yield* harness.runtime.startTurn(
@@ -4862,7 +4883,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         const stamp = (frame: SDKMessage, attemptId: RunAttemptId) =>
           claudeSdkFrame({
             ...frame,
-            user_message_uuid: ClaudeAdapterV2.claudePromptUuid(attemptId),
+            user_message_uuid: claudePromptUuidOf(attemptId),
           });
         const assistantTexts = () =>
           harness.events.flatMap((event) =>
@@ -4883,10 +4904,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attachments: [],
           }),
         );
-        assert.equal(
-          harness.offeredMessages[0]?.uuid,
-          ClaudeAdapterV2.claudePromptUuid(firstAttempt),
-        );
+        assert.equal(harness.offeredMessages[0]?.uuid, claudePromptUuidOf(firstAttempt));
         yield* Queue.offer(
           harness.sdkMessages,
           stamp(
@@ -4942,7 +4960,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         const lifecycle = (attemptId: RunAttemptId, state: string, uuid: string) =>
           claudeSdkFrame({
             type: "command_lifecycle",
-            command_uuid: ClaudeAdapterV2.claudePromptUuid(attemptId),
+            command_uuid: claudePromptUuidOf(attemptId),
             state,
             uuid,
             session_id: "claude-session-1",
@@ -4987,7 +5005,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           lifecycle(retryAttempt, "started", "00000000-0000-4000-8000-000000000722"),
           claudeSdkFrame({
             ...makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000723", result: "Done." }),
-            user_message_uuids: [ClaudeAdapterV2.claudePromptUuid(retryAttempt)],
+            user_message_uuids: [claudePromptUuidOf(retryAttempt)],
           }),
           lifecycle(retryAttempt, "completed", "00000000-0000-4000-8000-000000000724"),
         ]);
@@ -6013,7 +6031,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         const stamp = (frame: SDKMessage, attemptId: RunAttemptId) =>
           claudeSdkFrame({
             ...frame,
-            user_message_uuid: ClaudeAdapterV2.claudePromptUuid(attemptId),
+            user_message_uuid: claudePromptUuidOf(attemptId),
           });
 
         yield* harness.runtime.startTurn(
