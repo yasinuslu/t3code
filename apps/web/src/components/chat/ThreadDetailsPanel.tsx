@@ -39,7 +39,7 @@ interface VersionMismatchIssue {
 
 export interface ThreadDetailsPanelProps extends Pick<
   ComponentProps<typeof ThreadDetailsCard>,
-  "anchor" | "handle" | "onPresentationChange" | "pinned" | "top"
+  "anchor" | "handle" | "onPresentationChange"
 > {
   forceNewWorktree?: boolean;
   environmentId: EnvironmentId;
@@ -126,8 +126,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
       anchor={props.anchor}
       handle={props.handle}
       onPresentationChange={props.onPresentationChange}
-      {...(props.pinned === undefined ? {} : { pinned: props.pinned })}
-      {...(props.top === undefined ? {} : { top: props.top })}
     >
       {(density) => (
         <>

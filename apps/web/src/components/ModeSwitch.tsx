@@ -17,6 +17,7 @@ import { openManager, toggleManager } from "../lib/goToManager";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { Button } from "./ui/button";
+import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -99,9 +100,9 @@ export function ModeShortcuts() {
 }
 
 /**
- * The app bar: a quick way to the manager thread, fixed at the top left in every
- * view, right after the sidebar toggle. Grow and Threads have no tabs; the
- * shortcuts above move between them (Grow has no sidebar, so there it starts at the edge). It
+ * The app bar: the view switch (Grow or Threads) and a quick way to the
+ * manager thread, fixed at the top left in every view, right after the
+ * sidebar toggle (Grow has no sidebar, so there it starts at the edge). It
  * publishes its width as `--app-bar-width`, which the titlebar insets add, so
  * no header ever runs under it.
  */
@@ -142,6 +143,34 @@ export function ModeSwitch() {
       )}
       data-mode-switch=""
     >
+      <ToggleGroup
+        aria-label="View"
+        className="pointer-events-auto"
+        value={[mode]}
+        onValueChange={(next) => {
+          const value = APP_MODES.find((entry) => entry.mode === next[0]);
+          if (value) setAppMode(value.mode);
+        }}
+      >
+        {APP_MODES.map((entry) => {
+          const shortcut = shortcutLabelForCommand(keybindings, entry.command);
+          return (
+            <Tooltip key={entry.mode}>
+              <TooltipTrigger
+                render={
+                  <Toggle value={entry.mode} data-mode={entry.mode} aria-label={entry.label} />
+                }
+              >
+                {entry.label}
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">
+                {entry.label}
+                {shortcut ? ` (${shortcut})` : ""}
+              </TooltipPopup>
+            </Tooltip>
+          );
+        })}
+      </ToggleGroup>
       <Tooltip>
         <TooltipTrigger
           render={
