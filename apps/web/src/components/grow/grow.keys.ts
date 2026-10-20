@@ -7,7 +7,7 @@ export type GrowKeyAction =
   | { readonly type: "ship" }
   | { readonly type: "done" }
   | { readonly type: "whatIf" }
-  | { readonly type: "letGo" }
+  | { readonly type: "settle" }
   | { readonly type: "askProof" }
   | { readonly type: "openThread" }
   | { readonly type: "closeThread" }
@@ -63,7 +63,7 @@ export function growKeyAction(
   if (event.key === "s" && item.kind === "return" && item.shippable) return { type: "ship" };
   if (event.key === "d" && item.kind === "return") return { type: "done" };
   if ((event.key === "w" || event.key === "r") && open) return { type: "whatIf" };
-  if (event.key === "x" && open) return { type: "letGo" };
+  if (event.key === "x" && open) return { type: "settle" };
   if (event.key === "a" && open && !item.thread.statusProof) return { type: "askProof" };
   if (event.key === "o") return { type: "openThread" };
   if ((event.key === "p" || event.key === "Enter") && item.playUrl !== null) {

@@ -35,7 +35,7 @@ describe("growKeyAction", () => {
       "done",
       "whatIf",
       "whatIf",
-      "letGo",
+      "settle",
       "askProof",
       "openThread",
       "play",
