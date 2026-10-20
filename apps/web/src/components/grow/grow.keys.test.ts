@@ -49,7 +49,7 @@ describe("growKeyAction", () => {
       "ship",
       "done",
       "whatIf",
-      "letGo",
+      "settle",
       "askProof",
       "openThread",
       "play",
@@ -108,7 +108,7 @@ describe("growKeyAction", () => {
     expect(growKeyAction(key("a"), deck(returnItem({ thread: { statusProof: {} } })))).toBeNull();
     expect(growKeyAction(key("v"), deck(returnItem({ playUrl: null })))).toBeNull();
     expect(growKeyAction(key("s"), deck(returnItem({ kind: "urgent" })))).toBeNull();
-    expect(growKeyAction(key("x"), deck(returnItem({ kind: "letGo" })))).toBeNull();
+    expect(growKeyAction(key("x"), deck(returnItem({ kind: "settle" })))).toBeNull();
     expect(growKeyAction(key("s"), deck(null))).toBeNull();
   });
 

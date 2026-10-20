@@ -7,7 +7,7 @@ export type GrowKeyAction =
   | { readonly type: "ship" }
   | { readonly type: "done" }
   | { readonly type: "whatIf" }
-  | { readonly type: "letGo" }
+  | { readonly type: "settle" }
   | { readonly type: "askProof" }
   | { readonly type: "openThread" }
   | { readonly type: "closeThread" }
@@ -21,12 +21,10 @@ export type GrowKeyAction =
 export interface GrowKeyState {
   /** A conversation is showing in place of the deck. */
   readonly conversationOpen: boolean;
-  /** The conversation already shows beside the item (wide screens), so `o` has nothing to open. */
+  /** The conversation already shows beside the item (wide screens), so `c` has nothing to open. */
   readonly conversationShown?: boolean;
   /** The manager's chat is showing in place of the deck. */
   readonly managerOpen?: boolean;
-  /** The deck shows the conversation beside the proof (1024 px and up), so no key opens it. */
-  readonly conversationShown?: boolean;
   /** Focus is inside a chat, where the arrows and Page keys scroll that conversation. */
   readonly inChat?: boolean;
   readonly item: GrowReturn | null;
@@ -84,7 +82,7 @@ export function growKeyAction(
   if (key === "s" && item.kind === "return" && item.shippable) return { type: "ship" };
   if (key === "d" && item.kind === "return") return { type: "done" };
   if (key === "w" && open) return { type: "whatIf" };
-  if (key === "x" && open) return { type: "letGo" };
+  if (key === "x" && open) return { type: "settle" };
   if (key === "a" && open && !item.thread.statusProof) return { type: "askProof" };
   if (key === "c" && !state.conversationShown) return { type: "openThread" };
   if ((key === "v" || key === "enter") && item.playUrl !== null) return { type: "play" };
@@ -129,7 +127,7 @@ export const GROW_KEY_HELP: ReadonlyArray<{
       { keys: ["W"], label: "Reply, or change it", action: "whatIf" },
       { keys: ["S"], label: "Ship", action: "ship" },
       { keys: ["D"], label: "Done", action: "done" },
-      { keys: ["X"], label: "Let go", action: "letGo" },
+      { keys: ["X"], label: "Settle", action: "settle" },
       { keys: ["A"], label: "Ask for proof again", action: "askProof" },
       { keys: ["Z"], label: "Undo", action: "undo" },
     ],

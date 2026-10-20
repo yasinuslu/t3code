@@ -34,12 +34,12 @@ Grow shows what your agents finished today, one at a time: its screenshot or liv
 middle, and beside it what it is, where it came from (the thread that launched or forked it, and
 what you sent it from Grow), where it stands, and what happened. Then one decision. Every return carries a proof image you can read at a glance: agents are told to add one, and when a thread finishes work without one, T3 asks it for one by itself. The list marks which returns have proof, and **Ask again** asks once more. **Ship** tells the agent to land it the way its repository lands work,
 **Reply** answers its question, **Done** clears something with nothing to merge (a report),
-**What if...** asks for a change in the same thread, and **Let go** takes it off the list. Each
+**What if...** asks for a change in the same thread, and **Settle** takes it off the list (the same settle as the thread list, nothing is sent to the agent). Each
 decision waits five seconds with **Undo**. Anything an agent is still working on, like a What
 if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
-what you let go stay findable below, and a let-go item can be brought back. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
+what you settled stay findable below, and a settled item can be brought back. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
 previous and next item (the arrows and `j`/`k` do too). `s` ship, `d` done, `w` what if (or
-reply), `x` let go, `a` asks again for proof, `z` undo. `c` opens the conversation on a narrow window (wide ones show it beside the proof), `b`/`Shift+b` or the left and right arrows
+reply), `x` settle, `a` asks again for proof, `z` undo. `c` opens the conversation on a narrow window (wide ones show it beside the proof), `b`/`Shift+b` or the left and right arrows
 step through the screenshots, `PgDn`/`PgUp` scroll the story, `v` shows the live preview, `f` finds (`/` too), `g` opens every project in the list, and
 `t` talks to the manager. `r` switches to the next profile, `Shift+r` to the previous one.
 `Esc` goes back from the conversation or the manager, even from its message box.

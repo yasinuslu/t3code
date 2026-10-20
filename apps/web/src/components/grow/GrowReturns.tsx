@@ -3,9 +3,9 @@
  * shows the thing itself (its screenshot, or the live preview behind Play)
  * and beside it what it is, where it came from and goes, and what happened,
  * then three choices: the main one (Reply to its question, Ship work that can
- * land, or Done for what has nothing to merge), What if, Let go. The list is
+ * land, or Done for what has nothing to merge), What if, Settle. The list is
  * what is being worked on, the rest of the queue by project, then what is
- * done and what was let go. On a phone the item takes the screen and the list
+ * done and what was settled. On a phone the item takes the screen and the list
  * is one tap away.
  *
  * Nothing here needs agents to fill in extra fields: everything is read off
@@ -77,6 +77,8 @@ import { Kbd } from "../ui/kbd";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
+import { SidebarChromeFooter } from "../sidebar/SidebarChrome";
+import { readEnvironmentSupportsSettlement } from "../../state/entities";
 import { type GrowAsk, recordGrowAsk, useGrowAsks } from "./grow.asks";
 import { decide, undo, usePendingDecisions } from "./grow.decide";
 import { GrowDetails } from "./GrowDetails";
@@ -192,6 +194,8 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const update = useAtomCommand(growEnvironment.update);
   const navigate = useNavigate();
+  const settleThread = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
+  const unsettleThread = useAtomCommand(threadEnvironment.unsettle, { reportFailure: false });
 
   const record = (item: GrowReturn, decision: GrowDecision | null) =>
     update({
@@ -257,17 +261,40 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         },
       });
     },
-    letGo: (item: GrowReturn) => {
+    /**
+     * The thread list's settle (the same command), with nothing sent to the agent. The shelve
+     * decision keeps it listed under Settled, since agents settle threads too and a settled
+     * thread with something to open would otherwise come back as a return.
+     */
+    settle: (item: GrowReturn) => {
       moveOn(item);
       decide({
         key: item.key,
-        title: `Let go of ${item.headline}`,
+        title: `Settled ${item.headline}`,
         run: async () => {
+          if (readEnvironmentSupportsSettlement(item.thread.environmentId)) {
+            const result = await settleThread({
+              environmentId: item.thread.environmentId,
+              input: { threadId: item.thread.id },
+            });
+            if (result._tag === "Failure") {
+              toastManager.add({ type: "error", title: `Could not settle ${item.headline}` });
+              return;
+            }
+          }
           await record(item, "shelve");
         },
       });
     },
-    bringBack: (item: GrowReturn) => void record(item, null),
+    bringBack: async (item: GrowReturn) => {
+      if (item.thread.settledOverride === "settled") {
+        await unsettleThread({
+          environmentId: item.thread.environmentId,
+          input: { threadId: item.thread.id, reason: "user" },
+        });
+      }
+      await record(item, null);
+    },
     // Queued behind whatever the thread is doing, so a busy thread takes the ask when it is
     // free; pressing A again while one is on its way sends nothing more.
     askProof: async (item: GrowReturn) => {
@@ -369,7 +396,6 @@ export function GrowReturns(props: {
         conversationOpen,
         conversationShown: wide && split,
         managerOpen: manager,
-        conversationShown: split,
         inChat:
           event.target instanceof Element && event.target.closest('[data-pane="chat"]') !== null,
         item: current,
@@ -410,8 +436,8 @@ export function GrowReturns(props: {
         case "done":
           if (item !== null) actions.done(item);
           break;
-        case "letGo":
-          if (item !== null) actions.letGo(item);
+        case "settle":
+          if (item !== null) actions.settle(item);
           break;
         case "askProof":
           if (item !== null) void actions.askProof(item);
@@ -527,6 +553,7 @@ export function GrowReturns(props: {
             </div>
             <div className="px-3 pb-2">{header}</div>
             <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
+            <SidebarChromeFooter />
           </div>
         ) : (
           <>
@@ -549,6 +576,8 @@ export function GrowReturns(props: {
       >
         {header}
         <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
+        {/* The thread list's own footer: Settings, Pull Requests, Usage, and the update pill. */}
+        <SidebarChromeFooter />
       </div>
       <div className="flex min-h-0 min-w-0 flex-col">{hero}</div>
     </div>
@@ -632,7 +661,7 @@ function ReturnsHeader(props: {
   );
 }
 
-/** What is being worked on, the queue by project, then the older ones, what shipped and what was let go (folded). */
+/** What is being worked on, the queue by project, then the older ones, what shipped and what was settled (folded). */
 function ReturnsList(props: {
   readonly deck: GrowDeck;
   readonly current: string | null;
@@ -745,7 +774,7 @@ function ReturnsList(props: {
         </ListSection>
       ) : null}
       {deck.letGo.length > 0 ? (
-        <ListSection title={`Let go (${deck.letGo.length})`} folded {...foldOpen}>
+        <ListSection title={`Settled (${deck.letGo.length})`} folded {...foldOpen}>
           {deck.letGo.map((item) => row(item))}
         </ListSection>
       ) : null}
@@ -1228,7 +1257,7 @@ const STATUS_LOOK = {
   merged: { label: "Merged", dot: "bg-success" },
   shipping: { label: "Shipping", dot: "bg-info" },
   done: { label: "Done", dot: "bg-success" },
-  letGo: { label: "Let go", dot: "bg-muted-foreground" },
+  letGo: { label: "Settled", dot: "bg-muted-foreground" },
 } as const;
 
 function statusOf(item: GrowReturn, question: boolean): keyof typeof STATUS_LOOK {
@@ -1795,7 +1824,7 @@ function GrowFrame(props: { readonly url: string }) {
   );
 }
 
-/** The main choice, What if, Let go, each saying what it does; or the way back for what is decided. */
+/** The main choice, What if, Settle, each saying what it does; or the way back for what is decided. */
 function Choices(props: {
   readonly item: GrowReturn;
   readonly actions: ReturnActions;
@@ -1896,15 +1925,15 @@ function Choices(props: {
       onClick={() => actions.done(item)}
     />
   );
-  const letGo = (
+  const settle = (
     <Choice
-      label="Let go"
-      hint="Off the list, still findable"
+      label="Settle"
+      hint="Off the list, nothing sent"
       icon={<XIcon />}
       keyHint="X"
       wide={wide}
       stacked={stacked}
-      onClick={() => actions.letGo(item)}
+      onClick={() => actions.settle(item)}
     />
   );
   if (item.kind === "urgent") {
@@ -1931,7 +1960,7 @@ function Choices(props: {
           stacked={stacked}
           onClick={() => props.setWhatIfOpen(true)}
         />
-        {letGo}
+        {settle}
       </div>
     );
   }
@@ -1966,7 +1995,7 @@ function Choices(props: {
           />
         </>
       )}
-      {letGo}
+      {settle}
     </div>
   );
 }
@@ -2081,7 +2110,7 @@ function CaughtUp(props: {
         <div className="flex w-full max-w-md flex-col gap-3 rounded-xl border bg-card p-4 text-start">
           <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
             <SparklesIcon className="size-3.5" />
-            One you let go
+            One you settled
           </span>
           <span className="font-medium">{spark.headline}</span>
           <div className="flex flex-wrap gap-2">
