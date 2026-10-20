@@ -27,7 +27,7 @@ const deck = (item: GrowKeyState["item"] = returnItem()): GrowKeyState => ({
 
 describe("growKeyAction", () => {
   it("maps each Grow shortcut to its action on a return", () => {
-    const actions = ["s", "d", "w", "r", "x", "a", "o", "p", "Enter", "j", "k", "u", "/"].map(
+    const actions = ["s", "d", "w", "r", "x", "a", "o", "p", "Enter", "j", "k", "u", "/", "e"].map(
       (value) => growKeyAction(key(value), deck())?.type,
     );
     expect(actions).toEqual([
@@ -44,6 +44,7 @@ describe("growKeyAction", () => {
       "step",
       "undo",
       "search",
+      "toggleProjects",
     ]);
   });
 
