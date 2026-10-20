@@ -53,8 +53,13 @@ export async function openManager(): Promise<void> {
   requestManagerShown();
 }
 
+// Set while a way back to Grow is under way, when the route still shows the manager.
+let returning = false;
+
 /** The manager shortcut: shows the manager, or goes back to where it was opened from. */
 export function toggleManager(): void {
+  // A second press before the page is back would otherwise ask for the manager again.
+  if (returning) return;
   // Under Grow the manager is not what shows, so the shortcut brings it up.
   if (useManagerViewStore.getState().shown && !useHomeOverlayStore.getState().open) {
     requestManagerHidden();
@@ -72,6 +77,7 @@ export async function returnFromManager(
   navigate: (href: string) => Promise<unknown>,
 ): Promise<void> {
   const release = returnTo?.grow ? holdHomeOverlayOpen() : null;
+  returning = returnTo?.grow === true;
   if (returnTo?.grow) openHomeOverlay();
   try {
     await navigate(returnTo?.href ?? "/");
@@ -81,6 +87,7 @@ export async function returnFromManager(
   } catch {
     // The manager stays where it is; Grow, if it was asked for, is still up.
   } finally {
+    returning = false;
     release?.();
   }
 }

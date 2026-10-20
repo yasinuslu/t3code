@@ -79,7 +79,11 @@ export function openHomeOnStartup() {
 }
 // A hop that moves the page under Home (the manager) keeps Home up until the destination has
 // rendered, so the page it leaves is never shown on the way.
+// The path change that ends a hop is acted on in an effect after the render, which can land
+// a few frames after the navigation resolves, so a released hold still covers that effect.
+const HOLD_GRACE_MS = 500;
 let heldOpen = 0;
+let graceUntil = 0;
 export function holdHomeOverlayOpen(): () => void {
   heldOpen += 1;
   let released = false;
@@ -87,9 +91,10 @@ export function holdHomeOverlayOpen(): () => void {
     if (released) return;
     released = true;
     heldOpen -= 1;
+    graceUntil = Date.now() + HOLD_GRACE_MS;
   };
 }
-export const homeOverlayHeldOpen = () => heldOpen > 0;
+export const homeOverlayHeldOpen = () => heldOpen > 0 || Date.now() < graceUntil;
 export const closeHomeOverlay = () => useHomeOverlayStore.getState().setOpen(false);
 export const toggleHomeOverlay = () => useHomeOverlayStore.getState().toggle();
 

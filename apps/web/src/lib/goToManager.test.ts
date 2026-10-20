@@ -57,17 +57,40 @@ describe("going back from the manager to Grow", () => {
     finishNavigation();
     await returning;
     expect(growOpen()).toBe(true);
-    expect(homeOverlayHeldOpen()).toBe(false);
+  });
+
+  it("ignores the shortcut until the page is back, then works again", async () => {
+    let finishNavigation: () => void = () => undefined;
+    const returning = returnFromManager(
+      { href: "/env/thread", grow: true },
+      () =>
+        new Promise<void>((resolve) => {
+          finishNavigation = resolve;
+        }),
+    );
+    useManagerViewStore.setState({ shown: true });
+    toggleManager();
+    expect(useManagerViewStore.getState().request).toBeNull();
+
+    finishNavigation();
+    await returning;
+    closeHomeOverlay();
+    toggleManager();
+    expect(useManagerViewStore.getState().request).toBe("hide");
+  });
+
+  it("keeps covering the page change for a moment after the hold is released", async () => {
+    await returnFromManager({ href: "/env/thread", grow: true }, () => Promise.resolve());
+    expect(homeOverlayHeldOpen()).toBe(true);
   });
 
   it("lets Grow go again if the page cannot be reached", async () => {
     await returnFromManager({ href: "/gone", grow: true }, () => Promise.reject(new Error("no")));
-    expect(homeOverlayHeldOpen()).toBe(false);
+    expect(growOpen()).toBe(true);
   });
 
   it("leaves Grow closed when the manager was opened from a page", async () => {
     await returnFromManager({ href: "/env/thread", grow: false }, () => Promise.resolve());
     expect(growOpen()).toBe(false);
-    expect(homeOverlayHeldOpen()).toBe(false);
   });
 });
