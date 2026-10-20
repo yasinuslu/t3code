@@ -299,3 +299,52 @@ describe("project folding", () => {
     ]);
   });
 });
+
+describe("last interaction order", () => {
+  const threads = [
+    // a1 was agent-updated long ago but the user wrote to it most recently.
+    shell("a1", {
+      projectId: "p1",
+      latestUserAuthoredMessageAt: hoursAgo(1.5),
+      updatedAt: hoursAgo(9),
+    }),
+    shell("b1", {
+      projectId: "p2",
+      latestUserAuthoredMessageAt: hoursAgo(2),
+      updatedAt: hoursAgo(1),
+    }),
+    shell("a2", {
+      projectId: "p1",
+      latestUserAuthoredMessageAt: hoursAgo(4),
+      updatedAt: hoursAgo(6),
+    }),
+    shell("c1", {
+      projectId: "p3",
+      latestUserAuthoredMessageAt: hoursAgo(3),
+      updatedAt: hoursAgo(7),
+    }),
+  ];
+  const build = (grouping?: "projects" | "recent") =>
+    buildGrowDeck(threads, new Map(), NOW, grouping ? { grouping } : {});
+
+  it("orders projects and the threads inside them by when the user last wrote", () => {
+    // p1 holds the most recent word (a1), so its threads come first and stay together.
+    expect(keys(build().returns)).toEqual(["a1", "a2", "b1", "c1"]);
+  });
+
+  it("lists flat, last touched first, in the recent mode", () => {
+    expect(keys(build("recent").returns)).toEqual(["a1", "b1", "c1", "a2"]);
+  });
+
+  it("does not count the manager writing on the user's behalf", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("x", { latestUserAuthoredMessageAt: hoursAgo(8), latestUserMessageAt: hoursAgo(1) }),
+        shell("y", { latestUserAuthoredMessageAt: hoursAgo(3), latestUserMessageAt: hoursAgo(3) }),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.returns)).toEqual(["y", "x"]);
+  });
+});

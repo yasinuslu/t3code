@@ -43,6 +43,8 @@ export interface GrowReturn {
   readonly card: GrowCard | undefined;
   readonly reason: WorkReason | null;
   readonly lastActivityAt: string;
+  /** When the user last wrote to it (their own words, not another agent's); else its last activity. */
+  readonly touchedAt: string;
   /** What to call it: what the agent named its preview, else the thread's title. */
   readonly headline: string;
   /** The newest preview the thread linked. */
@@ -98,6 +100,12 @@ export function cleanLabel(text: string): string {
     .replace(/\s{2,}/g, " ")
     .trim();
   return cleaned === "" ? text : cleaned;
+}
+
+/** The last time the user themselves wrote to the thread; a manager sending on their behalf does not count. */
+export function growTouchedAt(thread: EnvironmentThreadShell, fallback: string): string {
+  const words = thread.latestUserAuthoredMessageAt ?? thread.latestUserMessageAt;
+  return words ? String(words) : fallback;
 }
 
 export function growHeadline(thread: EnvironmentThreadShell): string {
@@ -158,6 +166,8 @@ export interface GrowDeckOptions {
   readonly excluded?: ReadonlySet<string>;
   /** Keys the user just decided on, still inside their undo window. */
   readonly pending?: ReadonlySet<string>;
+  /** How the fresh returns are laid out: kept together by project (default), or flat, newest first. */
+  readonly grouping?: "projects" | "recent";
 }
 
 export function buildGrowDeck(
@@ -190,6 +200,7 @@ export function buildGrowDeck(
     const merged = pullRequest?.state === "merged";
     const lastActivityAt = threadLastActivityAt(thread);
     const age = now - epochMs(lastActivityAt);
+    const touchedAt = growTouchedAt(thread, lastActivityAt);
     const entry = (kind: ReturnKind): GrowReturn => ({
       key,
       kind,
@@ -197,6 +208,7 @@ export function buildGrowDeck(
       card,
       reason: placement?.reason ?? null,
       lastActivityAt,
+      touchedAt,
       headline: growHeadline(thread),
       playUrl: latestPreview(thread)?.url ?? null,
       pullRequest,
@@ -236,17 +248,22 @@ export function buildGrowDeck(
   }
   const newestFirst = (left: GrowReturn, right: GrowReturn) =>
     epochMs(right.lastActivityAt) - epochMs(left.lastActivityAt);
+  const lastTouchedFirst = (left: GrowReturn, right: GrowReturn) =>
+    epochMs(right.touchedAt) - epochMs(left.touchedAt);
   return {
-    urgent: urgent.sort(newestFirst),
-    returns: byProject(fresh.sort(newestFirst)),
-    older: older.sort(newestFirst),
+    urgent: urgent.sort(lastTouchedFirst),
+    returns:
+      options.grouping === "recent"
+        ? fresh.sort(lastTouchedFirst)
+        : byProject(fresh.sort(lastTouchedFirst)),
+    older: older.sort(lastTouchedFirst),
     shipped: shipped.sort(newestFirst),
     letGo: letGo.sort(newestFirst),
     working: working.sort(newestFirst),
   };
 }
 
-/** Newest first, but a project's returns stay together, in the order of each project's newest. */
+/** Last touched first, but a project's returns stay together, in the order of each project's most recent. */
 function byProject(sorted: ReadonlyArray<GrowReturn>): GrowReturn[] {
   const groups = new Map<string, GrowReturn[]>();
   for (const item of sorted) {

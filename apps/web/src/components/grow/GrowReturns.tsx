@@ -100,6 +100,8 @@ const useReturnsStore = create<{
   readonly thread: string | null;
   /** Every project in the list is open. Temporary: the next item shown, or reopening Grow, puts it back. */
   readonly expandAll: boolean;
+  /** How the list is laid out: by project (default), or flat with the last thread touched on top. */
+  readonly listMode: "projects" | "recent";
 }>(() => ({
   selected: null,
   phoneView: "card",
@@ -107,6 +109,7 @@ const useReturnsStore = create<{
   playing: null,
   thread: null,
   expandAll: false,
+  listMode: "projects",
 }));
 
 const select = (key: string | null) =>
@@ -246,13 +249,18 @@ export function GrowReturns(props: {
   const loaded = useGrowLoaded();
   const managers = useEveryManagerThreadKey();
   const pending = usePendingDecisions((state) => state.keys);
-  const { selected, phoneView, query, playing, thread } = useReturnsStore();
+  const { selected, phoneView, query, playing, thread, listMode } = useReturnsStore();
   const wide = useMediaQuery("md");
   const [whatIfOpen, setWhatIfOpen] = useState(false);
 
   const deck = useMemo(
-    () => buildGrowDeck(props.threads, cards, props.now, { excluded: managers.keys, pending }),
-    [cards, managers.keys, pending, props.now, props.threads],
+    () =>
+      buildGrowDeck(props.threads, cards, props.now, {
+        excluded: managers.keys,
+        pending,
+        grouping: listMode,
+      }),
+    [cards, listMode, managers.keys, pending, props.now, props.threads],
   );
   const shown = useMemo(() => filterGrowDeck(deck, query), [deck, query]);
   const relations = useMemo(() => buildGrowRelations(props.threads, cards), [cards, props.threads]);
@@ -515,6 +523,7 @@ function ReturnsList(props: { readonly deck: GrowDeck; readonly current: string 
   const { deck } = props;
   const projectTitle = useProjectTitle();
   const expandAll = useReturnsStore((state) => state.expandAll);
+  const listMode = useReturnsStore((state) => state.listMode);
   const focused = growFocusedProject(deck, props.current);
   const groups = useMemo(() => {
     const byProject = new Map<string, { title: string; items: GrowReturn[] }>();
@@ -526,60 +535,93 @@ function ReturnsList(props: { readonly deck: GrowDeck; readonly current: string 
     }
     return [...byProject.entries()];
   }, [deck.returns, projectTitle]);
-  const row = (item: GrowReturn) => (
-    <ReturnRow key={item.key} item={item} current={item.key === props.current} />
+  const row = (item: GrowReturn, showProject = false) => (
+    <ReturnRow
+      key={item.key}
+      item={item}
+      current={item.key === props.current}
+      showProject={showProject}
+    />
   );
   return (
     <nav aria-label="Returns" className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-6">
-      {groups.length > 1 ? (
-        <button
-          type="button"
-          className="flex w-full items-center justify-end gap-1.5 rounded px-1 py-0.5 text-muted-foreground text-xs outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          aria-pressed={expandAll}
-          onClick={() => useReturnsStore.setState({ expandAll: !expandAll })}
+      <div className="flex items-center justify-between gap-2">
+        <ToggleGroup
+          aria-label="List"
+          variant="segmented"
+          value={[listMode]}
+          onValueChange={(value) => {
+            const next = value[0];
+            if (next === "projects" || next === "recent") {
+              useReturnsStore.setState({ listMode: next, expandAll: false });
+            }
+          }}
         >
-          {expandAll ? (
-            <ChevronsDownUpIcon className="size-3.5" />
-          ) : (
-            <ChevronsUpDownIcon className="size-3.5" />
-          )}
-          {expandAll ? "Only this project" : "Expand all"}
-          <span className="hidden md:contents">
-            <Kbd>E</Kbd>
-          </span>
-        </button>
-      ) : null}
+          <Toggle value="projects" aria-label="By project">
+            By project
+          </Toggle>
+          <Toggle value="recent" aria-label="Recent">
+            Recent
+          </Toggle>
+        </ToggleGroup>
+        {listMode === "projects" && groups.length > 1 ? (
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded px-1 py-0.5 text-muted-foreground text-xs outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            aria-pressed={expandAll}
+            onClick={() => useReturnsStore.setState({ expandAll: !expandAll })}
+          >
+            {expandAll ? (
+              <ChevronsDownUpIcon className="size-3.5" />
+            ) : (
+              <ChevronsUpDownIcon className="size-3.5" />
+            )}
+            {expandAll ? "Only this project" : "Expand all"}
+            <span className="hidden md:contents">
+              <Kbd>E</Kbd>
+            </span>
+          </button>
+        ) : null}
+      </div>
       {deck.working.length > 0 ? (
-        <ListSection title="Working">{deck.working.map(row)}</ListSection>
+        <ListSection title="Working">{deck.working.map((item) => row(item))}</ListSection>
       ) : null}
       {deck.urgent.length > 0 ? (
         <ListSection title="Needs you now" tone="warning">
-          {deck.urgent.map(row)}
+          {deck.urgent.map((item) => row(item))}
         </ListSection>
       ) : null}
-      {groups.map(([key, group]) => (
-        <ListSection
-          key={key}
-          title={`${group.title} (${group.items.length})`}
-          open={growProjectOpen(key, focused, expandAll)}
-          resetOn={props.current}
-        >
-          {group.items.map(row)}
-        </ListSection>
-      ))}
+      {listMode === "recent" ? (
+        deck.returns.length > 0 ? (
+          <ListSection title={`Recent (${deck.returns.length})`}>
+            {deck.returns.map((item) => row(item, true))}
+          </ListSection>
+        ) : null
+      ) : (
+        groups.map(([key, group]) => (
+          <ListSection
+            key={key}
+            title={`${group.title} (${group.items.length})`}
+            open={growProjectOpen(key, focused, expandAll)}
+            resetOn={props.current}
+          >
+            {group.items.map((item) => row(item))}
+          </ListSection>
+        ))
+      )}
       {deck.older.length > 0 ? (
         <ListSection title={`Earlier (${deck.older.length})`} folded>
-          {deck.older.map(row)}
+          {deck.older.map((item) => row(item))}
         </ListSection>
       ) : null}
       {deck.shipped.length > 0 ? (
         <ListSection title={`Done this week (${deck.shipped.length})`} folded>
-          {deck.shipped.map(row)}
+          {deck.shipped.map((item) => row(item))}
         </ListSection>
       ) : null}
       {deck.letGo.length > 0 ? (
         <ListSection title={`Let go (${deck.letGo.length})`} folded>
-          {deck.letGo.map(row)}
+          {deck.letGo.map((item) => row(item))}
         </ListSection>
       ) : null}
     </nav>
@@ -620,8 +662,14 @@ function ListSection(props: {
   );
 }
 
-function ReturnRow(props: { readonly item: GrowReturn; readonly current: boolean }) {
+function ReturnRow(props: {
+  readonly item: GrowReturn;
+  readonly current: boolean;
+  /** Names the item's project, for a list that is not grouped by it. */
+  readonly showProject: boolean;
+}) {
   const { item } = props;
+  const projectTitle = useProjectTitle();
   return (
     <li>
       <button
@@ -635,7 +683,14 @@ function ReturnRow(props: { readonly item: GrowReturn; readonly current: boolean
         onClick={() => select(item.key)}
       >
         <RowMark item={item} />
-        <span className="min-w-0 flex-1 truncate">{item.headline}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">{item.headline}</span>
+          {props.showProject ? (
+            <span className="truncate font-normal text-muted-foreground text-xs">
+              {projectTitle(item.thread)}
+            </span>
+          ) : null}
+        </span>
         <ProofMark item={item} />
         <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
           {formatRelativeTimeLabel(item.lastActivityAt).replace(" ago", "")}
