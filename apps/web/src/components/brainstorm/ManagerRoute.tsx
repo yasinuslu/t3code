@@ -95,7 +95,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
         : null,
     ) !== null;
   const [shellWaitedOut, setShellWaitedOut] = useState(false);
-  const waitingForShell = request === "show" && key !== null && !shellKnown;
+  const waitingForShell = key !== null && !shellKnown;
   useEffect(() => {
     if (!waitingForShell) return;
     const timer = setTimeout(() => setShellWaitedOut(true), THREAD_SHELL_WAIT_MS);
@@ -110,7 +110,8 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
   useEffect(() => {
     const previous = previousKey.current;
     // A switch passes through loading; the last manager shown stays the one to compare with.
-    if (key !== null) previousKey.current = key;
+    // It only moves on once the manager can be shown, so a switch waiting for its thread is still followed.
+    if (key !== null && (shellKnown || shellWaitedOut)) previousKey.current = key;
     // The live value: a second run before this render's request clears must not act again.
     if (request === "show" && useManagerViewStore.getState().request === "show") {
       if (manager._tag === "Failed") {
@@ -159,6 +160,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
     // Switching the space or the machine while a manager shows shows that one's manager.
     if (
       manager._tag === "Ready" &&
+      (shellKnown || shellWaitedOut) &&
       previous !== null &&
       key !== previous &&
       props.currentKey !== key
