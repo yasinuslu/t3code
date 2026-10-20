@@ -360,7 +360,10 @@ export function GrowReturns(props: {
           showManager();
           break;
         case "toggleProjects":
-          useReturnsStore.setState((state) => ({ expandAll: !state.expandAll }));
+          // Everything with a match is already open while searching.
+          if (query.trim() === "") {
+            useReturnsStore.setState((state) => ({ expandAll: !state.expandAll }));
+          }
           break;
         case "step":
           select(growStep(shown, item?.key ?? null, action.direction));
@@ -399,7 +402,7 @@ export function GrowReturns(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [actions, conversationOpen, current, manager, playing, shown, wide]);
+  }, [actions, conversationOpen, current, manager, playing, query, shown, wide]);
 
   // Esc leaves the manager or an open conversation even from its message box, which keeps
   // Esc from bubbling; caught before it, and left alone while a menu or dialog is open.
@@ -601,7 +604,10 @@ function ReturnsList(props: {
 }) {
   const { deck } = props;
   const projectTitle = useProjectTitle();
-  const expandAll = useReturnsStore((state) => state.expandAll);
+  // Searching opens every group that has a match, folded sections too; clearing the search
+  // returns to the focused project only (or what Expand all holds).
+  const searching = useReturnsStore((state) => state.query.trim() !== "");
+  const expandAll = useReturnsStore((state) => state.expandAll) || searching;
   const listMode = useReturnsStore((state) => state.listMode);
   const focused = growFocusedProject(deck, props.current);
   const groups = useMemo(() => {
@@ -644,7 +650,7 @@ function ReturnsList(props: {
             Recent
           </Toggle>
         </ToggleGroup>
-        {listMode === "projects" && groups.length > 1 ? (
+        {listMode === "projects" && groups.length > 1 && !searching ? (
           <button
             type="button"
             className="flex items-center gap-1.5 rounded px-1 py-0.5 text-muted-foreground text-xs outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
@@ -690,17 +696,21 @@ function ReturnsList(props: {
         ))
       )}
       {deck.older.length > 0 ? (
-        <ListSection title={`Earlier (${deck.older.length})`} folded>
+        <ListSection title={`Earlier (${deck.older.length})`} folded open={searching || undefined}>
           {deck.older.map((item) => row(item))}
         </ListSection>
       ) : null}
       {deck.shipped.length > 0 ? (
-        <ListSection title={`Done this week (${deck.shipped.length})`} folded>
+        <ListSection
+          title={`Done this week (${deck.shipped.length})`}
+          folded
+          open={searching || undefined}
+        >
           {deck.shipped.map((item) => row(item))}
         </ListSection>
       ) : null}
       {deck.letGo.length > 0 ? (
-        <ListSection title={`Let go (${deck.letGo.length})`} folded>
+        <ListSection title={`Let go (${deck.letGo.length})`} folded open={searching || undefined}>
           {deck.letGo.map((item) => row(item))}
         </ListSection>
       ) : null}
