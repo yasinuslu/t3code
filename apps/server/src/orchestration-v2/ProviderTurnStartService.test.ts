@@ -154,6 +154,8 @@ it("does not commit running state when inherited background routing cannot be re
 });
 
 it("moves a thread whose worktree and branch are gone to the project root", async () => {
+  // Only a husk is left: a dev server still running there rewrote its caches
+  // after `git worktree remove`, so the folder exists without its .git link.
   const threadId = ThreadId.make("thread_provider_turn_start_worktree_gone");
   const runId = RunId.make("run_provider_turn_start_worktree_gone");
   const attemptId = RunAttemptId.make("attempt_provider_turn_start_worktree_gone");
@@ -205,7 +207,9 @@ it("moves a thread whose worktree and branch are gone to the project root", asyn
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({}),
         Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
         IdAllocator.layer,
-        Layer.succeed(FileSystem.FileSystem, { exists: () => Effect.succeed(false) } as never),
+        Layer.succeed(FileSystem.FileSystem, {
+          exists: (path: string) => Effect.succeed(!path.endsWith("/.git")),
+        } as never),
         Layer.mock(GitWorkflow.GitWorkflowService)({
           pruneWorktrees: () => Effect.void,
           // The merged branch was deleted, so git cannot check it out again.

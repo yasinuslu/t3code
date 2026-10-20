@@ -460,12 +460,14 @@ export const layer: Layer.Layer<
       // A worktree folder can disappear behind the thread's back, typically
       // removed after its branch merged. Recreate it from the branch when git
       // can; otherwise move the thread to the project root and say so in its
-      // timeline, so the next message runs instead of failing to open.
+      // timeline, so the next message runs instead of failing to open. A
+      // folder without its `.git` link is a removed worktree too: a dev
+      // server still running in it rewrites its caches after the removal.
       let thread = projection.thread;
       const { worktreePath, branch } = projection.thread;
       if (worktreePath !== null) {
         const exists = yield* fileSystem
-          .exists(worktreePath)
+          .exists(`${worktreePath}/.git`)
           .pipe(Effect.orElseSucceed(() => true));
         const project = exists
           ? undefined
@@ -802,8 +804,45 @@ export const layer: Layer.Layer<
           createdAt,
         });
         effectiveHandoffs = [handoff, ...effectiveHandoffs];
+        // One line in the timeline says why the agent may have lost detail.
+        // It follows the worktree notice when this start also wrote one.
+        const notice: OrchestrationV2TurnItem = {
+          id: idAllocator.derive.runSignalTurnItem({ runId, signal: "provider-resume-fallback" }),
+          threadId: projection.thread.id,
+          runId,
+          nodeId: run.rootNodeId,
+          providerThreadId: providerThread.id,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal:
+            Math.max(
+              0,
+              ...projection.turnItems
+                .filter((item) => item.runId === runId)
+                .map((item) => item.ordinal),
+            ) + (thread === projection.thread ? 1 : 2),
+          status: "completed",
+          title: "Started a fresh session",
+          startedAt: createdAt,
+          completedAt: createdAt,
+          updatedAt: createdAt,
+          type: "system_notice",
+          message:
+            "The provider could not reopen this thread's session, so it continues in a fresh one that starts from a summary of the conversation.",
+        };
         yield* eventSink.write({
           events: [
+            {
+              id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+              type: "turn-item.updated",
+              threadId: projection.thread.id,
+              runId: run.id,
+              ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
+              providerInstanceId: run.providerInstanceId,
+              occurredAt: createdAt,
+              payload: notice,
+            },
             {
               id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
               type: "context-handoff.updated",
