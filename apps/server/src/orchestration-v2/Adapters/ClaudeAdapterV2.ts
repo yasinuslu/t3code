@@ -7411,9 +7411,9 @@ export function makeClaudeAdapterV2(
                   configDir: sessionConfigDir,
                   cwd,
                   sessionId: nativeThreadId,
-                  searchConfigDirs: adapterOptions.transcriptSearchConfigDirs
-                    ? yield* adapterOptions.transcriptSearchConfigDirs
-                    : [],
+                  ...(adapterOptions.transcriptSearchConfigDirs
+                    ? { searchConfigDirs: adapterOptions.transcriptSearchConfigDirs }
+                    : {}),
                 }).pipe(
                   Effect.provideService(FileSystem.FileSystem, fileSystem),
                   Effect.provideService(Path.Path, path),
@@ -7844,6 +7844,10 @@ export function makeClaudeAdapterV2(
             }
             return false;
           }),
+          needsResume: (providerThread) =>
+            Ref.get(lostNativeThreads).pipe(
+              Effect.map((lost) => lost.has(providerThread.nativeThreadRef?.nativeId ?? "")),
+            ),
           hasPendingBackgroundWorkForThread: (providerThread) =>
             Effect.gen(function* () {
               const nativeThreadId = providerThread.nativeThreadRef?.nativeId;

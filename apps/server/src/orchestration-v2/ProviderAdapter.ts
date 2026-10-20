@@ -532,6 +532,12 @@ export interface ProviderAdapterV2SessionRuntime {
     readonly modelSelection?: ModelSelection;
     readonly runtimePolicy?: ProviderAdapterV2RuntimePolicy;
   }) => Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapterV2Error>;
+  /**
+   * True when a provider thread the session manager already loaded must go
+   * through `resumeThread` again, for example because its native session was
+   * lost and the resume has to fail into a fresh session.
+   */
+  readonly needsResume?: (providerThread: OrchestrationV2ProviderThread) => Effect.Effect<boolean>;
   /** False means the native protocol explicitly does not support history injection. */
   readonly injectHistory?: (
     input: ProviderAdapterV2HistoricalContext & {

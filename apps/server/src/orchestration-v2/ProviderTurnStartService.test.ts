@@ -153,9 +153,7 @@ it("does not commit running state when inherited background routing cannot be re
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });
 
-it("moves a thread whose worktree and branch are gone to the project root", async () => {
-  // Only a husk is left: a dev server still running there rewrote its caches
-  // after `git worktree remove`, so the folder exists without its .git link.
+const runWorktreeHuskStart = (branch: string | null) => {
   const threadId = ThreadId.make("thread_provider_turn_start_worktree_gone");
   const runId = RunId.make("run_provider_turn_start_worktree_gone");
   const attemptId = RunAttemptId.make("attempt_provider_turn_start_worktree_gone");
@@ -168,7 +166,7 @@ it("moves a thread whose worktree and branch are gone to the project root", asyn
     thread: {
       id: threadId,
       projectId: ProjectId.make("project_provider_turn_start_worktree_gone"),
-      branch: "feature/merged",
+      branch,
       worktreePath: "/tmp/removed-provider-turn-start-worktree",
     },
     runs: [
@@ -234,25 +232,43 @@ it("moves a thread whose worktree and branch are gone to the project root", asyn
     ),
   );
 
-  await Effect.gen(function* () {
+  const run = Effect.gen(function* () {
     yield* (yield* ProviderTurnStart.ProviderTurnStartServiceV2)
       .start({ threadId, runId })
       .pipe(Effect.exit);
-
-    expect(release).toHaveBeenCalledWith(expect.objectContaining({ providerSessionId }));
-    const rebound = written.find((event) => event.type === "thread.metadata-updated");
-    expect(rebound?.payload).toMatchObject({ worktreePath: null, branch: null });
-    const notice = written.find(
-      (event) => event.type === "turn-item.updated" && event.payload.type === "system_notice",
-    );
-    expect(notice?.payload).toMatchObject({
-      message: expect.stringContaining("Worktree removed; running in project root"),
-    });
-    // The session opens in the project root, not the removed folder.
-    expect(resolve).toHaveBeenCalledWith(
-      expect.objectContaining({ thread: expect.objectContaining({ worktreePath: null }) }),
-    );
   }).pipe(Effect.provide(layer), Effect.runPromise);
+  return { run, written, release, resolve, providerSessionId };
+};
+
+it("moves a thread whose worktree and branch are gone to the project root", async () => {
+  // Only a husk is left: a dev server still running there rewrote its caches
+  // after `git worktree remove`, so the folder exists without its .git link.
+  const { run, written, release, resolve, providerSessionId } =
+    runWorktreeHuskStart("feature/merged");
+  await run;
+
+  expect(release).toHaveBeenCalledWith(expect.objectContaining({ providerSessionId }));
+  const rebound = written.find((event) => event.type === "thread.metadata-updated");
+  expect(rebound?.payload).toMatchObject({ worktreePath: null, branch: null });
+  const notice = written.find(
+    (event) => event.type === "turn-item.updated" && event.payload.type === "system_notice",
+  );
+  expect(notice?.payload).toMatchObject({
+    message: expect.stringContaining("Worktree removed; running in project root"),
+  });
+  // The session opens in the project root, not the removed folder.
+  expect(resolve).toHaveBeenCalledWith(
+    expect.objectContaining({ thread: expect.objectContaining({ worktreePath: null }) }),
+  );
+});
+
+it("keeps a folder without a branch, which never had a .git link", async () => {
+  // Scratch threads run in plain folders that are not git checkouts.
+  const { run, written, release } = runWorktreeHuskStart(null);
+  await run;
+
+  expect(release).not.toHaveBeenCalled();
+  expect(written.find((event) => event.type === "thread.metadata-updated")).toBeUndefined();
 });
 
 function makeLocalCommandHarness(input: {

@@ -69,7 +69,7 @@ describe("ensureClaudeResumeTranscript", () => {
         configDir: other,
         cwd: "/work/repo",
         sessionId: SESSION,
-        searchConfigDirs: [writer],
+        searchConfigDirs: Effect.succeed([writer]),
       });
       expect(status).toEqual({
         _tag: "copied",
@@ -86,9 +86,54 @@ describe("ensureClaudeResumeTranscript", () => {
         configDir: home,
         cwd: "/work/repo",
         sessionId: SESSION,
-        searchConfigDirs: ["/nonexistent/claude"],
+        searchConfigDirs: Effect.succeed(["/nonexistent/claude"]),
       });
       expect(status._tag).toBe("missing");
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+  it.effect("copies the most recently written transcript when several exist", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped();
+      yield* writeTranscript(home, "/work/old");
+      yield* writeTranscript(home, "/work/new");
+      const newer = path.join(
+        home,
+        "projects",
+        claudeProjectDirName("/work/new"),
+        `${SESSION}.jsonl`,
+      );
+      yield* fs.writeFileString(newer, '{"type":"user"}\n{"type":"assistant"}\n');
+      yield* fs.utimes(
+        path.join(home, "projects", claudeProjectDirName("/work/old"), `${SESSION}.jsonl`),
+        1,
+        1,
+      );
+      const status = yield* ensureClaudeResumeTranscript({
+        configDir: home,
+        cwd: "/work/repo",
+        sessionId: SESSION,
+      });
+      expect(status).toEqual({ _tag: "copied", from: newer });
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("looks under the real path of a symlinked cwd, like the CLI", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped();
+      const real = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
+      const link = path.join(home, "link");
+      yield* fs.symlink(real, link);
+      yield* writeTranscript(home, real);
+      const status = yield* ensureClaudeResumeTranscript({
+        configDir: home,
+        cwd: link,
+        sessionId: SESSION,
+      });
+      expect(status._tag).toBe("present");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

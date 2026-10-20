@@ -461,14 +461,17 @@ export const layer: Layer.Layer<
       // removed after its branch merged. Recreate it from the branch when git
       // can; otherwise move the thread to the project root and say so in its
       // timeline, so the next message runs instead of failing to open. A
-      // folder without its `.git` link is a removed worktree too: a dev
-      // server still running in it rewrites its caches after the removal.
+      // branch worktree without its `.git` link is removed too: a dev server
+      // still running in it rewrites its caches after the removal. Folders
+      // without a branch (Scratch, plain folders) never had one.
       let thread = projection.thread;
       const { worktreePath, branch } = projection.thread;
       if (worktreePath !== null) {
-        const exists = yield* fileSystem
-          .exists(`${worktreePath}/.git`)
-          .pipe(Effect.orElseSucceed(() => true));
+        const pathExists = (path: string) =>
+          fileSystem.exists(path).pipe(Effect.orElseSucceed(() => true));
+        const exists =
+          (yield* pathExists(worktreePath)) &&
+          (branch === null || (yield* pathExists(`${worktreePath}/.git`)));
         const project = exists
           ? undefined
           : yield* projects.getById(projection.thread.projectId).pipe(
@@ -828,8 +831,9 @@ export const layer: Layer.Layer<
           completedAt: createdAt,
           updatedAt: createdAt,
           type: "system_notice",
-          message:
-            "The provider could not reopen this thread's session, so it continues in a fresh one that starts from a summary of the conversation.",
+          message: uncertainDelivery
+            ? "The provider's session may be missing earlier context, so this thread continues in a fresh one that starts from a summary of the conversation."
+            : "The provider could not reopen this thread's session, so it continues in a fresh one that starts from a summary of the conversation.",
         };
         yield* eventSink.write({
           events: [
