@@ -37,10 +37,12 @@ what you sent it from Grow), where it stands, and what happened. Then one decisi
 **What if...** asks for a change in the same thread, and **Let go** takes it off the list. Each
 decision waits five seconds with **Undo**. Anything an agent is still working on, like a What
 if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
-what you let go stay findable below, and a let-go item can be brought back. Keys: `j`/`k` move,
-`s` ship, `r` reply, `d` done, `w` what if, `x` let go, `a` asks again for proof, `p` play, `o` opens the conversation (Esc goes back, even from its message box)
-right in Grow (`Esc` goes back),
-`u` undo, `/` search.
+what you let go stay findable below, and a let-go item can be brought back. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
+previous and next item (the arrows and `j`/`k` do too). `s` ship, `d` done, `w` what if (or
+reply), `x` let go, `a` asks again for proof, `z` undo. `c` opens the conversation right in
+Grow, `v` shows the live preview, `f` finds (`/` too), `g` opens every project in the list, and
+`t` talks to the manager. `r` switches to the next profile, `Shift+r` to the previous one.
+`Esc` goes back from the conversation or the manager, even from its message box.
 
 Agents keep a status card at the top of their thread current with
 the `thread_status_update` tool; its screenshots are stored with the thread, so they survive a

@@ -1,9 +1,10 @@
 /**
- * The profile chords (Ctrl+Option+Q, Shift to go back): step the code profile
- * in view, and the manager with it, through the profiles the servers report,
- * wrapping at both ends like the thumb buttons. A short-lived strip names the
- * profiles with the new one lit, so a press never goes unseen. App-global, so
- * it works from Grow, a thread or the manager.
+ * The profile chord (Option+R on a Mac, Alt+R elsewhere, off while a terminal has focus; Shift goes back): steps
+ * the code profile in view, and the manager with it, through the profiles the
+ * servers report, wrapping at both ends like the thumb buttons. In Grow the bare
+ * R key does the same (see grow.keys). A short-lived strip names the profiles
+ * with the new one lit, so a press never goes unseen. App-global, so the chord
+ * works from Grow, a thread or the manager.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";

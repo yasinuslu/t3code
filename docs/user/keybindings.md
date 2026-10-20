@@ -46,6 +46,13 @@ any screen, terminal included, and pressed again goes back to where you were. In
 T3 Code forward with the manager open. Rebind it under **Manager: Toggle**; the desktop app takes
 the new chord system-wide too.
 
+## Profiles
+
+`alt+r` (Option+R on a Mac) switches the code profile in view, and its manager with it, to the
+next one; `alt+shift+r` goes back. Grow takes a bare `r` and `shift+r` for the same, and its other
+keys are listed in [the manager guide](./manager.md#grow). Rebind the chords in
+**Settings → Keybindings**.
+
 ## Copy pull request references
 
 With a PR open in the right panel or on the Pull Requests page, use `mod+shift+c`

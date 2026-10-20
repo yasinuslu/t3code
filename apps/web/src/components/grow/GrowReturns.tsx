@@ -66,6 +66,7 @@ import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
 import { growKeyAction } from "./grow.keys";
+import { stepProfile } from "../ProfileShortcuts";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
 import { Button } from "../ui/button";
@@ -144,7 +145,7 @@ const select = (key: string | null) => {
 const managerComposer = () =>
   document.querySelector<HTMLElement>('[data-grow-manager] [contenteditable="true"]');
 
-/** Shows the manager's chat in place of the item (M), or focuses its message box when it shows. */
+/** Shows the manager's chat in place of the item (T), or focuses its message box when it shows. */
 function showManager() {
   if (useReturnsStore.getState().manager) {
     managerComposer()?.focus();
@@ -155,7 +156,7 @@ function showManager() {
   useReturnsStore.setState({ manager: true, thread: null, playing: null, phoneView: "card" });
 }
 
-/** The manager shortcut over Grow: the same as M, and again (like Esc) to go back. */
+/** The manager shortcut over Grow: the same as T, and again (like Esc) to go back. */
 const toggleManagerPane = () =>
   useReturnsStore.getState().manager ? hideManager() : showManager();
 
@@ -362,6 +363,9 @@ export function GrowReturns(props: {
           break;
         case "manager":
           showManager();
+          break;
+        case "profile":
+          stepProfile(action.direction);
           break;
         case "toggleProjects":
           // Everything with a match is already open while searching.
@@ -571,7 +575,7 @@ function ReturnsHeader(props: {
             size="sm"
             data-grow-search=""
             aria-label="Search"
-            placeholder="Search  /"
+            placeholder="Search  F"
             value={props.query}
             onChange={(event) => useReturnsStore.setState({ query: event.currentTarget.value })}
             onKeyDown={(event) => {
@@ -671,7 +675,7 @@ function ReturnsList(props: {
               {expandAll ? "Only this project" : "Expand all"}
             </span>
             <span className="hidden md:@min-[15.5rem]:contents">
-              <Kbd>E</Kbd>
+              <Kbd>G</Kbd>
             </span>
           </button>
         ) : null}
@@ -854,7 +858,7 @@ function ProofMark(props: { readonly item: GrowReturn }) {
 
 /**
  * The manager, pinned above the list in every view and search. It is not an
- * item: j and k step past it, and M (or a click) brings it up.
+ * item: Q and E step past it, and T (or a click) brings it up.
  */
 function ManagerRow(props: { readonly open: boolean }) {
   const profile = useManagerProfile();
@@ -892,7 +896,7 @@ function ManagerRow(props: { readonly open: boolean }) {
         <span aria-label="Manager is working" className="size-1.5 shrink-0 rounded-full bg-info" />
       ) : null}
       <span className="hidden md:contents">
-        <Kbd>M</Kbd>
+        <Kbd>T</Kbd>
       </span>
     </button>
   );
@@ -1275,7 +1279,7 @@ function Story(props: {
         >
           <MessageSquareIcon />
           Whole conversation
-          <Kbd>O</Kbd>
+          <Kbd>C</Kbd>
         </Button>
       )}
     </div>
@@ -1612,7 +1616,7 @@ function Visual(props: {
             </Toggle>
           ) : null}
         </ToggleGroup>
-        {item.playUrl ? <Kbd>P</Kbd> : null}
+        {item.playUrl ? <Kbd>V</Kbd> : null}
         <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
           {live ? host : images.length > 1 ? `${index + 1} of ${images.length}` : null}
         </span>
@@ -1853,7 +1857,7 @@ function Choices(props: {
           label="Answer"
           hint="In the thread"
           icon={<MessageSquareIcon />}
-          keyHint={props.conversationShown ? undefined : "O"}
+          keyHint={props.conversationShown ? undefined : "C"}
           primary
           wide={wide}
           stacked={stacked}
@@ -1883,7 +1887,7 @@ function Choices(props: {
             label="Reply"
             hint="Answer its question"
             icon={<ReplyIcon />}
-            keyHint="R"
+            keyHint="W"
             primary
             wide={wide}
             stacked={stacked}

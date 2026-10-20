@@ -13,7 +13,8 @@ export type GrowKeyAction =
   | { readonly type: "closeThread" }
   | { readonly type: "toggleProjects" }
   | { readonly type: "play" }
-  | { readonly type: "manager" };
+  | { readonly type: "manager" }
+  | { readonly type: "profile"; readonly direction: 1 | -1 };
 
 export interface GrowKeyState {
   /** A conversation is showing in place of the deck. */
@@ -28,48 +29,56 @@ export interface GrowKeyState {
 /**
  * What a key does on the Grow screen. Pure, so each key has a test; the screen
  * only supplies whether a conversation is showing and which item is current.
- * While a conversation shows, the deck's keys stay off and `o` goes back.
- * `m` brings up the manager from anywhere on the screen; it is pinned above
- * the list and never one of the items `j` and `k` step through, which take
- * the screen back to the deck.
+ *
+ * Every key sits under the left hand, so the right one stays on the mouse:
+ *
+ *   Q / E  previous / next item      S ship      D done     W what if (or reply)
+ *   X settle (off the list)          Z undo      A ask for proof
+ *   C the conversation               V the live preview
+ *   F find                           G expand every project
+ *   T talk to the manager            R next profile (Shift+R: previous)
+ *
+ * The arrows and J / K step as well, for hands that already know them. While a
+ * conversation shows, the deck's keys stay off and `c` goes back. The manager is
+ * pinned above the list and never one of the items Q and E step through, which
+ * take the screen back to the deck.
  */
 export function growKeyAction(
   event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "isComposing">,
   state: GrowKeyState,
 ): GrowKeyAction | null {
   if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return null;
-  if (event.key === "m") return { type: "manager" };
-  if (state.managerOpen) {
-    if (event.key === "j" || event.key === "ArrowDown") return { type: "step", direction: 1 };
-    if (event.key === "k" || event.key === "ArrowUp") return { type: "step", direction: -1 };
-    return null;
-  }
-  if (state.conversationOpen) return event.key === "o" ? { type: "closeThread" } : null;
-  switch (event.key) {
-    case "j":
-    case "ArrowDown":
-      return { type: "step", direction: 1 };
-    case "k":
-    case "ArrowUp":
-      return { type: "step", direction: -1 };
-    case "u":
+  const key = event.key.toLowerCase();
+  if (key === "r") return { type: "profile", direction: event.key === "R" ? -1 : 1 };
+  if (key === "t") return { type: "manager" };
+  if (state.managerOpen) return stepAction(key);
+  if (state.conversationOpen) return key === "c" ? { type: "closeThread" } : null;
+  const step = stepAction(key);
+  if (step !== null) return step;
+  switch (key) {
+    case "z":
       return { type: "undo" };
+    case "f":
     case "/":
       return { type: "search" };
-    case "e":
+    case "g":
       return { type: "toggleProjects" };
   }
   const { item } = state;
   if (item === null) return null;
   const open = item.kind === "return" || item.kind === "urgent";
-  if (event.key === "s" && item.kind === "return" && item.shippable) return { type: "ship" };
-  if (event.key === "d" && item.kind === "return") return { type: "done" };
-  if ((event.key === "w" || event.key === "r") && open) return { type: "whatIf" };
-  if (event.key === "x" && open) return { type: "letGo" };
-  if (event.key === "a" && open && !item.thread.statusProof) return { type: "askProof" };
-  if (event.key === "o" && !state.conversationShown) return { type: "openThread" };
-  if ((event.key === "p" || event.key === "Enter") && item.playUrl !== null) {
-    return { type: "play" };
-  }
+  if (key === "s" && item.kind === "return" && item.shippable) return { type: "ship" };
+  if (key === "d" && item.kind === "return") return { type: "done" };
+  if (key === "w" && open) return { type: "whatIf" };
+  if (key === "x" && open) return { type: "letGo" };
+  if (key === "a" && open && !item.thread.statusProof) return { type: "askProof" };
+  if (key === "c" && !state.conversationShown) return { type: "openThread" };
+  if ((key === "v" || key === "enter") && item.playUrl !== null) return { type: "play" };
+  return null;
+}
+
+function stepAction(key: string): GrowKeyAction | null {
+  if (key === "e" || key === "j" || key === "arrowdown") return { type: "step", direction: 1 };
+  if (key === "q" || key === "k" || key === "arrowup") return { type: "step", direction: -1 };
   return null;
 }
