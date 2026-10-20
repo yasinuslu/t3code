@@ -145,7 +145,6 @@ import {
   Fragment,
   lazy,
   memo,
-  type ReactNode,
   type SetStateAction,
   Suspense,
   useCallback,
@@ -828,8 +827,6 @@ type ChatViewProps =
       autoFocusComposer?: boolean;
       /** Embedded in another view (Grow): no right panel and none of its toggles. */
       embedded?: boolean;
-      /** Embedded: keep the thread's details card up, with this above it. */
-      detailsTop?: ReactNode;
       routeKind: "server";
       draftId?: never;
     }
@@ -841,7 +838,6 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       autoFocusComposer?: boolean;
       embedded?: boolean;
-      detailsTop?: never;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -1583,7 +1579,6 @@ export default function ChatView(props: ChatViewProps) {
     forceExpandedMobileComposer = false,
     autoFocusComposer = true,
     embedded = false,
-    detailsTop,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
@@ -10963,7 +10958,6 @@ export default function ChatView(props: ChatViewProps) {
     ) : null
   ) : null;
   const threadDetailsPanelProps: ThreadDetailsPanelProps = {
-    ...(embedded && detailsTop !== undefined ? { pinned: true, top: detailsTop } : {}),
     anchor: threadPanelPopoverAnchorRef,
     handle: threadPanelPopoverHandle,
     onPresentationChange: setThreadPanelPresentation,

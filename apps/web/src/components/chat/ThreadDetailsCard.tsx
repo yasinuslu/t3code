@@ -17,18 +17,12 @@ export function ThreadDetailsCard({
   anchor,
   handle,
   onPresentationChange,
-  pinned = false,
-  top,
   children,
 }: {
   threadRef: ScopedThreadRef;
   anchor: RefObject<Element | null>;
   handle: ReturnType<typeof PopoverCreateHandle>;
   onPresentationChange: (presentation: ThreadPanelPresentation) => void;
-  /** Open whenever there is room for it inline, whatever the user toggled (Grow). */
-  pinned?: boolean;
-  /** Content above the details, in the same card (Grow's choices). */
-  top?: ReactNode;
   children: (density: "full" | "compact" | "essential") => ReactNode;
 }) {
   const canvas = useChatCanvas();
@@ -48,10 +42,9 @@ export function ThreadDetailsCard({
       })
     : null;
   const mode = placement ? "inline" : "popover";
-  const inlineToggled = useRightPanelStore((state) =>
+  const inlineOpen = useRightPanelStore((state) =>
     selectThreadPanelOpen(state.threadPanelVisibilityByThreadKey, threadRef, "inline"),
   );
-  const inlineOpen = inlineToggled || pinned;
   const popoverOpen = useRightPanelStore((state) =>
     selectThreadPanelOpen(state.threadPanelVisibilityByThreadKey, threadRef, "popover"),
   );
@@ -118,10 +111,7 @@ export function ThreadDetailsCard({
       data-thread-details-card
     >
       <ScrollArea scrollFade className="min-h-0">
-        <div ref={setContentElement}>
-          {top}
-          {children(density)}
-        </div>
+        <div ref={setContentElement}>{children(density)}</div>
       </ScrollArea>
     </div>
   );
