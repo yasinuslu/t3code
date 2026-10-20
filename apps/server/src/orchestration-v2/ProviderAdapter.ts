@@ -48,6 +48,8 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   cwd: Schema.NullOr(Schema.String),
+  /** The project's own root, also when `cwd` is one of its worktrees. */
+  projectRoot: Schema.optional(Schema.String),
   approvalPolicy: Schema.optional(Schema.Unknown),
   sandboxPolicy: Schema.optional(Schema.Unknown),
   reasoningEffort: Schema.optional(Schema.String),
@@ -530,6 +532,12 @@ export interface ProviderAdapterV2SessionRuntime {
     readonly modelSelection?: ModelSelection;
     readonly runtimePolicy?: ProviderAdapterV2RuntimePolicy;
   }) => Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapterV2Error>;
+  /**
+   * True when a provider thread the session manager already loaded must go
+   * through `resumeThread` again, for example because its native session was
+   * lost and the resume has to fail into a fresh session.
+   */
+  readonly needsResume?: (providerThread: OrchestrationV2ProviderThread) => Effect.Effect<boolean>;
   /** False means the native protocol explicitly does not support history injection. */
   readonly injectHistory?: (
     input: ProviderAdapterV2HistoricalContext & {

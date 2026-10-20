@@ -163,7 +163,13 @@ describe("isAutoSettlementCandidate", () => {
     ).toBe(true);
   });
 
-  it("keeps snoozed threads parked until they wake early on error or completion", () => {
+  it("never settles a thread whose latest run failed", () => {
+    expect(
+      ThreadSettlementService.isAutoSettlementCandidate(shell({ status: "failed" }), NOW_MS),
+    ).toBe(false);
+  });
+
+  it("keeps snoozed threads parked until they wake early on completion", () => {
     const snoozed = shell({
       snoozedUntil: at(60 * 60 * 1_000),
       snoozedAt: at(-60 * 60 * 1_000),
@@ -174,7 +180,7 @@ describe("isAutoSettlementCandidate", () => {
         shell({ ...snoozed, status: "failed", latestRunCompletedAt: at(-30 * 60 * 1_000) }),
         NOW_MS,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
         shell({ ...snoozed, latestRunCompletedAt: at(-30 * 60 * 1_000) }),

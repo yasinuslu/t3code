@@ -231,6 +231,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           onUsageLimits: (update) => snapshot.applyUsageLimits(update),
           onCommandsChanged,
           ...(configDirResolver ? { configDirResolver } : {}),
+          ...(Option.isSome(codeProfiles)
+            ? {
+                transcriptSearchConfigDirs: codeProfiles.value.claudeConfigDirs.pipe(
+                  Effect.map((dirs) => [configDir, ...dirs.map((entry) => entry.dir)]),
+                ),
+              }
+            : {}),
         },
       ).pipe(
         Effect.mapError(
