@@ -41,6 +41,7 @@ import { HomeOverlay } from "./home/HomeOverlay";
 import { ManagerRoute } from "./brainstorm/ManagerRoute";
 import { setHomeOverlayEnabled, useHomeOverlayStore } from "../homeOverlayStore";
 import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
+import { ProfileShortcuts } from "./ProfileShortcuts";
 import { PhoneTabBar } from "./PhoneTabBar";
 import LegacyThreadSidebar from "./LegacySidebar";
 import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
@@ -364,6 +365,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             <ModeSwitch />
             <PhoneTabBar />
             <ModeShortcuts />
+            <ProfileShortcuts />
           </>
         ) : null}
         <NavigationHistoryShortcuts />

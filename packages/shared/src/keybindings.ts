@@ -59,6 +59,12 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // chords use Ctrl+Space), GNOME, Windows, terminals and Zed, so the desktop
   // app also takes it system-wide.
   { key: "ctrl+alt+space", command: "manager.toggle" },
+  // Steps the code profile in view (yu, sn, ...) and its manager with it; Shift steps
+  // back. Q is the letter nearest the Ctrl+Option the left hand already holds, and
+  // the chord is free on macOS, GNOME, terminals, Zed and in T3. The physical key
+  // counts, so Option's @ on a Turkish layout does not get in the way.
+  { key: "ctrl+alt+q", command: "profile.next" },
+  { key: "ctrl+alt+shift+q", command: "profile.previous" },
   // The two screens. `ctrl` rather than `mod`, like the panel chords above, so the
   // chord is the same physical keys everywhere; 0 switches between Grow and T3.
   { key: "ctrl+alt+1", command: "mode.grow" },

@@ -85,6 +85,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "projectSearch.toggle",
   "usage.open",
   "manager.toggle",
+  "profile.next",
+  "profile.previous",
   "mode.grow",
   "mode.normal",
   "mode.cycle",
