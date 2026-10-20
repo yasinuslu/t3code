@@ -72,6 +72,24 @@ describe("growKeyAction", () => {
     expect(growKeyAction(key("s", { isComposing: true }), deck())).toBeNull();
   });
 
+  it("brings up the manager with m from the deck, a conversation or the manager itself", () => {
+    expect(growKeyAction(key("m"), deck())).toEqual({ type: "manager" });
+    expect(growKeyAction(key("m"), deck(null))).toEqual({ type: "manager" });
+    expect(growKeyAction(key("m"), { conversationOpen: true, item: returnItem() })).toEqual({
+      type: "manager",
+    });
+    expect(growKeyAction(key("m", { ctrlKey: true }), deck())).toBeNull();
+  });
+
+  it("keeps the item's keys off while the manager shows, and j and k go back to the deck", () => {
+    const manager: GrowKeyState = { conversationOpen: false, managerOpen: true, item: returnItem() };
+    expect(growKeyAction(key("j"), manager)).toEqual({ type: "step", direction: 1 });
+    expect(growKeyAction(key("k"), manager)).toEqual({ type: "step", direction: -1 });
+    for (const value of ["s", "d", "w", "x", "a", "o", "p", "Enter", "u", "e"]) {
+      expect(growKeyAction(key(value), manager)).toBeNull();
+    }
+  });
+
   it("keeps the deck's keys off while a conversation shows, and o goes back", () => {
     const conversation: GrowKeyState = { conversationOpen: true, item: returnItem() };
     expect(growKeyAction(key("o"), conversation)).toEqual({ type: "closeThread" });
