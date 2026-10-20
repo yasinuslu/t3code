@@ -828,6 +828,10 @@ type ChatViewProps =
       autoFocusComposer?: boolean;
       /** Embedded in another view (Grow): no right panel and none of its toggles. */
       embedded?: boolean;
+      /** False: leave out the status report above the timeline, for a view that shows it beside the chat. */
+      statusReport?: boolean;
+      /** False: typed letters stay with the host view's own keys instead of landing in the composer. */
+      typeToFocusComposer?: boolean;
       routeKind: "server";
       draftId?: never;
     }
@@ -839,6 +843,8 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       autoFocusComposer?: boolean;
       embedded?: boolean;
+      statusReport?: boolean;
+      typeToFocusComposer?: boolean;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -1580,6 +1586,8 @@ export default function ChatView(props: ChatViewProps) {
     forceExpandedMobileComposer = false,
     autoFocusComposer = true,
     embedded = false,
+    statusReport = true,
+    typeToFocusComposer = true,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
@@ -7810,6 +7818,7 @@ export default function ChatView(props: ChatViewProps) {
       if (
         !shortcutContext.terminalFocus &&
         !shortcutContext.modelPickerOpen &&
+        typeToFocusComposer &&
         shouldTypeToFocusComposer(event)
       ) {
         if (composerRef.current?.insertTextAtEnd(event.key)) {
@@ -8104,6 +8113,7 @@ export default function ChatView(props: ChatViewProps) {
     settleThread,
     supportsPinning,
     supportsSettlement,
+    typeToFocusComposer,
     confirmAndUnpinThread,
     copyActiveThreadReference,
     getShortcutContext,
@@ -11199,7 +11209,9 @@ export default function ChatView(props: ChatViewProps) {
             />
           ) : null}
         </header>
-        {activeThreadShell ? <ThreadStatusPanel thread={activeThreadShell} /> : null}
+        {activeThreadShell && statusReport ? (
+          <ThreadStatusPanel thread={activeThreadShell} />
+        ) : null}
 
         {/* Main content area with optional plan sidebar */}
         <div className="relative flex min-h-0 min-w-0 flex-1">
