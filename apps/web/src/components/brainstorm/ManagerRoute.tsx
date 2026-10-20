@@ -9,13 +9,9 @@ import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-
 import { useEffect, useRef, useState } from "react";
 
 import { useIsManagerThread } from "../../brainstormStore";
-import {
-  closeHomeOverlay,
-  holdHomeOverlayOpen,
-  openHomeOverlay,
-  useHomeOverlayStore,
-} from "../../homeOverlayStore";
+import { closeHomeOverlay, holdHomeOverlayOpen, useHomeOverlayStore } from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
+import { returnFromManager } from "../../lib/goToManager";
 import { useManagerViewStore } from "../../managerViewStore";
 import { useThreadShell } from "../../state/entities";
 import { resolveThreadRouteRef } from "../../threadRoutes";
@@ -64,14 +60,7 @@ export function ManagerRoute() {
     if (request !== "hide") return;
     const { returnTo } = useManagerViewStore.getState();
     useManagerViewStore.setState({ request: null, returnTo: null });
-    // Grow goes back up once the page under it is there: Home closes on a path change.
-    void router
-      .navigate({ href: returnTo?.href ?? "/" })
-      .then(nextFrame)
-      .then(nextFrame)
-      .then(() => {
-        if (returnTo?.grow) openHomeOverlay();
-      });
+    void returnFromManager(returnTo, (href) => router.navigate({ href }));
   }, [request, router]);
 
   // Finding the manager thread may create it, so it runs only when asked for or on screen.

@@ -1,5 +1,6 @@
-import { useHomeOverlayStore } from "../homeOverlayStore";
+import { holdHomeOverlayOpen, openHomeOverlay, useHomeOverlayStore } from "../homeOverlayStore";
 import {
+  type ManagerReturn,
   requestManagerHidden,
   requestManagerShown,
   useManagerViewStore,
@@ -52,10 +53,41 @@ export async function openManager(): Promise<void> {
   requestManagerShown();
 }
 
+// Set while a way back to Grow is under way, when the route still shows the manager.
+let returning = false;
+
 /** The manager shortcut: shows the manager, or goes back to where it was opened from. */
 export function toggleManager(): void {
+  // A second press before the page is back would otherwise ask for the manager again.
+  if (returning) return;
   // Under Grow the manager is not what shows, so the shortcut brings it up.
   if (useManagerViewStore.getState().shown && !useHomeOverlayStore.getState().open) {
     requestManagerHidden();
   } else void openManager();
+}
+
+/**
+ * Hides the manager by going back to where it was opened from. Grow comes back
+ * at once and is held over the page while that changes underneath: waiting for
+ * the page to load first left the manager on screen, unresponsive, for as long
+ * as that took.
+ */
+export async function returnFromManager(
+  returnTo: ManagerReturn | null,
+  navigate: (href: string) => Promise<unknown>,
+): Promise<void> {
+  const release = returnTo?.grow ? holdHomeOverlayOpen() : null;
+  returning = returnTo?.grow === true;
+  if (returnTo?.grow) openHomeOverlay();
+  try {
+    await navigate(returnTo?.href ?? "/");
+    // Home closes on a path change in an effect that runs a frame after it.
+    await nextFrame();
+    await nextFrame();
+  } catch {
+    // The manager stays where it is; Grow, if it was asked for, is still up.
+  } finally {
+    returning = false;
+    release?.();
+  }
 }

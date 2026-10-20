@@ -6,13 +6,19 @@
  */
 import { create } from "zustand";
 
+/** Where hiding the manager goes back to: the page and whether Grow was over it. */
+export interface ManagerReturn {
+  readonly href: string;
+  readonly grow: boolean;
+}
+
 interface ManagerViewStore {
   /** Whether the route shows a manager thread. Kept current by `ManagerRoute`. */
   readonly shown: boolean;
   /** A pending request from the shortcut, the app bar or the sidebar row. */
   readonly request: "show" | "hide" | null;
-  /** Where hiding the manager goes back to: the page and whether Grow was over it. */
-  readonly returnTo: { readonly href: string; readonly grow: boolean } | null;
+  /** Where hiding the manager goes back to. */
+  readonly returnTo: ManagerReturn | null;
 }
 
 export const useManagerViewStore = create<ManagerViewStore>()(() => ({
