@@ -8,9 +8,11 @@ import {
   cleanLabel,
   filterGrowDeck,
   growCurrent,
+  growFocusedProject,
   growHeadline,
   growNextAfter,
   growPrimary,
+  growProjectOpen,
   growQueue,
   growSpark,
   growStep,
@@ -259,5 +261,41 @@ describe("buildGrowRelations", () => {
       "fork",
     ]);
     expect(relations.byKey.get("env:helper")?.id).toBe("helper");
+  });
+});
+
+describe("project folding", () => {
+  const deck = buildGrowDeck(
+    [
+      shell("a", { projectId: "p1" }),
+      shell("b", { projectId: "p2" }),
+      shell("c", { projectId: "p3", runtime: { running: true } }),
+    ],
+    new Map(),
+    NOW,
+    { excluded: new Set(), pending: new Set() },
+  );
+
+  it("opens only the project of the shown item, wherever the deck lists it", () => {
+    const projects = ["env:p1", "env:p2", "env:p3"];
+    const openFor = (key: string | null) =>
+      projects.filter((project) => growProjectOpen(project, growFocusedProject(deck, key), false));
+    expect(openFor("env:a")).toEqual(["env:p1"]);
+    expect(openFor("env:b")).toEqual(["env:p2"]);
+    expect(openFor(null)).toEqual([]);
+  });
+
+  it("opens every project when expanded, and goes back to one when it is not", () => {
+    const focused = growFocusedProject(deck, "env:a");
+    expect(["env:p1", "env:p2", "env:p3"].map((p) => growProjectOpen(p, focused, true))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(["env:p1", "env:p2", "env:p3"].map((p) => growProjectOpen(p, focused, false))).toEqual([
+      true,
+      false,
+      false,
+    ]);
   });
 });

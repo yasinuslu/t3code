@@ -369,3 +369,24 @@ export const PROOF_MESSAGE =
 
 export const SHIP_MESSAGE =
   "Ship it. Land this the usual way for this repo: open the PR if there is none, get CI green, merge, verify it is live, then settle this thread. If something blocks the merge, tell me in one line.";
+
+/** The project the shown item belongs to, wherever the deck lists it. */
+export function growFocusedProject(deck: GrowDeck, key: string | null): string | null {
+  if (key === null) return null;
+  for (const section of [
+    deck.working,
+    deck.urgent,
+    deck.returns,
+    deck.older,
+    deck.shipped,
+    deck.letGo,
+  ]) {
+    const item = section.find((candidate) => candidate.key === key);
+    if (item) return growProjectKey(item.thread);
+  }
+  return null;
+}
+
+/** Only the shown item's project is open by default; expanding all opens every project. */
+export const growProjectOpen = (project: string, focused: string | null, expandAll: boolean) =>
+  expandAll || project === focused;

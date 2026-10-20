@@ -11,6 +11,7 @@ export type GrowKeyAction =
   | { readonly type: "askProof" }
   | { readonly type: "openThread" }
   | { readonly type: "closeThread" }
+  | { readonly type: "toggleProjects" }
   | { readonly type: "play" };
 
 export interface GrowKeyState {
@@ -41,6 +42,8 @@ export function growKeyAction(
       return { type: "undo" };
     case "/":
       return { type: "search" };
+    case "e":
+      return { type: "toggleProjects" };
   }
   const { item } = state;
   if (item === null) return null;
