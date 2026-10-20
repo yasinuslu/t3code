@@ -608,6 +608,7 @@ function ReturnsList(props: {
   // returns to the focused project only (or what Expand all holds).
   const searching = useReturnsStore((state) => state.query.trim() !== "");
   const expandAll = useReturnsStore((state) => state.expandAll) || searching;
+  const foldOpen = searching ? { open: true } : {};
   const listMode = useReturnsStore((state) => state.listMode);
   const focused = growFocusedProject(deck, props.current);
   const groups = useMemo(() => {
@@ -696,21 +697,17 @@ function ReturnsList(props: {
         ))
       )}
       {deck.older.length > 0 ? (
-        <ListSection title={`Earlier (${deck.older.length})`} folded open={searching || undefined}>
+        <ListSection title={`Earlier (${deck.older.length})`} folded {...foldOpen}>
           {deck.older.map((item) => row(item))}
         </ListSection>
       ) : null}
       {deck.shipped.length > 0 ? (
-        <ListSection
-          title={`Done this week (${deck.shipped.length})`}
-          folded
-          open={searching || undefined}
-        >
+        <ListSection title={`Done this week (${deck.shipped.length})`} folded {...foldOpen}>
           {deck.shipped.map((item) => row(item))}
         </ListSection>
       ) : null}
       {deck.letGo.length > 0 ? (
-        <ListSection title={`Let go (${deck.letGo.length})`} folded open={searching || undefined}>
+        <ListSection title={`Let go (${deck.letGo.length})`} folded {...foldOpen}>
           {deck.letGo.map((item) => row(item))}
         </ListSection>
       ) : null}
