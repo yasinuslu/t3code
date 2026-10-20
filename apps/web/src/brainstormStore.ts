@@ -221,6 +221,19 @@ export function useManagerProfile(): string | null {
   });
 }
 
+/** `useManagerProfile` read once, for key handlers outside React. */
+export function managerProfileNow(): string | null {
+  const spaces = useSpaceStore.getState();
+  const state = useBrainstormStore.getState();
+  return resolveManagerProfile({
+    profiles: state.profiles ?? [],
+    activeSpaceProfile:
+      spaces.spaces.find((space) => space.id === spaces.activeSpaceId)?.profile ?? null,
+    lastManagerProfile: state.lastManagerProfile,
+    serverDefaultProfile: state.serverDefaultProfile,
+  });
+}
+
 /** Every thread shell except brainstorm chats, for the normal thread lists. */
 export function useThreadShellsWithoutBrainstorms(): ReadonlyArray<EnvironmentThreadShell> {
   const threads = useThreadShells();

@@ -56,10 +56,28 @@ export async function openManager(): Promise<void> {
 // Set while a way back to Grow is under way, when the route still shows the manager.
 let returning = false;
 
-/** The manager shortcut: shows the manager, or goes back to where it was opened from. */
+// Grow shows the manager in its own pane, next to its list; set while Grow is up.
+let growManagerToggle: (() => void) | null = null;
+
+/** Grow registers how the shortcut shows and hides its manager pane; returns the unregister. */
+export function setGrowManagerToggle(toggle: () => void): () => void {
+  growManagerToggle = toggle;
+  return () => {
+    if (growManagerToggle === toggle) growManagerToggle = null;
+  };
+}
+
+/**
+ * The manager shortcut: shows the manager, or goes back to where it was opened
+ * from. Over Grow it is the same as M there: the manager in Grow's own pane.
+ */
 export function toggleManager(): void {
   // A second press before the page is back would otherwise ask for the manager again.
   if (returning) return;
+  if (growManagerToggle !== null && useHomeOverlayStore.getState().open) {
+    void dismissOpenPopups().then(() => growManagerToggle?.());
+    return;
+  }
   // Under Grow the manager is not what shows, so the shortcut brings it up.
   if (useManagerViewStore.getState().shown && !useHomeOverlayStore.getState().open) {
     requestManagerHidden();

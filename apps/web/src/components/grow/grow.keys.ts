@@ -12,11 +12,14 @@ export type GrowKeyAction =
   | { readonly type: "openThread" }
   | { readonly type: "closeThread" }
   | { readonly type: "toggleProjects" }
-  | { readonly type: "play" };
+  | { readonly type: "play" }
+  | { readonly type: "manager" };
 
 export interface GrowKeyState {
   /** A conversation is showing in place of the deck. */
   readonly conversationOpen: boolean;
+  /** The manager's chat is showing in place of the deck. */
+  readonly managerOpen?: boolean;
   readonly item: GrowReturn | null;
 }
 
@@ -24,12 +27,21 @@ export interface GrowKeyState {
  * What a key does on the Grow screen. Pure, so each key has a test; the screen
  * only supplies whether a conversation is showing and which item is current.
  * While a conversation shows, the deck's keys stay off and `o` goes back.
+ * `m` brings up the manager from anywhere on the screen; it is pinned above
+ * the list and never one of the items `j` and `k` step through, which take
+ * the screen back to the deck.
  */
 export function growKeyAction(
   event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "isComposing">,
   state: GrowKeyState,
 ): GrowKeyAction | null {
   if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return null;
+  if (event.key === "m") return { type: "manager" };
+  if (state.managerOpen) {
+    if (event.key === "j" || event.key === "ArrowDown") return { type: "step", direction: 1 };
+    if (event.key === "k" || event.key === "ArrowUp") return { type: "step", direction: -1 };
+    return null;
+  }
   if (state.conversationOpen) return event.key === "o" ? { type: "closeThread" } : null;
   switch (event.key) {
     case "j":

@@ -81,8 +81,9 @@ import {
 import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
 
-import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
+import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { toggleManager } from "../lib/goToManager";
+import { stepProfile } from "./ProfileShortcuts";
 import { APP_MODES, setAppMode } from "../appMode";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -730,6 +731,7 @@ function OpenCommandPaletteDialog(props: {
   }
   const clientSettings = useClientSettings();
   const forkFeatures = useForkFeatures();
+  const severalProfiles = useBrainstormStore((state) => (state.profiles?.length ?? 0) > 1);
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -2262,6 +2264,23 @@ function OpenCommandPaletteDialog(props: {
       shortcutCommand: "manager.toggle",
       run: async () => toggleManager(),
     });
+
+    for (const [direction, command, title] of severalProfiles
+      ? ([
+          [1, "profile.next", "Switch to the next profile"],
+          [-1, "profile.previous", "Switch to the previous profile"],
+        ] as const)
+      : []) {
+      actionItems.push({
+        kind: "action",
+        value: `action:${command}`,
+        searchTerms: ["profile", "switch", "space", "yu", "sn", "code profile", "manager"],
+        title,
+        icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: command,
+        run: async () => stepProfile(direction),
+      });
+    }
 
     for (const entry of APP_MODES) {
       actionItems.push({

@@ -7,7 +7,7 @@ import {
   useHomeOverlayStore,
 } from "../homeOverlayStore";
 import { useManagerViewStore } from "../managerViewStore";
-import { returnFromManager, toggleManager } from "./goToManager";
+import { returnFromManager, setGrowManagerToggle, toggleManager } from "./goToManager";
 
 const growOpen = () => useHomeOverlayStore.getState().open;
 
@@ -31,6 +31,20 @@ describe("the manager shortcut in Grow", () => {
     useManagerViewStore.setState({ shown: true, request: null });
     toggleManager();
     await vi.waitFor(() => expect(useManagerViewStore.getState().request).toBe("show"));
+  });
+
+  it("toggles Grow's own manager pane while Grow shows it, and leaves the page alone", async () => {
+    const toggle = vi.fn();
+    const unregister = setGrowManagerToggle(toggle);
+    openHomeOverlay();
+    toggleManager();
+    await vi.waitFor(() => expect(toggle).toHaveBeenCalledTimes(1));
+    expect(useManagerViewStore.getState().request).toBeNull();
+
+    unregister();
+    toggleManager();
+    await vi.waitFor(() => expect(useManagerViewStore.getState().request).toBe("show"));
+    expect(toggle).toHaveBeenCalledTimes(1);
   });
 
   it("hides the manager when it shows with Grow closed", () => {
