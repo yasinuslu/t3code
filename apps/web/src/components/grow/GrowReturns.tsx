@@ -57,7 +57,7 @@ import { Badge } from "../ui/badge";
 import { closeHomeOverlay } from "../../homeOverlayStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn, newMessageId } from "../../lib/utils";
-import { useProjects } from "../../state/entities";
+import { useProjects, useThreadShell } from "../../state/entities";
 import { growEnvironment, useGrowCards, useGrowLoaded } from "../../state/grow";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -870,6 +870,14 @@ function ManagerRow(props: { readonly open: boolean }) {
 function ManagerPane(props: { readonly wide: boolean }) {
   const manager = useEnsureManagerThread();
   const profile = useManagerProfile();
+  // A manager the server just made, or one this client has not loaded yet, has no thread here
+  // for a moment; until then the chat would say there is no thread.
+  const shellKnown =
+    useThreadShell(
+      manager._tag === "Ready"
+        ? { environmentId: manager.environmentId, threadId: manager.threadId }
+        : null,
+    ) !== null;
   return (
     <section
       aria-label="Manager"
@@ -905,7 +913,7 @@ function ManagerPane(props: { readonly wide: boolean }) {
           <ExternalLinkIcon />
         </Button>
       </div>
-      {manager._tag === "Ready" ? (
+      {manager._tag === "Ready" && shellKnown ? (
         <ChatView
           key={`${manager.environmentId}:${manager.threadId}`}
           environmentId={manager.environmentId}
