@@ -98,6 +98,7 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
         instanceId: options.instanceId,
         operation: "credentials",
         detail: "Cursor sign-in or sign-out is in progress. Try again after it finishes.",
+        promptNotRun: true,
       });
     }
     const apiKey = yield* readApiKey;
@@ -124,6 +125,7 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
                 instanceId: options.instanceId,
                 operation: "session",
                 detail: "Cursor sign-in or sign-out is in progress. Try again after it finishes.",
+                promptNotRun: true,
               });
             const child = yield* Scope.make();
             sessions.add(child);

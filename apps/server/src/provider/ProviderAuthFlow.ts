@@ -208,6 +208,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
                   instanceId: options.instanceId,
                   operation: "session",
                   detail: "Provider sign-in is changing. Try again after it finishes.",
+                  promptNotRun: true,
                 });
               const child = yield* Scope.make();
               sessions.add(child);

@@ -6,7 +6,7 @@
  * shows that one's manager instead. Mounted once in the app shell.
  */
 import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useIsManagerThread } from "../../brainstormStore";
 import {
@@ -17,12 +17,15 @@ import {
 } from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { useManagerViewStore } from "../../managerViewStore";
+import { useThreadShell } from "../../state/entities";
 import { resolveThreadRouteRef } from "../../threadRoutes";
 import { toastManager } from "../ui/toast";
 import { useEnsureManagerThread } from "./useOpenManagerThread";
 
 // Longest Grow stays up for the manager to render before it gives way regardless.
 const THREAD_VIEW_WAIT_MS = 1500;
+// Longest a just-created manager is waited for to reach this client before it is opened anyway.
+const THREAD_SHELL_WAIT_MS = 5000;
 
 const nextFrame = () =>
   new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
@@ -83,13 +86,32 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
   const href = useLocation({ select: (location) => location.href });
   const request = useManagerViewStore((state) => state.request);
   const key = manager._tag === "Ready" ? `${manager.environmentId}:${manager.threadId}` : null;
+  // A manager just created is known to the server before this client has its thread; the
+  // thread route sends a thread it does not have home, so the way there waits for it.
+  const shellKnown =
+    useThreadShell(
+      manager._tag === "Ready"
+        ? { environmentId: manager.environmentId, threadId: manager.threadId }
+        : null,
+    ) !== null;
+  const [shellWaitedOut, setShellWaitedOut] = useState(false);
+  const waitingForShell = key !== null && !shellKnown;
+  useEffect(() => {
+    if (!waitingForShell) return;
+    const timer = setTimeout(() => setShellWaitedOut(true), THREAD_SHELL_WAIT_MS);
+    return () => {
+      clearTimeout(timer);
+      setShellWaitedOut(false);
+    };
+  }, [waitingForShell]);
   // The manager in view before; a change (another space or machine) is followed.
   const previousKey = useRef(key);
 
   useEffect(() => {
     const previous = previousKey.current;
     // A switch passes through loading; the last manager shown stays the one to compare with.
-    if (key !== null) previousKey.current = key;
+    // It only moves on once the manager can be shown, so a switch waiting for its thread is still followed.
+    if (key !== null && (shellKnown || shellWaitedOut)) previousKey.current = key;
     // The live value: a second run before this render's request clears must not act again.
     if (request === "show" && useManagerViewStore.getState().request === "show") {
       if (manager._tag === "Failed") {
@@ -107,6 +129,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
         return;
       }
       if (manager._tag !== "Ready") return;
+      if (!shellKnown && !shellWaitedOut) return;
       const grow = useHomeOverlayStore.getState().open;
       useManagerViewStore.setState((state) => ({
         request: null,
@@ -137,6 +160,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
     // Switching the space or the machine while a manager shows shows that one's manager.
     if (
       manager._tag === "Ready" &&
+      (shellKnown || shellWaitedOut) &&
       previous !== null &&
       key !== previous &&
       props.currentKey !== key
@@ -147,7 +171,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
         replace: true,
       });
     }
-  }, [href, key, manager, navigate, props.currentKey, request]);
+  }, [href, key, manager, navigate, props.currentKey, request, shellKnown, shellWaitedOut]);
 
   return null;
 }
