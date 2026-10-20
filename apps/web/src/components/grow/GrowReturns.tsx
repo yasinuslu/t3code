@@ -38,7 +38,7 @@ import {
   Undo2Icon,
   XIcon,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 
 import { useEveryManagerThreadKey } from "../../brainstormStore";
@@ -347,30 +347,32 @@ export function GrowReturns(props: {
     else useReturnsStore.setState({ thread: key });
   };
   const threadShell = thread === null ? undefined : relations.byKey.get(thread);
-  const hero = threadShell ? (
-    <ThreadPane
-      thread={threadShell}
-      title={current?.key === thread ? current.headline : cleanLabel(threadShell.title)}
-      actions={actions}
-      wide={wide}
-    />
-  ) : current ? (
-    <Hero
-      key={current.key}
-      item={current}
-      actions={actions}
-      relations={relations}
-      open={openRelated}
-      wide={wide}
-      playing={playing === current.key}
-      whatIfOpen={whatIfOpen}
-      setWhatIfOpen={setWhatIfOpen}
-      position={positionOf(shown, current)}
-      step={(direction) => select(growStep(shown, current.key, direction))}
-    />
-  ) : (
-    <CaughtUp spark={spark} actions={actions} searching={query !== ""} />
-  );
+  const hero =
+    threadShell && !(wide && current?.key === thread) ? (
+      <ThreadPane
+        thread={threadShell}
+        title={current?.key === thread ? current.headline : cleanLabel(threadShell.title)}
+        actions={actions}
+        wide={wide}
+      />
+    ) : current ? (
+      <Hero
+        key={current.key}
+        item={current}
+        actions={actions}
+        relations={relations}
+        open={openRelated}
+        wide={wide}
+        playing={playing === current.key}
+        conversing={wide && thread === current.key}
+        whatIfOpen={whatIfOpen}
+        setWhatIfOpen={setWhatIfOpen}
+        position={positionOf(shown, current)}
+        step={(direction) => select(growStep(shown, current.key, direction))}
+      />
+    ) : (
+      <CaughtUp spark={spark} actions={actions} searching={query !== ""} />
+    );
 
   if (!wide) {
     return (
@@ -690,6 +692,8 @@ function Hero(props: {
   readonly open: (thread: EnvironmentThreadShell) => void;
   readonly wide: boolean;
   readonly playing: boolean;
+  /** The item's own conversation shows in the middle, with the choices inside its details card. */
+  readonly conversing: boolean;
   readonly whatIfOpen: boolean;
   readonly setWhatIfOpen: (open: boolean) => void;
   readonly position: { readonly index: number; readonly total: number } | null;
@@ -699,9 +703,6 @@ function Hero(props: {
   const { digest } = useThreadReport(item.thread);
   const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
   const question = digest.questions[0] ?? null;
-  const visual = (
-    <Visual item={item} actions={actions} wide={wide} playing={props.playing} images={images} />
-  );
   const choices = (stacked: boolean) => (
     <Choices
       item={item}
@@ -711,6 +712,19 @@ function Hero(props: {
       setWhatIfOpen={props.setWhatIfOpen}
       wide={wide}
       stacked={stacked}
+    />
+  );
+  const visual = (
+    <Visual
+      item={item}
+      actions={actions}
+      wide={wide}
+      playing={props.playing}
+      conversing={props.conversing}
+      images={images}
+      detailsTop={
+        props.conversing ? <div className="border-b p-4">{choices(true)}</div> : undefined
+      }
     />
   );
   const story = (
@@ -735,6 +749,13 @@ function Hero(props: {
           <PhoneStepper position={props.position} step={props.step} />
           {choices(false)}
         </div>
+      </article>
+    );
+  }
+  if (props.conversing) {
+    return (
+      <article aria-label={item.headline} className="flex min-h-0 flex-1 flex-col p-5">
+        {visual}
       </article>
     );
   }
@@ -1100,7 +1121,10 @@ function Visual(props: {
   readonly actions: ReturnActions;
   readonly wide: boolean;
   readonly playing: boolean;
+  readonly conversing: boolean;
   readonly images: ReturnType<typeof useReportImages>;
+  /** Above the thread's details in the conversation, where Grow's choices sit. */
+  readonly detailsTop?: ReactNode;
 }) {
   const { item, images } = props;
   const [shown, setShown] = useState(0);
@@ -1108,7 +1132,7 @@ function Visual(props: {
   const index = Math.min(shown, images.length - 1);
   const image = images[index];
   const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
-  const live = props.wide && props.playing && item.playUrl !== null;
+  const live = props.wide && props.playing && item.playUrl !== null && !props.conversing;
   const zoomDialog =
     zoom === null ? null : (
       <ExpandedImageDialog
@@ -1162,11 +1186,15 @@ function Visual(props: {
         <ToggleGroup
           aria-label="Show"
           variant="segmented"
-          value={[live ? "live" : "proof"]}
+          value={[props.conversing ? "conversation" : live ? "live" : "proof"]}
           onValueChange={(value) => {
             const next = value[0];
-            if (next === "live" || next === "proof")
-              useReturnsStore.setState({ playing: next === "live" ? item.key : null });
+            if (next === "live" || next === "proof" || next === "conversation") {
+              useReturnsStore.setState({
+                playing: next === "live" ? item.key : null,
+                thread: next === "conversation" ? item.key : null,
+              });
+            }
           }}
         >
           <Toggle value="proof" aria-label="Proof">
@@ -1179,11 +1207,26 @@ function Visual(props: {
               Live
             </Toggle>
           ) : null}
+          <Toggle value="conversation" aria-label="Conversation">
+            <MessageSquareIcon className="size-3.5" />
+            Conversation
+          </Toggle>
         </ToggleGroup>
         {item.playUrl ? <Kbd>P</Kbd> : null}
         <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
           {live ? host : images.length > 1 ? `${index + 1} of ${images.length}` : null}
         </span>
+        {props.conversing ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Open in Threads"
+            title="Open in Threads"
+            onClick={() => props.actions.leaveForThread(item.thread)}
+          >
+            <ExternalLinkIcon />
+          </Button>
+        ) : null}
         {live && item.playUrl ? (
           <Button
             variant="ghost"
@@ -1196,7 +1239,24 @@ function Visual(props: {
           </Button>
         ) : null}
       </div>
-      {live && item.playUrl ? (
+      {props.conversing ? (
+        // A narrower chat lane than a full page's, so the details card fits beside it.
+        <div
+          className="flex min-h-0 flex-1 flex-col"
+          style={{ "--chat-lane-min-width": "30rem" } as CSSProperties}
+        >
+          <ChatView
+            key={item.key}
+            environmentId={item.thread.environmentId}
+            threadId={item.thread.id}
+            routeKind="server"
+            reserveTitleBarControlInset={false}
+            autoFocusComposer={false}
+            embedded
+            detailsTop={props.detailsTop}
+          />
+        </div>
+      ) : live && item.playUrl ? (
         isPreviewSupportedInRuntime() ? (
           <GrowPreview
             environmentId={item.thread.environmentId}
