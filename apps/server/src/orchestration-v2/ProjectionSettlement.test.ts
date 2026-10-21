@@ -272,6 +272,7 @@ it.effect.each([
         assert.deepEqual(candidate.pendingBackgroundTasks, expected.pendingBackgroundTasks);
         const settings = {
           pullRequest: null,
+          defaultBranch: null,
           nowMs: DateTime.toEpochMillis(now),
           autoSettleAfterDays: 7,
           autoSettleOnMerge: false,
