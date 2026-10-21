@@ -17,12 +17,16 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildLivingPagePrompt,
   buildThreadTitlePrompt,
+  buildWidgetPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
+  generationTimeoutMs,
   sanitizeThreadTitle,
+  stripCodeFence,
 } from "./TextGenerationUtils.ts";
 import {
   applyGrokAcpModelSelection,
@@ -54,7 +58,9 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateLivingPage"
+      | "generateWidget";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -108,7 +114,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
           prompt: [{ type: "text", text: prompt }],
         });
       }).pipe(
-        Effect.timeoutOption(GROK_TIMEOUT_MS),
+        Effect.timeoutOption(generationTimeoutMs(operation, GROK_TIMEOUT_MS)),
         Effect.flatMap(
           Option.match({
             onNone: () =>
@@ -263,10 +269,56 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateLivingPage: TextGeneration.TextGeneration["Service"]["generateLivingPage"] =
+    Effect.fn("GrokTextGeneration.generateLivingPage")(function* (input) {
+      const { prompt, outputSchema } = buildLivingPagePrompt({
+        context: input.context,
+        pool: input.pool,
+        previous: input.previous,
+      });
+      const generated = yield* runGrokJson({
+        operation: "generateLivingPage",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return {
+        unchanged: generated.unchanged,
+        blocks: generated.blocks,
+        missing: generated.missing,
+      } satisfies TextGeneration.LivingPageGenerationResult;
+    });
+
+  const generateWidget: TextGeneration.TextGeneration["Service"]["generateWidget"] = Effect.fn(
+    "GrokTextGeneration.generateWidget",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildWidgetPrompt({
+      name: input.name,
+      purpose: input.purpose,
+      readme: input.readme,
+      sample: input.sample,
+      existing: input.existing,
+    });
+    const generated = yield* runGrokJson({
+      operation: "generateWidget",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+    return {
+      name: generated.name.trim(),
+      code: stripCodeFence(generated.code),
+    } satisfies TextGeneration.WidgetGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateLivingPage,
+    generateWidget,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

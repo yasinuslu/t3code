@@ -17,6 +17,7 @@
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { WidgetThreadFacts } from "../../widgetFrame/protocol";
 import {
   ComposerContextId,
   type EnvironmentId,
@@ -2052,6 +2053,23 @@ function Visual(props: {
         onClose={() => setZoom(null)}
       />
     );
+  const threadFacts = useMemo(
+    (): WidgetThreadFacts => ({
+      title: item.headline,
+      status: item.merged ? "merged" : (item.reason ?? item.kind),
+      ...(item.pullRequest
+        ? {
+            pullRequest: {
+              number: item.pullRequest.number,
+              url: item.pullRequest.url,
+              state: item.pullRequest.state ?? "open",
+            },
+          }
+        : {}),
+      ...(item.playUrl ? { previewUrl: item.playUrl } : {}),
+    }),
+    [item.headline, item.kind, item.merged, item.playUrl, item.pullRequest, item.reason],
+  );
   const proof =
     slide === undefined ? null : (
       <SlideView
@@ -2064,6 +2082,7 @@ function Visual(props: {
         requests={props.requests}
         onAnswer={(requestId, text) => void props.actions.answerForm(item, requestId, text)}
         readOnly={props.versions.past}
+        thread={threadFacts}
       />
     );
 

@@ -319,6 +319,8 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    generateLivingPage: () => Effect.succeed({ unchanged: true, blocks: [], missing: [] }),
+    generateWidget: () => Effect.succeed({ name: "Widget", code: "" }),
     ...overrides,
   };
 
@@ -367,6 +369,8 @@ function createTextGeneration(
             }),
         ),
       ),
+    generateLivingPage: (input) => implementation.generateLivingPage(input),
+    generateWidget: (input) => implementation.generateWidget(input),
   };
 }
 

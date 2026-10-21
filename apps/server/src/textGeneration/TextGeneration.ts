@@ -81,6 +81,39 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+export interface LivingPageGenerationInput {
+  cwd: string;
+  /** What the thread is and what just happened, already formatted. */
+  context: string;
+  /** The widget pool as the writer reads it. */
+  pool: string;
+  /** The page as it stands, as JSON blocks; absent for the first one. */
+  previous?: string | undefined;
+  modelSelection: ModelSelection;
+}
+
+export interface LivingPageGenerationResult {
+  unchanged: boolean;
+  blocks: ReadonlyArray<{ widget: string; span: "full" | "half"; propsJson: string }>;
+  /** Widgets the writer wanted and the pool lacks. */
+  missing: ReadonlyArray<{ name: string; purpose: string }>;
+}
+
+export interface WidgetGenerationInput {
+  cwd: string;
+  name: string;
+  purpose: string;
+  readme: string;
+  sample: string;
+  existing: ReadonlyArray<string>;
+  modelSelection: ModelSelection;
+}
+
+export interface WidgetGenerationResult {
+  name: string;
+  code: string;
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -112,6 +145,16 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /** Compose the next version of a thread's living page from the widget pool (Grow). */
+    readonly generateLivingPage: (
+      input: LivingPageGenerationInput,
+    ) => Effect.Effect<LivingPageGenerationResult, TextGenerationError>;
+
+    /** Write one new widget for the pool, when the page writer found none that fits. */
+    readonly generateWidget: (
+      input: WidgetGenerationInput,
+    ) => Effect.Effect<WidgetGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -119,7 +162,9 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateLivingPage"
+  | "generateWidget";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -171,6 +216,14 @@ export const make = Effect.gen(function* () {
             return yield* textGeneration.generateThreadTitle({ ...input, linkedContext });
           }),
         ),
+      ),
+    generateLivingPage: (input) =>
+      resolveInstance(registry, "generateLivingPage", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateLivingPage(input)),
+      ),
+    generateWidget: (input) =>
+      resolveInstance(registry, "generateWidget", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateWidget(input)),
       ),
   });
 });

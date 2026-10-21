@@ -23,6 +23,13 @@ type SlideBody =
     }
   | { readonly kind: "doc"; readonly key: string; readonly name: string; readonly markdown: string }
   | { readonly kind: "html"; readonly key: string; readonly name: string; readonly src: string }
+  /** A living page: blocks drawn by the workspace pool widgets, which a writer model keeps. */
+  | {
+      readonly kind: "widgets";
+      readonly key: string;
+      readonly name: string;
+      readonly blocks: Extract<PresentationPage, { kind: "widgets" }>["blocks"];
+    }
   /** The artifact's last page: where it came from and what happened, which Grow writes. */
   | { readonly kind: "story"; readonly key: string; readonly name: string }
   | {
@@ -94,6 +101,10 @@ function pageSlide(
       });
       return [{ kind: "doc", key, name: page.title ?? docTitle(page.markdown), markdown }];
     }
+    case "widgets":
+      return page.blocks.length > 0
+        ? [{ kind: "widgets", key, name: page.title ?? "Living page", blocks: page.blocks }]
+        : [];
     case "form":
       return [
         {

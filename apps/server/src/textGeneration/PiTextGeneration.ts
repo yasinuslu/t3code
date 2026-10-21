@@ -24,12 +24,16 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildLivingPagePrompt,
   buildThreadTitlePrompt,
+  buildWidgetPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
+  generationTimeoutMs,
   sanitizeThreadTitle,
+  stripCodeFence,
 } from "./TextGenerationUtils.ts";
 
 const PI_TIMEOUT_MS = 180_000;
@@ -53,7 +57,9 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateLivingPage"
+      | "generateWidget";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -140,7 +146,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
         }),
       );
     }).pipe(
-      Effect.timeoutOption(PI_TIMEOUT_MS),
+      Effect.timeoutOption(generationTimeoutMs(operation, PI_TIMEOUT_MS)),
       Effect.flatMap(
         Option.match({
           onNone: () =>
@@ -247,10 +253,56 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateLivingPage: TextGeneration.TextGeneration["Service"]["generateLivingPage"] =
+    Effect.fn("PiTextGeneration.generateLivingPage")(function* (input) {
+      const { prompt, outputSchema } = buildLivingPagePrompt({
+        context: input.context,
+        pool: input.pool,
+        previous: input.previous,
+      });
+      const generated = yield* runPiJson({
+        operation: "generateLivingPage",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return {
+        unchanged: generated.unchanged,
+        blocks: generated.blocks,
+        missing: generated.missing,
+      } satisfies TextGeneration.LivingPageGenerationResult;
+    });
+
+  const generateWidget: TextGeneration.TextGeneration["Service"]["generateWidget"] = Effect.fn(
+    "PiTextGeneration.generateWidget",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildWidgetPrompt({
+      name: input.name,
+      purpose: input.purpose,
+      readme: input.readme,
+      sample: input.sample,
+      existing: input.existing,
+    });
+    const generated = yield* runPiJson({
+      operation: "generateWidget",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+    return {
+      name: generated.name.trim(),
+      code: stripCodeFence(generated.code),
+    } satisfies TextGeneration.WidgetGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateLivingPage,
+    generateWidget,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

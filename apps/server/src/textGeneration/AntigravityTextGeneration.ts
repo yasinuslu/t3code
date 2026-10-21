@@ -25,12 +25,16 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildLivingPagePrompt,
   buildThreadTitlePrompt,
+  buildWidgetPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
+  generationTimeoutMs,
   sanitizeThreadTitle,
+  stripCodeFence,
 } from "./TextGenerationUtils.ts";
 
 const ANTIGRAVITY_TIMEOUT_MS = 180_000;
@@ -303,7 +307,7 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
         );
       }).pipe(
         Effect.scoped,
-        Effect.timeoutOption(ANTIGRAVITY_TIMEOUT_MS),
+        Effect.timeoutOption(generationTimeoutMs(operation, ANTIGRAVITY_TIMEOUT_MS)),
         Effect.flatMap(
           Option.match({
             onNone: () =>
@@ -409,10 +413,50 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       };
     });
 
+  const generateLivingPage: TextGeneration.TextGeneration["Service"]["generateLivingPage"] =
+    Effect.fn("AntigravityTextGeneration.generateLivingPage")(function* (input) {
+      const generated = yield* runAntigravityJson({
+        operation: "generateLivingPage",
+        ...buildLivingPagePrompt({
+          context: input.context,
+          pool: input.pool,
+          previous: input.previous,
+        }),
+        modelSelection: input.modelSelection,
+      });
+      return {
+        unchanged: generated.unchanged,
+        blocks: generated.blocks,
+        missing: generated.missing,
+      } satisfies TextGeneration.LivingPageGenerationResult;
+    });
+
+  const generateWidget: TextGeneration.TextGeneration["Service"]["generateWidget"] = Effect.fn(
+    "AntigravityTextGeneration.generateWidget",
+  )(function* (input) {
+    const generated = yield* runAntigravityJson({
+      operation: "generateWidget",
+      ...buildWidgetPrompt({
+        name: input.name,
+        purpose: input.purpose,
+        readme: input.readme,
+        sample: input.sample,
+        existing: input.existing,
+      }),
+      modelSelection: input.modelSelection,
+    });
+    return {
+      name: generated.name.trim(),
+      code: stripCodeFence(generated.code),
+    } satisfies TextGeneration.WidgetGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateLivingPage,
+    generateWidget,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

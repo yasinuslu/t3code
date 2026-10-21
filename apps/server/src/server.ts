@@ -72,6 +72,8 @@ import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as GrowService from "./grow/GrowService.ts";
 import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
+import * as GrowWidgetPool from "./grow/GrowWidgetPool.ts";
+import * as LivingPageReactor from "./grow/LivingPageReactor.ts";
 import { notificationsHttpApiLayer } from "./notifications/http.ts";
 import * as UserNotifications from "./notifications/UserNotifications.ts";
 import * as WebPush from "./notifications/WebPush.ts";
@@ -711,6 +713,13 @@ const makeRoutesLayer = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ProofRequestReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
+  // Keeps each thread's living page current with a cheap writer model, apart from its agent.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* LivingPageReactor.LivingPageReactor;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(LivingPageReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
   // Resends a message the provider refused to run, so no thread waits on the user for it.
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -726,6 +735,7 @@ const makeRoutesLayer = Layer.mergeAll(
   Layer.provide(PullRequestServiceLive),
   Layer.provide(BrainstormService.layerWithManagerScope),
   Layer.provide(GrowService.layer),
+  Layer.provide(GrowWidgetPool.layer),
   Layer.provide(
     PreviewEnvironmentService.layer.pipe(
       Layer.provide(T3ProjectFileLoader.layer),

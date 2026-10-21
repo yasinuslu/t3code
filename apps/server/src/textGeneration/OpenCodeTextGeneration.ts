@@ -18,13 +18,16 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildLivingPagePrompt,
   buildThreadTitlePrompt,
+  buildWidgetPrompt,
 } from "./TextGenerationPrompts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  stripCodeFence,
 } from "./TextGenerationUtils.ts";
 import * as OpenCodeRuntime from "../provider/opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../provider/OpenCodeServerOwner.ts";
@@ -34,6 +37,8 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "generateLivingPage",
+  "generateWidget",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -471,10 +476,58 @@ export function makeOpenCodeOperations(
       };
     });
 
+  const generateLivingPage: TextGeneration.TextGeneration["Service"]["generateLivingPage"] =
+    Effect.fn("OpenCodeTextGeneration.generateLivingPage")(function* (input) {
+      const { prompt, outputSchema } = buildLivingPagePrompt({
+        context: input.context,
+        pool: input.pool,
+        previous: input.previous,
+      });
+      const generated = yield* runOpenCodeJson({
+        operation: "generateLivingPage",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+        attachments: [],
+      });
+      return {
+        unchanged: generated.unchanged,
+        blocks: generated.blocks,
+        missing: generated.missing,
+      } satisfies TextGeneration.LivingPageGenerationResult;
+    });
+
+  const generateWidget: TextGeneration.TextGeneration["Service"]["generateWidget"] = Effect.fn(
+    "OpenCodeTextGeneration.generateWidget",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildWidgetPrompt({
+      name: input.name,
+      purpose: input.purpose,
+      readme: input.readme,
+      sample: input.sample,
+      existing: input.existing,
+    });
+    const generated = yield* runOpenCodeJson({
+      operation: "generateWidget",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+      attachments: [],
+    });
+    return {
+      name: generated.name.trim(),
+      code: stripCodeFence(generated.code),
+    } satisfies TextGeneration.WidgetGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateLivingPage,
+    generateWidget,
   } satisfies TextGeneration.TextGeneration["Service"];
 }

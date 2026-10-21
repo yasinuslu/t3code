@@ -486,6 +486,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "grow-widget-pool",
+    title: "Grow widget pool",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["living page widgets folder brain gallery storybook"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

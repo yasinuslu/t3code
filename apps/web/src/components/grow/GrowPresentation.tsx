@@ -15,6 +15,7 @@ import {
   FileTextIcon,
   HistoryIcon,
   ListChecksIcon,
+  SparklesIcon,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -35,6 +36,8 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
+import type { WidgetThreadFacts } from "../../widgetFrame/protocol";
+import { WidgetPage } from "./WidgetPage";
 import {
   ATTACHMENT_LINK,
   type Slide,
@@ -179,6 +182,8 @@ export function SlideView(props: {
   readonly readOnly?: boolean;
   /** What the story page shows; Grow writes it, not the agent. */
   readonly story?: ReactNode;
+  /** Live facts a living page's widgets show. */
+  readonly thread?: WidgetThreadFacts;
 }) {
   const { slide } = props;
   switch (slide.kind) {
@@ -227,6 +232,21 @@ export function SlideView(props: {
         <div className={cn("flex min-h-0 flex-col", props.fit ? "h-[42vh]" : "min-h-80 flex-1")}>
           <BrowserDocumentFrame src={slide.src} title={slide.name} pdf={false} />
         </div>
+      );
+    case "widgets":
+      return (
+        <ScrollArea className={cn("min-h-0", props.fit ? "max-h-[60vh]" : "flex-1")}>
+          <div className="mx-auto max-w-5xl">
+            <WidgetPage
+              environmentId={props.environmentId}
+              blocks={slide.blocks}
+              thread={props.thread ?? { title: slide.name, status: "" }}
+              readOnly={props.readOnly ?? false}
+              // Each answer is its own request: a page can ask several things over time.
+              onAnswer={(text) => props.onAnswer(`${slide.key}:${Date.now()}`, text)}
+            />
+          </div>
+        </ScrollArea>
       );
     case "form":
       return (
@@ -494,6 +514,8 @@ export function SlideStrip(props: {
                 <ListChecksIcon className="size-3.5 shrink-0" />
               ) : slide.kind === "story" ? (
                 <HistoryIcon className="size-3.5 shrink-0" />
+              ) : slide.kind === "widgets" ? (
+                <SparklesIcon className="size-3.5 shrink-0" />
               ) : (
                 <CodeIcon className="size-3.5 shrink-0" />
               )}

@@ -24,6 +24,8 @@ const makeStubTextGeneration = (
     generatePrContent: () => Effect.die("generatePrContent stub not configured for this test"),
     generateBranchName: () => Effect.die("generateBranchName stub not configured for this test"),
     generateThreadTitle: () => Effect.die("generateThreadTitle stub not configured for this test"),
+    generateLivingPage: () => Effect.die("generateLivingPage stub not configured for this test"),
+    generateWidget: () => Effect.die("generateWidget stub not configured for this test"),
     ...overrides,
   });
 

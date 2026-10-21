@@ -26,6 +26,7 @@ const isTextGenerationError = Schema.is(TextGenerationError);
 
 /** A generation that takes this long is stuck; its session is stopped and removed. */
 const GENERATION_TIMEOUT = "3 minutes";
+const LONG_GENERATION_TIMEOUT = "5 minutes";
 
 /**
  * Nothing in a text generation needs a tool, so every tool asks and T3 is not
@@ -157,7 +158,10 @@ const runOnServer = (
     });
     const result = yield* Deferred.await(outcome).pipe(
       Effect.timeoutOrElse({
-        duration: GENERATION_TIMEOUT,
+        duration:
+          input.operation === "generateLivingPage" || input.operation === "generateWidget"
+            ? LONG_GENERATION_TIMEOUT
+            : GENERATION_TIMEOUT,
         orElse: () =>
           client.session.interrupt({ sessionID: Session.ID.make(session.id) }).pipe(
             Effect.ignore,

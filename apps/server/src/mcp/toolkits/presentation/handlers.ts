@@ -47,7 +47,7 @@ const storePages = (threadId: ThreadId, input: Parameters<typeof storePresentati
  * Writes the thread's next pages as one version step: within the thread's latest run they amend
  * the current version; otherwise the current pages are stored as that version's snapshot first.
  */
-const writePages = Effect.fn("mcp.presentation.write")(function* (
+export const writePresentationPages = Effect.fn("mcp.presentation.write")(function* (
   context: {
     readonly threads: ThreadManagementServiceShape;
     readonly projection: { readonly thread: OrchestrationV2AppThread };
@@ -101,7 +101,7 @@ export const PresentationHandlersLive = PresentationToolkit.toLayer({
     Effect.gen(function* () {
       const context = yield* readWritableThread(input.threadId);
       const pages = yield* storePages(context.projection.thread.id, input.pages);
-      return yield* writePages(context, pages);
+      return yield* writePresentationPages(context, pages);
     }),
   presentation_edit: (input) =>
     Effect.gen(function* () {
@@ -119,7 +119,7 @@ export const PresentationHandlersLive = PresentationToolkit.toLayer({
       if (pages.length === 0) {
         return yield* invalid("That leaves no pages; presentation_set with none removes it.");
       }
-      return yield* writePages(context, pages);
+      return yield* writePresentationPages(context, pages);
     }),
   presentation_get: (input) =>
     Effect.gen(function* () {

@@ -127,3 +127,16 @@ export function normalizeCliError(
     cause: error,
   });
 }
+
+/** Big structured outputs (a whole page, a widget's source) get a longer CLI timeout. */
+export function generationTimeoutMs(operation: string, defaultMs: number): number {
+  return operation === "generateLivingPage" || operation === "generateWidget"
+    ? Math.max(defaultMs, 300_000)
+    : defaultMs;
+}
+
+/** Models sometimes wrap source code in a ``` fence even when asked for raw code. */
+export function stripCodeFence(raw: string): string {
+  const match = /^\s*```[\w-]*\r?\n([\s\S]*?)\r?\n?```\s*$/.exec(raw);
+  return (match ? match[1]! : raw).trim();
+}
