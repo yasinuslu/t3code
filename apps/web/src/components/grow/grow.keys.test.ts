@@ -101,4 +101,10 @@ describe("growKeyAction", () => {
       expect(growKeyAction(key(value), conversation)).toBeNull();
     }
   });
+
+  it("has nothing for o to open while the conversation already shows beside the item", () => {
+    const beside: GrowKeyState = { ...deck(), conversationShown: true };
+    expect(growKeyAction(key("o"), beside)).toBeNull();
+    expect(growKeyAction(key("j"), beside)).toEqual({ type: "step", direction: 1 });
+  });
 });

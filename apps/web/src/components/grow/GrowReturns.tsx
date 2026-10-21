@@ -57,6 +57,7 @@ import { Badge } from "../ui/badge";
 import { closeHomeOverlay } from "../../homeOverlayStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn, newMessageId } from "../../lib/utils";
+import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
 import { useProjects, useThreadShell } from "../../state/entities";
 import { growEnvironment, useGrowCards, useGrowLoaded } from "../../state/grow";
 import { threadEnvironment } from "../../state/threads";
@@ -349,6 +350,7 @@ export function GrowReturns(props: {
       if (isTyping(event.target)) return;
       const action = growKeyAction(event, {
         conversationOpen,
+        conversationShown: wide && split,
         managerOpen: manager,
         item: current,
       });
@@ -404,7 +406,7 @@ export function GrowReturns(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [actions, conversationOpen, current, manager, playing, query, shown, wide]);
+  }, [actions, conversationOpen, current, manager, playing, query, shown, split, wide]);
 
   // Esc leaves the manager or an open conversation even from its message box, which keeps
   // Esc from bubbling; caught before it, and left alone while a menu or dialog is open.
@@ -753,6 +755,10 @@ function ListSection(props: {
   );
 }
 
+/**
+ * One item in the list: the sidebar's own thread row (status, branch, actions, context menu)
+ * with Grow's marks added; Grow's compact row when the sidebar is not mounted.
+ */
 function ReturnRow(props: {
   readonly item: GrowReturn;
   readonly current: boolean;
@@ -761,6 +767,19 @@ function ReturnRow(props: {
 }) {
   const { item } = props;
   const projectTitle = useProjectTitle();
+  const sidebarRow = useSidebarThreadRowSlot((state) => state.render);
+  if (sidebarRow) {
+    return sidebarRow(item.thread, {
+      isActive: props.current,
+      onSelect: () => select(item.key),
+      accessory: (
+        <>
+          <RowMark item={item} />
+          <ProofMark item={item} />
+        </>
+      ),
+    });
+  }
   // The shown item says where it lives; a list that is not grouped by project names it on every row.
   const meta = [
     props.showProject ? projectTitle(item.thread) : null,
@@ -1070,12 +1089,14 @@ function Hero(props: {
       setWhatIfOpen={props.setWhatIfOpen}
       wide={wide}
       stacked={stacked}
+      conversationShown={wide && props.split}
     />
   );
   const story = (
     <Story
       item={item}
       actions={actions}
+      conversationShown={wide && props.split}
       relations={props.relations}
       open={props.open}
       digest={digest}
@@ -1182,6 +1203,8 @@ function Story(props: {
   readonly open: (thread: EnvironmentThreadShell) => void;
   readonly digest: ReturnType<typeof useThreadReport>["digest"];
   readonly position: { readonly index: number; readonly total: number } | null;
+  /** The conversation shows beside the story, so it needs no way in. */
+  readonly conversationShown: boolean;
 }) {
   const { item, digest } = props;
   const projectTitle = useProjectTitle();
@@ -1243,16 +1266,18 @@ function Story(props: {
         </section>
       ) : null}
       <GrowDetails item={item} />
-      <Button
-        variant="outline"
-        size="sm"
-        className="self-start"
-        onClick={() => props.actions.openThread(item)}
-      >
-        <MessageSquareIcon />
-        Whole conversation
-        <Kbd>O</Kbd>
-      </Button>
+      {props.conversationShown ? null : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => props.actions.openThread(item)}
+        >
+          <MessageSquareIcon />
+          Whole conversation
+          <Kbd>O</Kbd>
+        </Button>
+      )}
     </div>
   );
 }
@@ -1719,6 +1744,8 @@ function Choices(props: {
   readonly wide: boolean;
   /** One choice per row, for the narrow rail beside the visual. */
   readonly stacked: boolean;
+  /** Answering then means the message box beside the item, not opening the thread. */
+  readonly conversationShown: boolean;
 }) {
   const { item, actions, wide, stacked } = props;
   const row = stacked ? "flex flex-col gap-2" : "grid grid-cols-3 gap-2";
@@ -1826,11 +1853,13 @@ function Choices(props: {
           label="Answer"
           hint="In the thread"
           icon={<MessageSquareIcon />}
-          keyHint="O"
+          keyHint={props.conversationShown ? undefined : "O"}
           primary
           wide={wide}
           stacked={stacked}
-          onClick={() => actions.openThread(item)}
+          onClick={() =>
+            props.conversationShown ? focusConversationComposer() : actions.openThread(item)
+          }
         />
         <Choice
           label="What if..."
@@ -1885,7 +1914,7 @@ function Choice(props: {
   readonly label: string;
   readonly hint: string;
   readonly icon: ReactNode;
-  readonly keyHint: string;
+  readonly keyHint: string | undefined;
   readonly primary?: boolean;
   readonly wide: boolean;
   readonly stacked: boolean;
@@ -1902,7 +1931,7 @@ function Choice(props: {
         {props.icon}
         {props.label}
         <span className="ms-auto truncate font-normal text-xs opacity-70">{props.hint}</span>
-        {props.wide ? <Kbd>{props.keyHint}</Kbd> : null}
+        {props.wide && props.keyHint ? <Kbd>{props.keyHint}</Kbd> : null}
       </Button>
     );
   }
@@ -1915,11 +1944,16 @@ function Choice(props: {
       >
         {props.icon}
         {props.label}
-        {props.wide ? <Kbd className="max-sm:hidden">{props.keyHint}</Kbd> : null}
+        {props.wide && props.keyHint ? <Kbd className="max-sm:hidden">{props.keyHint}</Kbd> : null}
       </Button>
       <span className="text-balance text-center text-muted-foreground text-xs">{props.hint}</span>
     </div>
   );
+}
+
+/** The message box of the conversation shown beside the item. */
+function focusConversationComposer() {
+  document.querySelector<HTMLElement>('[data-grow-conversation] [contenteditable="true"]')?.focus();
 }
 
 function WhatIfField(props: {
