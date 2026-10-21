@@ -28,6 +28,7 @@ import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { NotificationsBell } from "../NotificationsBell";
+import { ShortcutsButton } from "../ShortcutsSheet";
 import { useDesktopUpdateTitlebarVisible } from "./DesktopUpdateTitlebarButton";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ThreadSandboxBadge } from "./ThreadSandboxBadge";
@@ -404,6 +405,7 @@ export const ChatHeader = memo(function ChatHeader({
       {/* Home and the embedded Grow chat have their own place for it. */}
       {docked ? null : (
         <div className="flex shrink-0 items-center">
+          <ShortcutsButton />
           <NotificationsBell />
         </div>
       )}

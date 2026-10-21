@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { growKeyAction, type GrowKeyState } from "./grow.keys";
+import { GROW_KEY_HELP, growKeyAction, type GrowKeyState } from "./grow.keys";
 
 const key = (value: string, modifiers: Record<string, boolean> = {}) => ({
   key: value,
@@ -153,5 +153,19 @@ describe("growKeyAction", () => {
     const beside: GrowKeyState = { ...deck(), conversationShown: true };
     expect(growKeyAction(key("c"), beside)).toBeNull();
     expect(growKeyAction(key("j"), beside)).toEqual({ type: "step", direction: 1 });
+  });
+
+  it("lists in the shortcut sheet exactly the keys that act, each with its own action", () => {
+    for (const { entries } of GROW_KEY_HELP) {
+      for (const { keys, action, label } of entries) {
+        for (const shown of keys) {
+          const value = shown.startsWith("Shift+") ? shown.slice(6) : shown.toLowerCase();
+          expect(growKeyAction(key(value), deck())?.type, `${label}: ${shown}`).toBe(action);
+        }
+      }
+    }
+    const listed = GROW_KEY_HELP.flatMap(({ entries }) => entries.flatMap(({ keys }) => keys));
+    const letters = new Set(listed.map((shown) => shown.slice(-1).toLowerCase()));
+    expect([...letters].toSorted()).toEqual([..."sdwxacvefqzgtr"].toSorted());
   });
 });

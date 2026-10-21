@@ -46,6 +46,13 @@ any screen, terminal included, and pressed again goes back to where you were. In
 T3 Code forward with the manager open. Rebind it under **Manager: Toggle**; the desktop app takes
 the new chord system-wide too.
 
+## Shortcut sheet
+
+Press `?` (outside a text box) or click the keyboard button beside the notifications bell to see
+the shortcuts that work where you are: Grow's keys first in Grow, the app-wide ones first
+elsewhere. The sheet reads your current keybindings, so remapped keys show as you set them. `?`
+or `Esc` closes it.
+
 ## Profiles
 
 `alt+r` (Option+R on a Mac) switches the code profile in view, and its manager with it, to the

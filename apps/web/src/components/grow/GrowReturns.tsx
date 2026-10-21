@@ -67,6 +67,7 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
 import { growKeyAction } from "./grow.keys";
 import { stepProfile } from "../ProfileShortcuts";
+import { useShortcutsSheetOpen } from "../ShortcutsSheet";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
 import { Button } from "../ui/button";
@@ -346,9 +347,11 @@ export function GrowReturns(props: {
     if (ready && thread !== null && !conversationOpen) useReturnsStore.setState({ thread: null });
   }, [conversationOpen, ready, thread]);
 
+  const sheetOpen = useShortcutsSheetOpen();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (isTyping(event.target)) return;
+      // The cheat sheet owns the keyboard while it shows.
+      if (sheetOpen || isTyping(event.target)) return;
       const action = growKeyAction(event, {
         conversationOpen,
         conversationShown: wide && split,
@@ -410,7 +413,7 @@ export function GrowReturns(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [actions, conversationOpen, current, manager, playing, query, shown, split, wide]);
+  }, [actions, conversationOpen, current, manager, playing, query, sheetOpen, shown, split, wide]);
 
   // Esc leaves the manager or an open conversation even from its message box, which keeps
   // Esc from bubbling; caught before it, and left alone while a menu or dialog is open.

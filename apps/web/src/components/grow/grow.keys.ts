@@ -82,3 +82,52 @@ function stepAction(key: string): GrowKeyAction | null {
   if (key === "q" || key === "k" || key === "arrowup") return { type: "step", direction: -1 };
   return null;
 }
+
+/**
+ * Grow's keys as the shortcut sheet lists them, grouped as it shows them. `grow.keys.test.ts`
+ * feeds every key here to `growKeyAction` and requires the action named, so a key that is
+ * rebound or removed above fails there until this list follows: the sheet cannot drift.
+ * `Shift+R` stands for the shifted letter.
+ */
+export interface GrowKeyHelp {
+  readonly keys: ReadonlyArray<string>;
+  readonly label: string;
+  readonly action: GrowKeyAction["type"];
+}
+
+export const GROW_KEY_HELP: ReadonlyArray<{
+  readonly group: string;
+  readonly entries: ReadonlyArray<GrowKeyHelp>;
+}> = [
+  {
+    group: "Move",
+    entries: [
+      { keys: ["Q", "E"], label: "Previous / next item", action: "step" },
+      { keys: ["F"], label: "Search", action: "search" },
+      { keys: ["G"], label: "Expand every project", action: "toggleProjects" },
+    ],
+  },
+  {
+    group: "Act on the card",
+    entries: [
+      { keys: ["W"], label: "Reply, or change it", action: "whatIf" },
+      { keys: ["S"], label: "Ship", action: "ship" },
+      { keys: ["D"], label: "Done", action: "done" },
+      { keys: ["X"], label: "Let go", action: "letGo" },
+      { keys: ["A"], label: "Ask for proof again", action: "askProof" },
+      { keys: ["Z"], label: "Undo", action: "undo" },
+    ],
+  },
+  {
+    group: "View",
+    entries: [
+      { keys: ["C"], label: "Whole conversation (again to close)", action: "openThread" },
+      { keys: ["V"], label: "Live preview", action: "play" },
+      { keys: ["T"], label: "Manager", action: "manager" },
+    ],
+  },
+  {
+    group: "Profile",
+    entries: [{ keys: ["R", "Shift+R"], label: "Next / previous profile", action: "profile" }],
+  },
+];

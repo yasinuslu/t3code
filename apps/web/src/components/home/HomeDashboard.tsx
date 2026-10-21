@@ -9,6 +9,7 @@ import { useHomeThreadShells } from "../../brainstormStore";
 import { isElectron } from "../../env";
 import { useProjects } from "../../state/entities";
 import { NotificationsBell } from "../NotificationsBell";
+import { ShortcutsButton } from "../ShortcutsSheet";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { useManagerProfileMouseButtons } from "../brainstorm/ManagerProfileSwitcher";
 import { GrowReturns } from "../grow/GrowReturns";
@@ -54,6 +55,7 @@ export function HomeDashboard() {
               the app bar; the manager follows the active space's profile. */}
           <SpaceSwitcher onSwitch={(spaceId) => useSpaceStore.getState().setActiveSpace(spaceId)} />
           <div className="ms-auto flex shrink-0 items-center gap-1">
+            <ShortcutsButton />
             <NotificationsBell />
           </div>
         </WorkspacePageHeader>
