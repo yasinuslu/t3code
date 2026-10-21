@@ -1,4 +1,4 @@
-import type { PresentationMark, ThreadPresentation } from "@t3tools/contracts";
+import type { PresentationField, PresentationMark, ThreadPresentation } from "@t3tools/contracts";
 
 import type { ExpandedImageItem } from "../chat/ExpandedImagePreview";
 
@@ -12,7 +12,15 @@ export type Slide =
       readonly marks: ReadonlyArray<PresentationMark>;
     }
   | { readonly kind: "doc"; readonly key: string; readonly name: string; readonly markdown: string }
-  | { readonly kind: "html"; readonly key: string; readonly name: string; readonly src: string };
+  | { readonly kind: "html"; readonly key: string; readonly name: string; readonly src: string }
+  | {
+      readonly kind: "form";
+      readonly key: string;
+      readonly name: string;
+      readonly fields: ReadonlyArray<PresentationField>;
+      /** The id its answers are sent under, so the page knows it was answered. */
+      readonly requestId: string;
+    };
 
 /** A markdown link or image whose target is a stored file. */
 export const ATTACHMENT_LINK = /\]\(<?attachment:([\w-]+)>?\)/g;
@@ -25,6 +33,7 @@ export function buildSlides(
   pages: ThreadPresentation["pages"] | undefined,
   urls: ReadonlyArray<string | null>,
   reportImages: ReadonlyArray<ExpandedImageItem>,
+  presentationAt?: string,
 ): ReadonlyArray<Slide> {
   if (pages === undefined) {
     return reportImages.flatMap((image, index): Slide[] =>
@@ -56,6 +65,16 @@ export function buildSlides(
         });
         return [{ kind: "doc", key, name: page.title ?? docTitle(page.markdown), markdown }];
       }
+      case "form":
+        return [
+          {
+            kind: "form",
+            key,
+            name: page.title ?? "Your call",
+            fields: page.fields,
+            requestId: formRequestId(presentationAt, index),
+          },
+        ];
     }
   });
 }
@@ -63,4 +82,54 @@ export function buildSlides(
 function docTitle(markdown: string): string {
   const heading = /^#{1,3}\s+(.+)$/m.exec(markdown)?.[1]?.trim();
   return heading && heading.length > 0 ? heading : "Page";
+}
+
+/** A form page's request id: a new presentation asks anew, the same one stays answered. */
+export function formRequestId(presentationAt: string | undefined, index: number): string {
+  return `form-${(presentationAt ?? "").replace(/\D/g, "")}-${index}`;
+}
+
+/** How a question opens its answer line: one that already ends in ? or : takes no extra colon. */
+function answerPrefix(field: PresentationField): string {
+  return /[?:]$/.test(field.label) ? field.label : `${field.label}:`;
+}
+
+/**
+ * A form's answers as the message the agent reads: one `question: answer` per line. A pick must
+ * be made; a written answer may be left empty, and then its line is left out.
+ */
+export function formAnswerText(
+  fields: ReadonlyArray<PresentationField>,
+  answers: Readonly<Record<string, string>>,
+): string {
+  return fields
+    .flatMap((field) => {
+      const answer = (answers[field.id] ?? "").trim();
+      return answer === "" ? [] : [`${answerPrefix(field)} ${answer}`];
+    })
+    .join("\n");
+}
+
+/** Whether every pick on a form is made and something is said, so its answers can be sent. */
+export function formComplete(
+  fields: ReadonlyArray<PresentationField>,
+  answers: Readonly<Record<string, string>>,
+): boolean {
+  const said = (field: PresentationField) => (answers[field.id] ?? "").trim() !== "";
+  return fields.every((field) => !field.options || said(field)) && fields.some(said);
+}
+
+/** The answers a sent form held, read back from its message, so changing one keeps the rest. */
+export function formAnswersFromText(
+  fields: ReadonlyArray<PresentationField>,
+  text: string,
+): Record<string, string> {
+  const lines = text.split("\n");
+  const answers: Record<string, string> = {};
+  for (const field of fields) {
+    const prefix = `${answerPrefix(field)} `;
+    const line = lines.find((candidate) => candidate.startsWith(prefix));
+    if (line !== undefined) answers[field.id] = line.slice(prefix.length);
+  }
+  return answers;
 }

@@ -258,6 +258,7 @@ const GROW_REQUEST_BRIEFS: Record<GrowRequestKind, string> = {
   change:
     "The user asked from Grow to change the work, in the words of this message. Make the change in this thread, then call presentation_set again so the presentation shows the new state.",
   reply: "The user replied from Grow to your last answer, in the words of this message.",
+  form: "The user answered the form page of your presentation in Grow. This message holds the answers, one question and its answer per line. Carry on with them.",
 };
 
 function formatEnvelopeEntry(

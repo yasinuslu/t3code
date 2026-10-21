@@ -1,7 +1,9 @@
 import {
   OrchestratorMcpFailure,
+  PresentationField,
   PresentationMark,
   THREAD_PRESENTATION_DOC_MAX_CHARS,
+  THREAD_PRESENTATION_FORM_MAX_FIELDS,
   THREAD_PRESENTATION_MAX_PAGES,
   ThreadId,
 } from "@t3tools/contracts";
@@ -58,12 +60,22 @@ const PageInput = Schema.Union([
       }),
     ),
   }),
+  Schema.Struct({
+    kind: Schema.Literal("form"),
+    title: Schema.optional(Title),
+    fields: Schema.Array(PresentationField)
+      .check(Schema.isMinLength(1), Schema.isMaxLength(THREAD_PRESENTATION_FORM_MAX_FIELDS))
+      .annotate({
+        description:
+          "The questions, each with an id and a label; give 2-6 `options` for a pick, none for a short written answer.",
+      }),
+  }),
 ]);
 
 const PresentationSetTool = Tool.make("presentation_set", {
   description: [
     "Set this thread's presentation: the idea in a form the user grasps at a glance, shown first in Grow beside the conversation and the live preview. Each call replaces the whole presentation; an empty `pages` removes it.",
-    "Pages, in the order they should be seen: `image` (a screenshot of the result, with `marks` boxing what changed; a short GIF for motion), `doc` (a short markdown page: the decision, a before/after table, a diagram), and `html` (a self-contained interactive page: a mock to click through, a chart, a small demo; it runs sandboxed, with no access to the app).",
+    "Pages, in the order they should be seen: `image` (a screenshot of the result, with `marks` boxing what changed; a short GIF for motion), `doc` (a short markdown page: the decision, a before/after table, a diagram), `html` (a self-contained interactive page: a mock to click through, a chart, a small demo; it runs sandboxed, with no access to the app), and `form` (a few questions for a decision only the user can make; the answers come back to this thread as a message).",
     "Keep it minimal: one to four pages usually. Files are copied into the app's storage, so they outlive the worktree. Set it when there is something to see, and again when it changes.",
   ].join(" "),
   parameters: Schema.Struct({

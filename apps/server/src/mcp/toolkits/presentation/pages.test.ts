@@ -69,6 +69,45 @@ describe("storePresentationPages", () => {
       }
     }),
   );
+
+  it.effect("keeps a form's questions trimmed, and refuses repeated ids or a lone option", () =>
+    Effect.gen(function* () {
+      const { store } = recorder();
+      const pages = yield* storePresentationPages(
+        [
+          {
+            kind: "form",
+            fields: [
+              { id: " color ", label: "Which color?", options: [" Blue", "Green ", " "] },
+              { id: "why", label: "Anything else?", options: [] },
+            ],
+          },
+        ],
+        store,
+      );
+      expect(pages).toEqual([
+        {
+          kind: "form",
+          fields: [
+            { id: "color", label: "Which color?", options: ["Blue", "Green"] },
+            { id: "why", label: "Anything else?" },
+          ],
+        },
+      ]);
+      for (const fields of [
+        [
+          { id: "a", label: "A" },
+          { id: "a", label: "B" },
+        ],
+        [{ id: "a", label: "A", options: ["Only"] }],
+      ]) {
+        const failure = yield* storePresentationPages([{ kind: "form", fields }], store).pipe(
+          Effect.flip,
+        );
+        expect(failure.code).toBe("invalid_request");
+      }
+    }),
+  );
 });
 
 describe("withGrowKeys", () => {

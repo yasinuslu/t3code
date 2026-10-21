@@ -146,6 +146,7 @@ import {
   XIcon,
   ZapIcon,
   RotateCcwIcon,
+  ListChecksIcon,
   ReplyIcon,
   SparklesIcon,
   RocketIcon,
@@ -3943,6 +3944,7 @@ const GROW_REQUEST_ICON = {
   ship: <RocketIcon />,
   change: <SparklesIcon />,
   reply: <ReplyIcon />,
+  form: <ListChecksIcon />,
 } as const;
 
 function UserMessageContextChip(props: {

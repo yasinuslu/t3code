@@ -2,18 +2,29 @@ import type {
   AssetResource,
   EnvironmentId,
   PresentationMark,
+  ThreadGrowRequest,
   ThreadPresentation,
 } from "@t3tools/contracts";
-import { CodeIcon, FileTextIcon } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CheckIcon, CodeIcon, FileTextIcon, ListChecksIcon } from "lucide-react";
+import { type FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useAssetUrls } from "../../assets/assetUrls";
 import { cn } from "../../lib/utils";
 import ChatMarkdown from "../ChatMarkdown";
 import type { ExpandedImageItem } from "../chat/ExpandedImagePreview";
 import { BrowserDocumentFrame } from "../files/BrowserDocumentFrame";
+import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
-import { ATTACHMENT_LINK, type Slide, buildSlides } from "./presentation.logic";
+import {
+  ATTACHMENT_LINK,
+  type Slide,
+  buildSlides,
+  formAnswersFromText,
+  formAnswerText,
+  formComplete,
+} from "./presentation.logic";
 
 /**
  * The item's slides: its presentation's pages when the agent set one, otherwise the images of
@@ -48,7 +59,8 @@ export function useSlides(
     return list;
   }, [pages]);
   const urls = useAssetUrls(environmentId, resources);
-  return useMemo(() => buildSlides(pages, urls, reportImages), [pages, reportImages, urls]);
+  const at = presentation?.updatedAt;
+  return useMemo(() => buildSlides(pages, urls, reportImages, at), [at, pages, reportImages, urls]);
 }
 
 /** A slide, filling the stage. An image opens larger on click; a page scrolls or runs. */
@@ -58,6 +70,8 @@ export function SlideView(props: {
   readonly wide: boolean;
   readonly fit?: boolean | undefined;
   readonly onZoom: () => void;
+  readonly requests: ReadonlyArray<ThreadGrowRequest>;
+  readonly onAnswer: (requestId: string, text: string) => void;
 }) {
   const { slide } = props;
   switch (slide.kind) {
@@ -101,7 +115,112 @@ export function SlideView(props: {
           <BrowserDocumentFrame src={slide.src} title={slide.name} pdf={false} />
         </div>
       );
+    case "form":
+      return (
+        <ScrollArea className={cn("min-h-0", props.fit ? "max-h-[42vh]" : "flex-1")}>
+          <FormSlide
+            key={slide.requestId}
+            slide={slide}
+            answered={props.requests.findLast((request) => request.id === slide.requestId)}
+            onAnswer={(text) => props.onAnswer(slide.requestId, text)}
+          />
+        </ScrollArea>
+      );
   }
+}
+
+/** A form page: the agent's questions, answered here and sent back to the thread. */
+function FormSlide(props: {
+  readonly slide: Extract<Slide, { kind: "form" }>;
+  readonly answered: ThreadGrowRequest | undefined;
+  readonly onAnswer: (text: string) => void;
+}) {
+  const { slide, answered } = props;
+  const [answers, setAnswers] = useState<Readonly<Record<string, string>>>({});
+  const [editing, setEditing] = useState(false);
+  // What was just sent, until the thread records it (the answer it replaces, if any).
+  const [sent, setSent] = useState<{ readonly text: string; readonly over?: string } | null>(null);
+  const sending = sent !== null && answered?.openedAt === sent.over;
+  const set = (id: string, value: string) => setAnswers((current) => ({ ...current, [id]: value }));
+  const complete = formComplete(slide.fields, answers);
+  const edit = () => {
+    setAnswers(formAnswersFromText(slide.fields, (sending ? sent.text : answered?.text) ?? ""));
+    setEditing(true);
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!complete) return;
+    const text = formAnswerText(slide.fields, answers);
+    props.onAnswer(text);
+    setSent(answered === undefined ? { text } : { text, over: answered.openedAt });
+    setEditing(false);
+  };
+  if ((answered !== undefined || sending) && !editing) {
+    return (
+      <div className="mx-auto flex max-w-xl flex-col gap-3 px-6 py-5">
+        <p className="flex items-center gap-1.5 font-medium text-sm">
+          <CheckIcon className="size-4 text-success" />
+          {sending || answered === undefined
+            ? "Sent"
+            : `Answered ${formatRelativeTimeLabel(answered.openedAt)}`}
+        </p>
+        <p className="whitespace-pre-line text-muted-foreground text-sm">
+          {sending ? sent.text : answered?.text}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          disabled={sending}
+          onClick={edit}
+        >
+          Change answers
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <form onSubmit={submit} className="mx-auto flex max-w-xl flex-col gap-5 px-6 py-5">
+      {slide.fields.map((field) => (
+        <fieldset key={field.id} className="flex flex-col gap-2">
+          <legend className="mb-2 font-medium text-sm">{field.label}</legend>
+          {field.options ? (
+            <div className="flex flex-wrap gap-2">
+              {field.options.map((option) => (
+                <Button
+                  key={option}
+                  type="button"
+                  size="sm"
+                  variant={answers[field.id] === option ? "default" : "outline"}
+                  aria-pressed={answers[field.id] === option}
+                  onClick={() => set(field.id, option)}
+                >
+                  {option}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <Input
+              aria-label={field.label}
+              placeholder="Optional"
+              value={answers[field.id] ?? ""}
+              onChange={(event) => set(field.id, event.currentTarget.value)}
+            />
+          )}
+        </fieldset>
+      ))}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={!complete}>
+          Send answers
+        </Button>
+        {answered !== undefined && (
+          <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        )}
+      </div>
+    </form>
+  );
 }
 
 /** An image with its marks drawn over it. */
@@ -245,6 +364,8 @@ export function SlideStrip(props: {
             <>
               {slide.kind === "doc" ? (
                 <FileTextIcon className="size-3.5 shrink-0" />
+              ) : slide.kind === "form" ? (
+                <ListChecksIcon className="size-3.5 shrink-0" />
               ) : (
                 <CodeIcon className="size-3.5 shrink-0" />
               )}
