@@ -118,6 +118,14 @@ export class GitManager extends Context.Service<
       input: { readonly cwd: string; readonly branch: string },
       options?: { readonly refresh?: boolean },
     ) => Effect.Effect<GitBranchPullRequest | null, GitManagerServiceError>;
+    /**
+     * The repository's default branch as the primary remote records it
+     * (`refs/remotes/<remote>/HEAD`), the same answer the pull request lookup
+     * uses. Null when the checkout has no remote or no remote HEAD.
+     */
+    readonly defaultBranch: (input: {
+      readonly cwd: string;
+    }) => Effect.Effect<string | null, never>;
     readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
@@ -2323,6 +2331,14 @@ export const make = Effect.gen(function* () {
       repositoryKey: pullRequestRepositoryKey(latest.url),
     };
   });
+  const defaultBranch: GitManager["Service"]["defaultBranch"] = Effect.fn("defaultBranch")(
+    function* (input) {
+      return yield* gitCore.resolvePrimaryRemoteName(input.cwd).pipe(
+        Effect.flatMap((remoteName) => gitCore.resolveDefaultBranchName(input.cwd, remoteName)),
+        Effect.orElseSucceed(() => null),
+      );
+    },
+  );
   const invalidateLocalStatus: GitManager["Service"]["invalidateLocalStatus"] = Effect.fn(
     "invalidateLocalStatus",
   )(function* (cwd) {
@@ -2880,6 +2896,7 @@ export const make = Effect.gen(function* () {
     remoteStatus,
     status,
     branchPullRequest,
+    defaultBranch,
     invalidateLocalStatus,
     invalidateRemoteStatus,
     invalidateStatus,
