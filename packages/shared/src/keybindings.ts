@@ -71,6 +71,14 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // so Option's ® on a Turkish layout does not get in the way.
   { key: "alt+r", command: "profile.next", when: "!terminalFocus" },
   { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
+  // Keyboard-only movement between the panes on screen, vim-style. `ctrl` rather than `mod`
+  // so it is the Control key on a Mac too. They work from inside inputs, the composer and
+  // a terminal alike, so focus never gets stuck in one pane. Ctrl+H is Backspace and Ctrl+L
+  // clears a terminal, which these override inside T3 only; Ctrl+L stays "focus the URL" in
+  // the browser panel, which is the right-most pane and has nothing to move to.
+  { key: "ctrl+s", command: "pane.sidebar" },
+  { key: "ctrl+h", command: "pane.left" },
+  { key: "ctrl+l", command: "pane.right", when: "!previewFocus" },
   // The two screens. `ctrl` rather than `mod`, like the panel chords above, so the
   // chord is the same physical keys everywhere; 0 switches between Grow and T3.
   { key: "ctrl+alt+1", command: "mode.grow" },
@@ -79,7 +87,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
   { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },
-  { key: "mod+s", command: "composer.stash", when: "!terminalFocus" },
+  { key: "mod+alt+s", command: "composer.stash", when: "!terminalFocus" },
   { key: "mod+shift+enter", command: "thread.steerQueuedMessage", when: "!terminalFocus" },
   { key: "alt+arrowup", command: "thread.editQueuedMessage", when: "composerFocus" },
   { key: "mod+enter", command: "composer.sendAlternate", when: "composerFocus && turnRunning" },

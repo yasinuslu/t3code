@@ -9,6 +9,7 @@ const options = {
   platform: "Linux",
   mac: false,
   inGrow: true,
+  split: false,
   growAvailable: true,
 };
 
@@ -22,6 +23,18 @@ describe("buildShortcutSections", () => {
     ];
     expect(scopes(true)).toEqual(["grow", "app"]);
     expect(scopes(false)).toEqual(["app", "grow"]);
+  });
+
+  it("lists the whole-conversation key only where the conversation is not already beside the proof", () => {
+    expect(rowKeys(buildShortcutSections(options), "Whole conversation (again to close)")).toEqual([
+      "C",
+    ]);
+    expect(
+      rowKeys(
+        buildShortcutSections({ ...options, split: true }),
+        "Whole conversation (again to close)",
+      ),
+    ).toBeUndefined();
   });
 
   it("leaves Grow out when the fork features are off", () => {

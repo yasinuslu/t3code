@@ -173,6 +173,11 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{
     to: { key: "ctrl+alt+space", command: "manager.toggle" },
   },
   { from: { key: "mod+e", command: "manager.toggle", when: "!terminalFocus" }, to: null },
+  // Ctrl+S now focuses the sidebar everywhere, which on Windows and Linux is `mod+s`.
+  {
+    from: { key: "mod+s", command: "composer.stash", when: "!terminalFocus" },
+    to: { key: "mod+alt+s", command: "composer.stash", when: "!terminalFocus" },
+  },
   { from: { key: "ctrl+alt+2", command: "manager.toggle" }, to: null },
 ];
 

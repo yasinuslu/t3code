@@ -23,6 +23,8 @@ export interface GrowKeyState {
   readonly conversationShown?: boolean;
   /** The manager's chat is showing in place of the deck. */
   readonly managerOpen?: boolean;
+  /** The deck shows the conversation beside the proof (1024 px and up), so no key opens it. */
+  readonly conversationShown?: boolean;
   readonly item: GrowReturn | null;
 }
 
@@ -34,7 +36,7 @@ export interface GrowKeyState {
  *
  *   Q / E  previous / next item      S ship      D done     W what if (or reply)
  *   X settle (off the list)          Z undo      A ask for proof
- *   C the conversation               V the live preview
+ *   C the conversation (narrow)      V the live preview
  *   F find                           G expand every project
  *   T talk to the manager            R next profile (Shift+R: previous)
  *
@@ -93,6 +95,8 @@ export interface GrowKeyHelp {
   readonly keys: ReadonlyArray<string>;
   readonly label: string;
   readonly action: GrowKeyAction["type"];
+  /** Only where the conversation is not already beside the proof; the sheet hides it there. */
+  readonly narrowOnly?: true;
 }
 
 export const GROW_KEY_HELP: ReadonlyArray<{
@@ -121,7 +125,12 @@ export const GROW_KEY_HELP: ReadonlyArray<{
   {
     group: "View",
     entries: [
-      { keys: ["C"], label: "Whole conversation (again to close)", action: "openThread" },
+      {
+        keys: ["C"],
+        label: "Whole conversation (again to close)",
+        action: "openThread",
+        narrowOnly: true,
+      },
       { keys: ["V"], label: "Live preview", action: "play" },
       { keys: ["T"], label: "Manager", action: "manager" },
     ],

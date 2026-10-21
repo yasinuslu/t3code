@@ -141,6 +141,19 @@ describe("growKeyAction", () => {
     }
   });
 
+  it("has no key to open the conversation where it already sits beside the proof", () => {
+    expect(growKeyAction(key("c"), { ...deck(), conversationShown: true })).toBeNull();
+    expect(
+      growKeyAction(key("c"), {
+        conversationOpen: true,
+        conversationShown: true,
+        item: returnItem(),
+      }),
+    ).toEqual({
+      type: "closeThread",
+    });
+  });
+
   it("keeps the deck's keys off while a conversation shows, and c goes back", () => {
     const conversation: GrowKeyState = { conversationOpen: true, item: returnItem() };
     expect(growKeyAction(key("c"), conversation)).toEqual({ type: "closeThread" });

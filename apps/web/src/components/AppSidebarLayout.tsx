@@ -41,6 +41,7 @@ import { HomeOverlay } from "./home/HomeOverlay";
 import { ManagerRoute } from "./brainstorm/ManagerRoute";
 import { setHomeOverlayEnabled, useHomeOverlayStore } from "../homeOverlayStore";
 import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
+import { PaneShortcuts } from "./PaneShortcuts";
 import { ProfileShortcuts } from "./ProfileShortcuts";
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { PhoneTabBar } from "./PhoneTabBar";
@@ -333,6 +334,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           side="left"
           collapsible="offcanvas"
           data-app-sidebar=""
+          data-pane="sidebar"
           role="navigation"
           aria-label={isOnSettings ? "Settings" : "Threads"}
           resizable={{
@@ -370,6 +372,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           </>
         ) : null}
         <NavigationHistoryShortcuts />
+        <PaneShortcuts />
         <ShortcutsSheet />
         <MainAppLocationTracker />
       </SidebarProvider>

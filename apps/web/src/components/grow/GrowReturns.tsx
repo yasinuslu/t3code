@@ -41,7 +41,7 @@ import {
   Undo2Icon,
   XIcon,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
@@ -356,6 +356,7 @@ export function GrowReturns(props: {
         conversationOpen,
         conversationShown: wide && split,
         managerOpen: manager,
+        conversationShown: split,
         item: current,
       });
       if (action === null) return;
@@ -521,7 +522,10 @@ export function GrowReturns(props: {
       className="grid min-h-0 flex-1 grid-cols-[clamp(15rem,20vw,22rem)_minmax(0,1fr)]"
       data-grow-returns="wide"
     >
-      <div className="flex min-h-0 flex-col border-e ps-(--workspace-gutter-start) pe-3 pt-3">
+      <div
+        className="flex min-h-0 flex-col border-e ps-(--workspace-gutter-start) pe-3 pt-3"
+        data-pane="sidebar"
+      >
         {header}
         <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
       </div>
@@ -788,6 +792,21 @@ function ReturnRow(props: {
     });
   }
   // The shown item says where it lives; a list that is not grouped by project names it on every row.
+  const rowRef = useRef<HTMLButtonElement>(null);
+  // Q / E / J / K move the selection; while the list holds focus, the focus goes with it.
+  useEffect(() => {
+    const row = rowRef.current;
+    const active = document.activeElement;
+    // Only from another row: a search box that is being typed in keeps its focus.
+    if (
+      props.current &&
+      row &&
+      active instanceof HTMLButtonElement &&
+      row.closest("nav")?.contains(active)
+    ) {
+      row.focus();
+    }
+  }, [props.current]);
   const meta = [
     props.showProject ? projectTitle(item.thread) : null,
     props.current ? item.thread.branch : null,
@@ -797,6 +816,7 @@ function ReturnRow(props: {
   return (
     <li>
       <button
+        ref={rowRef}
         type="button"
         aria-current={props.current ? "true" : undefined}
         className={cn(
@@ -1131,11 +1151,14 @@ function Hero(props: {
         aria-label={item.headline}
         className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]"
       >
-        <div className="flex min-h-0 min-w-0 flex-col p-5">{visual}</div>
+        <div className="flex min-h-0 min-w-0 flex-col p-5" data-pane="proof">
+          {visual}
+        </div>
         <aside
           aria-label="About it"
           className="flex min-h-0 flex-col border-s bg-background/40"
           data-grow-story=""
+          data-pane="story"
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">{story}</div>
           <div className="shrink-0 border-t p-4">{choices(true)}</div>
@@ -1154,7 +1177,7 @@ function Hero(props: {
       <div className="flex min-h-0 min-w-0 flex-col border-e">
         <Conversation thread={item.thread} />
       </div>
-      <div className="flex min-h-0 min-w-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col" data-pane="proof">
         <div
           className={cn(
             "flex min-h-0 flex-col p-3 pb-0",

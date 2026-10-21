@@ -33,6 +33,8 @@ const GLOBAL_ROWS: ReadonlyArray<{
     rows: [
       { label: "Grow / Threads", commands: ["mode.cycle"] },
       { label: "Manager", commands: ["manager.toggle"] },
+      { label: "Focus the sidebar", commands: ["pane.sidebar"] },
+      { label: "Previous / next pane", commands: ["pane.left", "pane.right"] },
       { label: "Next / previous profile", commands: ["profile.next", "profile.previous"] },
       { label: "Command palette", commands: ["commandPalette.toggle"] },
       { label: "Find a file", commands: ["filePicker.toggle"] },
@@ -74,6 +76,8 @@ export function buildShortcutSections(options: {
   readonly platform: string;
   readonly mac: boolean;
   readonly inGrow: boolean;
+  /** Grow shows the conversation beside the proof (1024 px and up). */
+  readonly split: boolean;
   /** Grow ships with the fork features; without them its keys are not listed. */
   readonly growAvailable: boolean;
 }): ReadonlyArray<ShortcutSection> {
@@ -82,11 +86,13 @@ export function buildShortcutSections(options: {
         id: `grow-${group}`,
         scope: "grow" as const,
         title: group,
-        rows: entries.map(({ label, keys }) => ({
-          label,
-          keys: keys.map((key) => growKeyLabel(key, options.mac)),
-        })),
-      }))
+        rows: entries
+          .filter((entry) => !(entry.narrowOnly && options.split))
+          .map(({ label, keys }) => ({
+            label,
+            keys: keys.map((key) => growKeyLabel(key, options.mac)),
+          })),
+      })).filter((section) => section.rows.length > 0)
     : [];
   const global: ShortcutSection[] = GLOBAL_ROWS.map(({ title, rows }) => ({
     id: `app-${title}`,
