@@ -23,6 +23,8 @@ type SlideBody =
     }
   | { readonly kind: "doc"; readonly key: string; readonly name: string; readonly markdown: string }
   | { readonly kind: "html"; readonly key: string; readonly name: string; readonly src: string }
+  /** The artifact's last page: where it came from and what happened, which Grow writes. */
+  | { readonly kind: "story"; readonly key: string; readonly name: string }
   | {
       readonly kind: "form";
       readonly key: string;

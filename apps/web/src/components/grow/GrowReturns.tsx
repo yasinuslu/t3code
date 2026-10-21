@@ -1463,7 +1463,18 @@ function Hero(props: {
       slides={slides}
       versions={versions}
       requests={growRequests}
-      fit={props.split}
+      head={<StoryHead item={item} digest={digest} />}
+      story={
+        <StoryBody
+          item={item}
+          actions={actions}
+          conversationShown={wide && props.split}
+          relations={props.relations}
+          open={props.open}
+          digest={digest}
+          requests={growRequests}
+        />
+      }
     />
   );
   const choices = (stacked: boolean) => (
@@ -1481,25 +1492,11 @@ function Hero(props: {
       conversationShown={wide && props.split}
     />
   );
-  const story = (
-    <Story
-      item={item}
-      actions={actions}
-      conversationShown={wide && props.split}
-      relations={props.relations}
-      open={props.open}
-      digest={digest}
-      requests={growRequests}
-      position={wide ? props.position : null}
-    />
-  );
-
   if (!wide) {
     return (
       <article aria-label={item.headline} className="flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-1 pb-4">
           {visual}
-          {story}
         </div>
         <div className="shrink-0 border-t bg-background px-3 pt-2 pb-3">
           <PhoneStepper position={props.position} step={props.step} />
@@ -1512,27 +1509,17 @@ function Hero(props: {
     return (
       <article
         aria-label={item.headline}
-        className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] outline-none"
+        className="flex min-h-0 flex-1 flex-col outline-none"
         data-grow-zone="presentation"
       >
-        <div className="flex min-h-0 min-w-0 flex-col p-5" data-pane="proof">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-5" data-pane="proof">
           {visual}
         </div>
-        <aside
-          aria-label="About it"
-          className="flex min-h-0 flex-col border-s bg-background/40"
-          data-grow-story=""
-          data-pane="story"
-        >
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">{story}</div>
-          <div className="shrink-0 border-t p-4">{choices(true)}</div>
-        </aside>
+        <div className="shrink-0 border-t p-4">{choices(false)}</div>
       </article>
     );
   }
-  // The conversation beside the thing it made; the proof takes the height it needs (Live
-  // takes more), the story the rest, and the choices stay pinned under them.
-  const live = props.playing && item.playUrl !== null;
+  // The conversation beside the thing it made, and the choices pinned under it.
   return (
     <article
       aria-label={item.headline}
@@ -1546,21 +1533,7 @@ function Hero(props: {
         data-pane="proof"
         data-grow-zone="presentation"
       >
-        <div
-          className={cn(
-            "flex min-h-0 flex-col p-3 pb-0",
-            live ? "flex-[1.6]" : "max-h-[60%] shrink-0",
-          )}
-        >
-          {visual}
-        </div>
-        <aside
-          aria-label="About it"
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
-          data-grow-story=""
-        >
-          {story}
-        </aside>
+        <div className="flex min-h-0 flex-1 flex-col p-3">{visual}</div>
         <div className="shrink-0 border-t p-3">{choices(false)}</div>
       </div>
     </article>
@@ -1599,17 +1572,10 @@ function statusOf(item: GrowReturn, question: boolean): keyof typeof STATUS_LOOK
   }
 }
 
-/** What it is, where it came from and goes, and what happened: what an agent wrote, as highlights. */
-function Story(props: {
+/** The artifact's header: where it stands, what it is, and what it asks of you. */
+function StoryHead(props: {
   readonly item: GrowReturn;
-  readonly actions: ReturnActions;
-  readonly relations: GrowRelations;
-  readonly open: (thread: EnvironmentThreadShell) => void;
   readonly digest: ReturnType<typeof useThreadReport>["digest"];
-  readonly requests: ReadonlyArray<ThreadGrowRequest>;
-  readonly position: { readonly index: number; readonly total: number } | null;
-  /** The conversation shows beside the story, so it needs no way in. */
-  readonly conversationShown: boolean;
 }) {
   const { item, digest } = props;
   const projectTitle = useProjectTitle();
@@ -1621,39 +1587,50 @@ function Story(props: {
   const subtitle = cleanLabel(item.thread.title);
 
   return (
-    <div className="flex flex-col gap-6">
-      <section aria-label="What it is" className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
-          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-            <span aria-hidden className={cn("size-2 rounded-full", status.dot)} />
-            {status.label}
-          </span>
-          <span aria-hidden>·</span>
-          <span>{projectTitle(item.thread)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatRelativeTimeLabel(item.lastActivityAt)}</span>
-          {props.position ? (
-            <span className="ms-auto tabular-nums">
-              {props.position.index + 1} of {props.position.total}
-            </span>
-          ) : null}
+    <section aria-label="What it is" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
+        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+          <span aria-hidden className={cn("size-2 rounded-full", status.dot)} />
+          {status.label}
+        </span>
+        <span aria-hidden>·</span>
+        <span>{projectTitle(item.thread)}</span>
+        <span aria-hidden>·</span>
+        <span>{formatRelativeTimeLabel(item.lastActivityAt)}</span>
+      </div>
+      <h2 className="font-semibold text-2xl leading-tight">{item.headline}</h2>
+      {subtitle !== item.headline ? (
+        <p className="truncate text-muted-foreground text-sm">{subtitle}</p>
+      ) : null}
+      {digest.summary ? (
+        <p className="text-sm leading-relaxed">
+          <WithLinks text={digest.summary} />
+        </p>
+      ) : null}
+      {question ? (
+        <div className="rounded-lg border border-warning/40 bg-warning/8 px-3 py-2 text-sm">
+          <span className="font-medium">Asks: </span>
+          <WithLinks text={question} />
         </div>
-        <h2 className="font-semibold text-2xl leading-tight">{item.headline}</h2>
-        {subtitle !== item.headline ? (
-          <p className="truncate text-muted-foreground text-sm">{subtitle}</p>
-        ) : null}
-        {digest.summary ? (
-          <p className="text-sm leading-relaxed">
-            <WithLinks text={digest.summary} />
-          </p>
-        ) : null}
-        {question ? (
-          <div className="rounded-lg border border-warning/40 bg-warning/8 px-3 py-2 text-sm">
-            <span className="font-medium">Asks: </span>
-            <WithLinks text={question} />
-          </div>
-        ) : null}
-      </section>
+      ) : null}
+    </section>
+  );
+}
+
+/** The artifact's last page: where it came from and goes, and what happened. */
+function StoryBody(props: {
+  readonly item: GrowReturn;
+  readonly actions: ReturnActions;
+  readonly relations: GrowRelations;
+  readonly open: (thread: EnvironmentThreadShell) => void;
+  readonly digest: ReturnType<typeof useThreadReport>["digest"];
+  readonly requests: ReadonlyArray<ThreadGrowRequest>;
+  /** The conversation shows beside it, so it needs no way in. */
+  readonly conversationShown: boolean;
+}) {
+  const { item, digest } = props;
+  return (
+    <div className="flex flex-col gap-6">
       <StoryPath
         item={item}
         requests={props.requests}
@@ -2007,10 +1984,14 @@ function Visual(props: {
   readonly slides: ReadonlyArray<Slide>;
   readonly versions: PresentationVersions;
   readonly requests: ReadonlyArray<ThreadGrowRequest>;
-  /** As tall as the proof needs (capped), leaving the rest to the story; Live still fills. */
-  readonly fit?: boolean;
+  /** On top of every page: where it stands and what it asks. */
+  readonly head: ReactNode;
+  /** The last page: where it came from and what happened. */
+  readonly story: ReactNode;
 }) {
-  const { item, slides } = props;
+  const { item } = props;
+  const noPages = props.slides.length === 0;
+  const slides = useMemo(() => [...props.slides, STORY_SLIDE], [props.slides]);
   // Coming back to a thread shows the page it was left on.
   const [shown, setShownState] = useState(() => shownPages.get(item.key) ?? 0);
   const [shownFor, setShownFor] = useState(item.key);
@@ -2072,14 +2053,12 @@ function Visual(props: {
       />
     );
   const proof =
-    slide === undefined ? (
-      <NoProof item={item} actions={props.actions} wide={props.wide} />
-    ) : (
+    slide === undefined ? null : (
       <SlideView
         slide={slide}
         environmentId={item.thread.environmentId}
         wide={props.wide}
-        fit={props.fit}
+        story={props.story}
         onZoom={() => setZoom(images.findIndex((candidate) => candidate.key === slide.key))}
         requests={props.requests}
         onAnswer={(requestId, text) => void props.actions.answerForm(item, requestId, text)}
@@ -2090,7 +2069,12 @@ function Visual(props: {
   if (!props.wide) {
     return (
       <div className="flex flex-col gap-2 overflow-hidden rounded-xl border bg-muted/40">
+        <div className="flex flex-col gap-2 border-b p-3">
+          {props.head}
+          {noPages ? <NoProof item={item} actions={props.actions} wide={false} /> : null}
+        </div>
         {proof}
+        <SlideStrip slides={slides} current={index} onPick={setShown} />
         {item.playUrl && slide !== undefined ? (
           <Button
             variant="outline"
@@ -2108,10 +2092,7 @@ function Visual(props: {
 
   return (
     <div
-      className={cn(
-        "flex min-h-0 flex-col overflow-hidden rounded-xl border bg-muted/40",
-        props.fit && !live ? "max-h-full" : "min-h-80 flex-1",
-      )}
+      className={cn("flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border bg-muted/40")}
     >
       <div className="flex items-center gap-2 border-b px-2 py-1.5">
         <ToggleGroup
@@ -2172,6 +2153,10 @@ function Visual(props: {
       ) : null}
       {live ? null : (
         <>
+          <div className="flex max-h-[40%] shrink-0 flex-col gap-2 overflow-y-auto border-b px-5 py-4">
+            {props.head}
+            {noPages ? <NoProof item={item} actions={props.actions} wide /> : null}
+          </div>
           {proof}
           <SlideStrip slides={slides} current={index} onPick={setShown} />
         </>
@@ -2181,7 +2166,9 @@ function Visual(props: {
   );
 }
 
-/** Where the proof belongs when there is none: say so, and ask for it in one tap. */
+const STORY_SLIDE: Slide = { kind: "story", key: "story", name: "Story" };
+
+/** The artifact has no pages from the agent yet: say so, and ask for them in one tap. */
 function NoProof(props: {
   readonly item: GrowReturn;
   readonly actions: ReturnActions;
@@ -2190,40 +2177,26 @@ function NoProof(props: {
   const { item } = props;
   const askable = item.kind === "return" || item.kind === "urgent";
   return (
-    <div
-      className={cn(
-        "flex flex-col items-center justify-center gap-3 text-center",
-        props.wide ? "min-h-0 flex-1 p-6" : "p-4",
-      )}
-    >
-      <ImageOffIcon className="size-6 text-muted-foreground" />
-      <div className="flex flex-col gap-0.5">
-        <span className="font-medium text-sm">No presentation yet</span>
-        <span className="text-muted-foreground text-xs">
-          {item.kind === "working"
-            ? "It comes with the answer."
-            : "T3 asked it for one when it finished."}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center justify-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+      <ImageOffIcon className="size-4 text-muted-foreground" />
+      <span className="text-muted-foreground">
+        {item.kind === "working"
+          ? "No pages yet; they come with the answer."
+          : "No pages from the agent yet."}
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
         {askable ? (
           <Button variant="outline" onClick={() => void props.actions.askProof(item)}>
             <ImageIcon />
             Ask again
           </Button>
         ) : null}
-        {item.playUrl ? (
-          props.wide ? (
-            <Button onClick={() => useReturnsStore.setState({ playing: item.key })}>
-              <PlayIcon />
-              Live
-            </Button>
-          ) : (
-            <Button render={<a href={item.playUrl} target="_blank" rel="noopener noreferrer" />}>
-              <PlayIcon />
-              Play
-            </Button>
-          )
+        {/* Wide, Live and Start preview sit in the artifact's toolbar. */}
+        {props.wide ? null : item.playUrl ? (
+          <Button render={<a href={item.playUrl} target="_blank" rel="noopener noreferrer" />}>
+            <PlayIcon />
+            Play
+          </Button>
         ) : (
           <StartPreviewButton thread={item.thread} />
         )}
