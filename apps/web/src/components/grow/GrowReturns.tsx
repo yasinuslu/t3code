@@ -2058,6 +2058,7 @@ function Visual(props: {
         slide={slide}
         environmentId={item.thread.environmentId}
         wide={props.wide}
+        fit={!props.wide}
         story={props.story}
         onZoom={() => setZoom(images.findIndex((candidate) => candidate.key === slide.key))}
         requests={props.requests}
@@ -2068,8 +2069,8 @@ function Visual(props: {
 
   if (!props.wide) {
     return (
-      <div className="flex flex-col gap-2 overflow-hidden rounded-xl border bg-muted/40">
-        <div className="flex flex-col gap-2 border-b p-3">
+      <div className="flex shrink-0 flex-col gap-2 overflow-hidden rounded-xl border bg-muted/40">
+        <div className="flex shrink-0 flex-col gap-2 border-b p-3">
           {props.head}
           {noPages ? <NoProof item={item} actions={props.actions} wide={false} /> : null}
         </div>
