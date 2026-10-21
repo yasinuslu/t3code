@@ -1,14 +1,32 @@
-import type {
-  GitRunStackedActionResult,
-  GitStackedAction,
-  VcsStatusResult,
+import {
+  SourceControlProviderError,
+  type GitRunStackedActionResult,
+  type GitStackedAction,
+  type VcsStatusResult,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
+import * as Schema from "effect/Schema";
 import {
   DEFAULT_CHANGE_REQUEST_TERMINOLOGY,
   getChangeRequestTerminology,
+  getSourceControlPresentationForKind,
   type ChangeRequestTerminology,
 } from "../sourceControlPresentation";
+
+const isSourceControlProviderError = Schema.is(SourceControlProviderError);
+
+/**
+ * The text a failed git action toast shows. A source control provider failure is reported as
+ * the provider name plus the provider detail ("GitCode: Failed to list change requests:
+ * T3CODE_GITCODE_ACCESS_TOKEN is not set..."), not the error message, which leads with the
+ * internal operation name and pushes the one actionable sentence out of the toast.
+ */
+export function describeGitActionFailure(error: unknown): string {
+  if (isSourceControlProviderError(error)) {
+    return `${getSourceControlPresentationForKind(error.provider).providerName}: ${error.detail}`;
+  }
+  return error instanceof Error ? error.message : "An error occurred.";
+}
 
 export type GitActionIconName = "commit" | "push" | "pr";
 
