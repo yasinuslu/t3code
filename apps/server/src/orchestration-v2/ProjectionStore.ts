@@ -26,6 +26,7 @@ import type {
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
+  ThreadPresentation,
   ThreadStatusReport,
   ProviderTurnId,
   RunAttemptId,
@@ -501,6 +502,14 @@ function statusShellFields(report: ThreadStatusReport) {
   return {
     statusUpdatedAt: report.updatedAt,
     ...(threadStatusReportHasProof(report.text) ? { statusProof: true as const } : {}),
+  };
+}
+
+/** Shell fields for a presentation: the pages stay server-side, their count travels. */
+function presentationShellFields(presentation: ThreadPresentation) {
+  return {
+    presentationUpdatedAt: presentation.updatedAt,
+    presentationPages: presentation.pages.length,
   };
 }
 
@@ -1387,6 +1396,9 @@ export function threadShellFromProjection(
     ...(projection.thread.statusReport === undefined
       ? {}
       : statusShellFields(projection.thread.statusReport)),
+    ...(projection.thread.presentation === undefined
+      ? {}
+      : presentationShellFields(projection.thread.presentation)),
     ...(projection.thread.supersededBy == null
       ? {}
       : { supersededBy: projection.thread.supersededBy }),
@@ -1633,6 +1645,9 @@ function shellFromState(input: {
     ...(input.state.thread.statusReport === undefined
       ? {}
       : statusShellFields(input.state.thread.statusReport)),
+    ...(input.state.thread.presentation === undefined
+      ? {}
+      : presentationShellFields(input.state.thread.presentation)),
     ...(input.state.thread.supersededBy == null
       ? {}
       : { supersededBy: input.state.thread.supersededBy }),

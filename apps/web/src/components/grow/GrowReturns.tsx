@@ -84,6 +84,8 @@ import { stepProfile } from "../ProfileShortcuts";
 import { useShortcutsSheetOpen } from "../ShortcutsSheet";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
+import { SlideStrip, SlideView, useSlides } from "./GrowPresentation";
+import type { Slide } from "./presentation.logic";
 import { Button } from "../ui/button";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
@@ -1125,10 +1127,10 @@ function RowMark(props: { readonly item: GrowReturn }) {
   return <span aria-hidden className="size-3.5 shrink-0" />;
 }
 
-/** Whether the item came back with a proof image; nothing while it is still being worked on. */
+/** Whether the item came back with something to see; nothing while it is still being worked on. */
 function ProofMark(props: { readonly item: GrowReturn }) {
   if (props.item.kind === "working") return null;
-  return props.item.thread.statusProof ? (
+  return props.item.thread.presentationPages || props.item.thread.statusProof ? (
     <ImageIcon aria-label="Has a presentation" className="size-3.5 shrink-0 text-success" />
   ) : (
     <ImageOffIcon aria-label="No presentation" className="size-3.5 shrink-0 text-warning" />
@@ -1375,8 +1377,9 @@ function Hero(props: {
   readonly step: (direction: 1 | -1) => void;
 }) {
   const { item, actions, wide } = props;
-  const { digest } = useThreadReport(item.thread);
+  const { digest, presentation } = useThreadReport(item.thread);
   const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
+  const slides = useSlides(item.thread.environmentId, presentation, images);
   const question = digest.questions[0] ?? null;
   const visual = (
     <Visual
@@ -1385,7 +1388,7 @@ function Hero(props: {
       actions={actions}
       wide={wide}
       playing={props.playing}
-      images={images}
+      slides={slides}
       fit={props.split}
     />
   );
@@ -1883,8 +1886,8 @@ function PhoneStepper(props: {
 }
 
 /**
- * The thing itself. On a wide screen one stage switches between the presentation (the
- * report's images, whole, click to zoom) and Live (the running preview, loaded only when
+ * The thing itself. On a wide screen one stage switches between the presentation (its pages:
+ * marked images that zoom on click, short docs, interactive pages; A and D step them) and Live (the running preview, loaded only when
  * asked), with 2 and 3. Once loaded, Live stays loaded while the presentation shows, so
  * going back to it keeps the app where it was. On a phone the presentation sits above the
  * story and Play opens a tab.
@@ -1894,15 +1897,19 @@ function Visual(props: {
   readonly actions: ReturnActions;
   readonly wide: boolean;
   readonly playing: boolean;
-  readonly images: ReturnType<typeof useReportImages>;
+  readonly slides: ReadonlyArray<Slide>;
   /** As tall as the proof needs (capped), leaving the rest to the story; Live still fills. */
   readonly fit?: boolean;
 }) {
-  const { item, images } = props;
+  const { item, slides } = props;
   const [shown, setShown] = useState(0);
   const [zoom, setZoom] = useState<number | null>(null);
-  const index = Math.min(shown, images.length - 1);
-  const image = images[index];
+  const index = Math.min(shown, slides.length - 1);
+  const slide = slides[index];
+  const images = useMemo(
+    () => slides.flatMap((candidate) => (candidate.kind === "image" ? [candidate] : [])),
+    [slides],
+  );
   const live = props.wide && props.playing && item.playUrl !== null;
   const [keptFor, setKeptFor] = useState<string | null>(null);
   if (live && keptFor !== item.key) setKeptFor(item.key);
@@ -1911,53 +1918,38 @@ function Visual(props: {
     const onStep = (event: Event) => {
       const direction = event instanceof CustomEvent && event.detail === -1 ? -1 : 1;
       setShown((current) =>
-        Math.max(0, Math.min(images.length - 1, Math.min(current, images.length - 1) + direction)),
+        Math.max(0, Math.min(slides.length - 1, Math.min(current, slides.length - 1) + direction)),
       );
     };
     window.addEventListener(PROOF_IMAGE_EVENT, onStep);
     return () => window.removeEventListener(PROOF_IMAGE_EVENT, onStep);
-  }, [images.length]);
+  }, [slides.length]);
   const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
   const zoomDialog =
     zoom === null ? null : (
       <ExpandedImageDialog
-        preview={{ images: [...images], index: zoom }}
+        preview={{ images: images.map(({ src, name }) => ({ src, name })), index: zoom }}
         onClose={() => setZoom(null)}
       />
     );
   const proof =
-    image === undefined ? (
+    slide === undefined ? (
       <NoProof item={item} actions={props.actions} wide={props.wide} />
     ) : (
-      <button
-        type="button"
-        className={cn(
-          "flex min-h-0 cursor-zoom-in items-center justify-center p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          !props.fit && "flex-1",
-        )}
-        aria-label={`Open ${image.name}`}
-        onClick={() => setZoom(index)}
-      >
-        <img
-          src={image.src ?? undefined}
-          alt={image.name}
-          className={cn(
-            "rounded-md object-contain",
-            props.fit
-              ? "max-h-[42vh] w-auto max-w-full"
-              : props.wide
-                ? "size-full"
-                : "max-h-[45vh] max-w-full",
-          )}
-        />
-      </button>
+      <SlideView
+        slide={slide}
+        environmentId={item.thread.environmentId}
+        wide={props.wide}
+        fit={props.fit}
+        onZoom={() => setZoom(images.findIndex((candidate) => candidate.key === slide.key))}
+      />
     );
 
   if (!props.wide) {
     return (
       <div className="flex flex-col gap-2 overflow-hidden rounded-xl border bg-muted/40">
         {proof}
-        {item.playUrl && image !== undefined ? (
+        {item.playUrl && slide !== undefined ? (
           <Button
             variant="outline"
             className="m-2 mt-0"
@@ -2002,7 +1994,7 @@ function Visual(props: {
           ) : null}
         </ToggleGroup>
         <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
-          {live ? host : images.length > 1 ? `${index + 1} of ${images.length}` : null}
+          {live ? host : slides.length > 1 ? `${index + 1} of ${slides.length}` : null}
         </span>
         {live && item.playUrl ? (
           <Button
@@ -2036,25 +2028,7 @@ function Visual(props: {
       {live ? null : (
         <>
           {proof}
-          {images.length > 1 ? (
-            <div className="flex shrink-0 gap-2 overflow-x-auto border-t p-2">
-              {images.map((candidate, index) => (
-                <button
-                  key={candidate.name}
-                  type="button"
-                  aria-label={`Show ${candidate.name}`}
-                  aria-current={candidate === image ? "true" : undefined}
-                  className={cn(
-                    "h-14 shrink-0 overflow-hidden rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    candidate === image ? "border-foreground" : "opacity-60 hover:opacity-100",
-                  )}
-                  onClick={() => setShown(index)}
-                >
-                  <img src={candidate.src ?? undefined} alt="" className="h-full w-auto" />
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <SlideStrip slides={slides} current={index} onPick={setShown} />
         </>
       )}
       {zoomDialog}

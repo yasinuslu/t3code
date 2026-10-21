@@ -18,6 +18,7 @@ import {
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   THREAD_STATUS_REPORT_MAX_CHARS,
+  THREAD_PRESENTATION_MAX_PAGES,
   THREAD_SUPERSEDE_NOTE_MAX_CHARS,
   type ChatAttachment,
   CommandId,
@@ -400,6 +401,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.preview-link.link":
     case "thread.preview-link.unlink":
     case "thread.status-report.set":
+    case "thread.presentation.set":
     case "thread.superseded-by.set":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
@@ -2376,6 +2378,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.preview-link.link"
           | "thread.preview-link.unlink"
           | "thread.status-report.set"
+          | "thread.presentation.set"
           | "thread.superseded-by.set"
           | "thread.pull-request.link"
           | "thread.pull-request.unlink"
@@ -3004,6 +3007,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               updatedAt: DateTime.formatIso(now),
             },
           };
+        case "thread.presentation.set": {
+          // Like the status report, setting it is the agent narrating, not new activity.
+          const { presentation: _previous, ...rest } = thread;
+          return command.pages.length === 0
+            ? rest
+            : {
+                ...rest,
+                presentation: {
+                  pages: command.pages.slice(0, THREAD_PRESENTATION_MAX_PAGES),
+                  updatedAt: DateTime.formatIso(now),
+                },
+              };
+        }
         case "thread.superseded-by.set":
           return {
             ...thread,
@@ -3261,6 +3277,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.preview-link.link":
         case "thread.preview-link.unlink":
         case "thread.status-report.set":
+        case "thread.presentation.set":
         case "thread.superseded-by.set":
           return "thread.metadata-updated" as const;
         case "thread.pull-request.link":
@@ -9776,6 +9793,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.preview-link.link":
       case "thread.preview-link.unlink":
       case "thread.status-report.set":
+      case "thread.presentation.set":
       case "thread.superseded-by.set":
       case "thread.title.regeneration.complete":
       case "thread.runtime-mode.set":

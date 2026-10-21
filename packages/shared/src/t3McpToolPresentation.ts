@@ -60,6 +60,7 @@ export type T3McpToolSummaryAction =
   | "link-preview"
   | "unlink-preview"
   | "status-update"
+  | "presentation-set"
   | "grow-update"
   | "grow-board"
   | "notify-user"
@@ -119,6 +120,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Update", "Updating", "Updated", "the thread status"],
     "status-update",
   ),
+  presentation_set: tool(["Set", "Setting", "Set", "the presentation"], "presentation-set"),
   unlink_preview: tool(
     ["Unlink", "Unlinking", "Unlinked", "a preview"],
     "unlink-preview",

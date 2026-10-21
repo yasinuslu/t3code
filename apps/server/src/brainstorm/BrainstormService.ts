@@ -1025,10 +1025,13 @@ export const make = Effect.gen(function* () {
       // A status the agent set during a run, or after it, outranks that run's last answer.
       const status = thread.statusReport;
       const statusAt = status ? Date.parse(status.updatedAt) : Number.NaN;
+      // The presentation rides along whichever text wins: Grow shows it first.
+      const presentation = thread.presentation ? { presentation: thread.presentation } : {};
       const statusReport = () => ({
         threadId,
         runId: recentRuns[0]?.id ?? null,
         text: status?.text ?? null,
+        ...presentation,
       });
       for (const run of recentRuns) {
         if (status && statusAt >= DateTime.toEpochMillis(run.startedAt ?? run.requestedAt)) {
@@ -1053,10 +1056,13 @@ export const make = Effect.gen(function* () {
             runId: run.id,
             text: last.text.slice(0, THREAD_REPORT_MAX_CHARS),
             ...(status ? { statusText: status.text } : {}),
+            ...presentation,
           };
         }
       }
-      return status ? statusReport() : { threadId, runId: recentRuns[0]?.id ?? null, text: null };
+      return status
+        ? statusReport()
+        : { threadId, runId: recentRuns[0]?.id ?? null, text: null, ...presentation };
     });
 
   const managerInstructions: BrainstormService["Service"]["managerInstructions"] = (profile) =>

@@ -40,8 +40,9 @@ export const WORK_REASON_LOOK: Readonly<
 export function useThreadReport(thread: EnvironmentThreadShell) {
   const runId = thread.latestRun?.runId ?? null;
   const statusUpdatedAt = thread.statusUpdatedAt;
+  const presentationUpdatedAt = thread.presentationUpdatedAt;
   const report = useEnvironmentQuery(
-    runId === null && statusUpdatedAt === undefined
+    runId === null && statusUpdatedAt === undefined && presentationUpdatedAt === undefined
       ? null
       : brainstormEnvironment.threadReport({
           environmentId: thread.environmentId,
@@ -49,6 +50,7 @@ export function useThreadReport(thread: EnvironmentThreadShell) {
             threadId: thread.id,
             runId,
             ...(statusUpdatedAt === undefined ? {} : { statusUpdatedAt }),
+            ...(presentationUpdatedAt === undefined ? {} : { presentationUpdatedAt }),
           },
         }),
   ).data;
@@ -79,7 +81,7 @@ export function useThreadReport(thread: EnvironmentThreadShell) {
       (thread.pullRequests ?? []).filter((pullRequest) => pullRequest.source !== "stack-dismissed"),
     [thread.pullRequests],
   );
-  return { digest, tryUrls, pullRequests };
+  return { digest, tryUrls, pullRequests, presentation: report?.presentation ?? null };
 }
 
 /** Try it and pull request buttons; `children` go between them. */

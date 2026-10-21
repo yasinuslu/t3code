@@ -27,7 +27,7 @@ const PROOF_REQUEST_PREFIX = "proof-request:";
 const MAX_REMEMBERED_RUNS = 256;
 
 export const PROOF_REQUEST_TEXT =
-  "Your work has no proof yet. Before you stop, call thread_status_update with your report and at least one image I understand at a glance: a screenshot of the result with the change marked (a short GIF if it moves), or for work with nothing on screen, an image of the evidence. Change nothing else.";
+  "Your work has nothing to see yet. Before you stop, call presentation_set with what I understand at a glance: a screenshot of the result with marks on what changed (a short GIF if it moves), a short page, or for work with nothing on screen, an image of the evidence. Change nothing else.";
 
 /**
  * The message that asks a thread for proof after `runId` finished without
@@ -62,6 +62,7 @@ export function proofRequestCommand(input: {
     thread.linkedPullRequest != null ||
     thread.branchPullRequest != null;
   if (!reportsWork) return null;
+  if (thread.presentation !== undefined) return null;
   if (thread.statusReport !== undefined && threadStatusReportHasProof(thread.statusReport.text)) {
     return null;
   }
