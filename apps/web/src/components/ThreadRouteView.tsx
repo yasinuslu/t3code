@@ -16,6 +16,8 @@ import {
   useComposerDraftStore,
 } from "../composerDraftStore";
 import { environmentCatalog } from "../connection/catalog";
+import { useCoveredByOverlay } from "../homeOverlayStore";
+import { useGrowIsHome } from "../hooks/useSettings";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { useEnvironmentThreadRefs, useThreadRefs, useThreadShell } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
@@ -43,6 +45,8 @@ const UNKNOWN_ENVIRONMENT_GRACE_MS = 15_000;
  */
 export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   const navigate = useNavigate();
+  const growIsHome = useGrowIsHome();
+  const coveredByOverlay = useCoveredByOverlay();
   const draftId = target.kind === "draft" ? target.draftId : null;
   const draftSession = useComposerDraftStore((store) =>
     draftId === null ? null : store.getDraftSession(draftId),
@@ -194,6 +198,7 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   }, [draftThread, serverThreadStarted, target]);
 
   let view: React.ReactNode = null;
+  const coveredByGrow = growIsHome && coveredByOverlay;
   if (target.kind === "draft") {
     if (draftSession) {
       view = (
@@ -207,6 +212,9 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
         />
       );
     }
+  } else if (coveredByGrow && promotedDraftId === null) {
+    // Grow shows this thread itself; a second chat view of it under Grow would only cost.
+    view = null;
   } else if (renderState === "ready" || (renderState === "loading" && serverThreadShell !== null)) {
     view = (
       <ChatView

@@ -2,12 +2,14 @@ import { useParams } from "@tanstack/react-router";
 import { ListIcon, MessagesSquareIcon, SproutIcon, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { type AppMode, setAppMode, useAppMode } from "../appMode";
+import { type AppMode, backToGrow, setAppMode, useAppMode } from "../appMode";
 import { useIsManagerThread } from "../brainstormStore";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import { toggleManager } from "../lib/goToManager";
 import { cn } from "../lib/utils";
 import { resolveThreadRouteRef } from "../threadRoutes";
+import { useGrowIsHome } from "../hooks/useSettings";
+import { useGrowShowsManager } from "./grow/GrowReturns";
 import { useSidebar } from "./ui/sidebar";
 
 type PhoneTab = "manager" | "grow" | "threads";
@@ -62,8 +64,8 @@ function useKeyboardUp(): boolean {
   return up;
 }
 
-function activeTabOf(mode: AppMode, managerShown: boolean): PhoneTab {
-  if (mode === "grow") return "grow";
+function activeTabOf(mode: AppMode, managerShown: boolean, growManager: boolean): PhoneTab {
+  if (mode === "grow") return growManager ? "manager" : "grow";
   return managerShown ? "manager" : "threads";
 }
 
@@ -79,13 +81,20 @@ export function PhoneTabBar() {
   const route = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
   const onManagerThread = useIsManagerThread(route?.environmentId ?? "", route?.threadId ?? "");
   const keyboardUp = useKeyboardUp();
+  const growIsHome = useGrowIsHome();
+  const growManager = useGrowShowsManager();
 
   if (!isMobile || keyboardUp) return null;
-  const active = activeTabOf(mode, onManagerThread);
+  const active = activeTabOf(mode, onManagerThread, growManager);
+  // Grow has its own list, so the thread list is only a tab in the classic threads view.
+  const tabs = growIsHome ? TABS.filter((entry) => entry.tab !== "threads") : TABS;
 
   const select = (tab: PhoneTab) => {
-    if (tab === "grow") setAppMode("grow");
-    else if (tab === "manager") toggleManager();
+    if (tab === "grow") {
+      if (mode === "grow" && growManager) toggleManager();
+      else if (growIsHome) backToGrow(route);
+      else setAppMode("grow");
+    } else if (tab === "manager") toggleManager();
     else {
       // The list is the point of this tab: show it, over whichever thread is open.
       setAppMode("normal");
@@ -101,7 +110,7 @@ export function PhoneTabBar() {
       data-phone-tabbar-bar=""
       className="fixed inset-x-0 bottom-0 z-45 flex border-t bg-background pb-safe"
     >
-      {TABS.map(({ tab, label, icon: Icon }) => (
+      {tabs.map(({ tab, label, icon: Icon }) => (
         <button
           key={tab}
           type="button"

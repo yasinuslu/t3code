@@ -22,6 +22,14 @@ const wasOpen = () => {
   }
 };
 const reopened = typeof window !== "undefined" && wasOpen();
+// A reload of a thread's full view (Home closed in this tab) stays in the full view.
+const reloadedClosed = (() => {
+  try {
+    return typeof window !== "undefined" && window.sessionStorage.getItem(OPEN_KEY) === "0";
+  } catch {
+    return false;
+  }
+})();
 
 // Across restarts the app remembers the last mode: Home open or closed. A fresh
 // start opens Home unless the user last left it closed (Normal mode).
@@ -49,6 +57,35 @@ export function setHomeOverlayEnabled(enabled: boolean) {
   if (!enabled) useHomeOverlayStore.setState({ open: false });
 }
 
+// The deprecated classic view: Grow and Threads as two screens, thread links leaving Grow.
+let classicThreadsView = false;
+
+/** Called by the app shell with the `classicThreadsViewEnabled` client setting. */
+export function setClassicThreadsView(enabled: boolean) {
+  classicThreadsView = enabled;
+}
+
+/**
+ * Grow is the app's one main view: thread links open in it, and a thread's full view
+ * (diff, terminal, files) is a page Grow sends you to and takes you back from.
+ */
+export const growIsHome = () => homeEnabled && !classicThreadsView;
+
+/** This tab was reloaded on a thread's full view, so its thread route stays there. */
+export const reloadedInFullView = () => reloadedClosed;
+
+// Set by `openFullView` for the one navigation that should leave Grow for the full view.
+let fullViewPending = false;
+export function markFullViewNavigation() {
+  fullViewPending = true;
+}
+/** Whether the navigation now landing asked for the full view; reading it clears it. */
+export function takeFullViewNavigation(): boolean {
+  const pending = fullViewPending;
+  fullViewPending = false;
+  return pending;
+}
+
 export const openHomeOverlay = () => useHomeOverlayStore.getState().setOpen(true);
 
 let openedOnStartup = reopened;
@@ -73,7 +110,8 @@ export const inStartupHops = () => Date.now() < startupHopsUntil;
 export function openHomeOnStartup() {
   if (openedOnStartup) return;
   openedOnStartup = true;
-  if (lastWasClosed()) return;
+  // Grow as the main view always opens; only the classic view remembers leaving it.
+  if (lastWasClosed() && !growIsHome()) return;
   startupHopsUntil = Date.now() + 8000;
   openHomeOverlay();
 }

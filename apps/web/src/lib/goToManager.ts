@@ -1,4 +1,10 @@
-import { holdHomeOverlayOpen, openHomeOverlay, useHomeOverlayStore } from "../homeOverlayStore";
+import { focusManagerInGrow } from "../growFocus";
+import {
+  growIsHome,
+  holdHomeOverlayOpen,
+  openHomeOverlay,
+  useHomeOverlayStore,
+} from "../homeOverlayStore";
 import {
   type ManagerReturn,
   requestManagerHidden,
@@ -50,6 +56,12 @@ async function dismissOpenPopups(): Promise<void> {
  */
 export async function openManager(): Promise<void> {
   await dismissOpenPopups();
+  // With Grow as the main view, the manager is Grow's own pane.
+  if (growIsHome()) {
+    focusManagerInGrow();
+    openHomeOverlay();
+    return;
+  }
   requestManagerShown();
 }
 
@@ -76,6 +88,10 @@ export function toggleManager(): void {
   if (returning) return;
   if (growManagerToggle !== null && useHomeOverlayStore.getState().open) {
     void dismissOpenPopups().then(() => growManagerToggle?.());
+    return;
+  }
+  if (growIsHome()) {
+    void openManager();
     return;
   }
   // Under Grow the manager is not what shows, so the shortcut brings it up.

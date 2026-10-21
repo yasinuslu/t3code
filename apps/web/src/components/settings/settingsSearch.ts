@@ -547,6 +547,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["project thread tree old flat list"],
   },
   {
+    id: "legacy-classic-threads-view",
+    title: "Classic threads view (deprecated)",
+    to: "/settings/general",
+    searchTerms: ["grow threads mode switch toggle old full view links"],
+  },
+  {
     id: "keybindings",
     title: "Keybindings",
     to: "/settings/keybindings",

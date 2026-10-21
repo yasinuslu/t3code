@@ -29,6 +29,7 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 import {
   useEnvironmentIdentificationMode,
   useForkFeatures,
+  useGrowIsHome,
   useLegacySidebarEnabled,
 } from "../hooks/useSettings";
 import {
@@ -39,7 +40,12 @@ import {
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
 import { HomeOverlay } from "./home/HomeOverlay";
 import { ManagerRoute } from "./brainstorm/ManagerRoute";
-import { setHomeOverlayEnabled, useHomeOverlayStore } from "../homeOverlayStore";
+import {
+  setClassicThreadsView,
+  setHomeOverlayEnabled,
+  useHomeOverlayStore,
+} from "../homeOverlayStore";
+import { GrowRouting } from "./grow/GrowRouting";
 import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
 import { PaneShortcuts } from "./PaneShortcuts";
 import { ProfileShortcuts } from "./ProfileShortcuts";
@@ -241,6 +247,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const forkFeatures = useForkFeatures();
   // Before first paint, so a reloaded Home never flashes while the flag is off.
   useLayoutEffect(() => setHomeOverlayEnabled(forkFeatures), [forkFeatures]);
+  const growIsHome = useGrowIsHome();
+  useLayoutEffect(
+    () => setClassicThreadsView(forkFeatures && !growIsHome),
+    [forkFeatures, growIsHome],
+  );
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   // Settings routes show the settings nav in place of whichever thread
@@ -362,6 +373,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         {children}
         {forkFeatures ? <HomeOverlay /> : null}
         {forkFeatures ? <ManagerRoute /> : null}
+        {forkFeatures ? <GrowRouting /> : null}
         <SidebarControl />
         {forkFeatures ? (
           <>
