@@ -20,6 +20,8 @@ export function GrowPreview(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly url: string;
+  /** Off while the presentation shows over it; the page stays loaded underneath. */
+  readonly visible: boolean;
 }) {
   const { environmentId, threadId, url } = props;
   const threadRef = useMemo(
@@ -39,5 +41,7 @@ export function GrowPreview(props: {
     void openPreviewSession({ openPreview: open, threadRef, url });
   }, [listed, open, tabId, threadRef, url]);
   if (tabId === null) return null;
-  return <PreviewPanel mode="embedded" threadRef={threadRef} tabId={tabId} visible />;
+  return (
+    <PreviewPanel mode="embedded" threadRef={threadRef} tabId={tabId} visible={props.visible} />
+  );
 }

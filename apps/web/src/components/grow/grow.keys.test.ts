@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { GROW_KEY_HELP, growKeyAction, type GrowKeyState } from "./grow.keys";
+import {
+  GROW_KEY_CODES,
+  GROW_KEY_HELP,
+  growKeyAction,
+  type GrowKeyAction,
+  type GrowKeyState,
+} from "./grow.keys";
 
-const key = (value: string, modifiers: Record<string, boolean> = {}) => ({
-  key: value,
+const press = (code: string, modifiers: Record<string, boolean> = {}) => ({
+  code,
+  shiftKey: false,
   metaKey: false,
   ctrlKey: false,
   altKey: false,
@@ -20,202 +27,121 @@ const returnItem = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as unknown as NonNullable<GrowKeyState["item"]>;
 
-const deck = (item: GrowKeyState["item"] = returnItem()): GrowKeyState => ({
-  conversationOpen: false,
-  item,
+const state = (overrides: Partial<GrowKeyState> = {}): GrowKeyState => ({
+  typing: false,
+  inLive: false,
+  managerOpen: false,
+  item: returnItem(),
+  ...overrides,
 });
 
+const act = (code: string, overrides: Partial<GrowKeyState> = {}, modifiers = {}) =>
+  growKeyAction(press(code, modifiers), state(overrides));
+
 describe("growKeyAction", () => {
-  it("maps each Grow shortcut to its action on a return", () => {
-    const actions = [
-      "s",
-      "d",
-      "w",
-      "x",
-      "a",
-      "c",
-      "v",
-      "Enter",
-      "e",
-      "q",
-      "z",
-      "f",
-      "/",
-      "g",
-      "t",
-      "r",
-    ].map((value) => growKeyAction(key(value), deck())?.type);
-    expect(actions).toEqual([
-      "ship",
-      "done",
-      "whatIf",
-      "settle",
-      "askProof",
-      "openThread",
-      "play",
-      "play",
-      "step",
-      "step",
-      "undo",
-      "search",
-      "search",
-      "toggleProjects",
-      "manager",
-      "profile",
+  it("steps threads with W and S and pages with A and D", () => {
+    expect(act("KeyW")).toEqual({ type: "step", direction: -1 });
+    expect(act("KeyS")).toEqual({ type: "step", direction: 1 });
+    expect(act("KeyA")).toEqual({ type: "page", direction: -1 });
+    expect(act("KeyD")).toEqual({ type: "page", direction: 1 });
+  });
+
+  it("jumps to a place with the number keys, and Q goes back", () => {
+    expect(["Digit1", "Digit2", "Digit3", "Digit4"].map((code) => act(code))).toEqual([
+      { type: "zone", zone: "threads" },
+      { type: "zone", zone: "presentation" },
+      { type: "zone", zone: "live" },
+      { type: "zone", zone: "chat" },
     ]);
+    expect(act("KeyQ")).toEqual({ type: "back" });
   });
 
-  it("keeps every letter under the left hand", () => {
-    const leftHand = new Set("qwertasdfgzxcvb");
-    const bound = "sdwxacvefqzgtrb"
-      .split("")
-      .filter((value) => growKeyAction(key(value), deck()) !== null);
-    expect(bound).toHaveLength(15);
-    for (const value of bound) expect(leftHand.has(value)).toBe(true);
-  });
-
-  it("frees the keys the right hand used to need", () => {
-    for (const value of ["o", "p", "m", "u"]) {
-      expect(growKeyAction(key(value), deck())).toBeNull();
-    }
-  });
-
-  it("moves between cards with q and e, and still with j, k and the arrows", () => {
-    expect(growKeyAction(key("e"), deck())).toEqual({ type: "step", direction: 1 });
-    expect(growKeyAction(key("q"), deck())).toEqual({ type: "step", direction: -1 });
-    expect(growKeyAction(key("j"), deck())).toEqual({ type: "step", direction: 1 });
-    expect(growKeyAction(key("ArrowDown"), deck())).toEqual({ type: "step", direction: 1 });
-    expect(growKeyAction(key("k"), deck())).toEqual({ type: "step", direction: -1 });
-    expect(growKeyAction(key("ArrowUp"), deck())).toEqual({ type: "step", direction: -1 });
-    expect(growKeyAction(key("e"), deck(null))).toEqual({ type: "step", direction: 1 });
-  });
-
-  it("switches profile with r, and back with Shift+r, from every view", () => {
-    for (const state of [
-      deck(),
-      deck(null),
-      { conversationOpen: false, managerOpen: true, item: returnItem() },
-      { conversationOpen: true, item: returnItem() },
-    ]) {
-      expect(growKeyAction(key("r"), state)).toEqual({ type: "profile", direction: 1 });
-      expect(growKeyAction(key("R"), state)).toEqual({ type: "profile", direction: -1 });
-    }
-    expect(growKeyAction(key("r", { altKey: true }), deck())).toBeNull();
-  });
-
-  it("leaves a key alone when its action does not apply", () => {
-    expect(growKeyAction(key("s"), deck(returnItem({ shippable: false })))).toBeNull();
-    expect(growKeyAction(key("a"), deck(returnItem({ thread: { statusProof: {} } })))).toBeNull();
-    expect(growKeyAction(key("v"), deck(returnItem({ playUrl: null })))).toBeNull();
-    expect(growKeyAction(key("s"), deck(returnItem({ kind: "urgent" })))).toBeNull();
-    expect(growKeyAction(key("x"), deck(returnItem({ kind: "settle" })))).toBeNull();
-    expect(growKeyAction(key("s"), deck(null))).toBeNull();
-  });
-
-  it("ignores keys held with a modifier or typed through an input method", () => {
-    expect(growKeyAction(key("s", { ctrlKey: true }), deck())).toBeNull();
-    expect(growKeyAction(key("s", { metaKey: true }), deck())).toBeNull();
-    expect(growKeyAction(key("s", { altKey: true }), deck())).toBeNull();
-    expect(growKeyAction(key("s", { isComposing: true }), deck())).toBeNull();
-  });
-
-  it("brings up the manager with t from the deck, a conversation or the manager itself", () => {
-    expect(growKeyAction(key("t"), deck())).toEqual({ type: "manager" });
-    expect(growKeyAction(key("t"), deck(null))).toEqual({ type: "manager" });
-    expect(growKeyAction(key("t"), { conversationOpen: true, item: returnItem() })).toEqual({
-      type: "manager",
-    });
-    expect(growKeyAction(key("t", { ctrlKey: true }), deck())).toBeNull();
-  });
-
-  it("keeps the item's keys off while the manager shows, and q and e go back to the deck", () => {
-    const manager: GrowKeyState = {
-      conversationOpen: false,
-      managerOpen: true,
-      item: returnItem(),
-    };
-    expect(growKeyAction(key("e"), manager)).toEqual({ type: "step", direction: 1 });
-    expect(growKeyAction(key("q"), manager)).toEqual({ type: "step", direction: -1 });
-    for (const value of ["s", "d", "w", "x", "a", "c", "v", "Enter", "z", "g", "f"]) {
-      expect(growKeyAction(key(value), manager)).toBeNull();
-    }
-  });
-
-  it("has no key to open the conversation where it already sits beside the proof", () => {
-    expect(growKeyAction(key("c"), { ...deck(), conversationShown: true })).toBeNull();
-    expect(
-      growKeyAction(key("c"), {
-        conversationOpen: true,
-        conversationShown: true,
-        item: returnItem(),
-      }),
-    ).toEqual({
-      type: "closeThread",
+  it("reads the physical key, so the layout under it does not matter", () => {
+    // A Turkish F layout puts other letters on these keys; the place is what counts.
+    expect(growKeyAction({ ...press("KeyW"), key: "ğ" } as never, state())).toEqual({
+      type: "step",
+      direction: -1,
     });
   });
 
-  it("settles as superseded with Shift+x, also on a settled card, and follows the chain with Shift+q and Shift+e", () => {
-    expect(growKeyAction(key("X"), deck())).toEqual({ type: "supersede" });
-    expect(growKeyAction(key("X"), deck(returnItem({ kind: "letGo" })))).toEqual({
-      type: "supersede",
+  it("leaves plain keys to a text field and to the live app, and takes them with Alt", () => {
+    expect(act("KeyS", { typing: true })).toBeNull();
+    expect(act("KeyS", { inLive: true })).toBeNull();
+    expect(act("KeyS", { typing: true }, { altKey: true })).toEqual({ type: "step", direction: 1 });
+    expect(act("Digit1", { inLive: true }, { altKey: true })).toEqual({
+      type: "zone",
+      zone: "threads",
     });
-    expect(growKeyAction(key("X"), deck(returnItem({ kind: "shipped" })))).toEqual({
-      type: "supersede",
-    });
-    expect(growKeyAction(key("X"), deck(returnItem({ kind: "working" })))).toBeNull();
-    expect(growKeyAction(key("x"), deck(returnItem({ kind: "letGo" })))).toBeNull();
-    for (const state of [deck(), deck(null), { conversationOpen: true, item: null }]) {
-      expect(growKeyAction(key("E"), state)).toEqual({ type: "chain", direction: 1 });
-      expect(growKeyAction(key("Q"), state)).toEqual({ type: "chain", direction: -1 });
+  });
+
+  it("ignores Ctrl and Cmd chords and keys typed through an input method", () => {
+    expect(act("KeyS", {}, { ctrlKey: true })).toBeNull();
+    expect(act("KeyS", {}, { metaKey: true })).toBeNull();
+    expect(act("KeyS", {}, { isComposing: true })).toBeNull();
+  });
+
+  it("has no live place or reload for an item without a live app", () => {
+    expect(act("Digit3", { item: returnItem({ playUrl: null }) })).toBeNull();
+    expect(act("KeyR", { item: returnItem({ playUrl: null }) })).toBeNull();
+    expect(act("KeyR")).toEqual({ type: "reload" });
+  });
+
+  it("keeps the card's moves to the cards they apply to", () => {
+    expect(act("KeyE")).toEqual({ type: "main" });
+    expect(act("KeyX")).toEqual({ type: "settle" });
+    expect(act("KeyX", {}, { shiftKey: true })).toEqual({ type: "supersede" });
+    const working = returnItem({ kind: "working" });
+    expect(act("KeyE", { item: working })).toBeNull();
+    expect(act("KeyX", { item: working })).toBeNull();
+    expect(act("KeyX", { item: working }, { shiftKey: true })).toBeNull();
+    const settled = returnItem({ kind: "letGo" });
+    expect(act("KeyX", { item: settled })).toBeNull();
+    expect(act("KeyX", { item: settled }, { shiftKey: true })).toEqual({ type: "supersede" });
+  });
+
+  it("keeps the item's keys off while the manager shows; moving takes the screen back", () => {
+    const manager = { managerOpen: true };
+    for (const code of ["KeyA", "KeyD", "KeyE", "KeyX", "KeyR", "Digit2", "Digit3", "Digit4"]) {
+      expect(act(code, manager)).toBeNull();
     }
+    expect(act("KeyS", manager)).toEqual({ type: "step", direction: 1 });
+    expect(act("KeyT", manager)).toEqual({ type: "manager" });
   });
 
-  it("steps the screenshots with b, Shift+b and the arrows, and scrolls the story with the Page keys", () => {
-    expect(growKeyAction(key("b"), deck())).toEqual({ type: "image", direction: 1 });
-    expect(growKeyAction(key("B"), deck())).toEqual({ type: "image", direction: -1 });
-    expect(growKeyAction(key("ArrowRight"), deck())).toEqual({ type: "image", direction: 1 });
-    expect(growKeyAction(key("ArrowLeft"), deck())).toEqual({ type: "image", direction: -1 });
-    expect(growKeyAction(key("PageDown"), deck())).toEqual({ type: "scrollStory", direction: 1 });
-    expect(growKeyAction(key("PageUp"), deck())).toEqual({ type: "scrollStory", direction: -1 });
+  it("switches profile with V, and back with Shift+V", () => {
+    expect(act("KeyV")).toEqual({ type: "profile", direction: 1 });
+    expect(act("KeyV", {}, { shiftKey: true })).toEqual({ type: "profile", direction: -1 });
   });
 
-  it("leaves the arrows and Page keys to a chat that has focus", () => {
-    for (const value of ["b", "ArrowRight", "ArrowLeft", "PageDown", "PageUp"]) {
-      expect(growKeyAction(key(value), { ...deck(), inChat: true })).toBeNull();
+  it("binds only keys under a left hand on WASD", () => {
+    const leftHand = /^(Key[QWERTASDFGZXCV]|Digit[1-5])$/;
+    for (const code of GROW_KEY_CODES) expect(code).toMatch(leftHand);
+    for (const code of ["KeyJ", "KeyK", "KeyO", "KeyP", "ArrowDown", "Enter"]) {
+      expect(act(code)).toBeNull();
     }
-  });
-
-  it("keeps the deck's keys off while a conversation shows, and c goes back", () => {
-    const conversation: GrowKeyState = { conversationOpen: true, item: returnItem() };
-    expect(growKeyAction(key("c"), conversation)).toEqual({ type: "closeThread" });
-    for (const value of ["s", "d", "w", "x", "a", "e", "q", "j", "k", "v", "Enter"]) {
-      expect(growKeyAction(key(value), conversation)).toBeNull();
-    }
-  });
-
-  it("has nothing for c to open while the conversation already shows beside the item", () => {
-    const beside: GrowKeyState = { ...deck(), conversationShown: true };
-    expect(growKeyAction(key("c"), beside)).toBeNull();
-    expect(growKeyAction(key("j"), beside)).toEqual({ type: "step", direction: 1 });
   });
 
   it("lists in the shortcut sheet exactly the keys that act, each with its own action", () => {
+    const codeOf = (key: string) => {
+      const name = key.replace(/^Shift\+/, "");
+      return /^[0-9]$/.test(name) ? `Digit${name}` : `Key${name}`;
+    };
+    const listed = new Set<string>();
     for (const { entries } of GROW_KEY_HELP) {
-      for (const { keys, action, label } of entries) {
-        for (const shown of keys) {
-          const value =
-            { PgDn: "PageDown", PgUp: "PageUp" }[shown] ??
-            (shown.startsWith("Shift+") ? shown.slice(6) : shown.toLowerCase());
-          expect(growKeyAction(key(value), deck())?.type, `${label}: ${shown}`).toBe(action);
+      for (const entry of entries) {
+        for (const key of entry.keys) {
+          const action: GrowKeyAction | null = act(
+            codeOf(key),
+            {},
+            {
+              shiftKey: key.startsWith("Shift+"),
+            },
+          );
+          expect(action?.type, key).toBe(entry.action);
+          listed.add(codeOf(key));
         }
       }
     }
-    const listed = GROW_KEY_HELP.flatMap(({ entries }) => entries.flatMap(({ keys }) => keys));
-    const letters = new Set(
-      listed
-        .filter((shown) => shown.replace("Shift+", "").length === 1)
-        .map((shown) => shown.slice(-1).toLowerCase()),
-    );
-    expect([...letters].toSorted()).toEqual([..."sdwxacvefqzgtrb"].toSorted());
+    expect(listed).toEqual(new Set(GROW_KEY_CODES));
   });
 });

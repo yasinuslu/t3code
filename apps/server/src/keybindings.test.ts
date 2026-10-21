@@ -338,11 +338,11 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
       assert.isFalse(persisted.some((entry) => entry.key.endsWith("+q")));
       assert.isTrue(
-        persisted.some((entry) => entry.command === "profile.next" && entry.key === "alt+r"),
+        persisted.some((entry) => entry.command === "profile.next" && entry.key === "alt+v"),
       );
       assert.isTrue(
         persisted.some(
-          (entry) => entry.command === "profile.previous" && entry.key === "alt+shift+r",
+          (entry) => entry.command === "profile.previous" && entry.key === "alt+shift+v",
         ),
       );
     }).pipe(Effect.provide(makeKeybindingsLayer())),

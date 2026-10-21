@@ -66,9 +66,11 @@ import * as Scope from "effect/Scope";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-import { PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from "../ipc/channels.ts";
+import { MENU_ACTION_CHANNEL, PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from "../ipc/channels.ts";
 import {
   currentManagerChord,
+  growKeyAction,
+  growKeyLeavesPage,
   isManagerShortcut,
   sendManagerAction,
   TOGGLE_MANAGER_ACTION,
@@ -2047,6 +2049,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       if (currentMainWindow && isManagerShortcut(input, currentManagerChord())) {
         event.preventDefault();
         sendManagerAction(currentMainWindow, TOGGLE_MANAGER_ACTION);
+        return;
+      }
+      // Grow's keys held with Alt reach Grow from inside the page: stepping threads and
+      // jumping places must not need the mouse to leave the page first.
+      const growKey = currentMainWindow ? growKeyAction(input) : null;
+      if (currentMainWindow && growKey !== null) {
+        event.preventDefault();
+        if (growKeyLeavesPage(input.code)) currentMainWindow.webContents.focus();
+        currentMainWindow.webContents.send(MENU_ACTION_CHANNEL, growKey);
         return;
       }
       if (isPreviewRefreshShortcut(input)) {

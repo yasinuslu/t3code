@@ -182,11 +182,20 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{
   // The profile switch left Ctrl+Alt+Q: Q sits next to Cmd+Q, which quits on a Mac.
   {
     from: { key: "ctrl+alt+q", command: "profile.next" },
-    to: { key: "alt+r", command: "profile.next", when: "!terminalFocus" },
+    to: { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
   },
   {
     from: { key: "ctrl+alt+shift+q", command: "profile.previous" },
-    to: { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
+    to: { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
+  },
+  // Alt+R became Grow's reload; the profile moved to V, the key Grow steps it with.
+  {
+    from: { key: "alt+r", command: "profile.next", when: "!terminalFocus" },
+    to: { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
+  },
+  {
+    from: { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
+    to: { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
   },
 ];
 

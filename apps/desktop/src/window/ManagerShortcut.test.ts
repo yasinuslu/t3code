@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isManagerShortcut, managerChordAccelerator } from "./ManagerShortcut.ts";
+import { growKeyAction, isManagerShortcut, managerChordAccelerator } from "./ManagerShortcut.ts";
 
 const chord = { key: " ", control: true, alt: true, meta: false, shift: false };
 
@@ -51,5 +51,25 @@ describe("isManagerShortcut", () => {
     expect(isManagerShortcut(input({ isAutoRepeat: true }), chord)).toBe(false);
     expect(isManagerShortcut(input({ type: "keyUp" }), chord)).toBe(false);
     expect(isManagerShortcut(input(), null)).toBe(false);
+  });
+});
+
+describe("growKeyAction", () => {
+  const press = (code: string, overrides: Partial<Parameters<typeof growKeyAction>[0]> = {}) =>
+    input({ code, key: "x", control: false, alt: true, ...overrides });
+
+  it("hands Grow's keys held with Alt to the renderer, with Shift", () => {
+    expect(growKeyAction(press("KeyS"))).toBe("grow-key:KeyS:0");
+    expect(growKeyAction(press("Digit2"))).toBe("grow-key:Digit2:0");
+    expect(growKeyAction(press("KeyX", { shift: true }))).toBe("grow-key:KeyX:1");
+  });
+
+  it("leaves the page its plain keys, other chords, other keys and repeats", () => {
+    expect(growKeyAction(press("KeyS", { alt: false }))).toBeNull();
+    expect(growKeyAction(press("KeyS", { control: true }))).toBeNull();
+    expect(growKeyAction(press("KeyS", { meta: true }))).toBeNull();
+    expect(growKeyAction(press("KeyJ"))).toBeNull();
+    expect(growKeyAction(press("KeyS", { isAutoRepeat: true }))).toBeNull();
+    expect(growKeyAction(press("KeyS", { type: "keyUp" }))).toBeNull();
   });
 });

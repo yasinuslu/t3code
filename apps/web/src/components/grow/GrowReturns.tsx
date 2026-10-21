@@ -78,7 +78,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
-import { growKeyAction } from "./grow.keys";
+import { type GrowZone, growKeyAction } from "./grow.keys";
+import { activeZone, focusZone, installZoneMemory, reloadLive, zoneOf } from "./grow.zones";
 import { stepProfile } from "../ProfileShortcuts";
 import { useShortcutsSheetOpen } from "../ShortcutsSheet";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
@@ -153,18 +154,8 @@ export const useGrowShowsManager = () => useReturnsStore((state) => state.manage
 /** What had focus when the manager came up, so Esc can give it back. */
 let managerFocusReturn: HTMLElement | null = null;
 
-/** Sent by the B / arrow keys; the proof on screen shows the next or previous screenshot. */
+/** Sent by A and D; the presentation on screen shows the next or previous page. */
 const PROOF_IMAGE_EVENT = "grow:proof-image";
-
-/** Scrolls the item's story (the description under or beside the proof) by most of a page. */
-function scrollStory(direction: 1 | -1) {
-  const story = document.querySelector<HTMLElement>("[data-grow-story]");
-  const scroller = [story, ...(story?.children ?? [])].find(
-    (element): element is HTMLElement =>
-      element instanceof HTMLElement && element.scrollHeight > element.clientHeight,
-  );
-  scroller?.scrollBy({ top: direction * scroller.clientHeight * 0.85, behavior: "smooth" });
-}
 
 const select = (key: string | null) => {
   managerFocusReturn = null;
@@ -367,7 +358,7 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       proofAsksInFlight.add(item.key);
       try {
         if (await send(item, PROOF_MESSAGE, "proof", "queue")) {
-          toastManager.add({ type: "success", title: `Asked ${item.headline} for proof` });
+          toastManager.add({ type: "success", title: `Asked ${item.headline} for a presentation` });
         }
       } finally {
         proofAsksInFlight.delete(item.key);
@@ -517,24 +508,57 @@ export function GrowReturns(props: {
     return unregister;
   }, [focusTarget, growOpen, landed, navigate, onScreen, ready]);
 
+  // Q goes back to the place before this one: the last two places focus was in.
+  const zones = useRef<GrowZone[]>([]);
+  useEffect(
+    () =>
+      installZoneMemory((zone) => {
+        const last = zones.current[0];
+        if (last !== zone) zones.current = last === undefined ? [zone] : [zone, last];
+      }),
+    [],
+  );
+
   useEffect(() => {
+    const jump = (zone: GrowZone) => {
+      const item = current;
+      switch (zone) {
+        case "threads":
+          if (manager) hideManager();
+          break;
+        case "presentation":
+          if (item === null) return;
+          useReturnsStore.setState({ playing: null, thread: null, manager: false });
+          break;
+        case "live":
+          if (item === null || item.playUrl === null) return;
+          if (!wide) {
+            window.open(item.playUrl, "_blank", "noopener");
+            return;
+          }
+          useReturnsStore.setState({ playing: item.key, thread: null, manager: false });
+          break;
+        case "chat":
+          if (item === null) return;
+          if (!(wide && split)) actions.openThread(item);
+          break;
+      }
+      focusZone(zone);
+    };
     const onKey = (event: KeyboardEvent) => {
-      // The cheat sheet owns the keyboard while it shows.
-      if (sheetOpen || isTyping(event.target)) return;
+      // The cheat sheet, open menus and modal dialogs own the keyboard while they show. A toast
+      // is a dialog too, but not a modal one.
+      if (sheetOpen || event.defaultPrevented) return;
+      if (document.querySelector('[role="menu"], [role="listbox"], [aria-modal="true"]')) return;
       const action = growKeyAction(event, {
-        conversationOpen,
-        conversationShown: wide && split,
+        typing: isTyping(event.target),
+        inLive: zoneOf(event.target) === "live",
         managerOpen: manager,
-        inChat:
-          event.target instanceof Element && event.target.closest('[data-pane="chat"]') !== null,
         item: current,
       });
       if (action === null) return;
       const item = current;
       switch (action.type) {
-        case "closeThread":
-          useReturnsStore.setState({ thread: null });
-          break;
         case "manager":
           showManager();
           break;
@@ -547,23 +571,43 @@ export function GrowReturns(props: {
             useReturnsStore.setState((state) => ({ expandAll: !state.expandAll }));
           }
           break;
-        case "step":
-          select(growStep(shown, item?.key ?? null, action.direction));
+        case "step": {
+          // The place focus is in stays: live stays live, the chat stays the chat.
+          const zone = activeZone();
+          const next = growStep(shown, item?.key ?? null, action.direction);
+          select(next);
+          const nextItem = growDeckItems(shown).find((candidate) => candidate.key === next);
+          if (playing !== null && nextItem?.playUrl) useReturnsStore.setState({ playing: next });
+          // After the next item renders, or focus lands on the row or page it replaces.
+          const stay = zone === "live" && !nextItem?.playUrl ? "presentation" : zone;
+          if (stay !== null)
+            requestAnimationFrame(() => requestAnimationFrame(() => focusZone(stay)));
           break;
+        }
+        case "page":
+          if (playing !== null) jump("presentation");
+          window.dispatchEvent(new CustomEvent(PROOF_IMAGE_EVENT, { detail: action.direction }));
+          break;
+        case "zone":
+          jump(action.zone);
+          break;
+        case "back": {
+          const here = activeZone();
+          const before = zones.current.find((zone) => zone !== here);
+          if (before === undefined) return;
+          jump(before);
+          break;
+        }
         case "undo":
           if (!undo()) return;
           break;
         case "search":
           document.querySelector<HTMLElement>("[data-grow-search]")?.focus();
           break;
-        case "whatIf":
-          setWhatIfOpen(true);
-          break;
-        case "ship":
-          if (item !== null) actions.ship(item);
-          break;
-        case "done":
-          if (item !== null) actions.done(item);
+        case "main":
+          if (item === null) return;
+          if (item.shippable) actions.ship(item);
+          else actions.done(item);
           break;
         case "settle":
           if (item !== null) actions.settle(item);
@@ -572,54 +616,31 @@ export function GrowReturns(props: {
           setWhatIfOpen(false);
           setSupersedeOpen(true);
           break;
-        case "chain": {
-          const from = threadShell ?? item?.thread;
-          if (from === undefined) return;
-          const next =
-            action.direction === 1
-              ? supersededChain(relations, from)[0]?.thread
-              : relations.supersedes.get(growReturnKey(from))?.at(-1);
-          if (next === undefined) return;
-          openRelated(next);
-          break;
-        }
-        case "askProof":
-          if (item !== null) void actions.askProof(item);
-          break;
-        case "openThread":
-          if (item !== null) actions.openThread(item);
-          break;
-        case "image":
-          window.dispatchEvent(new CustomEvent(PROOF_IMAGE_EVENT, { detail: action.direction }));
-          break;
-        case "scrollStory":
-          scrollStory(action.direction);
-          break;
-        case "play":
-          if (item === null || item.playUrl === null) return;
-          if (wide) useReturnsStore.setState({ playing: playing === item.key ? null : item.key });
-          else window.open(item.playUrl, "_blank", "noopener");
+        case "reload":
+          reloadLive();
           break;
       }
       event.preventDefault();
+      event.stopPropagation();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [
-    actions,
-    conversationOpen,
-    current,
-    manager,
-    openRelated,
-    playing,
-    query,
-    relations,
-    sheetOpen,
-    shown,
-    split,
-    threadShell,
-    wide,
-  ]);
+    // Capture, so a key held with Alt reaches Grow before the composer or a field takes it.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [actions, current, manager, playing, query, sheetOpen, shown, split, wide]);
+
+  // The desktop catches Grow's Alt keys inside the live app, whose page swallows every key,
+  // and hands them here as the same key press.
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction((action) => {
+        const [, code, shift] = /^grow-key:(\w+):([01])$/.exec(action) ?? [];
+        if (code === undefined) return;
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { code, altKey: true, shiftKey: shift === "1" }),
+        );
+      }),
+    [],
+  );
 
   // Esc leaves the manager or an open conversation even from its message box, which keeps
   // Esc from bubbling; caught before it, and left alone while a menu or dialog is open.
@@ -731,6 +752,7 @@ export function GrowReturns(props: {
       <div
         className="flex min-h-0 flex-col border-e ps-(--workspace-gutter-start) pe-3 pt-3"
         data-pane="sidebar"
+        data-grow-zone="threads"
       >
         {header}
         <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
@@ -1098,9 +1120,9 @@ function RowMark(props: { readonly item: GrowReturn }) {
 function ProofMark(props: { readonly item: GrowReturn }) {
   if (props.item.kind === "working") return null;
   return props.item.thread.statusProof ? (
-    <ImageIcon aria-label="Has proof" className="size-3.5 shrink-0 text-success" />
+    <ImageIcon aria-label="Has a presentation" className="size-3.5 shrink-0 text-success" />
   ) : (
-    <ImageOffIcon aria-label="No proof" className="size-3.5 shrink-0 text-warning" />
+    <ImageOffIcon aria-label="No presentation" className="size-3.5 shrink-0 text-warning" />
   );
 }
 
@@ -1254,6 +1276,7 @@ function ThreadPane(props: {
       aria-label={`Thread: ${props.title}`}
       className="flex min-h-0 min-w-0 flex-1 flex-col"
       data-grow-thread=""
+      data-grow-zone="chat"
     >
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <Button
@@ -1305,6 +1328,7 @@ function Conversation(props: { readonly thread: EnvironmentThreadShell }) {
       aria-label="Conversation"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
       data-grow-conversation=""
+      data-grow-zone="chat"
     >
       <ChatView
         environmentId={thread.environmentId}
@@ -1401,7 +1425,8 @@ function Hero(props: {
     return (
       <article
         aria-label={item.headline}
-        className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]"
+        className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] outline-none"
+        data-grow-zone="presentation"
       >
         <div className="flex min-h-0 min-w-0 flex-col p-5" data-pane="proof">
           {visual}
@@ -1429,7 +1454,11 @@ function Hero(props: {
       <div className="flex min-h-0 min-w-0 flex-col border-e">
         <Conversation thread={item.thread} />
       </div>
-      <div className="flex min-h-0 min-w-0 flex-col" data-pane="proof">
+      <div
+        className="flex min-h-0 min-w-0 flex-col outline-none"
+        data-pane="proof"
+        data-grow-zone="presentation"
+      >
         <div
           className={cn(
             "flex min-h-0 flex-col p-3 pb-0",
@@ -1557,7 +1586,7 @@ function Story(props: {
         >
           <MessageSquareIcon />
           Whole conversation
-          <Kbd>C</Kbd>
+          <Kbd>4</Kbd>
         </Button>
       )}
     </div>
@@ -1697,7 +1726,7 @@ const ASK_LOOK = {
   ship: { icon: <RocketIcon />, label: "You said ship" },
   reply: { icon: <ReplyIcon />, label: "You replied" },
   whatIf: { icon: <SparklesIcon />, label: "Your what if" },
-  proof: { icon: <ImageIcon />, label: "You asked for proof" },
+  proof: { icon: <ImageIcon />, label: "You asked for a presentation" },
 } as const;
 
 function NowLine(props: { readonly item: GrowReturn }) {
@@ -1845,10 +1874,11 @@ function PhoneStepper(props: {
 }
 
 /**
- * The thing itself. On a wide screen one stage switches between the proof (the
- * report's images, whole, click to zoom) and Live (the running preview, loaded
- * only when asked), with `P`. On a phone the proof sits above the story and
- * Play opens a tab.
+ * The thing itself. On a wide screen one stage switches between the presentation (the
+ * report's images, whole, click to zoom) and Live (the running preview, loaded only when
+ * asked), with 2 and 3. Once loaded, Live stays loaded while the presentation shows, so
+ * going back to it keeps the app where it was. On a phone the presentation sits above the
+ * story and Play opens a tab.
  */
 function Visual(props: {
   readonly item: GrowReturn;
@@ -1864,6 +1894,10 @@ function Visual(props: {
   const [zoom, setZoom] = useState<number | null>(null);
   const index = Math.min(shown, images.length - 1);
   const image = images[index];
+  const live = props.wide && props.playing && item.playUrl !== null;
+  const [keptFor, setKeptFor] = useState<string | null>(null);
+  if (live && keptFor !== item.key) setKeptFor(item.key);
+  const kept = props.wide && keptFor === item.key ? item.playUrl : null;
   useEffect(() => {
     const onStep = (event: Event) => {
       const direction = event instanceof CustomEvent && event.detail === -1 ? -1 : 1;
@@ -1875,7 +1909,6 @@ function Visual(props: {
     return () => window.removeEventListener(PROOF_IMAGE_EVENT, onStep);
   }, [images.length]);
   const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
-  const live = props.wide && props.playing && item.playUrl !== null;
   const zoomDialog =
     zoom === null ? null : (
       <ExpandedImageDialog
@@ -1941,25 +1974,26 @@ function Visual(props: {
         <ToggleGroup
           aria-label="Show"
           variant="segmented"
-          value={[live ? "live" : "proof"]}
+          value={[live ? "live" : "presentation"]}
           onValueChange={(value) => {
             const next = value[0];
-            if (next === "live" || next === "proof")
+            if (next === "live" || next === "presentation")
               useReturnsStore.setState({ playing: next === "live" ? item.key : null });
           }}
         >
-          <Toggle value="proof" aria-label="Proof">
+          <Toggle value="presentation" aria-label="Presentation">
             <ImageIcon className="size-3.5" />
-            Proof
+            Presentation
+            <Kbd>2</Kbd>
           </Toggle>
           {item.playUrl ? (
             <Toggle value="live" aria-label="Live">
               <PlayIcon className="size-3.5" />
               Live
+              <Kbd>3</Kbd>
             </Toggle>
           ) : null}
         </ToggleGroup>
-        {item.playUrl ? <Kbd>V</Kbd> : null}
         <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
           {live ? host : images.length > 1 ? `${index + 1} of ${images.length}` : null}
         </span>
@@ -1975,17 +2009,24 @@ function Visual(props: {
           </Button>
         ) : null}
       </div>
-      {live && item.playUrl ? (
-        isPreviewSupportedInRuntime() ? (
-          <GrowPreview
-            environmentId={item.thread.environmentId}
-            threadId={item.thread.id}
-            url={item.playUrl}
-          />
-        ) : (
-          <GrowFrame url={item.playUrl} />
-        )
-      ) : (
+      {kept ? (
+        <div
+          className={cn("flex min-h-0 flex-1 flex-col", !live && "hidden")}
+          data-grow-zone="live"
+        >
+          {isPreviewSupportedInRuntime() ? (
+            <GrowPreview
+              environmentId={item.thread.environmentId}
+              threadId={item.thread.id}
+              url={kept}
+              visible={live}
+            />
+          ) : (
+            <GrowFrame url={kept} />
+          )}
+        </div>
+      ) : null}
+      {live ? null : (
         <>
           {proof}
           {images.length > 1 ? (
@@ -2031,7 +2072,7 @@ function NoProof(props: {
     >
       <ImageOffIcon className="size-6 text-muted-foreground" />
       <div className="flex flex-col gap-0.5">
-        <span className="font-medium text-sm">No proof yet</span>
+        <span className="font-medium text-sm">No presentation yet</span>
         <span className="text-muted-foreground text-xs">
           {item.kind === "working"
             ? "It comes with the answer."
@@ -2043,7 +2084,6 @@ function NoProof(props: {
           <Button variant="outline" onClick={() => void props.actions.askProof(item)}>
             <ImageIcon />
             Ask again
-            {props.wide ? <Kbd>A</Kbd> : null}
           </Button>
         ) : null}
         {item.playUrl ? (
@@ -2194,7 +2234,7 @@ function Choices(props: {
       label="Ship"
       hint="Merge it the usual way"
       icon={<RocketIcon />}
-      keyHint="S"
+      keyHint="E"
       primary={!props.question}
       wide={wide}
       stacked={stacked}
@@ -2206,7 +2246,7 @@ function Choices(props: {
       label="Done"
       hint="Nothing to merge"
       icon={<CheckIcon />}
-      keyHint="D"
+      keyHint="E"
       primary={!props.question}
       wide={wide}
       stacked={stacked}
@@ -2232,7 +2272,7 @@ function Choices(props: {
             label="Answer"
             hint="In the thread"
             icon={<MessageSquareIcon />}
-            keyHint={props.conversationShown ? undefined : "C"}
+            keyHint="4"
             primary
             wide={wide}
             stacked={stacked}
@@ -2244,7 +2284,6 @@ function Choices(props: {
             label="What if..."
             hint="Change it, same thread"
             icon={<SparklesIcon />}
-            keyHint="W"
             wide={wide}
             stacked={stacked}
             onClick={() => props.setWhatIfOpen(true)}
@@ -2265,7 +2304,6 @@ function Choices(props: {
               label="Reply"
               hint="Answer its question"
               icon={<ReplyIcon />}
-              keyHint="W"
               primary
               wide={wide}
               stacked={stacked}
@@ -2280,7 +2318,6 @@ function Choices(props: {
               label="What if..."
               hint="Change it, same thread"
               icon={<SparklesIcon />}
-              keyHint="W"
               wide={wide}
               stacked={stacked}
               onClick={() => props.setWhatIfOpen(true)}
@@ -2450,7 +2487,7 @@ function Choice(props: {
   readonly label: string;
   readonly hint: string;
   readonly icon: ReactNode;
-  readonly keyHint: string | undefined;
+  readonly keyHint?: string;
   readonly primary?: boolean;
   readonly wide: boolean;
   readonly stacked: boolean;
