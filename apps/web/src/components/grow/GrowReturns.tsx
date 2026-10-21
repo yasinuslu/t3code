@@ -2026,6 +2026,14 @@ function Visual(props: {
       }),
     [item.key],
   );
+  // Another version reorders or swaps the pages: stay on the page being read, by its key.
+  const [slidesSeen, setSlidesSeen] = useState(slides);
+  if (slidesSeen !== slides) {
+    setSlidesSeen(slides);
+    const key = slidesSeen[Math.min(shown, slidesSeen.length - 1)]?.key;
+    const at = key === undefined ? -1 : slides.findIndex((candidate) => candidate.key === key);
+    if (at >= 0 && at !== shown) setShown(at);
+  }
   const [zoom, setZoom] = useState<number | null>(null);
   const index = Math.min(shown, slides.length - 1);
   const slide = slides[index];

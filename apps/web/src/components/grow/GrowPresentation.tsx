@@ -309,6 +309,11 @@ function FormSlide(props: {
           )}
         </fieldset>
       ))}
+      {props.readOnly ? (
+        <p className="text-muted-foreground text-xs">
+          From an earlier version; answer it on the latest.
+        </p>
+      ) : null}
       <div className={cn("flex gap-2", props.readOnly && "hidden")}>
         <Button type="submit" disabled={!complete}>
           Send answers
@@ -443,13 +448,14 @@ export function SlideStrip(props: {
   readonly onPick: (index: number) => void;
 }) {
   if (props.slides.length < 2) return null;
+  const changed = props.slides.some((slide) => slide.changed);
   return (
-    <div className="flex shrink-0 gap-2 overflow-x-auto border-t p-2">
+    <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-t p-2">
       {props.slides.map((slide, index) => (
         <button
           key={slide.key}
           type="button"
-          aria-label={`Show ${slide.name}`}
+          aria-label={`Show ${slide.name}${slide.changed ? ", changed in this version" : ""}`}
           aria-current={index === props.current ? "true" : undefined}
           className={cn(
             "relative flex h-14 shrink-0 items-center gap-1.5 overflow-hidden rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -459,10 +465,7 @@ export function SlideStrip(props: {
           onClick={() => props.onPick(index)}
         >
           {slide.changed ? (
-            <span
-              aria-label="Changed in this version"
-              className="absolute top-1 right-1 size-2 rounded-full bg-info ring-2 ring-background"
-            />
+            <span className="absolute top-1 right-1 size-2 rounded-full bg-info ring-2 ring-background" />
           ) : null}
           {slide.kind === "image" ? (
             <img src={slide.src} alt="" className="h-full w-auto" />
@@ -480,6 +483,12 @@ export function SlideStrip(props: {
           )}
         </button>
       ))}
+      {changed ? (
+        <span className="flex shrink-0 items-center gap-1.5 px-1 text-muted-foreground text-xs">
+          <span className="size-2 rounded-full bg-info" />
+          Changed in this version
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -521,7 +530,7 @@ export function VersionStepper(props: { readonly versions: PresentationVersions 
           ? "Loading..."
           : past
             ? `v${version} of ${latest}${startedAt ? `, ${formatRelativeTimeLabel(startedAt)}` : ""}`
-            : `v${version}`}
+            : `v${version}, latest`}
       </button>
       <Button
         variant="ghost"
@@ -532,6 +541,11 @@ export function VersionStepper(props: { readonly versions: PresentationVersions 
       >
         <ChevronRightIcon />
       </Button>
+      {past ? (
+        <Button variant="outline" size="xs" onClick={() => pick(null)}>
+          Latest
+        </Button>
+      ) : null}
     </div>
   );
 }
