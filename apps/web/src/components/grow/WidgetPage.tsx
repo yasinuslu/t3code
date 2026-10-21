@@ -1,5 +1,5 @@
 import type { AssetResource, EnvironmentId, GrowWidgetPoolState } from "@t3tools/contracts";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { growEnvironment } from "../../state/grow";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -14,30 +14,32 @@ import {
 
 /** Each environment's pool, fetched once and again when a page names a widget it lacks. */
 const pools = new Map<string, { readonly at: number; readonly pool: GrowWidgetPoolState }>();
+const poolListeners = new Set<() => void>();
 const REFETCH_AFTER_MS = 10_000;
+
+function subscribePools(listener: () => void) {
+  poolListeners.add(listener);
+  return () => {
+    poolListeners.delete(listener);
+  };
+}
 
 export function useWidgetPool(
   environmentId: EnvironmentId,
   wanted: ReadonlyArray<string>,
 ): GrowWidgetPoolState | null {
   const fetchPool = useAtomCommand(growEnvironment.widgetPool, { reportFailure: false });
-  // Bumped when a fetch lands, so the cache read below is current.
-  const [, setFetched] = useState(0);
-  const pool = pools.get(environmentId)?.pool ?? null;
+  const pool = useSyncExternalStore(subscribePools, () => pools.get(environmentId)?.pool ?? null);
   const missing = wanted.some((name) => !pool?.widgets.some((widget) => widget.name === name));
   useEffect(() => {
     const cached = pools.get(environmentId);
     // A widget the smith just added is on disk but not in the copy here yet.
     if (cached !== undefined && (!missing || Date.now() - cached.at < REFETCH_AFTER_MS)) return;
-    let live = true;
     void fetchPool({ environmentId, input: {} }).then((result) => {
       if (result._tag !== "Success") return;
       pools.set(environmentId, { at: Date.now(), pool: result.value });
-      if (live) setFetched((count) => count + 1);
+      for (const listener of poolListeners) listener();
     });
-    return () => {
-      live = false;
-    };
   }, [environmentId, fetchPool, missing]);
   return pool;
 }

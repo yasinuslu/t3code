@@ -32,6 +32,7 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { BrainstormService } from "../brainstorm/BrainstormService.ts";
+import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
 import { writePresentationPages } from "../mcp/toolkits/presentation/handlers.ts";
 import { localImagePaths } from "../mcp/toolkits/threadStatus/reportImages.ts";
 import { storeImageFile } from "../mcp/toolkits/threadStatus/storeFile.ts";
@@ -54,6 +55,7 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 export const LIVING_PAGE_ID = "living";
 const MAX_REMEMBERED = 256;
 const OWNER_MESSAGES = 6;
+const DIFF_CHARS = 16_000;
 
 const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max)}\n[...]`;
@@ -68,7 +70,8 @@ export function livingPage(
 
 /**
  * What the writer reads about the work: the owner's recent words, the agent's latest answer and
- * status report, its own pages, links, and every image it may show by `attachment:<id>`.
+ * status report, its own pages, links, the thread's code changes so far, and every image it may
+ * show by `attachment:<id>`.
  */
 export function formatLivingPageContext(input: {
   readonly thread: OrchestrationV2AppThread;
@@ -76,6 +79,8 @@ export function formatLivingPageContext(input: {
   readonly messages: ReadonlyArray<OrchestrationV2ConversationMessage>;
   /** Images the agent's answer pointed at by path, now stored, by path. */
   readonly storedPaths: ReadonlyMap<string, string>;
+  /** The thread's whole diff from its first checkpoint, when it changed files. */
+  readonly diff?: string | undefined;
 }): string {
   const { thread } = input;
   const done = input.messages.filter((message) => !message.streaming);
@@ -144,6 +149,13 @@ export function formatLivingPageContext(input: {
       }
     }
   }
+  if (input.diff !== undefined && input.diff.trim().length > 0) {
+    lines.push(
+      "",
+      "## The code changes so far (unified diff)",
+      clip(input.diff.trim(), DIFF_CHARS),
+    );
+  }
   if (images.length > 0)
     lines.push("", "## Images you can show", ...images.map((line) => `- ${line}`));
   return lines.join("\n");
@@ -199,6 +211,7 @@ const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration.TextGeneration;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const registry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+  const diffs = yield* CheckpointDiffQuery.CheckpointDiffQuery;
 
   /** The user's text model for the smith; its provider's small model for the writer. */
   const models = (projectId: OrchestrationV2AppThread["projectId"]) =>
@@ -252,6 +265,10 @@ const make = Effect.gen(function* () {
       const id = yield* storeImageFile(threadId, path).pipe(Effect.option);
       if (Option.isSome(id)) storedPaths.set(path, id.value);
     }
+    // A thread with no checkpoint (no repository, nothing captured yet) simply shows no code.
+    const diff = yield* diffs
+      .getFullThreadDiff({ threadId, toTurnCount: latest.ordinal })
+      .pipe(Effect.option);
     const current = livingPage(thread);
     const { cheap, strong } = yield* models(thread.projectId);
     const result = yield* textGeneration.generateLivingPage({
@@ -261,6 +278,7 @@ const make = Effect.gen(function* () {
         projectTitle: project.value.title,
         messages,
         storedPaths,
+        diff: Option.isSome(diff) ? diff.value.diff : undefined,
       }),
       pool: GrowWidgetPool.poolCatalog(snapshot),
       ...(current === undefined ? {} : { previous: encodeJson(current.blocks) }),

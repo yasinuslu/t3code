@@ -2009,11 +2009,13 @@ function Visual(props: {
       }),
     [item.key],
   );
-  // Another version reorders or swaps the pages: stay on the page being read, by its key.
+  // Another version reorders or swaps the pages: stay on the page being read, by its key. Story
+  // alone means the pages had not loaded yet, so they open where they were left (the first).
   const [slidesSeen, setSlidesSeen] = useState(slides);
   if (slidesSeen !== slides) {
     setSlidesSeen(slides);
-    const key = slidesSeen[Math.min(shown, slidesSeen.length - 1)]?.key;
+    const key =
+      slidesSeen.length === 1 ? undefined : slidesSeen[Math.min(shown, slidesSeen.length - 1)]?.key;
     const at = key === undefined ? -1 : slides.findIndex((candidate) => candidate.key === key);
     if (at >= 0 && at !== shown) setShown(at);
   }

@@ -370,6 +370,7 @@ How to compose:
 - Show, don't tell: screenshots from the images listed in the context (by their attachment:<id>, with boxes on what changed), real numbers as figures, diagrams, tables of what was compared.
 - When the owner must decide, give the choices as a decision widget whose answers are full sentences the agent can act on.
 - Few words, plain language, the owner's language, no marketing, no em dashes. Five to twelve blocks.
+- Every fact comes from the context: file paths, code, names and numbers exactly as they appear there. Quote code only from the diff, never write or improve it. If the context lacks something, leave it out rather than guess.
 
 It is living: when a page exists, evolve it, don't restart. Keep its staging and order unless the work changed shape, update what changed, drop what no longer matters. When nothing meaningful happened, return "unchanged": true and no blocks.
 

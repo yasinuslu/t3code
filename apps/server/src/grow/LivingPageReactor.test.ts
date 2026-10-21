@@ -1,6 +1,7 @@
+import type { OrchestrationV2AppThread } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { acceptBlocks } from "./LivingPageReactor.ts";
+import { acceptBlocks, formatLivingPageContext } from "./LivingPageReactor.ts";
 
 describe("acceptBlocks", () => {
   const known = new Set(["Headline", "Shot"]);
@@ -41,5 +42,30 @@ describe("acceptBlocks", () => {
       propsJson: "{}",
     }));
     expect(acceptBlocks(many, known)).toHaveLength(40);
+  });
+});
+
+describe("formatLivingPageContext", () => {
+  // Only the fields the context reads.
+  const thread = { title: "Fund hint" } as OrchestrationV2AppThread;
+  const context = (diff?: string) =>
+    formatLivingPageContext({
+      thread,
+      projectTitle: "demo",
+      messages: [],
+      storedPaths: new Map(),
+      diff,
+    });
+
+  it("gives the writer the real diff, so it quotes code instead of inventing it", () => {
+    const text = context("+  return plan.budget ?? plan.estimate ?? 0;");
+    expect(text).toContain("## The code changes so far (unified diff)");
+    expect(text).toContain("plan.budget ?? plan.estimate ?? 0");
+  });
+
+  it("clips a large diff and leaves the section out when nothing changed", () => {
+    expect(context("x".repeat(40_000)).length).toBeLessThan(20_000);
+    expect(context("")).not.toContain("code changes");
+    expect(context()).not.toContain("code changes");
   });
 });
