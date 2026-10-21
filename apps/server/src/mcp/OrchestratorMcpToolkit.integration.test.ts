@@ -702,6 +702,56 @@ describe("orchestrator MCP toolkit", () => {
             yield* invoke("t3_thread_organize", { action: "unpin" });
             expect((yield* orchestrator.getThreadShell(parentThreadId))?.pinnedAt).toBeNull();
 
+            // Consolidating: an older thread settles, superseded by this one.
+            const olderThreadId = ThreadId.make("thread:mcp-older");
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:mcp-older:create"),
+              threadId: olderThreadId,
+              projectId,
+              title: "MCP older idea",
+              modelSelection: codexSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: cwd,
+            });
+            yield* invoke("t3_thread_organize", {
+              threadId: olderThreadId,
+              action: "settle",
+              supersededBy: parentThreadId,
+              note: "  Folded into\nthe parent  ",
+            });
+            const older = yield* orchestrator.getThreadShell(olderThreadId);
+            expect(older?.settledAt).not.toBeNull();
+            expect(older?.supersededBy).toMatchObject({
+              threadId: parentThreadId,
+              note: "Folded into the parent",
+            });
+            // The parent superseding its own predecessor would loop the chain.
+            const loop = yield* invoke("t3_thread_organize", {
+              action: "settle",
+              supersededBy: olderThreadId,
+            });
+            expect(loop.structuredContent).toMatchObject({
+              code: "invalid_request",
+              message: "That would make the supersede chain loop back to this thread.",
+            });
+            expect(
+              (yield* orchestrator.getThreadShell(parentThreadId))?.supersededBy,
+            ).toBeUndefined();
+            yield* invoke("t3_thread_organize", { threadId: olderThreadId, action: "unsupersede" });
+            expect(
+              (yield* orchestrator.getThreadShell(olderThreadId))?.supersededBy,
+            ).toBeUndefined();
+            yield* orchestrator.dispatch({
+              type: "thread.delete",
+              commandId: CommandId.make("command:mcp-older:delete"),
+              threadId: olderThreadId,
+            });
+
             if (parentRun === undefined || parentRun.rootNodeId === null) {
               return yield* Effect.die(new Error("Parent run missing."));
             }

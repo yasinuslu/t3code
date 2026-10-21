@@ -144,6 +144,8 @@ export interface EnvironmentThreadShell {
   readonly statusUpdatedAt?: string;
   /** True when that report embeds a proof image. */
   readonly statusProof?: boolean;
+  /** The thread that took this one further, with its one-line note. */
+  readonly supersededBy?: import("@t3tools/contracts").ThreadSupersededBy;
   /**
    * Server-tracked visited watermark. `undefined` means the environment's
    * server predates visited tracking and clients should fall back to any
@@ -254,6 +256,7 @@ export function presentThreadShell(
     previewLinks: thread.previewLinks ?? NO_PREVIEW_LINKS,
     ...(thread.statusUpdatedAt === undefined ? {} : { statusUpdatedAt: thread.statusUpdatedAt }),
     ...(thread.statusProof ? { statusProof: true } : {}),
+    ...(thread.supersededBy == null ? {} : { supersededBy: thread.supersededBy }),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,
     activeProviderThreadId: thread.activeProviderThreadId,

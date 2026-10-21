@@ -32,9 +32,11 @@ import {
   BotIcon,
   CornerLeftUpIcon,
   GitForkIcon,
+  LayersIcon,
   LoaderCircleIcon,
   MoreHorizontalIcon,
   PlusIcon,
+  Unlink2Icon,
   UnplugIcon,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -224,16 +226,55 @@ export function ThreadRelationshipsPanel(props: {
   const archivedShells = archived.snapshots.find(
     (entry) => entry.environmentId === props.environmentId,
   )?.snapshot.threads;
-  const graph = useMemo(() => {
-    const shells: ReadonlyArray<OrchestrationV2ThreadShell> = [
+  const shells = useMemo(
+    (): ReadonlyArray<OrchestrationV2ThreadShell> => [
       ...threadShells
         .filter((thread) => thread.environmentId === props.environmentId)
         .map((thread) => thread.source),
       ...(archivedShells ?? []),
-    ];
-    return deriveThreadRelationshipGraph({ threads: shells, projection });
-  }, [archivedShells, projection, props.environmentId, threadShells]);
+    ],
+    [archivedShells, props.environmentId, threadShells],
+  );
+  const graph = useMemo(
+    () => deriveThreadRelationshipGraph({ threads: shells, projection }),
+    [projection, shells],
+  );
   const currentThread = projection?.thread ?? graph.nodes.get(props.threadId)?.thread;
+  // Superseded by (this thread was let go in favour of another) and its reverse,
+  // read off the other threads' links, oldest first.
+  const supersedeRows = useMemo(() => {
+    const byId = new Map(shells.map((thread) => [thread.id, thread]));
+    const link = currentThread?.supersededBy ?? null;
+    const successor =
+      link === null
+        ? []
+        : [
+            {
+              kind: "supersededBy" as const,
+              threadId: link.threadId,
+              note: link.note,
+              thread: byId.get(link.threadId),
+            },
+          ];
+    const older = shells
+      .filter(
+        (thread) => thread.supersededBy?.threadId === props.threadId && thread.deletedAt === null,
+      )
+      .sort((left, right) => (left.supersededBy!.at < right.supersededBy!.at ? -1 : 1))
+      .map((thread) => ({
+        kind: "supersedes" as const,
+        threadId: thread.id,
+        note: thread.supersededBy!.note,
+        thread,
+      }));
+    return [...successor, ...older];
+  }, [currentThread?.supersededBy, props.threadId, shells]);
+  const setSupersededBy = useAtomCommand(threadEnvironment.setSupersededBy);
+  const unlinkSuccessor = () =>
+    void setSupersededBy({
+      environmentId: props.environmentId,
+      input: { threadId: props.threadId, supersededBy: null },
+    });
   const currentProject = projects.find((project) => project.id === currentThread?.projectId);
   const navigate = useNavigate();
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack);
@@ -301,7 +342,12 @@ export function ThreadRelationshipsPanel(props: {
     active.filter(({ edge }) => edge.status === "running").length +
     runningCommands.length;
 
-  if (relationshipRows.length === 0 && runningCount === 0 && backgroundCommands.length === 0) {
+  if (
+    relationshipRows.length === 0 &&
+    supersedeRows.length === 0 &&
+    runningCount === 0 &&
+    backgroundCommands.length === 0
+  ) {
     return null;
   }
 
@@ -348,7 +394,7 @@ export function ThreadRelationshipsPanel(props: {
       title={runningCount > 0 ? `Lineage · ${runningCount} running` : "Lineage"}
       data-thread-relationships-panel
       actions={
-        canDetach ? (
+        canDetach || currentThread?.supersededBy != null ? (
           <Menu>
             <MenuTrigger
               render={
@@ -364,15 +410,69 @@ export function ThreadRelationshipsPanel(props: {
               <MoreHorizontalIcon className="size-3.5" />
             </MenuTrigger>
             <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
-              <MenuItem onClick={() => void detach()}>
-                <UnplugIcon className="size-3.5" />
-                Disconnect agent session
-              </MenuItem>
+              {canDetach ? (
+                <MenuItem onClick={() => void detach()}>
+                  <UnplugIcon className="size-3.5" />
+                  Disconnect agent session
+                </MenuItem>
+              ) : null}
+              {currentThread?.supersededBy != null ? (
+                <MenuItem onClick={unlinkSuccessor}>
+                  <Unlink2Icon className="size-3.5" />
+                  Remove the superseded-by link
+                </MenuItem>
+              ) : null}
             </MenuPopup>
           </Menu>
         ) : null
       }
     >
+      {supersedeRows.length > 0 ? (
+        <ThreadLineageRowList hiddenCount={0} onShowMore={() => {}}>
+          {supersedeRows.map((row) => {
+            const title = row.thread?.title ?? row.threadId;
+            const label = row.kind === "supersededBy" ? "Superseded by" : "Supersedes";
+            const Icon = row.kind === "supersededBy" ? ArrowRightIcon : LayersIcon;
+            return (
+              <li key={`${row.kind}:${row.threadId}`} className="group flex flex-col rounded-lg">
+                <Tooltip>
+                  <TooltipTrigger
+                    delay={200}
+                    render={
+                      <ThreadDetailsControl
+                        size="sm"
+                        variant="ghost"
+                        part="row"
+                        aria-label={`${label} ${title}${row.note ? `: ${row.note}` : ""}`}
+                        disabled={row.thread === undefined}
+                        onClick={() => openThread(row.threadId)}
+                      />
+                    }
+                  >
+                    <span className="relative flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                      <Icon className="size-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left text-sm font-medium leading-4 text-foreground/85">
+                      {title}
+                    </span>
+                    <span className="shrink-0 text-2xs text-muted-foreground">{label}</span>
+                  </TooltipTrigger>
+                  <TooltipPopup side="left" className="max-w-80">
+                    {row.thread === undefined
+                      ? "This thread is unavailable"
+                      : row.note || `${label} ${title}`}
+                  </TooltipPopup>
+                </Tooltip>
+                {row.note ? (
+                  <span className="truncate ps-8 pe-2 pb-1 text-2xs text-muted-foreground">
+                    {row.note}
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ThreadLineageRowList>
+      ) : null}
       {groups.map((group) => (
         <ThreadLineageGroup key={`${scopedThreadKey(ref)}:${group.id}`} {...group}>
           {(visibleRows) =>

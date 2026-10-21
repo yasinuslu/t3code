@@ -294,6 +294,8 @@ export interface GrowRelations {
   readonly byKey: ReadonlyMap<string, EnvironmentThreadShell>;
   /** Threads that came from a thread, oldest first, by the parent's key. */
   readonly children: ReadonlyMap<string, ReadonlyArray<EnvironmentThreadShell>>;
+  /** Threads a thread superseded (they were let go in its favour), oldest first, by its key. */
+  readonly supersedes: ReadonlyMap<string, ReadonlyArray<EnvironmentThreadShell>>;
 }
 
 export function buildGrowRelations(
@@ -302,9 +304,16 @@ export function buildGrowRelations(
 ): GrowRelations {
   const byKey = new Map<string, EnvironmentThreadShell>();
   const children = new Map<string, EnvironmentThreadShell[]>();
+  const supersedes = new Map<string, EnvironmentThreadShell[]>();
   for (const thread of threads) {
     const key = growReturnKey(thread);
     byKey.set(key, thread);
+    if (thread.supersededBy != null && thread.deletedAt === null) {
+      const successor = `${thread.environmentId}:${thread.supersededBy.threadId}`;
+      const older = supersedes.get(successor);
+      if (older) older.push(thread);
+      else supersedes.set(successor, [thread]);
+    }
     if (thread.lineage.relationshipToParent === "subagent" || thread.deletedAt !== null) continue;
     const parent = growParentKey(thread, cards.get(key));
     if (parent === null) continue;
@@ -315,7 +324,91 @@ export function buildGrowRelations(
   for (const siblings of children.values()) {
     siblings.sort((left, right) => epochMs(left.createdAt) - epochMs(right.createdAt));
   }
-  return { byKey, children };
+  // In the order they were folded in, as the Lineage panel lists them.
+  for (const older of supersedes.values()) {
+    older.sort((left, right) => (left.supersededBy!.at < right.supersededBy!.at ? -1 : 1));
+  }
+  return { byKey, children, supersedes };
+}
+
+/**
+ * Where this thread's work went next: its successor, that one's successor, and
+ * so on, nearest first. Bounded, and a thread seen twice ends the walk, so a
+ * chain written by an older server can never loop the view.
+ */
+export function supersededChain(
+  relations: Pick<GrowRelations, "byKey">,
+  thread: EnvironmentThreadShell,
+): ReadonlyArray<{ readonly thread: EnvironmentThreadShell; readonly note: string }> {
+  const chain: Array<{ thread: EnvironmentThreadShell; note: string }> = [];
+  const seen = new Set([growReturnKey(thread)]);
+  let link = thread.supersededBy;
+  while (link != null && chain.length < 8) {
+    const key = `${thread.environmentId}:${link.threadId}`;
+    const next = relations.byKey.get(key);
+    if (next === undefined || seen.has(key)) break;
+    seen.add(key);
+    chain.push({ thread: next, note: link.note });
+    link = next.supersededBy;
+  }
+  return chain;
+}
+
+/**
+ * The threads that could carry this one's work on, best guesses first: the
+ * ones it is related to (its parent, threads it led to, siblings), then the
+ * same project, each by latest activity. Threads already in its own chain
+ * behind it are left out, since picking one would loop. A query narrows the
+ * list by title.
+ */
+export function supersedeCandidates(input: {
+  readonly thread: EnvironmentThreadShell;
+  readonly relations: GrowRelations;
+  readonly parentKey: string | null;
+  readonly query: string;
+  readonly limit?: number;
+}): ReadonlyArray<EnvironmentThreadShell> {
+  const { thread, relations } = input;
+  const self = growReturnKey(thread);
+  const behind = new Set<string>([self]);
+  const stack = [self];
+  while (stack.length > 0) {
+    for (const older of relations.supersedes.get(stack.pop()!) ?? []) {
+      const key = growReturnKey(older);
+      if (!behind.has(key)) {
+        behind.add(key);
+        stack.push(key);
+      }
+    }
+  }
+  const related = new Set<string>();
+  if (input.parentKey !== null) {
+    related.add(input.parentKey);
+    for (const sibling of relations.children.get(input.parentKey) ?? []) {
+      related.add(growReturnKey(sibling));
+    }
+  }
+  for (const child of relations.children.get(self) ?? []) related.add(growReturnKey(child));
+  const words = input.query.toLowerCase().split(/\s+/).filter(Boolean);
+  const rank = (candidate: EnvironmentThreadShell) =>
+    related.has(growReturnKey(candidate)) ? 0 : candidate.projectId === thread.projectId ? 1 : 2;
+  return [...relations.byKey.values()]
+    .filter(
+      (candidate) =>
+        candidate.environmentId === thread.environmentId &&
+        candidate.deletedAt === null &&
+        candidate.archivedAt === null &&
+        candidate.lineage.relationshipToParent !== "subagent" &&
+        // A superseded thread is not where the work lives on; its successor is.
+        candidate.supersededBy === undefined &&
+        !behind.has(growReturnKey(candidate)) &&
+        words.every((word) => candidate.title.toLowerCase().includes(word)),
+    )
+    .sort(
+      (left, right) =>
+        rank(left) - rank(right) || epochMs(right.updatedAt) - epochMs(left.updatedAt),
+    )
+    .slice(0, input.limit ?? 6);
 }
 
 /** Everything the user is asked to decide, in the order the deck walks it. */

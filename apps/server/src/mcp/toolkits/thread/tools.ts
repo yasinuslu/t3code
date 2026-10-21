@@ -30,7 +30,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, archive, or mark a thread unread in the calling project (the manager thread reaches every project). Omit threadId for this thread. snooze requires snoozedUntil. Existing thread lifecycle rules apply; this does not schedule a future action.",
+    "Pin, snooze, settle, archive, or mark a thread unread in the calling project (the manager thread reaches every project). Omit threadId for this thread. snooze requires snoozedUntil. When consolidating threads, settle the old one with supersededBy (the thread that carries its work on) and a one-line note (why, and what carried over); both threads then show the link in Lineage. unsupersede removes that link. Existing thread lifecycle rules apply; this does not schedule a future action.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     action: Schema.Literals([
@@ -40,11 +40,16 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
       "unsnooze",
       "settle",
       "unsettle",
+      "unsupersede",
       "archive",
       "unarchive",
       "mark_unread",
     ]),
     snoozedUntil: Schema.optional(IsoDateTime),
+    /** With settle: the thread that superseded this one. */
+    supersededBy: Schema.optional(ThreadId),
+    /** With supersededBy: one line on why, and what carried over. */
+    note: Schema.optional(Schema.String.check(Schema.isMaxLength(280))),
   }),
   success: OrchestrationV2DispatchCommandResult,
   failure: OrchestratorMcpFailure,

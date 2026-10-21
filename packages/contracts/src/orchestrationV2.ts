@@ -50,6 +50,7 @@ import {
 } from "./threadPullRequest.ts";
 import { ThreadPreviewLink, ThreadPreviewLinkSource } from "./threadPreviewLink.ts";
 import { ThreadStatusReport } from "./threadStatusReport.ts";
+import { ThreadSupersededBy } from "./threadSupersede.ts";
 import {
   ProviderApprovalDecision,
   ProviderApprovalOption,
@@ -389,6 +390,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
   /** The status its agent last set (`thread_status_update`); absent until one does. */
   statusReport: Schema.optional(ThreadStatusReport),
+  /** The thread that took this one further (Let go, superseded by); absent until set. */
+  supersededBy: Schema.optional(Schema.NullOr(ThreadSupersededBy)),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   lineage: OrchestrationV2AppThreadLineage,
@@ -1796,6 +1799,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
   /** When the agent last set the thread's status report; the text stays server-side. */
   statusUpdatedAt: Schema.optional(IsoDateTime),
+  /** The thread that superseded this one; "supersedes" is derived from other shells. */
+  supersededBy: Schema.optional(Schema.NullOr(ThreadSupersededBy)),
   /** Whether that report embeds a proof image; absent when it does not. */
   statusProof: Schema.optional(Schema.Boolean),
   lineage: OrchestrationV2AppThreadLineage,
@@ -2715,6 +2720,13 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     /** Replaces the previous report; its screenshots must already be stored attachments. */
     text: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.superseded-by.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    /** The successor thread and a one-line note; null clears the link. */
+    supersededBy: Schema.NullOr(Schema.Struct({ threadId: ThreadId, note: Schema.String })),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),

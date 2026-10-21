@@ -8,6 +8,8 @@ export type GrowKeyAction =
   | { readonly type: "done" }
   | { readonly type: "whatIf" }
   | { readonly type: "settle" }
+  | { readonly type: "supersede" }
+  | { readonly type: "chain"; readonly direction: 1 | -1 }
   | { readonly type: "askProof" }
   | { readonly type: "openThread" }
   | { readonly type: "closeThread" }
@@ -38,6 +40,8 @@ export interface GrowKeyState {
  *
  *   Q / E  previous / next item      S ship      D done     W what if (or reply)
  *   X settle (off the list)          Z undo      A ask for proof
+ *   Shift+X settle, superseded by another thread
+ *   Shift+Q / Shift+E  the thread this one superseded / the one that superseded it
  *   C the conversation (narrow)      V the live preview
  *   B / Shift+B next / previous screenshot (the arrows too)   PgDn / PgUp scroll the story
  *   F find                           G expand every project
@@ -57,6 +61,10 @@ export function growKeyAction(
   if (key === "r") return { type: "profile", direction: event.key === "R" ? -1 : 1 };
   if (key === "t") return { type: "manager" };
   if (state.managerOpen) return stepAction(key);
+  // The supersede chain is followed from a conversation too: older threads open as one.
+  if (event.key === "Q" || event.key === "E") {
+    return { type: "chain", direction: event.key === "E" ? 1 : -1 };
+  }
   if (state.conversationOpen) return key === "c" ? { type: "closeThread" } : null;
   const step = stepAction(key);
   if (step !== null) return step;
@@ -82,6 +90,7 @@ export function growKeyAction(
   if (key === "s" && item.kind === "return" && item.shippable) return { type: "ship" };
   if (key === "d" && item.kind === "return") return { type: "done" };
   if (key === "w" && open) return { type: "whatIf" };
+  if (event.key === "X" && item.kind !== "working") return { type: "supersede" };
   if (key === "x" && open) return { type: "settle" };
   if (key === "a" && open && !item.thread.statusProof) return { type: "askProof" };
   if (key === "c" && !state.conversationShown) return { type: "openThread" };
@@ -119,6 +128,11 @@ export const GROW_KEY_HELP: ReadonlyArray<{
       { keys: ["Q", "E"], label: "Previous / next item", action: "step" },
       { keys: ["F"], label: "Search", action: "search" },
       { keys: ["G"], label: "Expand every project", action: "toggleProjects" },
+      {
+        keys: ["Shift+Q", "Shift+E"],
+        label: "Older / newer in the supersede chain",
+        action: "chain",
+      },
     ],
   },
   {
@@ -128,6 +142,7 @@ export const GROW_KEY_HELP: ReadonlyArray<{
       { keys: ["S"], label: "Ship", action: "ship" },
       { keys: ["D"], label: "Done", action: "done" },
       { keys: ["X"], label: "Settle", action: "settle" },
+      { keys: ["Shift+X"], label: "Settle, superseded by...", action: "supersede" },
       { keys: ["A"], label: "Ask for proof again", action: "askProof" },
       { keys: ["Z"], label: "Undo", action: "undo" },
     ],

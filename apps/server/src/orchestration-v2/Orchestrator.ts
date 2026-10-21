@@ -18,6 +18,7 @@ import {
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   THREAD_STATUS_REPORT_MAX_CHARS,
+  THREAD_SUPERSEDE_NOTE_MAX_CHARS,
   type ChatAttachment,
   CommandId,
   isProviderNativeSubagentThread,
@@ -399,6 +400,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.preview-link.link":
     case "thread.preview-link.unlink":
     case "thread.status-report.set":
+    case "thread.superseded-by.set":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
     case "thread.pull-request-link.sync":
@@ -2374,6 +2376,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.preview-link.link"
           | "thread.preview-link.unlink"
           | "thread.status-report.set"
+          | "thread.superseded-by.set"
           | "thread.pull-request.link"
           | "thread.pull-request.unlink"
           | "thread.pull-request-link.sync"
@@ -2450,6 +2453,34 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandType: command.type,
           cause: `Thread ${command.threadId} is no longer empty.`,
         });
+    }
+    if (command.type === "thread.superseded-by.set" && command.supersededBy !== null) {
+      // The successor must be a live thread, and following its own chain must
+      // never lead back here, so Lineage always reads as a finite chain.
+      let cursor: ThreadId | null = command.supersededBy.threadId;
+      for (let hops = 0; cursor !== null && hops < 64; hops += 1) {
+        if (cursor === command.threadId) {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause:
+              hops === 0
+                ? "A thread cannot supersede itself."
+                : "That would make the supersede chain loop back to this thread.",
+          });
+        }
+        const next: OrchestrationV2AppThread = yield* projectionStore
+          .getThread(cursor)
+          .pipe(mapDispatchError(command));
+        if (hops === 0 && next.deletedAt !== null) {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause: `Thread ${cursor} is deleted.`,
+          });
+        }
+        cursor = next.supersededBy?.threadId ?? null;
+      }
     }
     if (command.type === "thread.archive" && thread.archivedAt !== null) {
       return yield* new OrchestratorDispatchError({
@@ -2973,6 +3004,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               updatedAt: DateTime.formatIso(now),
             },
           };
+        case "thread.superseded-by.set":
+          return {
+            ...thread,
+            supersededBy:
+              command.supersededBy === null
+                ? null
+                : {
+                    threadId: command.supersededBy.threadId,
+                    note: command.supersededBy.note
+                      .replace(/\s+/g, " ")
+                      .trim()
+                      .slice(0, THREAD_SUPERSEDE_NOTE_MAX_CHARS),
+                    at: DateTime.formatIso(now),
+                  },
+            updatedAt: now,
+          };
         case "thread.pull-request.link":
         case "thread.pull-request.unlink":
         case "thread.pull-request-link.sync": {
@@ -3214,6 +3261,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.preview-link.link":
         case "thread.preview-link.unlink":
         case "thread.status-report.set":
+        case "thread.superseded-by.set":
           return "thread.metadata-updated" as const;
         case "thread.pull-request.link":
         case "thread.pull-request.unlink":
@@ -9728,6 +9776,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.preview-link.link":
       case "thread.preview-link.unlink":
       case "thread.status-report.set":
+      case "thread.superseded-by.set":
       case "thread.title.regeneration.complete":
       case "thread.runtime-mode.set":
       case "thread.interaction-mode.set":
