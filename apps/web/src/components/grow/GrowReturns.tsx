@@ -325,11 +325,13 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
      * first, so the thread never sits settled without it; a settled card only gains the link.
      */
     supersede: (item: GrowReturn, successor: EnvironmentThreadShell, note: string) => {
-      const settled = item.kind === "letGo";
-      if (!settled) moveOn(item);
+      // A settled or shipped card keeps its place and decision; it only gains the link.
+      const linkOnly = item.kind === "letGo" || item.kind === "shipped";
+      const settled = item.thread.settledAt !== null && item.thread.settledOverride !== "active";
+      if (!linkOnly) moveOn(item);
       decide({
         key: item.key,
-        title: `${settled ? "Linked" : "Settled"} ${item.headline}, superseded by ${cleanLabel(successor.title)}`,
+        title: `${linkOnly ? "Linked" : "Settled"} ${item.headline}, superseded by ${cleanLabel(successor.title)}`,
         run: async () => {
           const result = await setSupersededBy({
             environmentId: item.thread.environmentId,
@@ -339,14 +341,13 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
             toastManager.add({ type: "error", title: `Could not link ${item.headline}` });
             return;
           }
-          if (settled) return;
-          if (readEnvironmentSupportsSettlement(item.thread.environmentId)) {
+          if (!settled && readEnvironmentSupportsSettlement(item.thread.environmentId)) {
             await settleThread({
               environmentId: item.thread.environmentId,
               input: { threadId: item.thread.id },
             });
           }
-          await record(item, "shelve");
+          if (!linkOnly) await record(item, "shelve");
         },
       });
     },
@@ -2091,7 +2092,7 @@ function Choices(props: {
 }) {
   const { item, actions, wide, stacked } = props;
   const row = stacked ? "flex flex-col gap-2" : "grid grid-cols-3 gap-2";
-  if (props.supersedeOpen && item.kind !== "working" && item.kind !== "shipped") {
+  if (props.supersedeOpen && item.kind !== "working") {
     return (
       <SupersedeField
         item={item}
@@ -2107,7 +2108,7 @@ function Choices(props: {
   const supersedeLink = (
     <SupersedeLink
       wide={wide}
-      settled={item.kind === "letGo"}
+      settled={item.kind === "letGo" || item.kind === "shipped"}
       onClick={() => props.setSupersedeOpen(true)}
     />
   );
@@ -2147,6 +2148,7 @@ function Choices(props: {
             Open
           </Button>
         ) : null}
+        {item.thread.supersededBy == null ? supersedeLink : null}
       </div>
     );
   }
@@ -2405,7 +2407,7 @@ function SupersedeField(props: {
           Cancel
         </Button>
         <Button type="submit" disabled={chosen === undefined}>
-          {item.kind === "letGo" ? "Link" : "Settle"}
+          {item.kind === "letGo" || item.kind === "shipped" ? "Link" : "Settle"}
         </Button>
       </div>
     </form>

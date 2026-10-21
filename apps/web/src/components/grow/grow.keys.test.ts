@@ -159,6 +159,9 @@ describe("growKeyAction", () => {
     expect(growKeyAction(key("X"), deck(returnItem({ kind: "letGo" })))).toEqual({
       type: "supersede",
     });
+    expect(growKeyAction(key("X"), deck(returnItem({ kind: "shipped" })))).toEqual({
+      type: "supersede",
+    });
     expect(growKeyAction(key("X"), deck(returnItem({ kind: "working" })))).toBeNull();
     expect(growKeyAction(key("x"), deck(returnItem({ kind: "letGo" })))).toBeNull();
     for (const state of [deck(), deck(null), { conversationOpen: true, item: null }]) {

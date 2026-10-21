@@ -90,7 +90,7 @@ export function growKeyAction(
   if (key === "s" && item.kind === "return" && item.shippable) return { type: "ship" };
   if (key === "d" && item.kind === "return") return { type: "done" };
   if (key === "w" && open) return { type: "whatIf" };
-  if (event.key === "X" && (open || item.kind === "letGo")) return { type: "supersede" };
+  if (event.key === "X" && item.kind !== "working") return { type: "supersede" };
   if (key === "x" && open) return { type: "settle" };
   if (key === "a" && open && !item.thread.statusProof) return { type: "askProof" };
   if (key === "c" && !state.conversationShown) return { type: "openThread" };
