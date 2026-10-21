@@ -398,6 +398,8 @@ export function supersedeCandidates(input: {
         candidate.deletedAt === null &&
         candidate.archivedAt === null &&
         candidate.lineage.relationshipToParent !== "subagent" &&
+        // A superseded thread is not where the work lives on; its successor is.
+        candidate.supersededBy === undefined &&
         !behind.has(growReturnKey(candidate)) &&
         words.every((word) => candidate.title.toLowerCase().includes(word)),
     )

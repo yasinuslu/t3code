@@ -303,18 +303,17 @@ describe("supersede links", () => {
     ).toEqual(["b"]);
   });
 
-  it("suggests related threads first, then the project, never one behind it in the chain", () => {
+  it("suggests related threads first, then the project, never one behind it in the chain or already superseded", () => {
     const stack = relations.byKey.get("env:stack")!;
     const ids = (thread: EnvironmentThreadShell, query = "", parentKey: string | null = null) =>
       supersedeCandidates({ thread, relations, parentKey, query }).map((item) => item.id);
     // rows and keys were folded into stack: picking them would loop.
     expect(ids(stack)).toEqual(["fresh", "next", "child", "other-project"]);
+    // stack and keys are superseded themselves, so the work does not live on there.
     expect(ids(relations.byKey.get("env:rows")!)).toEqual([
       "child",
       "fresh",
       "next",
-      "stack",
-      "keys",
       "other-project",
     ]);
     expect(ids(stack, "nex")).toEqual(["next"]);
