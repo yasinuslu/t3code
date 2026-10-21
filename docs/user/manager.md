@@ -24,7 +24,7 @@ If the machine that runs the manager is offline, a notice says so instead of ope
 
 **Grow** is the main screen. Every thread link (in a message, a notification, a `t3code://` link or
 the command palette) opens that thread in Grow. A thread Grow does not list, such as a settled or
-archived one, opens there too, marked **not in the deck**.
+archived one, opens there too, marked **not in the list**.
 
 For the diff, the terminal and the file panels, open the thread in **full view**: the expand button
 on a thread opened in Grow, `ctrl+alt+3`, or **Open this thread in full view** in the command

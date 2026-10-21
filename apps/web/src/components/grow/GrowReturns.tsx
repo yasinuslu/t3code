@@ -1104,9 +1104,8 @@ function ManagerPane(props: { readonly wide: boolean }) {
         )}
         <Button
           variant="ghost"
-          size="icon-sm"
+          size={props.wide ? "sm" : "icon-sm"}
           aria-label="Full view: diff, terminal, files"
-          title="Full view: diff, terminal, files"
           disabled={manager._tag !== "Ready"}
           onClick={() => {
             if (manager._tag === "Ready") {
@@ -1115,6 +1114,7 @@ function ManagerPane(props: { readonly wide: boolean }) {
           }}
         >
           <ExternalLinkIcon />
+          {props.wide ? "Full view" : null}
         </Button>
       </div>
       {manager._tag === "Ready" && shellKnown ? (
@@ -1141,14 +1141,14 @@ function ManagerPane(props: { readonly wide: boolean }) {
   );
 }
 
-/** The quiet note on a thread the deck does not list, saying what it is instead. */
+/** The quiet note on a thread Grow's list leaves out, saying what it is instead. */
 function outsideDeckLabel(thread: EnvironmentThreadShell, isManager: boolean): string {
-  if (isManager) return "Manager · not in the deck";
-  if (thread.archivedAt !== null) return "Archived · not in the deck";
+  if (isManager) return "Manager · not in the list";
+  if (thread.archivedAt !== null) return "Archived · not in the list";
   if (thread.settledAt !== null && thread.settledOverride !== "active") {
-    return "Settled · not in the deck";
+    return "Settled · not in the list";
   }
-  return "Not in the deck";
+  return "Not in the list";
 }
 
 /** A thread's conversation in place of the card: read it, answer it, then Back to the deck. */
@@ -1185,12 +1185,12 @@ function ThreadPane(props: {
         ) : null}
         <Button
           variant="ghost"
-          size="icon-sm"
+          size={props.wide ? "sm" : "icon-sm"}
           aria-label="Full view: diff, terminal, files"
-          title="Full view: diff, terminal, files"
           onClick={() => props.actions.leaveForThread(thread)}
         >
           <ExternalLinkIcon />
+          {props.wide ? "Full view" : null}
         </Button>
       </div>
       <ChatView
