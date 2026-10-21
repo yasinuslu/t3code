@@ -95,7 +95,15 @@ import { stepProfile } from "../ProfileShortcuts";
 import { useShortcutsSheetOpen } from "../ShortcutsSheet";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
-import { markOverlay, SlideStrip, SlideView, useSlides } from "./GrowPresentation";
+import {
+  markOverlay,
+  type PresentationVersions,
+  SlideStrip,
+  SlideView,
+  usePresentationVersion,
+  useSlides,
+  VersionStepper,
+} from "./GrowPresentation";
 import type { Slide } from "./presentation.logic";
 import { Button } from "../ui/button";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -1437,7 +1445,12 @@ function Hero(props: {
   const { item, actions, wide } = props;
   const { digest, presentation, growRequests } = useThreadReport(item.thread);
   const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
-  const slides = useSlides(item.thread.environmentId, presentation, images);
+  const { presentation: shown, versions } = usePresentationVersion(
+    item.thread.environmentId,
+    item.key,
+    presentation,
+  );
+  const slides = useSlides(item.thread.environmentId, shown, images, versions.version);
   const question = digest.questions[0] ?? null;
   const visual = (
     <Visual
@@ -1447,6 +1460,7 @@ function Hero(props: {
       wide={wide}
       playing={props.playing}
       slides={slides}
+      versions={versions}
       requests={growRequests}
       fit={props.split}
     />
@@ -1990,6 +2004,7 @@ function Visual(props: {
   readonly wide: boolean;
   readonly playing: boolean;
   readonly slides: ReadonlyArray<Slide>;
+  readonly versions: PresentationVersions;
   readonly requests: ReadonlyArray<ThreadGrowRequest>;
   /** As tall as the proof needs (capped), leaving the rest to the story; Live still fills. */
   readonly fit?: boolean;
@@ -2011,6 +2026,14 @@ function Visual(props: {
       }),
     [item.key],
   );
+  // Another version reorders or swaps the pages: stay on the page being read, by its key.
+  const [slidesSeen, setSlidesSeen] = useState(slides);
+  if (slidesSeen !== slides) {
+    setSlidesSeen(slides);
+    const key = slidesSeen[Math.min(shown, slidesSeen.length - 1)]?.key;
+    const at = key === undefined ? -1 : slides.findIndex((candidate) => candidate.key === key);
+    if (at >= 0 && at !== shown) setShown(at);
+  }
   const [zoom, setZoom] = useState<number | null>(null);
   const index = Math.min(shown, slides.length - 1);
   const slide = slides[index];
@@ -2059,6 +2082,7 @@ function Visual(props: {
         onZoom={() => setZoom(images.findIndex((candidate) => candidate.key === slide.key))}
         requests={props.requests}
         onAnswer={(requestId, text) => void props.actions.answerForm(item, requestId, text)}
+        readOnly={props.versions.past}
       />
     );
 
@@ -2113,6 +2137,7 @@ function Visual(props: {
         <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
           {live ? host : slides.length > 1 ? `Page ${index + 1} of ${slides.length}` : null}
         </span>
+        {live ? null : <VersionStepper versions={props.versions} />}
         {live && item.playUrl ? (
           <Button
             variant="ghost"

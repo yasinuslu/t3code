@@ -19,7 +19,6 @@ import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   THREAD_STATUS_REPORT_MAX_CHARS,
   THREAD_GROW_REQUEST_TEXT_MAX_CHARS,
-  THREAD_PRESENTATION_MAX_PAGES,
   THREAD_SUPERSEDE_NOTE_MAX_CHARS,
   type ChatAttachment,
   CommandId,
@@ -85,6 +84,7 @@ import { CommandPolicyV2, resolveMessageDispatchIntent } from "./CommandPolicy.t
 import { CommandReceiptStoreV2 } from "./CommandReceiptStore.ts";
 import { ContextHandoffServiceV2 } from "./ContextHandoffService.ts";
 import { closeGrowRequests, growRequestFromMessage, openGrowRequest } from "./growRequests.ts";
+import { nextPresentation } from "./presentationVersions.ts";
 import { notificationTurnItem } from "./Notification.ts";
 import { isRestartNoteSource } from "./RestartBackgroundNote.ts";
 import { isUndeliveredMailboxSteer } from "./NotificationMailbox.ts";
@@ -3013,15 +3013,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           };
         case "thread.presentation.set": {
           // Like the status report, setting it is the agent narrating, not new activity.
-          const { presentation: _previous, ...rest } = thread;
-          if (command.pages.length === 0) return rest;
+          const { presentation: previous, ...rest } = thread;
           const at = DateTime.formatIso(now);
+          const presentation = nextPresentation(
+            previous,
+            { pages: command.pages, run: command.run, snapshot: command.snapshot },
+            at,
+          );
+          if (presentation === undefined) return rest;
           return {
             ...rest,
-            presentation: {
-              pages: command.pages.slice(0, THREAD_PRESENTATION_MAX_PAGES),
-              updatedAt: at,
-            },
+            presentation,
             // A presentation answers every open ask for one.
             ...closeGrowRequests(thread.growRequests, at, (request) =>
               request.kind === "presentation" ? { outcome: "done" } : null,

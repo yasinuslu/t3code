@@ -6,9 +6,26 @@ import { IsoDateTime } from "./baseSchemas.ts";
 export const THREAD_PRESENTATION_MAX_PAGES = 12;
 /** Longest markdown a doc page keeps. */
 export const THREAD_PRESENTATION_DOC_MAX_CHARS = 20_000;
+/** Most versions a presentation remembers; older ones fall off. */
+export const THREAD_PRESENTATION_MAX_VERSIONS = 30;
 
 const Percent = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
 const PageTitle = Schema.String.check(Schema.isMaxLength(120));
+
+/** Names a page across edits, so an agent changes it in place: `summary`, `after-shot`. */
+export const PresentationPageId = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,39}$/),
+);
+
+/**
+ * What every page carries. Both are set by the server and optional only so presentations
+ * from before versions still decode: `revision` is the version the page last changed in.
+ */
+const PageMeta = {
+  id: Schema.optional(PresentationPageId),
+  title: Schema.optional(PageTitle),
+  revision: Schema.optional(Schema.Int),
+};
 
 /** A box drawn on an image page, in percent of the image so it survives scaling. */
 export const PresentationMark = Schema.Struct({
@@ -44,23 +61,23 @@ export type PresentationField = typeof PresentationField.Type;
 export const PresentationPage = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("image"),
-    title: Schema.optional(PageTitle),
+    ...PageMeta,
     image: Schema.String,
     marks: Schema.optional(Schema.Array(PresentationMark)),
   }),
   Schema.Struct({
     kind: Schema.Literal("doc"),
-    title: Schema.optional(PageTitle),
+    ...PageMeta,
     markdown: Schema.String.check(Schema.isMaxLength(THREAD_PRESENTATION_DOC_MAX_CHARS)),
   }),
   Schema.Struct({
     kind: Schema.Literal("html"),
-    title: Schema.optional(PageTitle),
+    ...PageMeta,
     file: Schema.String,
   }),
   Schema.Struct({
     kind: Schema.Literal("form"),
-    title: Schema.optional(PageTitle),
+    ...PageMeta,
     fields: Schema.Array(PresentationField).check(
       Schema.isMinLength(1),
       Schema.isMaxLength(THREAD_PRESENTATION_FORM_MAX_FIELDS),
@@ -70,12 +87,29 @@ export const PresentationPage = Schema.Union([
 export type PresentationPage = typeof PresentationPage.Type;
 
 /**
- * The thread's presentation (`presentation_set`): the idea in a glanceable form, a few pages
- * of marked screenshots, short docs and interactive pages. Grow shows it first; each set
- * replaces the last, and an empty one removes it.
+ * One version of a presentation: every edit during one run of the agent (one prompt) lands in
+ * the same version, the next prompt starts a new one. A version that was moved past keeps its
+ * pages in `snapshot`, a stored JSON file of them.
+ */
+export const PresentationVersion = Schema.Struct({
+  version: Schema.Int,
+  /** The run of the thread it belongs to, by id; empty for a presentation from before. */
+  run: Schema.String,
+  startedAt: IsoDateTime,
+  snapshot: Schema.optional(Schema.String),
+});
+export type PresentationVersion = typeof PresentationVersion.Type;
+
+/**
+ * The thread's presentation: the idea in a glanceable form, a few pages of marked screenshots,
+ * short docs, interactive pages and forms. It is a living artifact the agent edits along the way
+ * (`presentation_edit`, `presentation_set`), versioned per prompt like commits; Grow shows the
+ * current pages first and steps back through earlier versions. An empty set removes it.
  */
 export const ThreadPresentation = Schema.Struct({
   pages: Schema.Array(PresentationPage).check(Schema.isMaxLength(THREAD_PRESENTATION_MAX_PAGES)),
   updatedAt: IsoDateTime,
+  /** Oldest first; the last one is the current version. Absent on presentations from before. */
+  versions: Schema.optional(Schema.Array(PresentationVersion)),
 });
 export type ThreadPresentation = typeof ThreadPresentation.Type;

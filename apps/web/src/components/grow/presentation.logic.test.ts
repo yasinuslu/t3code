@@ -80,6 +80,37 @@ describe("form pages", () => {
     expect(first).not.toBe(form("2026-10-21T11:00:00.000Z").requestId);
   });
 
+  it("names a form by its page and the version it changed in, so other edits keep it answered", () => {
+    const form = (revision: number) =>
+      buildSlides(
+        [{ kind: "form", id: "ask", revision, fields }],
+        [],
+        [],
+        "2026-10-21T10:00:00.000Z",
+      )[0] as {
+        readonly requestId: string;
+      };
+    expect(form(2).requestId).toBe("form-ask-2");
+    expect(form(3).requestId).toBe("form-ask-3");
+  });
+
+  it("marks the pages that changed in the version on screen", () => {
+    const slides = buildSlides(
+      [
+        { kind: "doc", id: "plan", revision: 1, markdown: "# Plan" },
+        { kind: "doc", id: "shot", revision: 2, markdown: "# Shot" },
+      ],
+      [],
+      [],
+      undefined,
+      2,
+    );
+    expect(slides.map((slide) => [slide.key, slide.changed ?? false])).toEqual([
+      ["page:plan", false],
+      ["page:shot", true],
+    ]);
+  });
+
   it("sends one question and answer per line", () => {
     expect(formAnswerText([{ id: "n", label: "Name" }], { n: "Ada" })).toBe("Name: Ada");
     expect(formAnswerText(fields, { color: "Blue", why: " no " })).toBe(

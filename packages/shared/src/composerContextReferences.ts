@@ -253,10 +253,10 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
 /** What each Grow request asks of the agent, and how it is answered. */
 const GROW_REQUEST_BRIEFS: Record<GrowRequestKind, string> = {
   presentation:
-    "The user asked from Grow to see this thread's work. Call presentation_set with what they understand at a glance: a screenshot of the result with marks on what changed (a short GIF if it moves), a short doc page, or an interactive html page; for work with nothing on screen, an image of the evidence. Nothing else changes. Setting the presentation answers this request.",
+    "The user asked from Grow to see this thread's work. Bring the presentation up to date with what they understand at a glance (presentation_edit, or presentation_set to start it): a screenshot of the result with marks on what changed (a short GIF if it moves), a short doc page, or an interactive html page; for work with nothing on screen, an image of the evidence. Nothing else changes. Writing the presentation answers this request.",
   ship: "The user pressed Ship in Grow: land this the usual way for this repo (open the pull request if there is none, get CI green, merge, verify it is live), then settle this thread. Answer with grow_request_close(requestId, outcome): done once it is live, or blocked with a one-line note on what stops it.",
   change:
-    "The user asked from Grow to change the work, in the words of this message. Make the change in this thread, then call presentation_set again so the presentation shows the new state.",
+    "The user asked from Grow to change the work, in the words of this message. Make the change in this thread, and edit the presentation's pages (presentation_edit) as the work changes, so it shows the new state.",
   reply: "The user replied from Grow to your last answer, in the words of this message.",
   form: "The user answered the form page of your presentation in Grow. This message holds the answers, one question and its answer per line. Carry on with them.",
 };

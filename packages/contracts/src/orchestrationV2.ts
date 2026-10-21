@@ -2741,6 +2741,10 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     /** Replaces the previous presentation; empty removes it. Files must already be stored. */
     pages: Schema.Array(PresentationPage),
+    /** The thread's latest run: edits within one run amend one version. */
+    run: Schema.optional(Schema.String),
+    /** The stored pages of the version this one moves past, when it starts a new version. */
+    snapshot: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.grow-request.close"),
