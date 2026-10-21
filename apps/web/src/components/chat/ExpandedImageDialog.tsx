@@ -263,6 +263,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 key={`${index}:${item.src}`}
                 src={item.src}
                 name={item.name}
+                overlay={item.overlay}
                 onError={() => setFailedImageSrc(item.src)}
               />
             )}

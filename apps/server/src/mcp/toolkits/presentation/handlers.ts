@@ -4,7 +4,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import { newCommandId, readWritableThread, unavailable } from "../../threadAccess.ts";
 import { invalid, storeImageFile, storeThreadFile } from "../threadStatus/storeFile.ts";
-import { storePresentationPages } from "./pages.ts";
+import { storePresentationPages, withGrowKeys } from "./pages.ts";
 import { PresentationToolkit } from "./tools.ts";
 
 export const PresentationHandlersLive = PresentationToolkit.toLayer({
@@ -17,12 +17,13 @@ export const PresentationHandlersLive = PresentationToolkit.toLayer({
         image: (path) => storeImageFile(threadId, path),
         html: (source) =>
           Effect.gen(function* () {
-            const bytes =
+            const html =
               "html" in source
-                ? new TextEncoder().encode(source.html)
+                ? source.html
                 : yield* fileSystem
-                    .readFile(source.path)
+                    .readFileString(source.path)
                     .pipe(Effect.mapError(() => invalid(`Could not read ${source.path}.`)));
+            const bytes = new TextEncoder().encode(withGrowKeys(html));
             return yield* storeThreadFile({ threadId, bytes, extension: ".html", generic: true });
           }),
       });

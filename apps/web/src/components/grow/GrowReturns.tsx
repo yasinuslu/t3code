@@ -49,6 +49,7 @@ import {
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -84,7 +85,7 @@ import { stepProfile } from "../ProfileShortcuts";
 import { useShortcutsSheetOpen } from "../ShortcutsSheet";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
-import { SlideStrip, SlideView, useSlides } from "./GrowPresentation";
+import { markOverlay, SlideStrip, SlideView, useSlides } from "./GrowPresentation";
 import type { Slide } from "./presentation.logic";
 import { Button } from "../ui/button";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -643,6 +644,24 @@ export function GrowReturns(props: {
       }),
     [],
   );
+  // A presentation's own page does the same from its sandboxed frame (see withGrowKeys).
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data: unknown = event.data;
+      if (typeof data !== "object" || data === null || !("type" in data)) return;
+      if (data.type !== "t3-grow-key" || !("code" in data) || typeof data.code !== "string") return;
+      const fromPage = [
+        ...document.querySelectorAll<HTMLIFrameElement>('[data-grow-zone="presentation"] iframe'),
+      ].some((frame) => frame.contentWindow === event.source);
+      if (!fromPage) return;
+      const shiftKey = "shift" in data && data.shift === true;
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: data.code, altKey: true, shiftKey }),
+      );
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   // Esc leaves the manager or an open conversation even from its message box, which keeps
   // Esc from bubbling; caught before it, and left alone while a menu or dialog is open.
@@ -1892,6 +1911,9 @@ function PhoneStepper(props: {
  * going back to it keeps the app where it was. On a phone the presentation sits above the
  * story and Play opens a tab.
  */
+/** The presentation page each thread was left on, for this session. */
+const shownPages = new Map<string, number>();
+
 function Visual(props: {
   readonly item: GrowReturn;
   readonly actions: ReturnActions;
@@ -1902,7 +1924,22 @@ function Visual(props: {
   readonly fit?: boolean;
 }) {
   const { item, slides } = props;
-  const [shown, setShown] = useState(0);
+  // Coming back to a thread shows the page it was left on.
+  const [shown, setShownState] = useState(() => shownPages.get(item.key) ?? 0);
+  const [shownFor, setShownFor] = useState(item.key);
+  if (shownFor !== item.key) {
+    setShownFor(item.key);
+    setShownState(shownPages.get(item.key) ?? 0);
+  }
+  const setShown = useCallback(
+    (next: number | ((current: number) => number)) =>
+      setShownState((current) => {
+        const value = typeof next === "function" ? next(current) : next;
+        shownPages.set(item.key, value);
+        return value;
+      }),
+    [item.key],
+  );
   const [zoom, setZoom] = useState<number | null>(null);
   const index = Math.min(shown, slides.length - 1);
   const slide = slides[index];
@@ -1923,12 +1960,19 @@ function Visual(props: {
     };
     window.addEventListener(PROOF_IMAGE_EVENT, onStep);
     return () => window.removeEventListener(PROOF_IMAGE_EVENT, onStep);
-  }, [slides.length]);
+  }, [setShown, slides.length]);
   const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
   const zoomDialog =
     zoom === null ? null : (
       <ExpandedImageDialog
-        preview={{ images: images.map(({ src, name }) => ({ src, name })), index: zoom }}
+        preview={{
+          images: images.map(({ src, name, marks }) => ({
+            src,
+            name,
+            ...(marks.length > 0 ? { overlay: markOverlay(marks) } : {}),
+          })),
+          index: zoom,
+        }}
         onClose={() => setZoom(null)}
       />
     );
@@ -1994,7 +2038,7 @@ function Visual(props: {
           ) : null}
         </ToggleGroup>
         <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
-          {live ? host : slides.length > 1 ? `${index + 1} of ${slides.length}` : null}
+          {live ? host : slides.length > 1 ? `Page ${index + 1} of ${slides.length}` : null}
         </span>
         {live && item.playUrl ? (
           <Button
