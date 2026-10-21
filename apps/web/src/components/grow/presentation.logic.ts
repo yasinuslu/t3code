@@ -1,9 +1,19 @@
-import type { PresentationField, PresentationMark, ThreadPresentation } from "@t3tools/contracts";
+import type {
+  PresentationField,
+  PresentationMark,
+  PresentationPage,
+  ThreadPresentation,
+} from "@t3tools/contracts";
 
 import type { ExpandedImageItem } from "../chat/ExpandedImagePreview";
 
 /** One page of what Grow shows for an item, ready to render. */
-export type Slide =
+export type Slide = SlideBody & {
+  /** Changed in the version on screen, so the strip can point at what is new. */
+  readonly changed?: boolean;
+};
+
+type SlideBody =
   | {
       readonly kind: "image";
       readonly key: string;
@@ -34,6 +44,8 @@ export function buildSlides(
   urls: ReadonlyArray<string | null>,
   reportImages: ReadonlyArray<ExpandedImageItem>,
   presentationAt?: string,
+  /** The version on screen; its pages carry the revision they last changed in. */
+  version?: number,
 ): ReadonlyArray<Slide> {
   if (pages === undefined) {
     return reportImages.flatMap((image, index): Slide[] =>
@@ -44,39 +56,53 @@ export function buildSlides(
   }
   let at = 0;
   const next = () => urls[at++] ?? null;
-  return pages.flatMap((page, index): Slide[] => {
-    const key = `page:${index}`;
-    switch (page.kind) {
-      case "image": {
-        const src = next();
-        const name = page.title ?? `Page ${index + 1}`;
-        return src ? [{ kind: "image", key, name, src, marks: page.marks ?? [] }] : [];
-      }
-      case "html": {
-        const src = next();
-        return src ? [{ kind: "html", key, name: page.title ?? "Interactive page", src }] : [];
-      }
-      case "doc": {
-        // Images stored for the page show through their asset URLs; one still loading
-        // stays a plain link until it resolves.
-        const markdown = page.markdown.replace(ATTACHMENT_LINK, (whole) => {
-          const url = next();
-          return url ? `](${url})` : whole;
-        });
-        return [{ kind: "doc", key, name: page.title ?? docTitle(page.markdown), markdown }];
-      }
-      case "form":
-        return [
-          {
-            kind: "form",
-            key,
-            name: page.title ?? "Your call",
-            fields: page.fields,
-            requestId: formRequestId(presentationAt, index),
-          },
-        ];
+  return pages.flatMap((page, index): Slide[] =>
+    pageSlide(page, index, next, presentationAt).map((slide) =>
+      // The first version is all new; marking every page of it would say nothing.
+      version !== undefined && version > 1 && page.revision === version
+        ? { ...slide, changed: true }
+        : slide,
+    ),
+  );
+}
+
+function pageSlide(
+  page: PresentationPage,
+  index: number,
+  next: () => string | null,
+  presentationAt: string | undefined,
+): SlideBody[] {
+  const key = `page:${page.id ?? index}`;
+  switch (page.kind) {
+    case "image": {
+      const src = next();
+      const name = page.title ?? `Page ${index + 1}`;
+      return src ? [{ kind: "image", key, name, src, marks: page.marks ?? [] }] : [];
     }
-  });
+    case "html": {
+      const src = next();
+      return src ? [{ kind: "html", key, name: page.title ?? "Interactive page", src }] : [];
+    }
+    case "doc": {
+      // Images stored for the page show through their asset URLs; one still loading
+      // stays a plain link until it resolves.
+      const markdown = page.markdown.replace(ATTACHMENT_LINK, (whole) => {
+        const url = next();
+        return url ? `](${url})` : whole;
+      });
+      return [{ kind: "doc", key, name: page.title ?? docTitle(page.markdown), markdown }];
+    }
+    case "form":
+      return [
+        {
+          kind: "form",
+          key,
+          name: page.title ?? "Your call",
+          fields: page.fields,
+          requestId: formRequestId(page, index, presentationAt),
+        },
+      ];
+  }
 }
 
 function docTitle(markdown: string): string {
@@ -84,8 +110,16 @@ function docTitle(markdown: string): string {
   return heading && heading.length > 0 ? heading : "Page";
 }
 
-/** A form page's request id: a new presentation asks anew, the same one stays answered. */
-export function formRequestId(presentationAt: string | undefined, index: number): string {
+/**
+ * A form page's request id: the page and the version it last changed in, so editing other pages
+ * keeps it answered and changing its questions asks anew. Pages from before ids go by the time.
+ */
+export function formRequestId(
+  page: PresentationPage,
+  index: number,
+  presentationAt: string | undefined,
+): string {
+  if (page.id !== undefined) return `form-${page.id}-${page.revision ?? 1}`;
   return `form-${(presentationAt ?? "").replace(/\D/g, "")}-${index}`;
 }
 

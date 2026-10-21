@@ -41,7 +41,10 @@ export const storePresentationPages = Effect.fn("storePresentationPages")(functi
   };
   const pages: PresentationPage[] = [];
   for (const [index, page] of input.entries()) {
-    const title = page.title?.trim() ? { title: page.title.trim() } : {};
+    const title = {
+      ...(page.id === undefined ? {} : { id: page.id }),
+      ...(page.title?.trim() ? { title: page.title.trim() } : {}),
+    };
     switch (page.kind) {
       case "image": {
         const source = page.image.trim();

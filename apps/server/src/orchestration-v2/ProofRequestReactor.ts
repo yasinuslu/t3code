@@ -66,7 +66,7 @@ export function proofRequestCommand(input: {
     return null;
   }
   const identity = `${PROOF_REQUEST_PREFIX}${runId}`;
-  // A presentation request like Grow's, so the thread shows the ask and presentation_set answers it.
+  // A presentation request like Grow's, so the thread shows the ask and writing the presentation answers it.
   const contextId = ComposerContextId.make(
     `proof-${runId.replace(/[^a-z0-9_-]/gi, "-")}`.slice(0, 128),
   );

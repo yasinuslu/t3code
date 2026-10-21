@@ -395,6 +395,16 @@ export function summarizeT3ToolCalls(
     case "presentation-set":
       label = phrase("Set", "set", `the presentation${selected.length === 1 ? "" : ` ${times}`}`);
       break;
+    case "presentation-edit":
+      label = phrase(
+        "Edited",
+        "edit",
+        `the presentation${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
+    case "presentation-get":
+      label = phrase("Read", "read", "the presentation");
+      break;
     case "grow-request-close":
       label = phrase("Answered", "answer", quantity(selected.length, "Grow request"));
       break;

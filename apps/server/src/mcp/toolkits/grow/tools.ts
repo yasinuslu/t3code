@@ -99,7 +99,7 @@ const GrowRequestCloseTool = Tool.make("grow_request_close", {
   description: [
     "Answer a request the user sent this thread from Grow (Ship, for one), so Grow shows how it went instead of an open ask.",
     "`done` when it is landed (for Ship: merged and live); `blocked` with a one-line `note` on what stops it, so the user knows their move.",
-    "Without `requestId` it answers the newest open request. A presentation request needs no call: presentation_set answers it.",
+    "Without `requestId` it answers the newest open request. A presentation request needs no call: writing the presentation (presentation_edit or presentation_set) answers it.",
   ].join(" "),
   parameters: Schema.Struct({
     requestId: Schema.optional(

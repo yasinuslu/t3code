@@ -1,12 +1,21 @@
-import type {
-  AssetResource,
-  EnvironmentId,
-  PresentationMark,
-  ThreadGrowRequest,
-  ThreadPresentation,
+import {
+  type AssetResource,
+  type EnvironmentId,
+  PresentationPage,
+  type PresentationMark,
+  type ThreadGrowRequest,
+  type ThreadPresentation,
 } from "@t3tools/contracts";
-import { CheckIcon, CodeIcon, FileTextIcon, ListChecksIcon } from "lucide-react";
-import { type FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import * as Schema from "effect/Schema";
+import {
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CodeIcon,
+  FileTextIcon,
+  ListChecksIcon,
+} from "lucide-react";
+import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useAssetUrls } from "../../assets/assetUrls";
 import { cn } from "../../lib/utils";
@@ -26,6 +35,87 @@ import {
   formComplete,
 } from "./presentation.logic";
 
+const decodePages = Schema.decodeUnknownOption(Schema.Array(PresentationPage));
+
+/** The presentation version on screen, and the way to step through the others. */
+export interface PresentationVersions {
+  /** The version on screen; absent for a presentation from before versions. */
+  readonly version: number | undefined;
+  readonly latest: number | undefined;
+  /** Versions whose pages can be shown, oldest first. */
+  readonly available: ReadonlyArray<number>;
+  readonly startedAt: string | undefined;
+  /** Showing an earlier version, so its forms cannot be answered. */
+  readonly past: boolean;
+  readonly loading: boolean;
+  readonly pick: (version: number | null) => void;
+}
+
+/**
+ * Which version of a thread's presentation is on screen: the current one, unless the user
+ * stepped back. An earlier version's pages are a stored JSON file, fetched when picked.
+ */
+export function usePresentationVersion(
+  environmentId: EnvironmentId,
+  threadKey: string,
+  presentation: ThreadPresentation | null,
+): { readonly presentation: ThreadPresentation | null; readonly versions: PresentationVersions } {
+  const entries = presentation?.versions ?? [];
+  const latest = entries.at(-1)?.version;
+  const [picked, setPicked] = useState<{ readonly key: string; readonly version: number } | null>(
+    null,
+  );
+  const version = picked?.key === threadKey ? picked.version : latest;
+  const entry = entries.find((candidate) => candidate.version === version);
+  const snapshot = version === latest ? undefined : entry?.snapshot;
+  const resources = useMemo(
+    (): AssetResource[] =>
+      snapshot === undefined
+        ? []
+        : [{ _tag: "attachment", attachmentId: snapshot, fileName: "pages.json" }],
+    [snapshot],
+  );
+  const url = useAssetUrls(environmentId, resources)[0] ?? null;
+  const [loaded, setLoaded] = useState<{
+    readonly snapshot: string;
+    readonly pages: ThreadPresentation["pages"];
+  } | null>(null);
+  useEffect(() => {
+    if (url === null || snapshot === undefined) return;
+    let live = true;
+    void fetch(url)
+      .then((response) => response.json())
+      .then((json: unknown) => {
+        const pages = decodePages(json);
+        if (live && pages._tag === "Some") setLoaded({ snapshot, pages: pages.value });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [snapshot, url]);
+  const past = snapshot !== undefined;
+  const shown =
+    past && loaded?.snapshot === snapshot && presentation !== null
+      ? { ...presentation, pages: loaded.pages }
+      : presentation;
+  return {
+    presentation: shown,
+    versions: {
+      version,
+      latest,
+      available: entries.flatMap((candidate) =>
+        candidate.version === latest || candidate.snapshot !== undefined ? [candidate.version] : [],
+      ),
+      startedAt: entry?.startedAt,
+      past,
+      loading: past && shown === presentation,
+      pick: (next) =>
+        setPicked(next === null || next === latest ? null : { key: threadKey, version: next }),
+    },
+  };
+}
+
 /**
  * The item's slides: its presentation's pages when the agent set one, otherwise the images of
  * its status report, so threads from before presentations still show their proof.
@@ -34,6 +124,7 @@ export function useSlides(
   environmentId: EnvironmentId,
   presentation: ThreadPresentation | null,
   reportImages: ReadonlyArray<ExpandedImageItem>,
+  version?: number,
 ): ReadonlyArray<Slide> {
   const pages = presentation?.pages;
   // Every file the pages point at, in page order, resolved in one batch.
@@ -60,7 +151,10 @@ export function useSlides(
   }, [pages]);
   const urls = useAssetUrls(environmentId, resources);
   const at = presentation?.updatedAt;
-  return useMemo(() => buildSlides(pages, urls, reportImages, at), [at, pages, reportImages, urls]);
+  return useMemo(
+    () => buildSlides(pages, urls, reportImages, at, version),
+    [at, pages, reportImages, urls, version],
+  );
 }
 
 /** A slide, filling the stage. An image opens larger on click; a page scrolls or runs. */
@@ -72,6 +166,8 @@ export function SlideView(props: {
   readonly onZoom: () => void;
   readonly requests: ReadonlyArray<ThreadGrowRequest>;
   readonly onAnswer: (requestId: string, text: string) => void;
+  /** An earlier version: its forms show their questions but take no answers. */
+  readonly readOnly?: boolean;
 }) {
   const { slide } = props;
   switch (slide.kind) {
@@ -122,6 +218,7 @@ export function SlideView(props: {
             key={slide.requestId}
             slide={slide}
             answered={props.requests.findLast((request) => request.id === slide.requestId)}
+            readOnly={props.readOnly ?? false}
             onAnswer={(text) => props.onAnswer(slide.requestId, text)}
           />
         </ScrollArea>
@@ -134,6 +231,7 @@ function FormSlide(props: {
   readonly slide: Extract<Slide, { kind: "form" }>;
   readonly answered: ThreadGrowRequest | undefined;
   readonly onAnswer: (text: string) => void;
+  readonly readOnly: boolean;
 }) {
   const { slide, answered } = props;
   const [answers, setAnswers] = useState<Readonly<Record<string, string>>>({});
@@ -155,7 +253,7 @@ function FormSlide(props: {
     setSent(answered === undefined ? { text } : { text, over: answered.openedAt });
     setEditing(false);
   };
-  if ((answered !== undefined || sending) && !editing) {
+  if ((answered !== undefined || sending) && !editing && !props.readOnly) {
     return (
       <div className="mx-auto flex max-w-xl flex-col gap-3 px-6 py-5">
         <p className="flex items-center gap-1.5 font-medium text-sm">
@@ -193,6 +291,7 @@ function FormSlide(props: {
                   size="sm"
                   variant={answers[field.id] === option ? "default" : "outline"}
                   aria-pressed={answers[field.id] === option}
+                  disabled={props.readOnly}
                   onClick={() => set(field.id, option)}
                 >
                   {option}
@@ -203,13 +302,14 @@ function FormSlide(props: {
             <Input
               aria-label={field.label}
               placeholder="Optional"
+              disabled={props.readOnly}
               value={answers[field.id] ?? ""}
               onChange={(event) => set(field.id, event.currentTarget.value)}
             />
           )}
         </fieldset>
       ))}
-      <div className="flex gap-2">
+      <div className={cn("flex gap-2", props.readOnly && "hidden")}>
         <Button type="submit" disabled={!complete}>
           Send answers
         </Button>
@@ -352,12 +452,18 @@ export function SlideStrip(props: {
           aria-label={`Show ${slide.name}`}
           aria-current={index === props.current ? "true" : undefined}
           className={cn(
-            "flex h-14 shrink-0 items-center gap-1.5 overflow-hidden rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "relative flex h-14 shrink-0 items-center gap-1.5 overflow-hidden rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring",
             slide.kind !== "image" && "max-w-44 px-2.5 text-xs",
             index === props.current ? "border-foreground" : "opacity-60 hover:opacity-100",
           )}
           onClick={() => props.onPick(index)}
         >
+          {slide.changed ? (
+            <span
+              aria-label="Changed in this version"
+              className="absolute top-1 right-1 size-2 rounded-full bg-info ring-2 ring-background"
+            />
+          ) : null}
           {slide.kind === "image" ? (
             <img src={slide.src} alt="" className="h-full w-auto" />
           ) : (
@@ -374,6 +480,58 @@ export function SlideStrip(props: {
           )}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Steps through a presentation's versions, one per prompt, like commits: back to see what it
+ * showed before, forward to now. Hidden until there is more than one.
+ */
+export function VersionStepper(props: { readonly versions: PresentationVersions }) {
+  const { version, available, latest, startedAt, pick, past, loading } = props.versions;
+  if (version === undefined || available.length < 2) return null;
+  const at = available.indexOf(version);
+  const step = (direction: -1 | 1) => {
+    const next = available[at + direction];
+    if (next !== undefined) pick(next);
+  };
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Earlier version"
+        disabled={at <= 0}
+        onClick={() => step(-1)}
+      >
+        <ChevronLeftIcon />
+      </Button>
+      <button
+        type="button"
+        className={cn(
+          "rounded px-1 text-xs tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          past ? "font-medium text-info" : "text-muted-foreground",
+        )}
+        aria-label={past ? "Back to the current version" : `Version ${version}`}
+        disabled={!past}
+        onClick={() => pick(null)}
+      >
+        {loading
+          ? "Loading..."
+          : past
+            ? `v${version} of ${latest}${startedAt ? `, ${formatRelativeTimeLabel(startedAt)}` : ""}`
+            : `v${version}`}
+      </button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Later version"
+        disabled={!past}
+        onClick={() => step(1)}
+      >
+        <ChevronRightIcon />
+      </Button>
     </div>
   );
 }
