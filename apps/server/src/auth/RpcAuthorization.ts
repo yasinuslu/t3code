@@ -155,6 +155,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeBrainstorm]: AuthOrchestrationReadScope,
   [WS_METHODS.growState]: AuthOrchestrationReadScope,
   [WS_METHODS.growUpdate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.threadPreviewEnvironment]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeGrow]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeNotifications]: AuthOrchestrationReadScope,
   [WS_METHODS.notificationsNotify]: AuthOrchestrationOperateScope,

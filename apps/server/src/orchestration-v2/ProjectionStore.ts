@@ -1411,6 +1411,9 @@ export function threadShellFromProjection(
     ...(projection.thread.presentation === undefined
       ? {}
       : presentationShellFields(projection.thread.presentation)),
+    ...(projection.thread.previewEnvironment === undefined
+      ? {}
+      : { previewEnvironment: projection.thread.previewEnvironment }),
     ...growRequestShellFields(projection.thread.growRequests),
     ...(projection.thread.supersededBy == null
       ? {}
@@ -1661,6 +1664,9 @@ function shellFromState(input: {
     ...(input.state.thread.presentation === undefined
       ? {}
       : presentationShellFields(input.state.thread.presentation)),
+    ...(input.state.thread.previewEnvironment === undefined
+      ? {}
+      : { previewEnvironment: input.state.thread.previewEnvironment }),
     ...growRequestShellFields(input.state.thread.growRequests),
     ...(input.state.thread.supersededBy == null
       ? {}

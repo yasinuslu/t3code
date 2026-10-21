@@ -55,6 +55,8 @@ import { ThreadStatusHandlersLive } from "./toolkits/threadStatus/handlers.ts";
 import { ThreadStatusToolkit } from "./toolkits/threadStatus/tools.ts";
 import { PresentationHandlersLive } from "./toolkits/presentation/handlers.ts";
 import { PresentationToolkit } from "./toolkits/presentation/tools.ts";
+import { PreviewEnvironmentHandlersLive } from "./toolkits/previewEnvironment/handlers.ts";
+import { PreviewEnvironmentToolkit } from "./toolkits/previewEnvironment/tools.ts";
 import { BrainstormToolkitHandlersLive } from "./toolkits/brainstorm/handlers.ts";
 import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
 import { GrowToolkitHandlersLive } from "./toolkits/grow/handlers.ts";
@@ -722,6 +724,10 @@ const PresentationToolkitRegistrationLive = McpServer.toolkit(PresentationToolki
   Layer.provide(PresentationHandlersLive),
 );
 
+const PreviewEnvironmentToolkitRegistrationLive = McpServer.toolkit(PreviewEnvironmentToolkit).pipe(
+  Layer.provide(PreviewEnvironmentHandlersLive),
+);
+
 export const BrainstormToolkitRegistrationLive = McpServer.toolkit(BrainstormToolkit).pipe(
   Layer.provide(BrainstormToolkitHandlersLive),
 );
@@ -772,6 +778,7 @@ export const layer = Layer.mergeAll(
   PreviewLinksToolkitRegistrationLive,
   ThreadStatusToolkitRegistrationLive,
   PresentationToolkitRegistrationLive,
+  PreviewEnvironmentToolkitRegistrationLive,
   BrainstormToolkitRegistrationLive,
   GrowToolkitRegistrationLive,
   NotificationsToolkitRegistrationLive,

@@ -91,6 +91,7 @@ import {
   type ProviderDriverKind,
   type ProviderInstanceId,
   ThreadId,
+  ThreadPreviewEnvironmentError,
   type TerminalAttachStreamEvent,
   type TerminalError,
   type TerminalEvent,
@@ -191,6 +192,7 @@ import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as GrowService from "./grow/GrowService.ts";
+import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
 import * as UserNotifications from "./notifications/UserNotifications.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
@@ -1267,6 +1269,7 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const brainstorm = yield* BrainstormService.BrainstormService;
       const grow = yield* GrowService.GrowService;
+      const previewEnvironments = yield* PreviewEnvironmentService.PreviewEnvironmentService;
       const notifications = yield* UserNotifications.UserNotifications;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
@@ -3334,6 +3337,16 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.growUpdate, grow.update(input), {
             "rpc.aggregate": "workspace",
           }),
+        [WS_METHODS.threadPreviewEnvironment]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.threadPreviewEnvironment,
+            previewEnvironments[input.action](input.threadId).pipe(
+              Effect.mapError(
+                (error) => new ThreadPreviewEnvironmentError({ message: error.message }),
+              ),
+            ),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [WS_METHODS.subscribeGrow]: () =>
           observeRpcStream(WS_METHODS.subscribeGrow, grow.changes, {
             "rpc.aggregate": "workspace",
@@ -3935,6 +3948,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     const pullRequests = yield* PullRequestService.PullRequestService;
     const brainstorm = yield* BrainstormService.BrainstormService;
     const grow = yield* GrowService.GrowService;
+    const previewEnvironments = yield* PreviewEnvironmentService.PreviewEnvironmentService;
     const notifications = yield* UserNotifications.UserNotifications;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
@@ -4005,6 +4019,12 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
               Layer.provide(Layer.succeed(BrainstormService.BrainstormService, brainstorm)),
               Layer.provide(Layer.succeed(GrowService.GrowService, grow)),
+              Layer.provide(
+                Layer.succeed(
+                  PreviewEnvironmentService.PreviewEnvironmentService,
+                  previewEnvironments,
+                ),
+              ),
               Layer.provide(Layer.succeed(UserNotifications.UserNotifications, notifications)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(

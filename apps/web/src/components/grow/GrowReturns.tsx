@@ -106,6 +106,7 @@ import {
 } from "./GrowPresentation";
 import type { Slide } from "./presentation.logic";
 import { Button } from "../ui/button";
+import { StartPreviewButton, StopPreviewButton } from "./PreviewEnvironment";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
@@ -2134,10 +2135,12 @@ function Visual(props: {
             </Toggle>
           ) : null}
         </ToggleGroup>
+        {item.playUrl ? <StopPreviewButton thread={item.thread} /> : null}
         <span className="min-w-0 flex-1 truncate text-end text-muted-foreground text-xs">
           {live ? host : slides.length > 1 ? `Page ${index + 1} of ${slides.length}` : null}
         </span>
         {live ? null : <VersionStepper versions={props.versions} />}
+        {item.playUrl ? null : <StartPreviewButton thread={item.thread} />}
         {live && item.playUrl ? (
           <Button
             variant="ghost"
@@ -2221,7 +2224,9 @@ function NoProof(props: {
               Play
             </Button>
           )
-        ) : null}
+        ) : (
+          <StartPreviewButton thread={item.thread} />
+        )}
       </div>
     </div>
   );

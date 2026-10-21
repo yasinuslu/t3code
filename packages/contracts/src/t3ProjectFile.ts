@@ -66,6 +66,17 @@ export const T3ProjectFileScript = Schema.Struct({
 });
 export type T3ProjectFileScript = typeof T3ProjectFileScript.Type;
 
+export const T3ProjectFilePreview = Schema.Struct({
+  up: trimmedNonEmpty({
+    description:
+      "Shell command that starts this checkout's preview environment and prints its URL; the last http(s) URL it prints is linked to the thread.",
+  }),
+  down: Schema.optionalKey(trimmedNonEmpty({ description: "Shell command that stops it." })),
+}).annotate({
+  description: "Commands that bring a thread's preview environment up and down.",
+});
+export type T3ProjectFilePreview = typeof T3ProjectFilePreview.Type;
+
 export const T3ProjectFile = Schema.Struct({
   $schema: Schema.optionalKey(
     Schema.String.annotate({
@@ -100,6 +111,7 @@ export const T3ProjectFile = Schema.Struct({
       })
       .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_SCRIPTS)),
   ),
+  preview: Schema.optionalKey(T3ProjectFilePreview),
 }).annotate({
   title: "T3 project file",
   description:

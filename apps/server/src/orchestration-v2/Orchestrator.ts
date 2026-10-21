@@ -19,6 +19,7 @@ import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   THREAD_STATUS_REPORT_MAX_CHARS,
   THREAD_GROW_REQUEST_TEXT_MAX_CHARS,
+  THREAD_PREVIEW_ENVIRONMENT_NOTE_MAX_CHARS,
   THREAD_SUPERSEDE_NOTE_MAX_CHARS,
   type ChatAttachment,
   CommandId,
@@ -404,6 +405,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.preview-link.unlink":
     case "thread.status-report.set":
     case "thread.presentation.set":
+    case "thread.preview-environment.set":
     case "thread.grow-request.close":
     case "thread.superseded-by.set":
     case "thread.pull-request.link":
@@ -2382,6 +2384,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.preview-link.unlink"
           | "thread.status-report.set"
           | "thread.presentation.set"
+          | "thread.preview-environment.set"
           | "thread.grow-request.close"
           | "thread.superseded-by.set"
           | "thread.pull-request.link"
@@ -3030,6 +3033,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ),
           };
         }
+        case "thread.preview-environment.set": {
+          // Like the status report, the environment narrating its own state is not new activity.
+          const note = command.note
+            ?.replace(/\s+/g, " ")
+            .trim()
+            .slice(0, THREAD_PREVIEW_ENVIRONMENT_NOTE_MAX_CHARS);
+          return {
+            ...thread,
+            previewEnvironment: {
+              status: command.status,
+              updatedAt: DateTime.formatIso(now),
+              ...(note ? { note } : {}),
+            },
+          };
+        }
         case "thread.grow-request.close": {
           const at = DateTime.formatIso(now);
           const note = command.note
@@ -3303,6 +3321,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.preview-link.unlink":
         case "thread.status-report.set":
         case "thread.presentation.set":
+        case "thread.preview-environment.set":
         case "thread.grow-request.close":
         case "thread.superseded-by.set":
           return "thread.metadata-updated" as const;
@@ -9842,6 +9861,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.preview-link.unlink":
       case "thread.status-report.set":
       case "thread.presentation.set":
+      case "thread.preview-environment.set":
       case "thread.grow-request.close":
       case "thread.superseded-by.set":
       case "thread.title.regeneration.complete":
