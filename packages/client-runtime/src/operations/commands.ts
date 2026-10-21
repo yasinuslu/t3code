@@ -477,6 +477,21 @@ export const setThreadAutoSettle = Effect.fn("EnvironmentCommands.setThreadAutoS
   });
 });
 
+export interface SetThreadSupersededByInput extends ThreadCommandInput {
+  /** The successor and a one-line note; null removes the link. */
+  readonly supersededBy: { readonly threadId: ThreadId; readonly note: string } | null;
+}
+export const setThreadSupersededBy = Effect.fn("EnvironmentCommands.setThreadSupersededBy")(
+  function* (input: SetThreadSupersededByInput) {
+    return yield* dispatch({
+      type: "thread.superseded-by.set",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      supersededBy: input.supersededBy,
+    });
+  },
+);
+
 export const reorderPinnedThread = Effect.fn("EnvironmentCommands.reorderPinnedThread")(function* (
   input: ReorderPinnedThreadInput,
 ) {

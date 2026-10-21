@@ -1387,6 +1387,9 @@ export function threadShellFromProjection(
     ...(projection.thread.statusReport === undefined
       ? {}
       : statusShellFields(projection.thread.statusReport)),
+    ...(projection.thread.supersededBy == null
+      ? {}
+      : { supersededBy: projection.thread.supersededBy }),
     ...(projection.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: projection.thread.activeOrderKey }),
@@ -1630,6 +1633,9 @@ function shellFromState(input: {
     ...(input.state.thread.statusReport === undefined
       ? {}
       : statusShellFields(input.state.thread.statusReport)),
+    ...(input.state.thread.supersededBy == null
+      ? {}
+      : { supersededBy: input.state.thread.supersededBy }),
     ...(input.state.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: input.state.thread.activeOrderKey }),

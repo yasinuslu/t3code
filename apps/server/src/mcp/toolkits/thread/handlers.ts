@@ -300,9 +300,36 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
   t3_thread_organize: (input) =>
     Effect.gen(function* () {
       const { threads, projection } = yield* readWritableThread(input.threadId);
+      if (input.supersededBy !== undefined && input.action !== "settle") {
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "supersededBy only goes with the settle action.",
+        });
+      }
+      if (input.supersededBy !== undefined) {
+        // Link first so the thread never sits settled without its successor.
+        yield* threads
+          .dispatch({
+            commandId: yield* newCommandId(),
+            threadId: projection.thread.id,
+            type: "thread.superseded-by.set",
+            supersededBy: { threadId: input.supersededBy, note: input.note ?? "" },
+          })
+          .pipe(
+            // The orchestrator's reason (missing successor, a loop) is the agent's to fix.
+            Effect.mapError((error) =>
+              error._tag === "OrchestratorDispatchError" && typeof error.cause === "string"
+                ? new OrchestratorMcpFailure({ code: "invalid_request", message: error.cause })
+                : unavailable(),
+            ),
+          );
+      }
       const common = { commandId: yield* newCommandId(), threadId: projection.thread.id };
       let command: OrchestrationV2Command;
       switch (input.action) {
+        case "unsupersede":
+          command = { ...common, type: "thread.superseded-by.set", supersededBy: null };
+          break;
         case "snooze":
           if (input.snoozedUntil === undefined) {
             return yield* new OrchestratorMcpFailure({

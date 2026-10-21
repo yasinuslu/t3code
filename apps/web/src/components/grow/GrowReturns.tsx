@@ -3,7 +3,9 @@
  * shows the thing itself (its screenshot, or the live preview behind Play)
  * and beside it what it is, where it came from and goes, and what happened,
  * then three choices: the main one (Reply to its question, Ship work that can
- * land, or Done for what has nothing to merge), What if, Settle. The list is
+ * land, or Done for what has nothing to merge), What if, Settle. Settle can
+ * also name the thread that superseded this one, with a one-line note; both
+ * then show the link in their story, so a chain reads like a thought maturing. The list is
  * what is being worked on, the rest of the queue by project, then what is
  * done and what was settled. On a phone the item takes the screen and the list
  * is one tap away.
@@ -19,6 +21,7 @@ import type { EnvironmentId, GrowDecision, ScopedThreadRef, ThreadId } from "@t3
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -30,6 +33,7 @@ import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   ImageOffIcon,
+  LayersIcon,
   ListIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
@@ -42,7 +46,14 @@ import {
   Undo2Icon,
   XIcon,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { create } from "zustand";
 
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
@@ -92,6 +103,8 @@ import {
   SHIP_MESSAGE,
   buildGrowDeck,
   buildGrowRelations,
+  supersedeCandidates,
+  supersededChain,
   filterGrowDeck,
   growCurrent,
   growDeckItems,
@@ -214,6 +227,9 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
   const update = useAtomCommand(growEnvironment.update);
   const settleThread = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
   const unsettleThread = useAtomCommand(threadEnvironment.unsettle, { reportFailure: false });
+  const setSupersededBy = useAtomCommand(threadEnvironment.setSupersededBy, {
+    reportFailure: false,
+  });
 
   const record = (item: GrowReturn, decision: GrowDecision | null) =>
     update({
@@ -304,6 +320,36 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         },
       });
     },
+    /**
+     * Settle, recording the thread that carries this one's work on and why. The link goes
+     * first, so the thread never sits settled without it; a settled card only gains the link.
+     */
+    supersede: (item: GrowReturn, successor: EnvironmentThreadShell, note: string) => {
+      const settled = item.kind === "letGo";
+      if (!settled) moveOn(item);
+      decide({
+        key: item.key,
+        title: `${settled ? "Linked" : "Settled"} ${item.headline}, superseded by ${cleanLabel(successor.title)}`,
+        run: async () => {
+          const result = await setSupersededBy({
+            environmentId: item.thread.environmentId,
+            input: { threadId: item.thread.id, supersededBy: { threadId: successor.id, note } },
+          });
+          if (result._tag === "Failure") {
+            toastManager.add({ type: "error", title: `Could not link ${item.headline}` });
+            return;
+          }
+          if (settled) return;
+          if (readEnvironmentSupportsSettlement(item.thread.environmentId)) {
+            await settleThread({
+              environmentId: item.thread.environmentId,
+              input: { threadId: item.thread.id },
+            });
+          }
+          await record(item, "shelve");
+        },
+      });
+    },
     bringBack: async (item: GrowReturn) => {
       if (item.thread.settledOverride === "settled") {
         await unsettleThread({
@@ -363,6 +409,7 @@ export function GrowReturns(props: {
   const wide = useMediaQuery("md");
   const split = useMediaQuery("lg");
   const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const [supersedeOpen, setSupersedeOpen] = useState(false);
   useEffect(() => setGrowManagerToggle(toggleManagerPane), []);
 
   const deck = useMemo(
@@ -391,6 +438,7 @@ export function GrowReturns(props: {
   if (whatIfFor !== currentKey) {
     setWhatIfFor(currentKey);
     setWhatIfOpen(false);
+    setSupersedeOpen(false);
   }
 
   // A thread opened from a link may be one the deck leaves out (settled, archived, idle, a
@@ -406,6 +454,13 @@ export function GrowReturns(props: {
   useEffect(() => {
     if (ready && thread !== null && !conversationOpen) useReturnsStore.setState({ thread: null });
   }, [conversationOpen, ready, thread]);
+
+  // A related thread opens as its item when it is in the deck, else as its conversation, in place.
+  const openRelated = (related: EnvironmentThreadShell) => {
+    const key = growReturnKey(related);
+    if (growCurrent(shown, key)?.key === key) select(key);
+    else useReturnsStore.setState({ thread: key });
+  };
 
   const sheetOpen = useShortcutsSheetOpen();
   // A thread link landed (GrowRouting): show that thread, as its item when the deck has it.
@@ -512,6 +567,21 @@ export function GrowReturns(props: {
         case "settle":
           if (item !== null) actions.settle(item);
           break;
+        case "supersede":
+          setWhatIfOpen(false);
+          setSupersedeOpen(true);
+          break;
+        case "chain": {
+          const from = threadShell ?? item?.thread;
+          if (from === undefined) return;
+          const next =
+            action.direction === 1
+              ? supersededChain(relations, from)[0]?.thread
+              : relations.supersedes.get(growReturnKey(from))?.at(-1);
+          if (next === undefined) return;
+          openRelated(next);
+          break;
+        }
         case "askProof":
           if (item !== null) void actions.askProof(item);
           break;
@@ -534,7 +604,21 @@ export function GrowReturns(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [actions, conversationOpen, current, manager, playing, query, sheetOpen, shown, split, wide]);
+  }, [
+    actions,
+    conversationOpen,
+    current,
+    manager,
+    openRelated,
+    playing,
+    query,
+    relations,
+    sheetOpen,
+    shown,
+    split,
+    threadShell,
+    wide,
+  ]);
 
   // Esc leaves the manager or an open conversation even from its message box, which keeps
   // Esc from bubbling; caught before it, and left alone while a menu or dialog is open.
@@ -575,12 +659,6 @@ export function GrowReturns(props: {
       }
     />
   );
-  // A related thread opens as its item when it is in the deck, else as its conversation, in place.
-  const openRelated = (related: EnvironmentThreadShell) => {
-    const key = growReturnKey(related);
-    if (growCurrent(shown, key)?.key === key) select(key);
-    else useReturnsStore.setState({ thread: key });
-  };
   const hero = manager ? (
     <ManagerPane wide={wide} />
   ) : threadShell ? (
@@ -606,6 +684,8 @@ export function GrowReturns(props: {
       playing={playing === current.key}
       whatIfOpen={whatIfOpen}
       setWhatIfOpen={setWhatIfOpen}
+      supersedeOpen={supersedeOpen}
+      setSupersedeOpen={setSupersedeOpen}
       position={positionOf(shown, current)}
       step={(direction) => select(growStep(shown, current.key, direction))}
     />
@@ -1248,6 +1328,8 @@ function Hero(props: {
   readonly playing: boolean;
   readonly whatIfOpen: boolean;
   readonly setWhatIfOpen: (open: boolean) => void;
+  readonly supersedeOpen: boolean;
+  readonly setSupersedeOpen: (open: boolean) => void;
   readonly position: { readonly index: number; readonly total: number } | null;
   readonly step: (direction: 1 | -1) => void;
 }) {
@@ -1273,6 +1355,9 @@ function Hero(props: {
       question={question !== null}
       whatIfOpen={props.whatIfOpen}
       setWhatIfOpen={props.setWhatIfOpen}
+      supersedeOpen={props.supersedeOpen}
+      setSupersedeOpen={props.setSupersedeOpen}
+      relations={props.relations}
       wide={wide}
       stacked={stacked}
       conversationShown={wide && props.split}
@@ -1486,6 +1571,8 @@ function StoryPath(props: {
   const parentKey = growParentKey(item.thread, item.card);
   const parent = parentKey === null ? undefined : relations.byKey.get(parentKey);
   const children = relations.children.get(item.key) ?? [];
+  const supersedes = relations.supersedes.get(item.key) ?? [];
+  const supersededBy = supersededChain(relations, item.thread);
   const lastAsk = asks?.at(-1);
   const started =
     item.thread.createdBy === "agent"
@@ -1500,6 +1587,20 @@ function StoryPath(props: {
         Where it came from, where it goes
       </h3>
       <ol className="flex flex-col">
+        {supersedes.length > 0 ? (
+          <PathStep icon={<LayersIcon />} label="Supersedes">
+            <span className="flex flex-col items-start gap-1">
+              {supersedes.map((older) => (
+                <SupersedeEntry
+                  key={older.id}
+                  thread={older}
+                  note={older.supersededBy?.note ?? ""}
+                  open={props.open}
+                />
+              ))}
+            </span>
+          </PathStep>
+        ) : null}
         <PathStep icon={<GitBranchIcon />} label="From">
           {parent ? (
             <PathLink onClick={() => props.open(parent)}>{cleanLabel(parent.title)}</PathLink>
@@ -1526,9 +1627,32 @@ function StoryPath(props: {
             </span>
           </PathStep>
         ))}
-        <PathStep icon={<CircleDotIcon />} label="Now" last={children.length === 0}>
+        <PathStep
+          icon={<CircleDotIcon />}
+          label="Now"
+          last={children.length === 0 && supersededBy.length === 0}
+        >
           <NowLine item={item} />
         </PathStep>
+        {supersededBy.length > 0 ? (
+          <PathStep
+            icon={<ArrowRightIcon />}
+            label="Superseded by"
+            active
+            last={children.length === 0}
+          >
+            <span className="flex flex-col items-start gap-1">
+              {supersededBy.map((step) => (
+                <SupersedeEntry
+                  key={step.thread.id}
+                  thread={step.thread}
+                  note={step.note}
+                  open={props.open}
+                />
+              ))}
+            </span>
+          </PathStep>
+        ) : null}
         {children.length > 0 ? (
           <PathStep icon={<SplitIcon />} label="Led to" last>
             <span className="flex flex-col items-start gap-0.5">
@@ -1542,6 +1666,22 @@ function StoryPath(props: {
         ) : null}
       </ol>
     </section>
+  );
+}
+
+/** One thread in a supersede chain: its link, then the note it was let go with. */
+function SupersedeEntry(props: {
+  readonly thread: EnvironmentThreadShell;
+  readonly note: string;
+  readonly open: (thread: EnvironmentThreadShell) => void;
+}) {
+  return (
+    <span className="flex min-w-0 max-w-full flex-col">
+      <PathLink onClick={() => props.open(props.thread)}>{cleanLabel(props.thread.title)}</PathLink>
+      {props.note === "" ? null : (
+        <span className="text-muted-foreground text-xs">{props.note}</span>
+      )}
+    </span>
   );
 }
 
@@ -1940,6 +2080,9 @@ function Choices(props: {
   readonly question: boolean;
   readonly whatIfOpen: boolean;
   readonly setWhatIfOpen: (open: boolean) => void;
+  readonly supersedeOpen: boolean;
+  readonly setSupersedeOpen: (open: boolean) => void;
+  readonly relations: GrowRelations;
   readonly wide: boolean;
   /** One choice per row, for the narrow rail beside the visual. */
   readonly stacked: boolean;
@@ -1948,6 +2091,26 @@ function Choices(props: {
 }) {
   const { item, actions, wide, stacked } = props;
   const row = stacked ? "flex flex-col gap-2" : "grid grid-cols-3 gap-2";
+  if (props.supersedeOpen && item.kind !== "working" && item.kind !== "shipped") {
+    return (
+      <SupersedeField
+        item={item}
+        relations={props.relations}
+        onPick={(successor, note) => {
+          props.setSupersedeOpen(false);
+          actions.supersede(item, successor, note);
+        }}
+        onCancel={() => props.setSupersedeOpen(false)}
+      />
+    );
+  }
+  const supersedeLink = (
+    <SupersedeLink
+      wide={wide}
+      settled={item.kind === "letGo"}
+      onClick={() => props.setSupersedeOpen(true)}
+    />
+  );
   if (item.kind === "working") {
     return (
       <p className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -1994,6 +2157,7 @@ function Choices(props: {
           <Undo2Icon />
           Bring back
         </Button>
+        {item.thread.supersededBy == null ? supersedeLink : null}
       </div>
     );
   }
@@ -2047,52 +2211,20 @@ function Choices(props: {
   );
   if (item.kind === "urgent") {
     return (
-      <div className={row}>
-        <Choice
-          label="Answer"
-          hint="In the thread"
-          icon={<MessageSquareIcon />}
-          keyHint={props.conversationShown ? undefined : "C"}
-          primary
-          wide={wide}
-          stacked={stacked}
-          onClick={() =>
-            props.conversationShown ? focusConversationComposer() : actions.openThread(item)
-          }
-        />
-        <Choice
-          label="What if..."
-          hint="Change it, same thread"
-          icon={<SparklesIcon />}
-          keyHint="W"
-          wide={wide}
-          stacked={stacked}
-          onClick={() => props.setWhatIfOpen(true)}
-        />
-        {settle}
-      </div>
-    );
-  }
-  const primary = growPrimary(item, props.question);
-  return (
-    <div className={row}>
-      {primary === "reply" ? (
-        <>
+      <div className="flex flex-col gap-1.5">
+        <div className={row}>
           <Choice
-            label="Reply"
-            hint="Answer its question"
-            icon={<ReplyIcon />}
-            keyHint="W"
+            label="Answer"
+            hint="In the thread"
+            icon={<MessageSquareIcon />}
+            keyHint={props.conversationShown ? undefined : "C"}
             primary
             wide={wide}
             stacked={stacked}
-            onClick={() => props.setWhatIfOpen(true)}
+            onClick={() =>
+              props.conversationShown ? focusConversationComposer() : actions.openThread(item)
+            }
           />
-          {item.shippable ? ship : done}
-        </>
-      ) : (
-        <>
-          {primary === "ship" ? ship : done}
           <Choice
             label="What if..."
             hint="Change it, same thread"
@@ -2102,10 +2234,181 @@ function Choices(props: {
             stacked={stacked}
             onClick={() => props.setWhatIfOpen(true)}
           />
-        </>
-      )}
-      {settle}
+          {settle}
+        </div>
+        {supersedeLink}
+      </div>
+    );
+  }
+  const primary = growPrimary(item, props.question);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className={row}>
+        {primary === "reply" ? (
+          <>
+            <Choice
+              label="Reply"
+              hint="Answer its question"
+              icon={<ReplyIcon />}
+              keyHint="W"
+              primary
+              wide={wide}
+              stacked={stacked}
+              onClick={() => props.setWhatIfOpen(true)}
+            />
+            {item.shippable ? ship : done}
+          </>
+        ) : (
+          <>
+            {primary === "ship" ? ship : done}
+            <Choice
+              label="What if..."
+              hint="Change it, same thread"
+              icon={<SparklesIcon />}
+              keyHint="W"
+              wide={wide}
+              stacked={stacked}
+              onClick={() => props.setWhatIfOpen(true)}
+            />
+          </>
+        )}
+        {settle}
+      </div>
+      {supersedeLink}
     </div>
+  );
+}
+
+/** The quiet second way to settle: name the thread that took this one further. */
+function SupersedeLink(props: {
+  readonly wide: boolean;
+  readonly settled: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <Button variant="ghost-muted" size="compact" className="self-end" onClick={props.onClick}>
+      <LayersIcon />
+      {props.settled ? "Superseded by..." : "Settle, superseded by..."}
+      {props.wide ? <Kbd>Shift X</Kbd> : null}
+    </Button>
+  );
+}
+
+/**
+ * Pick the thread that superseded this one (related threads first, a search
+ * for the rest) and say in one line why and what carried over. Arrows move
+ * through the list, Enter picks, Escape goes back to the choices.
+ */
+function SupersedeField(props: {
+  readonly item: GrowReturn;
+  readonly relations: GrowRelations;
+  readonly onPick: (successor: EnvironmentThreadShell, note: string) => void;
+  readonly onCancel: () => void;
+}) {
+  const { item } = props;
+  const [query, setQuery] = useState("");
+  const [note, setNote] = useState("");
+  const [index, setIndex] = useState(0);
+  const candidates = useMemo(
+    () =>
+      supersedeCandidates({
+        thread: item.thread,
+        relations: props.relations,
+        parentKey: growParentKey(item.thread, item.card),
+        query,
+      }),
+    [item.card, item.thread, props.relations, query],
+  );
+  const chosen = candidates[Math.min(index, candidates.length - 1)];
+  const pick = () => {
+    if (chosen !== undefined) props.onPick(chosen, note.trim());
+  };
+  const onKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      props.onCancel();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setIndex((at) => Math.max(0, Math.min(candidates.length - 1, at + step)));
+    }
+  };
+  return (
+    <form
+      className="flex flex-col gap-2"
+      aria-label={`Superseded by, for ${item.headline}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        pick();
+      }}
+    >
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon />
+        </InputGroupAddon>
+        <InputGroupInput
+          nativeInput
+          autoFocus
+          type="text"
+          size="lg"
+          aria-label="Find the thread that superseded it"
+          placeholder="Superseded by which thread?"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.currentTarget.value);
+            setIndex(0);
+          }}
+          onKeyDown={onKeyDown}
+        />
+      </InputGroup>
+      <ul role="listbox" aria-label="Threads" className="flex flex-col gap-0.5">
+        {candidates.length === 0 ? (
+          <li className="px-2 py-1 text-muted-foreground text-sm">No thread matches</li>
+        ) : (
+          candidates.map((candidate) => (
+            <li key={candidate.id} role="option" aria-selected={candidate === chosen}>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm",
+                  candidate === chosen ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+                )}
+                onClick={() => setIndex(candidates.indexOf(candidate))}
+              >
+                <span className="min-w-0 flex-1 truncate">{cleanLabel(candidate.title)}</span>
+                <span className="shrink-0 text-muted-foreground text-xs">
+                  {formatRelativeTimeLabel(candidate.updatedAt)}
+                </span>
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+      <InputGroup>
+        <InputGroupAddon>
+          <LayersIcon />
+        </InputGroupAddon>
+        <InputGroupInput
+          nativeInput
+          type="text"
+          size="lg"
+          maxLength={280}
+          aria-label="Why, and what carried over"
+          placeholder="Why, and what carried over (one line)"
+          value={note}
+          onChange={(event) => setNote(event.currentTarget.value)}
+          onKeyDown={onKeyDown}
+        />
+      </InputGroup>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={props.onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={chosen === undefined}>
+          {item.kind === "letGo" ? "Link" : "Settle"}
+        </Button>
+      </div>
+    </form>
   );
 }
 

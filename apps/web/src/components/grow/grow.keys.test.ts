@@ -154,6 +154,19 @@ describe("growKeyAction", () => {
     });
   });
 
+  it("settles as superseded with Shift+x, also on a settled card, and follows the chain with Shift+q and Shift+e", () => {
+    expect(growKeyAction(key("X"), deck())).toEqual({ type: "supersede" });
+    expect(growKeyAction(key("X"), deck(returnItem({ kind: "letGo" })))).toEqual({
+      type: "supersede",
+    });
+    expect(growKeyAction(key("X"), deck(returnItem({ kind: "working" })))).toBeNull();
+    expect(growKeyAction(key("x"), deck(returnItem({ kind: "letGo" })))).toBeNull();
+    for (const state of [deck(), deck(null), { conversationOpen: true, item: null }]) {
+      expect(growKeyAction(key("E"), state)).toEqual({ type: "chain", direction: 1 });
+      expect(growKeyAction(key("Q"), state)).toEqual({ type: "chain", direction: -1 });
+    }
+  });
+
   it("steps the screenshots with b, Shift+b and the arrows, and scrolls the story with the Page keys", () => {
     expect(growKeyAction(key("b"), deck())).toEqual({ type: "image", direction: 1 });
     expect(growKeyAction(key("B"), deck())).toEqual({ type: "image", direction: -1 });

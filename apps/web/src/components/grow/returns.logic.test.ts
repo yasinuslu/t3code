@@ -16,6 +16,8 @@ import {
   growQueue,
   growSpark,
   growStep,
+  supersedeCandidates,
+  supersededChain,
 } from "./returns.logic";
 
 const NOW = Date.parse("2026-10-19T12:00:00.000Z");
@@ -261,6 +263,61 @@ describe("buildGrowRelations", () => {
       "fork",
     ]);
     expect(relations.byKey.get("env:helper")?.id).toBe("helper");
+  });
+});
+
+describe("supersede links", () => {
+  const link = (threadId: string, note = "") => ({
+    supersededBy: { threadId, note, at: hoursAgo(0) },
+  });
+  const threads = [
+    shell("rows", { ...link("stack", "Folded into the stack"), createdAt: hoursAgo(5) }),
+    shell("keys", { ...link("stack"), createdAt: hoursAgo(4) }),
+    shell("stack", { ...link("next", "Carried on"), updatedAt: hoursAgo(3) }),
+    shell("next", { updatedAt: hoursAgo(2) }),
+    shell("other-project", { projectId: "p2", updatedAt: hoursAgo(0) }),
+    shell("fresh", { updatedAt: hoursAgo(1) }),
+    shell("child", {
+      updatedAt: hoursAgo(9),
+      lineage: { relationshipToParent: "fork", parentThreadId: "rows" },
+    }),
+  ];
+  const relations = buildGrowRelations(threads, new Map());
+
+  it("indexes the threads each one superseded, oldest first", () => {
+    expect(relations.supersedes.get("env:stack")?.map((thread) => thread.id)).toEqual([
+      "rows",
+      "keys",
+    ]);
+  });
+
+  it("follows the chain forward and stops at a loop written by an older server", () => {
+    const rows = relations.byKey.get("env:rows")!;
+    expect(supersededChain(relations, rows).map((step) => [step.thread.id, step.note])).toEqual([
+      ["stack", "Folded into the stack"],
+      ["next", "Carried on"],
+    ]);
+    const looped = buildGrowRelations([shell("a", link("b")), shell("b", link("a"))], new Map());
+    expect(
+      supersededChain(looped, looped.byKey.get("env:a")!).map((step) => step.thread.id),
+    ).toEqual(["b"]);
+  });
+
+  it("suggests related threads first, then the project, never one behind it in the chain", () => {
+    const stack = relations.byKey.get("env:stack")!;
+    const ids = (thread: EnvironmentThreadShell, query = "", parentKey: string | null = null) =>
+      supersedeCandidates({ thread, relations, parentKey, query }).map((item) => item.id);
+    // rows and keys were folded into stack: picking them would loop.
+    expect(ids(stack)).toEqual(["fresh", "next", "child", "other-project"]);
+    expect(ids(relations.byKey.get("env:rows")!)).toEqual([
+      "child",
+      "fresh",
+      "next",
+      "stack",
+      "keys",
+      "other-project",
+    ]);
+    expect(ids(stack, "nex")).toEqual(["next"]);
   });
 });
 
