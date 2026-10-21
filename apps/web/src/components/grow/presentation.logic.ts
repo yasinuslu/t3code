@@ -89,16 +89,47 @@ export function formRequestId(presentationAt: string | undefined, index: number)
   return `form-${(presentationAt ?? "").replace(/\D/g, "")}-${index}`;
 }
 
-/** A form's answers as the message the agent reads: one `question: answer` per line. */
+/** How a question opens its answer line: one that already ends in ? or : takes no extra colon. */
+function answerPrefix(field: PresentationField): string {
+  return /[?:]$/.test(field.label) ? field.label : `${field.label}:`;
+}
+
+/**
+ * A form's answers as the message the agent reads: one `question: answer` per line. A pick must
+ * be made; a written answer may be left empty, and then its line is left out.
+ */
 export function formAnswerText(
   fields: ReadonlyArray<PresentationField>,
   answers: Readonly<Record<string, string>>,
 ): string {
   return fields
-    .map((field) => {
-      // A question that already ends in ? or : takes no extra colon.
-      const label = /[?:]$/.test(field.label) ? field.label : `${field.label}:`;
-      return `${label} ${(answers[field.id] ?? "").trim()}`;
+    .flatMap((field) => {
+      const answer = (answers[field.id] ?? "").trim();
+      return answer === "" ? [] : [`${answerPrefix(field)} ${answer}`];
     })
     .join("\n");
+}
+
+/** Whether every pick on a form is made and something is said, so its answers can be sent. */
+export function formComplete(
+  fields: ReadonlyArray<PresentationField>,
+  answers: Readonly<Record<string, string>>,
+): boolean {
+  const said = (field: PresentationField) => (answers[field.id] ?? "").trim() !== "";
+  return fields.every((field) => !field.options || said(field)) && fields.some(said);
+}
+
+/** The answers a sent form held, read back from its message, so changing one keeps the rest. */
+export function formAnswersFromText(
+  fields: ReadonlyArray<PresentationField>,
+  text: string,
+): Record<string, string> {
+  const lines = text.split("\n");
+  const answers: Record<string, string> = {};
+  for (const field of fields) {
+    const prefix = `${answerPrefix(field)} `;
+    const line = lines.find((candidate) => candidate.startsWith(prefix));
+    if (line !== undefined) answers[field.id] = line.slice(prefix.length);
+  }
+  return answers;
 }

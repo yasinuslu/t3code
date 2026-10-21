@@ -17,7 +17,14 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
-import { ATTACHMENT_LINK, type Slide, buildSlides, formAnswerText } from "./presentation.logic";
+import {
+  ATTACHMENT_LINK,
+  type Slide,
+  buildSlides,
+  formAnswersFromText,
+  formAnswerText,
+  formComplete,
+} from "./presentation.logic";
 
 /**
  * The item's slides: its presentation's pages when the agent set one, otherwise the images of
@@ -131,23 +138,42 @@ function FormSlide(props: {
   const { slide, answered } = props;
   const [answers, setAnswers] = useState<Readonly<Record<string, string>>>({});
   const [editing, setEditing] = useState(false);
+  // What was just sent, until the thread records it (the answer it replaces, if any).
+  const [sent, setSent] = useState<{ readonly text: string; readonly over?: string } | null>(null);
+  const sending = sent !== null && answered?.openedAt === sent.over;
   const set = (id: string, value: string) => setAnswers((current) => ({ ...current, [id]: value }));
-  const complete = slide.fields.every((field) => (answers[field.id] ?? "").trim() !== "");
+  const complete = formComplete(slide.fields, answers);
+  const edit = () => {
+    setAnswers(formAnswersFromText(slide.fields, (sending ? sent.text : answered?.text) ?? ""));
+    setEditing(true);
+  };
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!complete) return;
-    props.onAnswer(formAnswerText(slide.fields, answers));
+    const text = formAnswerText(slide.fields, answers);
+    props.onAnswer(text);
+    setSent(answered === undefined ? { text } : { text, over: answered.openedAt });
     setEditing(false);
   };
-  if (answered !== undefined && !editing) {
+  if ((answered !== undefined || sending) && !editing) {
     return (
       <div className="mx-auto flex max-w-xl flex-col gap-3 px-6 py-5">
         <p className="flex items-center gap-1.5 font-medium text-sm">
           <CheckIcon className="size-4 text-success" />
-          Answered {formatRelativeTimeLabel(answered.openedAt)}
+          {sending || answered === undefined
+            ? "Sent"
+            : `Answered ${formatRelativeTimeLabel(answered.openedAt)}`}
         </p>
-        <p className="whitespace-pre-line text-muted-foreground text-sm">{answered.text}</p>
-        <Button variant="outline" size="sm" className="self-start" onClick={() => setEditing(true)}>
+        <p className="whitespace-pre-line text-muted-foreground text-sm">
+          {sending ? sent.text : answered?.text}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          disabled={sending}
+          onClick={edit}
+        >
           Change answers
         </Button>
       </div>
@@ -176,15 +202,23 @@ function FormSlide(props: {
           ) : (
             <Input
               aria-label={field.label}
+              placeholder="Optional"
               value={answers[field.id] ?? ""}
               onChange={(event) => set(field.id, event.currentTarget.value)}
             />
           )}
         </fieldset>
       ))}
-      <Button type="submit" className="self-start" disabled={!complete}>
-        Send answers
-      </Button>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={!complete}>
+          Send answers
+        </Button>
+        {answered !== undefined && (
+          <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        )}
+      </div>
     </form>
   );
 }

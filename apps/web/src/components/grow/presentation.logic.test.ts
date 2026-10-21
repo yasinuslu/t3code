@@ -1,7 +1,12 @@
 import type { ThreadPresentation } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildSlides, formAnswerText } from "./presentation.logic";
+import {
+  buildSlides,
+  formAnswersFromText,
+  formAnswerText,
+  formComplete,
+} from "./presentation.logic";
 
 const pages: ThreadPresentation["pages"] = [
   {
@@ -80,5 +85,18 @@ describe("form pages", () => {
     expect(formAnswerText(fields, { color: "Blue", why: " no " })).toBe(
       "Which color? Blue\nAnything else? no",
     );
+  });
+
+  it("leaves out an empty written answer, but waits for every pick", () => {
+    expect(formAnswerText(fields, { color: "Blue", why: " " })).toBe("Which color? Blue");
+    expect(formComplete(fields, { why: "no" })).toBe(false);
+    expect(formComplete(fields, { color: "Blue" })).toBe(true);
+    expect(formComplete([fields[1]!], { why: "" })).toBe(false);
+  });
+
+  it("reads sent answers back, so changing one keeps the rest", () => {
+    const text = formAnswerText(fields, { color: "Blue", why: "looks: fine" });
+    expect(formAnswersFromText(fields, text)).toEqual({ color: "Blue", why: "looks: fine" });
+    expect(formAnswersFromText(fields, "Which color? Green")).toEqual({ color: "Green" });
   });
 });

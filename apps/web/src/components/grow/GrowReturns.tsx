@@ -309,18 +309,14 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         },
       });
     },
-    /** Sends a form page's answers; the page's request id marks it answered. */
-    answerForm: (item: GrowReturn, requestId: string, text: string) => {
-      moveOn(item);
-      decide({
-        key: item.key,
-        title: `Answering ${item.headline}`,
-        run: async () => {
-          if ((await send(item, "form", text, undefined, requestId)) && item.card?.decision) {
-            await record(item, null);
-          }
-        },
-      });
+    /**
+     * Sends a form page's answers; the page's request id marks it answered. At once and in
+     * place, with no undo window: the answered page offers Change answers instead.
+     */
+    answerForm: async (item: GrowReturn, requestId: string, text: string) => {
+      if ((await send(item, "form", text, undefined, requestId)) && item.card?.decision) {
+        await record(item, null);
+      }
     },
     done: (item: GrowReturn) => {
       moveOn(item);
@@ -2062,7 +2058,7 @@ function Visual(props: {
         fit={props.fit}
         onZoom={() => setZoom(images.findIndex((candidate) => candidate.key === slide.key))}
         requests={props.requests}
-        onAnswer={(requestId, text) => props.actions.answerForm(item, requestId, text)}
+        onAnswer={(requestId, text) => void props.actions.answerForm(item, requestId, text)}
       />
     );
 
