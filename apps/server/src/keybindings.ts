@@ -179,6 +179,15 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{
     to: { key: "mod+alt+s", command: "composer.stash", when: "!terminalFocus" },
   },
   { from: { key: "ctrl+alt+2", command: "manager.toggle" }, to: null },
+  // The profile switch left Ctrl+Alt+Q: Q sits next to Cmd+Q, which quits on a Mac.
+  {
+    from: { key: "ctrl+alt+q", command: "profile.next" },
+    to: { key: "alt+r", command: "profile.next", when: "!terminalFocus" },
+  },
+  {
+    from: { key: "ctrl+alt+shift+q", command: "profile.previous" },
+    to: { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
+  },
 ];
 
 /**
