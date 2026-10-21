@@ -47,6 +47,7 @@ import {
   MessageSquareIcon,
   MessagesSquareIcon,
   PlayIcon,
+  ListChecksIcon,
   ReplyIcon,
   RocketIcon,
   SearchIcon,
@@ -227,6 +228,7 @@ const GROW_REQUEST_LABEL: Record<GrowRequestKind, string> = {
   ship: "Ship",
   change: "What if",
   reply: "Reply",
+  form: "Answers",
 };
 
 /** The actions on a return, wired to the thread and its grow card. */
@@ -251,8 +253,9 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
     request: GrowRequestKind,
     words: string,
     dispatchMode?: "queue",
+    id?: string,
   ) => {
-    const contextId = ComposerContextId.make(`grow-${randomUUID()}`);
+    const contextId = ComposerContextId.make(id ?? `grow-${randomUUID()}`);
     const label = GROW_REQUEST_LABEL[request];
     const reference = formatComposerContextReference({ kind: "grow-request", contextId, label });
     const result = await startTurn({
@@ -301,6 +304,19 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         run: async () => {
           const request = kind === "whatIf" ? "change" : "reply";
           if ((await send(item, request, text)) && item.card?.decision !== undefined) {
+            await record(item, null);
+          }
+        },
+      });
+    },
+    /** Sends a form page's answers; the page's request id marks it answered. */
+    answerForm: (item: GrowReturn, requestId: string, text: string) => {
+      moveOn(item);
+      decide({
+        key: item.key,
+        title: `Answering ${item.headline}`,
+        run: async () => {
+          if ((await send(item, "form", text, undefined, requestId)) && item.card?.decision) {
             await record(item, null);
           }
         },
@@ -1435,6 +1451,7 @@ function Hero(props: {
       wide={wide}
       playing={props.playing}
       slides={slides}
+      requests={growRequests}
       fit={props.split}
     />
   );
@@ -1808,6 +1825,7 @@ function SupersedeEntry(props: {
 const ASK_LOOK = {
   ship: { icon: <RocketIcon />, label: "You said ship", done: "Shipped" },
   reply: { icon: <ReplyIcon />, label: "You replied", done: "Answered" },
+  form: { icon: <ListChecksIcon />, label: "Your answers", done: "Answered" },
   change: { icon: <SparklesIcon />, label: "Your what if", done: "Done" },
   presentation: {
     icon: <ImageIcon />,
@@ -1976,6 +1994,7 @@ function Visual(props: {
   readonly wide: boolean;
   readonly playing: boolean;
   readonly slides: ReadonlyArray<Slide>;
+  readonly requests: ReadonlyArray<ThreadGrowRequest>;
   /** As tall as the proof needs (capped), leaving the rest to the story; Live still fills. */
   readonly fit?: boolean;
 }) {
@@ -2042,6 +2061,8 @@ function Visual(props: {
         wide={props.wide}
         fit={props.fit}
         onZoom={() => setZoom(images.findIndex((candidate) => candidate.key === slide.key))}
+        requests={props.requests}
+        onAnswer={(requestId, text) => props.actions.answerForm(item, requestId, text)}
       />
     );
 

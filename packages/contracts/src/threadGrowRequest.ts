@@ -4,10 +4,11 @@ import { IsoDateTime } from "./baseSchemas.ts";
 
 /**
  * What the user asked a thread for from Grow. `presentation` and `ship` stay open until the
- * agent answers them (presentation_set, grow_request_close); `change` and `reply` carry the
- * user's own words and are answered by the turn they start.
+ * agent answers them (presentation_set, grow_request_close); `change`, `reply` and `form` (the
+ * answers to a presentation's form page) carry the user's own words and are answered by the turn
+ * they start.
  */
-export const GrowRequestKind = Schema.Literals(["presentation", "ship", "change", "reply"]);
+export const GrowRequestKind = Schema.Literals(["presentation", "ship", "change", "reply", "form"]);
 export type GrowRequestKind = typeof GrowRequestKind.Type;
 
 /** How an agent answered a request: landed it, or could not and says why. */

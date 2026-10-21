@@ -1,4 +1,8 @@
-import { ComposerContextId, type ComposerContextRecord } from "@t3tools/contracts";
+import {
+  ComposerContextId,
+  type ComposerContextRecord,
+  type GrowRequestKind,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
@@ -9,7 +13,7 @@ import {
   openGrowRequest,
 } from "./growRequests.ts";
 
-const record = (request: "presentation" | "ship" | "change" | "reply"): ComposerContextRecord => ({
+const record = (request: GrowRequestKind): ComposerContextRecord => ({
   version: 1,
   contextId: ComposerContextId.make(`grow-${request}`),
   kind: "grow-request",
@@ -41,6 +45,16 @@ describe("growRequestFromMessage", () => {
       )?.text,
     ).toBeUndefined();
     expect(growRequestFromMessage("hello", [], "t")).toBeNull();
+  });
+
+  it("keeps a form's answers one per line", () => {
+    expect(
+      growRequestFromMessage(
+        "[Answers](t3-context://v1/grow-request/grow-form)  Which?:  Blue \n  Why?: no",
+        [record("form")],
+        "t",
+      )?.text,
+    ).toBe("Which?: Blue\nWhy?: no");
   });
 });
 

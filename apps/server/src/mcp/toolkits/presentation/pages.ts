@@ -1,4 +1,8 @@
-import type { OrchestratorMcpFailure, PresentationPage } from "@t3tools/contracts";
+import type {
+  OrchestratorMcpFailure,
+  PresentationField,
+  PresentationPage,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { linkStoredImages, localImagePaths } from "../threadStatus/reportImages.ts";
@@ -70,6 +74,26 @@ export const storePresentationPages = Effect.fn("storePresentationPages")(functi
         }
         const file = yield* store.html(path === undefined ? { html: html ?? "" } : { path });
         pages.push({ kind: "html", ...title, file });
+        break;
+      }
+      case "form": {
+        const ids = new Set<string>();
+        const fields: Array<PresentationField> = [];
+        for (const field of page.fields) {
+          const id = field.id.trim();
+          const options = (field.options ?? []).map((option) => option.trim()).filter(Boolean);
+          if (ids.has(id)) return yield* invalid(`Page ${index + 1}: field id "${id}" repeats.`);
+          if (options.length === 1) {
+            return yield* invalid(`Page ${index + 1}: "${id}" needs two options or none.`);
+          }
+          ids.add(id);
+          fields.push({
+            id,
+            label: field.label.trim(),
+            ...(options.length > 0 ? { options } : {}),
+          });
+        }
+        pages.push({ kind: "form", ...title, fields });
         break;
       }
     }

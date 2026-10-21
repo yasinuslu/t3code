@@ -21,9 +21,25 @@ export const PresentationMark = Schema.Struct({
 });
 export type PresentationMark = typeof PresentationMark.Type;
 
+/** Most questions a form page asks; it is a quick decision, not a survey. */
+export const THREAD_PRESENTATION_FORM_MAX_FIELDS = 6;
+
+/** One question on a form page: a pick among options, or a short written answer. */
+export const PresentationField = Schema.Struct({
+  /** Names the answer for the agent; unique within the page. */
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  /** Two to six options make it a pick; none make it a short text answer. */
+  options: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(80))).check(Schema.isMaxLength(6)),
+  ),
+});
+export type PresentationField = typeof PresentationField.Type;
+
 /**
  * One page of a presentation. Files live in T3 storage: `image` and `file` are attachment
- * ids, and a doc's images are `attachment:<id>` links.
+ * ids, and a doc's images are `attachment:<id>` links. A `form` asks the user to decide;
+ * the answers come back to the thread as a message.
  */
 export const PresentationPage = Schema.Union([
   Schema.Struct({
@@ -41,6 +57,14 @@ export const PresentationPage = Schema.Union([
     kind: Schema.Literal("html"),
     title: Schema.optional(PageTitle),
     file: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("form"),
+    title: Schema.optional(PageTitle),
+    fields: Schema.Array(PresentationField).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(THREAD_PRESENTATION_FORM_MAX_FIELDS),
+    ),
   }),
 ]);
 export type PresentationPage = typeof PresentationPage.Type;

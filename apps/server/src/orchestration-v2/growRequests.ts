@@ -15,14 +15,16 @@ export function growRequestFromMessage(
 ): ThreadGrowRequest | null {
   const record = records.find((candidate) => candidate.kind === "grow-request");
   if (record === undefined || !("request" in record)) return null;
+  // Lines stay (a form's answers are one per line); runs of other space fold.
   const words = replaceComposerContextReferences(text, () => "")
-    .replace(/\s+/g, " ")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n\s*/g, "\n")
     .trim()
     .slice(0, THREAD_GROW_REQUEST_TEXT_MAX_CHARS);
   return {
     id: record.contextId,
     kind: record.request,
-    ...(words !== "" && (record.request === "change" || record.request === "reply")
+    ...(words !== "" && record.request !== "ship" && record.request !== "presentation"
       ? { text: words }
       : {}),
     openedAt: at,

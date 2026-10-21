@@ -1,4 +1,4 @@
-import type { PresentationMark, ThreadPresentation } from "@t3tools/contracts";
+import type { PresentationField, PresentationMark, ThreadPresentation } from "@t3tools/contracts";
 
 import type { ExpandedImageItem } from "../chat/ExpandedImagePreview";
 
@@ -12,7 +12,15 @@ export type Slide =
       readonly marks: ReadonlyArray<PresentationMark>;
     }
   | { readonly kind: "doc"; readonly key: string; readonly name: string; readonly markdown: string }
-  | { readonly kind: "html"; readonly key: string; readonly name: string; readonly src: string };
+  | { readonly kind: "html"; readonly key: string; readonly name: string; readonly src: string }
+  | {
+      readonly kind: "form";
+      readonly key: string;
+      readonly name: string;
+      readonly fields: ReadonlyArray<PresentationField>;
+      /** The id its answers are sent under, so the page knows it was answered. */
+      readonly requestId: string;
+    };
 
 /** A markdown link or image whose target is a stored file. */
 export const ATTACHMENT_LINK = /\]\(<?attachment:([\w-]+)>?\)/g;
@@ -25,6 +33,7 @@ export function buildSlides(
   pages: ThreadPresentation["pages"] | undefined,
   urls: ReadonlyArray<string | null>,
   reportImages: ReadonlyArray<ExpandedImageItem>,
+  presentationAt?: string,
 ): ReadonlyArray<Slide> {
   if (pages === undefined) {
     return reportImages.flatMap((image, index): Slide[] =>
@@ -56,6 +65,16 @@ export function buildSlides(
         });
         return [{ kind: "doc", key, name: page.title ?? docTitle(page.markdown), markdown }];
       }
+      case "form":
+        return [
+          {
+            kind: "form",
+            key,
+            name: page.title ?? "Your call",
+            fields: page.fields,
+            requestId: formRequestId(presentationAt, index),
+          },
+        ];
     }
   });
 }
@@ -63,4 +82,23 @@ export function buildSlides(
 function docTitle(markdown: string): string {
   const heading = /^#{1,3}\s+(.+)$/m.exec(markdown)?.[1]?.trim();
   return heading && heading.length > 0 ? heading : "Page";
+}
+
+/** A form page's request id: a new presentation asks anew, the same one stays answered. */
+export function formRequestId(presentationAt: string | undefined, index: number): string {
+  return `form-${(presentationAt ?? "").replace(/\D/g, "")}-${index}`;
+}
+
+/** A form's answers as the message the agent reads: one `question: answer` per line. */
+export function formAnswerText(
+  fields: ReadonlyArray<PresentationField>,
+  answers: Readonly<Record<string, string>>,
+): string {
+  return fields
+    .map((field) => {
+      // A question that already ends in ? or : takes no extra colon.
+      const label = /[?:]$/.test(field.label) ? field.label : `${field.label}:`;
+      return `${label} ${(answers[field.id] ?? "").trim()}`;
+    })
+    .join("\n");
 }
