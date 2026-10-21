@@ -267,12 +267,12 @@ describe("buildGrowRelations", () => {
 });
 
 describe("supersede links", () => {
-  const link = (threadId: string, note = "") => ({
-    supersededBy: { threadId, note, at: hoursAgo(0) },
+  const link = (threadId: string, note = "", linkedHoursAgo = 0) => ({
+    supersededBy: { threadId, note, at: hoursAgo(linkedHoursAgo) },
   });
   const threads = [
-    shell("rows", { ...link("stack", "Folded into the stack"), createdAt: hoursAgo(5) }),
-    shell("keys", { ...link("stack"), createdAt: hoursAgo(4) }),
+    shell("rows", { ...link("stack", "Folded into the stack", 1), createdAt: hoursAgo(5) }),
+    shell("keys", { ...link("stack", "", 2), createdAt: hoursAgo(4) }),
     shell("stack", { ...link("next", "Carried on"), updatedAt: hoursAgo(3) }),
     shell("next", { updatedAt: hoursAgo(2) }),
     shell("other-project", { projectId: "p2", updatedAt: hoursAgo(0) }),
@@ -284,10 +284,10 @@ describe("supersede links", () => {
   ];
   const relations = buildGrowRelations(threads, new Map());
 
-  it("indexes the threads each one superseded, oldest first", () => {
+  it("indexes the threads each one superseded, in the order they were folded in", () => {
     expect(relations.supersedes.get("env:stack")?.map((thread) => thread.id)).toEqual([
-      "rows",
       "keys",
+      "rows",
     ]);
   });
 

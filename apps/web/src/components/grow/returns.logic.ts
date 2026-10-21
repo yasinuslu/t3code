@@ -324,8 +324,9 @@ export function buildGrowRelations(
   for (const siblings of children.values()) {
     siblings.sort((left, right) => epochMs(left.createdAt) - epochMs(right.createdAt));
   }
+  // In the order they were folded in, as the Lineage panel lists them.
   for (const older of supersedes.values()) {
-    older.sort((left, right) => epochMs(left.createdAt) - epochMs(right.createdAt));
+    older.sort((left, right) => (left.supersededBy!.at < right.supersededBy!.at ? -1 : 1));
   }
   return { byKey, children, supersedes };
 }

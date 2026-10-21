@@ -2101,7 +2101,13 @@ function Choices(props: {
           props.setSupersedeOpen(false);
           actions.supersede(item, successor, note);
         }}
-        onCancel={() => props.setSupersedeOpen(false)}
+        onCancel={() => {
+          props.setSupersedeOpen(false);
+          // Back to the link that opened it, so the keyboard keeps its place.
+          window.requestAnimationFrame(() =>
+            document.querySelector<HTMLElement>("[data-supersede-link]")?.focus(),
+          );
+        }}
       />
     );
   }
@@ -2288,7 +2294,13 @@ function SupersedeLink(props: {
   readonly onClick: () => void;
 }) {
   return (
-    <Button variant="ghost-muted" size="compact" className="self-end" onClick={props.onClick}>
+    <Button
+      variant="ghost-muted"
+      size="compact"
+      className="self-end"
+      data-supersede-link=""
+      onClick={props.onClick}
+    >
       <LayersIcon />
       {props.settled ? "Superseded by..." : "Settle, superseded by..."}
       {props.wide ? <Kbd>Shift X</Kbd> : null}
@@ -2310,7 +2322,9 @@ function SupersedeField(props: {
   const { item } = props;
   const [query, setQuery] = useState("");
   const [note, setNote] = useState("");
-  const [index, setIndex] = useState(0);
+  // -1 until the user picks: Settle must never take a thread nobody chose.
+  const [index, setIndex] = useState(-1);
+  const projectTitle = useProjectTitle();
   const candidates = useMemo(
     () =>
       supersedeCandidates({
@@ -2321,7 +2335,7 @@ function SupersedeField(props: {
       }),
     [item.card, item.thread, props.relations, query],
   );
-  const chosen = candidates[Math.min(index, candidates.length - 1)];
+  const chosen = index < 0 ? undefined : candidates[Math.min(index, candidates.length - 1)];
   const pick = () => {
     if (chosen !== undefined) props.onPick(chosen, note.trim());
   };
@@ -2332,7 +2346,7 @@ function SupersedeField(props: {
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const step = event.key === "ArrowDown" ? 1 : -1;
-      setIndex((at) => Math.max(0, Math.min(candidates.length - 1, at + step)));
+      setIndex((at) => Math.max(0, Math.min(candidates.length - 1, at < 0 ? 0 : at + step)));
     }
   };
   return (
@@ -2358,7 +2372,7 @@ function SupersedeField(props: {
           value={query}
           onChange={(event) => {
             setQuery(event.currentTarget.value);
-            setIndex(0);
+            setIndex(-1);
           }}
           onKeyDown={onKeyDown}
         />
@@ -2372,14 +2386,25 @@ function SupersedeField(props: {
               <button
                 type="button"
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm",
-                  candidate === chosen ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm ring-inset",
+                  candidate === chosen
+                    ? "bg-primary/15 text-foreground ring-1 ring-primary/60"
+                    : "hover:bg-accent/50",
                 )}
                 onClick={() => setIndex(candidates.indexOf(candidate))}
               >
+                {candidate === chosen ? (
+                  <CheckIcon aria-hidden className="size-3.5 shrink-0 text-primary" />
+                ) : null}
                 <span className="min-w-0 flex-1 truncate">{cleanLabel(candidate.title)}</span>
-                <span className="shrink-0 text-muted-foreground text-xs">
-                  {formatRelativeTimeLabel(candidate.updatedAt)}
+                <span className="max-w-40 shrink-0 truncate text-muted-foreground text-xs">
+                  {[
+                    projectTitle(candidate),
+                    candidate.settledAt === null ? null : "settled",
+                    formatRelativeTimeLabel(candidate.updatedAt),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               </button>
             </li>
