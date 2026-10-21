@@ -144,6 +144,10 @@ export interface EnvironmentThreadShell {
   readonly statusUpdatedAt?: string;
   /** True when that report embeds a proof image. */
   readonly statusProof?: boolean;
+  /** When the agent last set the thread's presentation; absent until one does. */
+  readonly presentationUpdatedAt?: string;
+  /** How many pages that presentation has. */
+  readonly presentationPages?: number;
   /** The thread that took this one further, with its one-line note. */
   readonly supersededBy?: import("@t3tools/contracts").ThreadSupersededBy;
   /**
@@ -256,6 +260,12 @@ export function presentThreadShell(
     previewLinks: thread.previewLinks ?? NO_PREVIEW_LINKS,
     ...(thread.statusUpdatedAt === undefined ? {} : { statusUpdatedAt: thread.statusUpdatedAt }),
     ...(thread.statusProof ? { statusProof: true } : {}),
+    ...(thread.presentationUpdatedAt === undefined
+      ? {}
+      : {
+          presentationUpdatedAt: thread.presentationUpdatedAt,
+          presentationPages: thread.presentationPages ?? 0,
+        }),
     ...(thread.supersededBy == null ? {} : { supersededBy: thread.supersededBy }),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,

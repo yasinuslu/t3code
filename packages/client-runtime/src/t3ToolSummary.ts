@@ -392,6 +392,9 @@ export function summarizeT3ToolCalls(
         `the thread status${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
+    case "presentation-set":
+      label = phrase("Set", "set", `the presentation${selected.length === 1 ? "" : ` ${times}`}`);
+      break;
     case "grow-update":
       label = phrase(
         "Updated",

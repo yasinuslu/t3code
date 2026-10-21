@@ -5,6 +5,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
   type Ref,
 } from "react";
 
@@ -20,11 +21,13 @@ export interface ZoomableImageHandle {
 export function ZoomableImage({
   src,
   name,
+  overlay,
   onError,
   ref,
 }: {
   src: string;
   name: string;
+  overlay?: ((size: { readonly width: number; readonly height: number }) => ReactNode) | undefined;
   onError: () => void;
   ref?: Ref<ZoomableImageHandle>;
 }) {
@@ -145,6 +148,22 @@ export function ZoomableImage({
     return () => viewport.removeEventListener("wheel", wheel);
   }, [changeZoom]);
 
+  const image = (
+    <img
+      src={src}
+      alt={name}
+      draggable={false}
+      className="block max-w-none select-none"
+      style={naturalSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }}
+      onLoad={(event) => {
+        setNaturalSize({
+          width: event.currentTarget.naturalWidth,
+          height: event.currentTarget.naturalHeight,
+        });
+      }}
+      onError={onError}
+    />
+  );
   return (
     <div className="min-w-0">
       <div
@@ -225,22 +244,16 @@ export function ZoomableImage({
           setDragging(false);
         }}
       >
-        <img
-          src={src}
-          alt={name}
-          draggable={false}
-          className="block max-w-none select-none"
-          style={
-            naturalSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }
-          }
-          onLoad={(event) => {
-            setNaturalSize({
-              width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight,
-            });
-          }}
-          onError={onError}
-        />
+        {overlay ? (
+          <div className="relative w-fit">
+            {image}
+            {naturalSize.width ? (
+              <div className="pointer-events-none absolute inset-0">{overlay(naturalSize)}</div>
+            ) : null}
+          </div>
+        ) : (
+          image
+        )}
       </div>
       <span className="sr-only" aria-live="polite">
         {Math.round(zoom * 100)}% zoom

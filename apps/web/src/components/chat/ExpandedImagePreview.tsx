@@ -1,4 +1,5 @@
 import type { SnapShotSource } from "@t3tools/contracts";
+import type { ReactNode } from "react";
 
 import type { ComposerFileAttachment } from "../../composerDraftStore";
 import { type ChatFileAttachment, type ChatImageAttachment, isVideoAttachment } from "../../types";
@@ -30,6 +31,8 @@ export interface ExpandedImageItem {
   originalUrl?: string;
   srcFragment?: string;
   actionsSource?: MediaActionSource;
+  /** Drawn over an image in its own pixel space, so it stays on its spot at every zoom. */
+  overlay?: (size: { readonly width: number; readonly height: number }) => ReactNode;
 }
 
 export interface ExpandedImagePreview {

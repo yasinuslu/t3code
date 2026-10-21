@@ -69,6 +69,20 @@ describe("proofRequestCommand", () => {
     }
   });
 
+  it("leaves a thread alone once it has a presentation", () => {
+    const presentation = {
+      pages: [{ kind: "doc" as const, markdown: "# The new list" }],
+      updatedAt: "2026-10-19T12:00:00.000Z",
+    };
+    expect(
+      proofRequestCommand({
+        thread: thread("Done.", { presentation }),
+        runs: [done],
+        runId: done.id,
+      }),
+    ).toBeNull();
+  });
+
   it("asks only once: the run answering an ask is not asked again", () => {
     const first = proofRequestCommand({ thread: thread("Done."), runs: [done], runId: done.id });
     if (first?.type !== "message.dispatch") throw new Error("expected a request");

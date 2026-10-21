@@ -152,6 +152,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
     case "thread.metadata.update":
     case "thread.preview-link.link":
     case "thread.preview-link.unlink":
+    case "thread.presentation.set":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
     case "thread.pull-request-link.sync":

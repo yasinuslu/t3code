@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import { ProjectId, RunId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ThreadPresentation } from "./threadPresentation.ts";
 
 /**
  * Brainstorm: the manager chats (one per code profile, each working in its
@@ -58,6 +59,8 @@ export const BrainstormThreadReportInput = Schema.Struct({
   runId: Schema.optional(Schema.NullOr(RunId)),
   /** The status update the client last saw; a new one is a new report. */
   statusUpdatedAt: Schema.optional(Schema.String),
+  /** The presentation the client last saw; a new one is a new report. */
+  presentationUpdatedAt: Schema.optional(Schema.String),
 });
 export type BrainstormThreadReportInput = typeof BrainstormThreadReportInput.Type;
 
@@ -69,6 +72,8 @@ export const BrainstormThreadReport = Schema.Struct({
   text: Schema.NullOr(Schema.String),
   /** The status report, when a later answer is the text: its images stay the thread's proof. */
   statusText: Schema.optional(Schema.String),
+  /** The thread's presentation, when its agent set one. */
+  presentation: Schema.optional(ThreadPresentation),
 });
 export type BrainstormThreadReport = typeof BrainstormThreadReport.Type;
 
