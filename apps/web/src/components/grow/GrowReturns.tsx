@@ -76,6 +76,7 @@ import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
 import { type GrowAsk, recordGrowAsk, useGrowAsks } from "./grow.asks";
 import { decide, undo, usePendingDecisions } from "./grow.decide";
+import { GrowDetails } from "./GrowDetails";
 import { GrowPreview } from "./GrowPreview";
 import {
   type GrowDeck,
@@ -304,6 +305,7 @@ export function GrowReturns(props: {
   const pending = usePendingDecisions((state) => state.keys);
   const { selected, phoneView, query, playing, thread, listMode, manager } = useReturnsStore();
   const wide = useMediaQuery("md");
+  const split = useMediaQuery("lg");
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   useEffect(() => setGrowManagerToggle(toggleManagerPane), []);
 
@@ -461,12 +463,12 @@ export function GrowReturns(props: {
     />
   ) : current ? (
     <Hero
-      key={current.key}
       item={current}
       actions={actions}
       relations={relations}
       open={openRelated}
       wide={wide}
+      split={split}
       playing={playing === current.key}
       whatIfOpen={whatIfOpen}
       setWhatIfOpen={setWhatIfOpen}
@@ -507,7 +509,7 @@ export function GrowReturns(props: {
 
   return (
     <div
-      className="grid min-h-0 flex-1 grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]"
+      className="grid min-h-0 flex-1 grid-cols-[clamp(15rem,20vw,22rem)_minmax(0,1fr)]"
       data-grow-returns="wide"
     >
       <div className="flex min-h-0 flex-col border-e ps-(--workspace-gutter-start) pe-3 pt-3">
@@ -630,7 +632,7 @@ function ReturnsList(props: {
     />
   );
   return (
-    <nav aria-label="Returns" className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-6">
+    <nav aria-label="Returns" className="@container -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-6">
       <ManagerRow open={props.managerOpen} />
       <div className="flex items-center justify-between gap-2">
         <ToggleGroup
@@ -663,8 +665,10 @@ function ReturnsList(props: {
             ) : (
               <ChevronsUpDownIcon className="size-3.5" />
             )}
-            {expandAll ? "Only this project" : "Expand all"}
-            <span className="hidden md:contents">
+            <span className="whitespace-nowrap @max-[16rem]:sr-only">
+              {expandAll ? "Only this project" : "Expand all"}
+            </span>
+            <span className="hidden md:@min-[15.5rem]:contents">
               <Kbd>E</Kbd>
             </span>
           </button>
@@ -757,6 +761,13 @@ function ReturnRow(props: {
 }) {
   const { item } = props;
   const projectTitle = useProjectTitle();
+  // The shown item says where it lives; a list that is not grouped by project names it on every row.
+  const meta = [
+    props.showProject ? projectTitle(item.thread) : null,
+    props.current ? item.thread.branch : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <li>
       <button
@@ -771,11 +782,9 @@ function ReturnRow(props: {
       >
         <RowMark item={item} />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate">{item.headline}</span>
-          {props.showProject ? (
-            <span className="truncate font-normal text-muted-foreground text-xs">
-              {projectTitle(item.thread)}
-            </span>
+          <span className="line-clamp-2 break-words">{item.headline}</span>
+          {meta ? (
+            <span className="truncate font-normal text-muted-foreground text-xs">{meta}</span>
           ) : null}
         </span>
         <ProofMark item={item} />
@@ -993,6 +1002,32 @@ function ThreadPane(props: {
 }
 
 /**
+ * The item's conversation beside its proof. One chat view stays mounted while j and k
+ * step through the items, the way the thread route reuses it, so stepping stays instant.
+ */
+function Conversation(props: { readonly thread: EnvironmentThreadShell }) {
+  const { thread } = props;
+  return (
+    <section
+      aria-label="Conversation"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      data-grow-conversation=""
+    >
+      <ChatView
+        environmentId={thread.environmentId}
+        threadId={thread.id}
+        routeKind="server"
+        reserveTitleBarControlInset={false}
+        autoFocusComposer={false}
+        embedded
+        statusReport={false}
+        typeToFocusComposer={false}
+      />
+    </section>
+  );
+}
+
+/**
  * One item, read in the order a glance needs: the thing itself in the middle,
  * and beside it what it is, where it came from and where it goes, and what
  * happened inside. The conversation is one click further.
@@ -1003,6 +1038,8 @@ function Hero(props: {
   readonly relations: GrowRelations;
   readonly open: (thread: EnvironmentThreadShell) => void;
   readonly wide: boolean;
+  /** Wide enough for the conversation beside the proof; narrower, it is one O away. */
+  readonly split: boolean;
   readonly playing: boolean;
   readonly whatIfOpen: boolean;
   readonly setWhatIfOpen: (open: boolean) => void;
@@ -1014,7 +1051,15 @@ function Hero(props: {
   const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
   const question = digest.questions[0] ?? null;
   const visual = (
-    <Visual item={item} actions={actions} wide={wide} playing={props.playing} images={images} />
+    <Visual
+      key={item.key}
+      item={item}
+      actions={actions}
+      wide={wide}
+      playing={props.playing}
+      images={images}
+      fit={props.split}
+    />
   );
   const choices = (stacked: boolean) => (
     <Choices
@@ -1052,20 +1097,53 @@ function Hero(props: {
       </article>
     );
   }
+  if (!props.split) {
+    return (
+      <article
+        aria-label={item.headline}
+        className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]"
+      >
+        <div className="flex min-h-0 min-w-0 flex-col p-5">{visual}</div>
+        <aside
+          aria-label="About it"
+          className="flex min-h-0 flex-col border-s bg-background/40"
+          data-grow-story=""
+        >
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">{story}</div>
+          <div className="shrink-0 border-t p-4">{choices(true)}</div>
+        </aside>
+      </article>
+    );
+  }
+  // The conversation beside the thing it made; the proof takes the height it needs (Live
+  // takes more), the story the rest, and the choices stay pinned under them.
+  const live = props.playing && item.playUrl !== null;
   return (
     <article
       aria-label={item.headline}
-      className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]"
+      className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,1fr)_minmax(24rem,1.1fr)]"
     >
-      <div className="flex min-h-0 min-w-0 flex-col p-5">{visual}</div>
-      <aside
-        aria-label="About it"
-        className="flex min-h-0 flex-col border-s bg-background/40"
-        data-grow-story=""
-      >
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">{story}</div>
-        <div className="shrink-0 border-t p-4">{choices(true)}</div>
-      </aside>
+      <div className="flex min-h-0 min-w-0 flex-col border-e">
+        <Conversation thread={item.thread} />
+      </div>
+      <div className="flex min-h-0 min-w-0 flex-col">
+        <div
+          className={cn(
+            "flex min-h-0 flex-col p-3 pb-0",
+            live ? "flex-[1.6]" : "max-h-[60%] shrink-0",
+          )}
+        >
+          {visual}
+        </div>
+        <aside
+          aria-label="About it"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
+          data-grow-story=""
+        >
+          {story}
+        </aside>
+        <div className="shrink-0 border-t p-3">{choices(false)}</div>
+      </div>
     </article>
   );
 }
@@ -1164,6 +1242,7 @@ function Story(props: {
           </ul>
         </section>
       ) : null}
+      <GrowDetails item={item} />
       <Button
         variant="outline"
         size="sm"
@@ -1415,6 +1494,8 @@ function Visual(props: {
   readonly wide: boolean;
   readonly playing: boolean;
   readonly images: ReturnType<typeof useReportImages>;
+  /** As tall as the proof needs (capped), leaving the rest to the story; Live still fills. */
+  readonly fit?: boolean;
 }) {
   const { item, images } = props;
   const [shown, setShown] = useState(0);
@@ -1436,7 +1517,10 @@ function Visual(props: {
     ) : (
       <button
         type="button"
-        className="flex min-h-0 flex-1 cursor-zoom-in items-center justify-center p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "flex min-h-0 cursor-zoom-in items-center justify-center p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          !props.fit && "flex-1",
+        )}
         aria-label={`Open ${image.name}`}
         onClick={() => setZoom(index)}
       >
@@ -1445,7 +1529,11 @@ function Visual(props: {
           alt={image.name}
           className={cn(
             "rounded-md object-contain",
-            props.wide ? "size-full" : "max-h-[45vh] max-w-full",
+            props.fit
+              ? "max-h-[42vh] w-auto max-w-full"
+              : props.wide
+                ? "size-full"
+                : "max-h-[45vh] max-w-full",
           )}
         />
       </button>
@@ -1471,7 +1559,12 @@ function Visual(props: {
   }
 
   return (
-    <div className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border bg-muted/40">
+    <div
+      className={cn(
+        "flex min-h-0 flex-col overflow-hidden rounded-xl border bg-muted/40",
+        props.fit && !live ? "max-h-full" : "min-h-80 flex-1",
+      )}
+    >
       <div className="flex items-center gap-2 border-b px-2 py-1.5">
         <ToggleGroup
           aria-label="Show"
