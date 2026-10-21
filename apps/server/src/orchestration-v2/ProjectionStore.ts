@@ -27,6 +27,7 @@ import type {
   ProviderSessionId,
   ProviderThreadId,
   ThreadPresentation,
+  ThreadGrowRequest,
   ThreadStatusReport,
   ProviderTurnId,
   RunAttemptId,
@@ -72,6 +73,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type * as Statement from "effect/unstable/sql/Statement";
+import { growRequestsUpdatedAt } from "./growRequests.ts";
 
 import {
   isThreadHistoryUserTurn,
@@ -511,6 +513,12 @@ function presentationShellFields(presentation: ThreadPresentation) {
     presentationUpdatedAt: presentation.updatedAt,
     presentationPages: presentation.pages.length,
   };
+}
+
+/** Shell fields for Grow requests: they stay server-side, when they changed travels. */
+function growRequestShellFields(requests: ReadonlyArray<ThreadGrowRequest> | undefined) {
+  const updatedAt = growRequestsUpdatedAt(requests);
+  return updatedAt === undefined ? {} : { growRequestsUpdatedAt: updatedAt };
 }
 
 function needsRecovery(
@@ -1399,6 +1407,7 @@ export function threadShellFromProjection(
     ...(projection.thread.presentation === undefined
       ? {}
       : presentationShellFields(projection.thread.presentation)),
+    ...growRequestShellFields(projection.thread.growRequests),
     ...(projection.thread.supersededBy == null
       ? {}
       : { supersededBy: projection.thread.supersededBy }),
@@ -1648,6 +1657,7 @@ function shellFromState(input: {
     ...(input.state.thread.presentation === undefined
       ? {}
       : presentationShellFields(input.state.thread.presentation)),
+    ...growRequestShellFields(input.state.thread.growRequests),
     ...(input.state.thread.supersededBy == null
       ? {}
       : { supersededBy: input.state.thread.supersededBy }),

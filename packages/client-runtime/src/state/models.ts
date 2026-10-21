@@ -148,6 +148,8 @@ export interface EnvironmentThreadShell {
   readonly presentationUpdatedAt?: string;
   /** How many pages that presentation has. */
   readonly presentationPages?: number;
+  /** When the thread's Grow requests last changed; absent until the first. */
+  readonly growRequestsUpdatedAt?: string;
   /** The thread that took this one further, with its one-line note. */
   readonly supersededBy?: import("@t3tools/contracts").ThreadSupersededBy;
   /**
@@ -266,6 +268,9 @@ export function presentThreadShell(
           presentationUpdatedAt: thread.presentationUpdatedAt,
           presentationPages: thread.presentationPages ?? 0,
         }),
+    ...(thread.growRequestsUpdatedAt === undefined
+      ? {}
+      : { growRequestsUpdatedAt: thread.growRequestsUpdatedAt }),
     ...(thread.supersededBy == null ? {} : { supersededBy: thread.supersededBy }),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,

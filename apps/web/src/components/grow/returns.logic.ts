@@ -473,14 +473,6 @@ export function growStep(deck: GrowDeck, current: string | null, direction: 1 | 
   return keys[(at + direction + keys.length) % keys.length] ?? null;
 }
 
-/** Sent when an item came back with nothing to see: every return carries a presentation. */
-export const PROOF_MESSAGE =
-  "Show me what this looks like. Call presentation_set with what I understand at a glance: a screenshot of the result with marks on what changed (a short GIF if it moves), a short page, or for work with nothing on screen, an image of the evidence. Nothing else changes.";
-
-/** What Ship sends the thread: the user's go-ahead to land it the way its repo lands work. */
-export const SHIP_MESSAGE =
-  "Ship it. Land this the usual way for this repo: open the PR if there is none, get CI green, merge, verify it is live, then settle this thread. If something blocks the merge, tell me in one line.";
-
 /** The project the shown item belongs to, wherever the deck lists it. */
 export function growFocusedProject(deck: GrowDeck, key: string | null): string | null {
   if (key === null) return null;

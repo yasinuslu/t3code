@@ -3,7 +3,8 @@ import * as Effect from "effect/Effect";
 
 import * as GrowService from "../../../grow/GrowService.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
-import { readCaller, readWritableThread, unavailable } from "../../threadAccess.ts";
+import { invalid } from "../threadStatus/storeFile.ts";
+import { newCommandId, readCaller, readWritableThread, unavailable } from "../../threadAccess.ts";
 import { threadStatusOf } from "../brainstorm/handlers.ts";
 import { GrowToolkit } from "./tools.ts";
 
@@ -30,6 +31,37 @@ export const GrowToolkitHandlersLive = GrowToolkit.toLayer({
         ...(input.parentThreadId === undefined ? {} : { parentThreadId: input.parentThreadId }),
       });
       return entryOf(card);
+    }),
+
+  grow_request_close: (input) =>
+    Effect.gen(function* () {
+      const { projection } = yield* readWritableThread();
+      const open = (projection.thread.growRequests ?? []).filter(
+        (request) => request.closedAt === undefined,
+      );
+      const request =
+        input.requestId === undefined
+          ? open.at(-1)
+          : open.find((candidate) => candidate.id === input.requestId);
+      if (request === undefined) {
+        return yield* invalid(
+          input.requestId === undefined
+            ? "This thread has no open Grow request."
+            : `No open Grow request ${input.requestId} on this thread.`,
+        );
+      }
+      const engine = yield* Orchestrator.OrchestratorV2;
+      yield* engine
+        .dispatch({
+          type: "thread.grow-request.close",
+          commandId: yield* newCommandId(),
+          threadId: projection.thread.id,
+          requestId: request.id,
+          outcome: input.outcome,
+          ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+        })
+        .pipe(Effect.mapError(unavailable));
+      return { requestId: request.id, outcome: input.outcome };
     }),
 
   grow_board: () =>

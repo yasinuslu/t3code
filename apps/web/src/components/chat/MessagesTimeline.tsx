@@ -146,6 +146,10 @@ import {
   XIcon,
   ZapIcon,
   RotateCcwIcon,
+  ReplyIcon,
+  SparklesIcon,
+  RocketIcon,
+  ImageIcon,
 } from "lucide-react";
 import { ChevronDown, ChevronRight } from "lucide";
 import type {
@@ -3934,6 +3938,13 @@ function UserMessageMentionChip(props: {
   );
 }
 
+const GROW_REQUEST_ICON = {
+  presentation: <ImageIcon />,
+  ship: <RocketIcon />,
+  change: <SparklesIcon />,
+  reply: <ReplyIcon />,
+} as const;
+
 function UserMessageContextChip(props: {
   icon: ReactNode;
   label: string;
@@ -4156,6 +4167,23 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             tooltip={`$${record.name}`}
             copyMarkdown={context.copyMarkdown}
             kind="skill"
+          />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "grow-request",
+      canRender: (record) => record.kind === "grow-request",
+      render: (record, context) =>
+        record.kind === "grow-request" ? (
+          <UserMessageContextChip
+            icon={GROW_REQUEST_ICON[record.request]}
+            label={record.label}
+            kindLabel="Asked from Grow"
+            tooltip="Asked from Grow"
+            copyMarkdown={context.copyMarkdown}
+            kind="grow"
           />
         ) : (
           <UnavailableUserMessageContextChip {...context} />

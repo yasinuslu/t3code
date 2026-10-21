@@ -6,7 +6,7 @@
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { type WorkReason, classifyWorkThread } from "@t3tools/client-runtime/state/work-overview";
-import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
+import type { AssetResource, EnvironmentId, ThreadGrowRequest } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon, ExternalLinkIcon, PlayIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -36,13 +36,19 @@ export const WORK_REASON_LOOK: Readonly<
   settled: { label: "Settled", dot: "bg-muted-foreground/50" },
 };
 
+const NO_GROW_REQUESTS: ReadonlyArray<ThreadGrowRequest> = [];
+
 /** The thread's latest report digested, plus the previews and pull requests it links. */
 export function useThreadReport(thread: EnvironmentThreadShell) {
   const runId = thread.latestRun?.runId ?? null;
   const statusUpdatedAt = thread.statusUpdatedAt;
   const presentationUpdatedAt = thread.presentationUpdatedAt;
+  const growRequestsUpdatedAt = thread.growRequestsUpdatedAt;
   const report = useEnvironmentQuery(
-    runId === null && statusUpdatedAt === undefined && presentationUpdatedAt === undefined
+    runId === null &&
+      statusUpdatedAt === undefined &&
+      presentationUpdatedAt === undefined &&
+      growRequestsUpdatedAt === undefined
       ? null
       : brainstormEnvironment.threadReport({
           environmentId: thread.environmentId,
@@ -51,6 +57,7 @@ export function useThreadReport(thread: EnvironmentThreadShell) {
             runId,
             ...(statusUpdatedAt === undefined ? {} : { statusUpdatedAt }),
             ...(presentationUpdatedAt === undefined ? {} : { presentationUpdatedAt }),
+            ...(growRequestsUpdatedAt === undefined ? {} : { growRequestsUpdatedAt }),
           },
         }),
   ).data;
@@ -81,7 +88,13 @@ export function useThreadReport(thread: EnvironmentThreadShell) {
       (thread.pullRequests ?? []).filter((pullRequest) => pullRequest.source !== "stack-dismissed"),
     [thread.pullRequests],
   );
-  return { digest, tryUrls, pullRequests, presentation: report?.presentation ?? null };
+  return {
+    digest,
+    tryUrls,
+    pullRequests,
+    presentation: report?.presentation ?? null,
+    growRequests: report?.growRequests ?? NO_GROW_REQUESTS,
+  };
 }
 
 /** Try it and pull request buttons; `children` go between them. */
