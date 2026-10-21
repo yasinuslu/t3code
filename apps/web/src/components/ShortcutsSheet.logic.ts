@@ -31,7 +31,7 @@ const GLOBAL_ROWS: ReadonlyArray<{
   {
     title: "Go",
     rows: [
-      { label: "Grow / Threads", commands: ["mode.cycle"] },
+      { label: "Grow / Full view", commands: ["mode.cycle"] },
       { label: "Manager", commands: ["manager.toggle"] },
       { label: "Focus the sidebar", commands: ["pane.sidebar"] },
       { label: "Previous / next pane", commands: ["pane.left", "pane.right"] },
