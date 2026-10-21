@@ -8,14 +8,13 @@ is pinned at the top of the sidebar, above every other thread, so you can reach 
 
 Click the **Manager** row at the top of the sidebar, or press `ctrl+e` (the Control key on a Mac too) or `ctrl+alt+space` (Ctrl+Option+Space
 on a Mac) from any screen, Grow, a thread or settings.
-The manager opens like any thread, next to the sidebar, with its composer focused. Press the
-shortcut again to go back to where you were. Clicking another thread, or a thread link in its
-answer, takes you there.
+The manager opens in Grow, in place of the item, with its composer focused. Press the
+shortcut again to go back to where you were. A thread link in its answer opens that thread in Grow.
 
 In the desktop app the shortcut works system-wide: from another app it brings T3 Code forward with
 the manager open. If another app already owns the chord (or on a Linux Wayland session, which has
 no global shortcuts), it still works while T3 Code is in front. You can also click the
-speech-bubble button next to the Grow and Threads switch at the top left, or choose **Show or hide
+speech-bubble button at the top left, or choose **Show or hide
 the manager** in the command palette. Change the shortcut in
 **Settings → Keybindings** under **Manager: Toggle**.
 
@@ -23,10 +22,18 @@ If the machine that runs the manager is offline, a notice says so instead of ope
 
 ## Screens
 
-The switch at the top left of the window moves between **Grow** (what your agents brought back) and **Threads**
-(the thread list and chat). Each keeps its place: the selected item, scroll positions, and the thread you
-had open. The app reopens on the screen you left. `ctrl+alt+1` and `ctrl+alt+3` pick Grow and
-Threads; `ctrl+alt+0` switches between them. Change them in **Settings → Keybindings** under **Mode**.
+**Grow** is the main screen. Every thread link (in a message, a notification, a `t3code://` link or
+the command palette) opens that thread in Grow. A thread Grow does not list, such as a settled or
+archived one, opens there too, marked **not in the list**.
+
+For the diff, the terminal and the file panels, open the thread in **full view**: the expand button
+on a thread opened in Grow, `ctrl+alt+3`, or **Open this thread in full view** in the command
+palette. **Grow** at the top left, or `ctrl+alt+1`, goes back to it; `ctrl+alt+0` switches between
+the two. Settings and the other pages have the same button. Archived threads are under **Settings →
+Archived**.
+
+The old Grow and Threads switch is in **Settings → General → Legacy features → Classic threads view
+(deprecated)**.
 
 ## Grow
 

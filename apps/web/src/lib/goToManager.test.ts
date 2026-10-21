@@ -1,7 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { useGrowFocusStore } from "../growFocus";
 import {
   closeHomeOverlay,
+  setClassicThreadsView,
   homeOverlayHeldOpen,
   openHomeOverlay,
   useHomeOverlayStore,
@@ -14,12 +16,26 @@ const growOpen = () => useHomeOverlayStore.getState().open;
 beforeEach(() => {
   vi.stubGlobal("window", { requestAnimationFrame: (run: () => void) => setTimeout(run, 0) });
   vi.stubGlobal("document", { querySelectorAll: () => [] });
+  // The manager's own page and the way back to it belong to the classic threads view.
+  setClassicThreadsView(true);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   closeHomeOverlay();
   useManagerViewStore.setState({ shown: false, request: null, returnTo: null });
+  useGrowFocusStore.setState({ target: null, manager: false });
+});
+
+describe("the manager shortcut with Grow as the main view", () => {
+  it("brings up Grow with its manager pane from any page, and never the manager's page", async () => {
+    setClassicThreadsView(false);
+    useManagerViewStore.setState({ shown: true });
+    toggleManager();
+    await vi.waitFor(() => expect(useGrowFocusStore.getState().manager).toBe(true));
+    expect(growOpen()).toBe(true);
+    expect(useManagerViewStore.getState().request).toBeNull();
+  });
 });
 
 describe("the manager shortcut in Grow", () => {

@@ -1,9 +1,20 @@
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import { MessagesSquareIcon } from "lucide-react";
+import { useParams } from "@tanstack/react-router";
+import { ArrowLeftIcon, MessagesSquareIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { APP_MODES, cycleAppMode, setAppMode, useAppMode } from "../appMode";
+import {
+  APP_MODES,
+  backToGrow,
+  cycleAppMode,
+  readAppMode,
+  setAppMode,
+  useAppMode,
+} from "../appMode";
+import { openFullView } from "../growFocus";
+import { useGrowIsHome } from "../hooks/useSettings";
+import { resolveThreadRouteRef } from "../threadRoutes";
 import { useManagerThreadKeys, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import {
@@ -26,6 +37,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
  */
 export function ModeShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const route = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
+  const growIsHome = useGrowIsHome();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -49,19 +62,24 @@ export function ModeShortcuts() {
       if (command === "mode.cycle") {
         event.preventDefault();
         event.stopPropagation();
-        cycleAppMode();
+        if (!growIsHome) cycleAppMode();
+        else if (readAppMode() === "grow") openFullView();
+        else backToGrow(route);
         return;
       }
       const target = APP_MODES.find((entry) => entry.command === command);
       if (!target) return;
       event.preventDefault();
       event.stopPropagation();
-      setAppMode(target.mode);
+      // With Grow as the main view, the other "mode" is the full view of the thread it shows.
+      if (!growIsHome) setAppMode(target.mode);
+      else if (target.mode === "grow") backToGrow(route);
+      else openFullView();
     };
     // Capture, so a focused editor or the chat cannot swallow the chord.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [keybindings]);
+  }, [growIsHome, keybindings, route]);
 
   // The desktop app takes the manager chord system-wide, so it works with
   // another app in front; it follows rebinding in keybindings.json.
@@ -108,11 +126,14 @@ export function ModeShortcuts() {
  */
 export function ModeSwitch() {
   const mode = useAppMode();
+  const growIsHome = useGrowIsHome();
+  const route = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const isMobile = useIsMobile();
   const managerOpen = useManagerViewStore((state) => state.shown) && mode === "normal";
   const managerWorking = useManagerWorking();
   const managerShortcut = shortcutLabelForCommand(keybindings, "manager.toggle");
+  const growShortcut = shortcutLabelForCommand(keybindings, "mode.grow");
 
   const measure = useCallback((bar: HTMLDivElement) => {
     const root = document.documentElement;
@@ -143,34 +164,58 @@ export function ModeSwitch() {
       )}
       data-mode-switch=""
     >
-      <ToggleGroup
-        aria-label="View"
-        className="pointer-events-auto"
-        value={[mode]}
-        onValueChange={(next) => {
-          const value = APP_MODES.find((entry) => entry.mode === next[0]);
-          if (value) setAppMode(value.mode);
-        }}
-      >
-        {APP_MODES.map((entry) => {
-          const shortcut = shortcutLabelForCommand(keybindings, entry.command);
-          return (
-            <Tooltip key={entry.mode}>
-              <TooltipTrigger
-                render={
-                  <Toggle value={entry.mode} data-mode={entry.mode} aria-label={entry.label} />
-                }
-              >
-                {entry.label}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">
-                {entry.label}
-                {shortcut ? ` (${shortcut})` : ""}
-              </TooltipPopup>
-            </Tooltip>
-          );
-        })}
-      </ToggleGroup>
+      {growIsHome ? (
+        mode === "grow" ? null : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="pointer-events-auto"
+                  data-app-bar-grow=""
+                  onClick={() => backToGrow(route)}
+                />
+              }
+            >
+              <ArrowLeftIcon />
+              Grow
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">
+              Back to Grow{growShortcut ? ` (${growShortcut})` : ""}
+            </TooltipPopup>
+          </Tooltip>
+        )
+      ) : (
+        <ToggleGroup
+          aria-label="View"
+          className="pointer-events-auto"
+          value={[mode]}
+          onValueChange={(next) => {
+            const value = APP_MODES.find((entry) => entry.mode === next[0]);
+            if (value) setAppMode(value.mode);
+          }}
+        >
+          {APP_MODES.map((entry) => {
+            const shortcut = shortcutLabelForCommand(keybindings, entry.command);
+            return (
+              <Tooltip key={entry.mode}>
+                <TooltipTrigger
+                  render={
+                    <Toggle value={entry.mode} data-mode={entry.mode} aria-label={entry.label} />
+                  }
+                >
+                  {entry.label}
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">
+                  {entry.label}
+                  {shortcut ? ` (${shortcut})` : ""}
+                </TooltipPopup>
+              </Tooltip>
+            );
+          })}
+        </ToggleGroup>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={

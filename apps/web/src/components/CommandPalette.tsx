@@ -84,13 +84,14 @@ import { useAtomValue } from "@effect/atom-react";
 import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { toggleManager } from "../lib/goToManager";
 import { stepProfile } from "./ProfileShortcuts";
-import { APP_MODES, setAppMode } from "../appMode";
+import { APP_MODES, backToGrow, setAppMode, useAppMode } from "../appMode";
+import { growOnScreenThread, openFullView } from "../growFocus";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { useClientSettings, useForkFeatures } from "../hooks/useSettings";
+import { useClientSettings, useForkFeatures, useGrowIsHome } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
@@ -146,7 +147,11 @@ import {
   newProjectId,
 } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import {
+  buildThreadRouteParams,
+  resolveThreadRouteRef,
+  resolveThreadRouteTarget,
+} from "../threadRoutes";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
 import {
   applyWslEnvironmentConfiguration,
@@ -731,6 +736,12 @@ function OpenCommandPaletteDialog(props: {
   }
   const clientSettings = useClientSettings();
   const forkFeatures = useForkFeatures();
+  const growIsHome = useGrowIsHome();
+  const appMode = useAppMode();
+  const paletteRouteThread = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteRef(params),
+  });
   const severalProfiles = useBrainstormStore((state) => (state.profiles?.length ?? 0) > 1);
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
@@ -2282,7 +2293,51 @@ function OpenCommandPaletteDialog(props: {
       });
     }
 
-    for (const entry of APP_MODES) {
+    if (growIsHome) {
+      const onScreen = growOnScreenThread();
+      if (appMode !== "grow") {
+        actionItems.push({
+          kind: "action",
+          value: "action:mode-grow",
+          searchTerms: ["grow", "home", "back", "main", "deck", "mode", "view"],
+          title: "Back to Grow",
+          icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+          shortcutCommand: "mode.grow",
+          run: async () => backToGrow(paletteRouteThread),
+        });
+      } else if (onScreen !== null) {
+        actionItems.push({
+          kind: "action",
+          value: "action:full-view",
+          searchTerms: [
+            "full view",
+            "diff",
+            "changes",
+            "terminal",
+            "files",
+            "panel",
+            "threads",
+            "classic",
+          ],
+          title: "Open this thread in full view (diff, terminal, files)",
+          icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+          shortcutCommand: "mode.normal",
+          run: async () => void openFullView(onScreen),
+        });
+      }
+      actionItems.push({
+        kind: "action",
+        value: "action:archived-threads",
+        searchTerms: ["archived", "archive", "threads", "unarchive", "old"],
+        title: "Show archived threads",
+        icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await navigate({ to: "/settings/archived" });
+        },
+      });
+    }
+
+    for (const entry of growIsHome ? [] : APP_MODES) {
       actionItems.push({
         kind: "action",
         value: `action:mode-${entry.mode}`,

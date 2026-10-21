@@ -13,8 +13,9 @@
  * things recorded are the decision, in the thread's grow card, and what the
  * user sent from here, on this device (grow.asks).
  */
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import type { GrowDecision } from "@t3tools/contracts";
+import type { EnvironmentId, GrowDecision, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
@@ -51,14 +52,15 @@ import {
   useManagerThreadKeys,
   useThreadShellsWithoutBrainstorms,
 } from "../../brainstormStore";
-import { openManager, setGrowManagerToggle } from "../../lib/goToManager";
+import { setGrowManagerToggle } from "../../lib/goToManager";
 import { useEnsureManagerThread } from "../brainstorm/useOpenManagerThread";
 import { Badge } from "../ui/badge";
-import { closeHomeOverlay } from "../../homeOverlayStore";
+import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
+import { openFullView, setGrowOnScreen, useGrowFocusStore } from "../../growFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn, newMessageId } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
-import { useProjects, useThreadShell } from "../../state/entities";
+import { readThreadShell, useProjects, useThreadShell } from "../../state/entities";
 import { growEnvironment, useGrowCards, useGrowLoaded } from "../../state/grow";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -92,6 +94,7 @@ import {
   buildGrowRelations,
   filterGrowDeck,
   growCurrent,
+  growDeckItems,
   growFocusedProject,
   growProjectOpen,
   cleanLabel,
@@ -131,6 +134,9 @@ const useReturnsStore = create<{
   manager: false,
 }));
 
+/** Whether Grow shows the manager's pane, for the app bars that mark it. */
+export const useGrowShowsManager = () => useReturnsStore((state) => state.manager);
+
 /** What had focus when the manager came up, so Esc can give it back. */
 let managerFocusReturn: HTMLElement | null = null;
 
@@ -157,6 +163,19 @@ const select = (key: string | null) => {
     manager: false,
   });
 };
+
+/** A thread's conversation in place of the item, for one the deck may not hold. */
+const showThread = (key: string) => {
+  managerFocusReturn = null;
+  useReturnsStore.setState({ thread: key, phoneView: "card", playing: null, manager: false });
+};
+
+/** `environmentId:threadId` back to a ref; thread ids may hold colons, environment ids do not. */
+function threadRefOfKey(key: string): ScopedThreadRef | null {
+  const at = key.indexOf(":");
+  if (at <= 0) return null;
+  return scopeThreadRef(key.slice(0, at) as EnvironmentId, key.slice(at + 1) as ThreadId);
+}
 
 const managerComposer = () =>
   document.querySelector<HTMLElement>('[data-grow-manager] [contenteditable="true"]');
@@ -193,7 +212,6 @@ const proofAsksInFlight = new Set<string>();
 function useReturnActions(moveOn: (item: GrowReturn) => void) {
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const update = useAtomCommand(growEnvironment.update);
-  const navigate = useNavigate();
   const settleThread = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
   const unsettleThread = useAtomCommand(threadEnvironment.unsettle, { reportFailure: false });
 
@@ -311,14 +329,9 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
     /** The conversation opens inside Grow, so the deck stays one Back away. */
     openThread: (item: GrowReturn) =>
       useReturnsStore.setState({ selected: item.key, phoneView: "card", thread: item.key }),
-    /** The full thread view, for work the deck is too small for. */
-    leaveForThread: (thread: EnvironmentThreadShell) => {
-      closeHomeOverlay();
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: { environmentId: thread.environmentId, threadId: thread.id },
-      });
-    },
+    /** The thread's full view (diff, terminal, files), for work Grow is too small for. */
+    leaveForThread: (thread: EnvironmentThreadShell) =>
+      void openFullView(scopeThreadRef(thread.environmentId, thread.id)),
   };
 }
 
@@ -380,14 +393,74 @@ export function GrowReturns(props: {
     setWhatIfOpen(false);
   }
 
-  // A conversation only shows while its thread is still in the relations; a key
+  // A thread opened from a link may be one the deck leaves out (settled, archived, idle, a
+  // manager, another space); it is read on its own, not through the deck's threads.
+  const linkedShell = useThreadShell(
+    thread === null || relations.byKey.has(thread) ? null : threadRefOfKey(thread),
+  );
+  const threadShell =
+    thread === null ? undefined : (relations.byKey.get(thread) ?? linkedShell ?? undefined);
+  // A conversation only shows while its thread is still known; a key
   // handler that trusted `thread` alone kept the deck's keys dead behind a deck.
-  const conversationOpen = thread !== null && relations.byKey.has(thread);
+  const conversationOpen = threadShell !== undefined;
   useEffect(() => {
     if (ready && thread !== null && !conversationOpen) useReturnsStore.setState({ thread: null });
   }, [conversationOpen, ready, thread]);
 
   const sheetOpen = useShortcutsSheetOpen();
+  // A thread link landed (GrowRouting): show that thread, as its item when the deck has it.
+  const focusTarget = useGrowFocusStore((state) => state.target);
+  const focusManager = useGrowFocusStore((state) => state.manager);
+  useEffect(() => {
+    if (!focusManager) return;
+    useGrowFocusStore.setState({ manager: false });
+    showManager();
+  }, [focusManager]);
+  useEffect(() => {
+    if (!ready || focusTarget === null) return;
+    useGrowFocusStore.setState({ target: null });
+    if (!growDeckItems(deck).some((item) => item.key === focusTarget)) {
+      const ref = threadRefOfKey(focusTarget);
+      // A thread this app does not hold (gone, or on a server not connected yet) gets the
+      // thread page, which knows how to wait for it or say it is not there.
+      if (ref !== null && readThreadShell(ref) === null) openFullView(ref);
+      else showThread(focusTarget);
+      return;
+    }
+    if (!growDeckItems(shown).some((item) => item.key === focusTarget)) {
+      useReturnsStore.setState({ query: "" });
+    }
+    select(focusTarget);
+  }, [deck, focusTarget, ready, shown]);
+
+  // What shows is the thread the app is on: the route follows it (so a reload, Back and
+  // a link to it agree with the screen), and the full view opens it.
+  const onScreenKey = manager
+    ? null
+    : threadShell
+      ? growReturnKey(threadShell)
+      : (current?.key ?? null);
+  const onScreen = useMemo(
+    () => (onScreenKey === null ? null : threadRefOfKey(onScreenKey)),
+    [onScreenKey],
+  );
+  const navigate = useNavigate();
+  const landed = useGrowFocusStore((state) => state.landed);
+  const growOpen = useHomeOverlayStore((state) => state.open);
+  useEffect(() => {
+    if (!ready || onScreen === null) return setGrowOnScreen(() => null);
+    const unregister = setGrowOnScreen(() => onScreen);
+    // Not before the page load's own link is read and shown, or it would be overwritten.
+    if (growIsHome() && growOpen && landed && focusTarget === null) {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: onScreen.environmentId, threadId: onScreen.threadId },
+        replace: true,
+      });
+    }
+    return unregister;
+  }, [focusTarget, growOpen, landed, navigate, onScreen, ready]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       // The cheat sheet owns the keyboard while it shows.
@@ -508,7 +581,6 @@ export function GrowReturns(props: {
     if (growCurrent(shown, key)?.key === key) select(key);
     else useReturnsStore.setState({ thread: key });
   };
-  const threadShell = thread === null ? undefined : relations.byKey.get(thread);
   const hero = manager ? (
     <ManagerPane wide={wide} />
   ) : threadShell ? (
@@ -517,6 +589,11 @@ export function GrowReturns(props: {
       title={current?.key === thread ? current.headline : cleanLabel(threadShell.title)}
       actions={actions}
       wide={wide}
+      outside={
+        growDeckItems(deck).some((item) => item.key === thread)
+          ? null
+          : outsideDeckLabel(threadShell, managers.keys.has(growReturnKey(threadShell)))
+      }
     />
   ) : current ? (
     <Hero
@@ -1027,12 +1104,17 @@ function ManagerPane(props: { readonly wide: boolean }) {
         )}
         <Button
           variant="ghost"
-          size="icon-sm"
-          aria-label="Open the manager page"
-          title="Open the manager page"
-          onClick={() => void openManager()}
+          size={props.wide ? "sm" : "icon-sm"}
+          aria-label="Full view: diff, terminal, files"
+          disabled={manager._tag !== "Ready"}
+          onClick={() => {
+            if (manager._tag === "Ready") {
+              openFullView(scopeThreadRef(manager.environmentId, manager.threadId));
+            }
+          }}
         >
           <ExternalLinkIcon />
+          {props.wide ? "Full view" : null}
         </Button>
       </div>
       {manager._tag === "Ready" && shellKnown ? (
@@ -1059,12 +1141,24 @@ function ManagerPane(props: { readonly wide: boolean }) {
   );
 }
 
+/** The quiet note on a thread Grow's list leaves out, saying what it is instead. */
+function outsideDeckLabel(thread: EnvironmentThreadShell, isManager: boolean): string {
+  if (isManager) return "Manager · not in the list";
+  if (thread.archivedAt !== null) return "Archived · not in the list";
+  if (thread.settledAt !== null && thread.settledOverride !== "active") {
+    return "Settled · not in the list";
+  }
+  return "Not in the list";
+}
+
 /** A thread's conversation in place of the card: read it, answer it, then Back to the deck. */
 function ThreadPane(props: {
   readonly thread: EnvironmentThreadShell;
   readonly title: string;
   readonly actions: ReturnActions;
   readonly wide: boolean;
+  /** Why the deck does not list it, for a thread opened from a link; null when it does. */
+  readonly outside: string | null;
 }) {
   const { thread } = props;
   return (
@@ -1084,14 +1178,19 @@ function ThreadPane(props: {
           {props.wide ? <Kbd>Esc</Kbd> : null}
         </Button>
         <span className="min-w-0 flex-1 truncate font-medium text-sm">{props.title}</span>
+        {props.outside ? (
+          <span className="shrink-0 text-muted-foreground text-xs" data-grow-outside="">
+            {props.outside}
+          </span>
+        ) : null}
         <Button
           variant="ghost"
-          size="icon-sm"
-          aria-label="Open in Threads"
-          title="Open in Threads"
+          size={props.wide ? "sm" : "icon-sm"}
+          aria-label="Full view: diff, terminal, files"
           onClick={() => props.actions.leaveForThread(thread)}
         >
           <ExternalLinkIcon />
+          {props.wide ? "Full view" : null}
         </Button>
       </div>
       <ChatView

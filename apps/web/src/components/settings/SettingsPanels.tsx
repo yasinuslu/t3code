@@ -2131,6 +2131,7 @@ const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
   "legacy-plan-mode",
   "legacy-context-window-indicator",
   "legacy-sidebar",
+  "legacy-classic-threads-view",
 ]);
 
 /**
@@ -2207,6 +2208,19 @@ function LegacyFeaturesSection() {
                     updateSettings({ legacySidebarEnabled: Boolean(checked) })
                   }
                   aria-label="Sidebar (legacy)"
+                />
+              }
+            />
+            <SettingsRow
+              {...searchableSetting("legacy-classic-threads-view")}
+              description="Bring back the Grow / Threads switch, with thread links opening the thread page instead of Grow."
+              control={
+                <Switch
+                  checked={settings.classicThreadsViewEnabled}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ classicThreadsViewEnabled: Boolean(checked) })
+                  }
+                  aria-label="Classic threads view (deprecated)"
                 />
               }
             />

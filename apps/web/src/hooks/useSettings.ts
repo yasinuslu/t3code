@@ -389,6 +389,17 @@ export function useForkFeatures(): boolean {
   return useAtomValue(primaryServerSettingsAtom).forkFeatures;
 }
 
+/**
+ * Whether Grow is the app's one main view: the fork features are on and the deprecated
+ * classic threads view (Grow and Threads behind a switch) is off.
+ */
+export function useGrowIsHome(): boolean {
+  const forkFeatures = useForkFeatures();
+  const settingsHydrated = useClientSettingsHydrated();
+  const classic = useClientSettingsValue().classicThreadsViewEnabled;
+  return forkFeatures && !(settingsHydrated && classic);
+}
+
 /** Read current settings for one environment, merged with client-local preferences. */
 export function useEnvironmentSettings<T = UnifiedSettings>(
   environmentId: EnvironmentId,

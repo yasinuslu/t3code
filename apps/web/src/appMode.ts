@@ -1,11 +1,15 @@
 /**
- * The app's two screens, one switch. Grow is the Home overlay; Threads ("normal")
- * is the app with Home closed: the thread list and chat, which stay mounted
- * underneath Home and so keep their place. The manager is a thread pinned at
+ * The app's two screens. Grow is the Home overlay and the main view; "normal" is the
+ * app with Home closed: a thread's full view, settings and the other pages. Only the
+ * deprecated classic threads view puts a switch between them; otherwise thread links
+ * open in Grow (see GrowRouting) and the full view is one command away. The manager is a thread pinned at
  * the top of the sidebar (see `managerViewStore`).
  */
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useEffect, useRef } from "react";
 
+import { focusThreadInGrow } from "./growFocus";
 import { closeHomeOverlay, openHomeOverlay, useHomeOverlayStore } from "./homeOverlayStore";
 
 export type AppMode = "grow" | "normal";
@@ -27,6 +31,17 @@ export const useAppMode = (): AppMode =>
 export function setAppMode(mode: AppMode) {
   if (mode === "normal") closeHomeOverlay();
   else openHomeOverlay();
+}
+
+/**
+ * Back to Grow from a page outside it. From a thread's full view, Grow shows that thread,
+ * so leaving the diff or the terminal never loses the place.
+ */
+export function backToGrow(thread: ScopedThreadRef | null) {
+  if (thread !== null && !useHomeOverlayStore.getState().open) {
+    focusThreadInGrow(scopedThreadKey(thread));
+  }
+  openHomeOverlay();
 }
 
 export function cycleAppMode() {

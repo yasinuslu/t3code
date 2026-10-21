@@ -1,14 +1,16 @@
-import { useLocation } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 
 import {
   OverlayLayerContext,
   closeHomeOverlay,
+  growIsHome,
   homeOverlayHeldOpen,
   inStartupHops,
   useHomeOverlayStore,
 } from "../../homeOverlayStore";
 import { MARKDOWN_FILE_LINK_CLASS_NAME } from "../../markdown-links";
+import { resolveThreadRouteRef } from "../../threadRoutes";
 import { HomeDashboard } from "./HomeDashboard";
 
 /**
@@ -49,19 +51,34 @@ function HomeOverlayLayer() {
   // Navigating anywhere (a card, a link in a chat's answer, a shortcut)
   // shows the destination. /home opens Home and goes to the start page, which
   // redirects on by itself; those hops keep Home open.
-  const pathname = useLocation({ select: (location) => location.pathname });
+  // While Grow is the main view, a thread's route is Grow's own: it shows that thread
+  // (GrowRouting) instead of giving way to the thread page. Read from one resolved state, so
+  // the path and whether it is a thread route never disagree mid-navigation (a stale "thread
+  // route" on the way to Settings would keep Grow over Settings).
+  const resolved = useRouterState({
+    select: (state) => {
+      const path = state.resolvedLocation?.pathname ?? state.location.pathname;
+      const thread = resolveThreadRouteRef(state.matches.at(-1)?.params ?? {}) !== null;
+      return `${thread ? "t" : "-"}${path}`;
+    },
+  });
+  const pathname = resolved.slice(1);
+  const onThreadRoute = resolved.startsWith("t");
   const previousPathname = useRef(pathname);
   useEffect(() => {
     const before = previousPathname.current;
     previousPathname.current = pathname;
     if (inStartupHops() || homeOverlayHeldOpen()) return;
+    if (growIsHome() && onThreadRoute) return;
     if (before !== pathname && before !== "/home" && before !== "/") closeHomeOverlay();
-  }, [pathname]);
+  }, [onThreadRoute, pathname]);
 
   // A link to the thread already underneath does not change the path. File
   // chips are anchors to host paths that open in the chat's own panel, so
   // they keep Home open. Esc never closes Home: Grow is a screen, not a popup.
+  // With Grow as the main view, the path change decides instead (see above).
   const onClickCapture = (event: MouseEvent) => {
+    if (growIsHome()) return;
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
     }
