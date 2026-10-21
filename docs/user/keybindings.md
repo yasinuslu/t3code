@@ -41,10 +41,36 @@ in Settings.
 
 ## Manager
 
-`ctrl+alt+space` (Ctrl+Option+Space on a Mac) shows [the manager](./manager.md) from
-any screen, terminal included, and pressed again goes back to where you were. In the desktop app it works system-wide: from another app it brings
+`ctrl+e` (the Control key on a Mac too) shows [the manager](./manager.md) from any screen,
+composer and text boxes included, and `ctrl+alt+space` (Ctrl+Option+Space on a Mac) from any screen,
+terminal included, and pressed again goes back to where you were. In the desktop app it works system-wide: from another app it brings
 T3 Code forward with the manager open. Rebind it under **Manager: Toggle**; the desktop app takes
 the new chord system-wide too.
+
+## Shortcut sheet
+
+Press `?` (outside a text box) or click the keyboard button beside the notifications bell to see
+the shortcuts that work where you are: Grow's keys first in Grow, the app-wide ones first
+elsewhere. The sheet reads your current keybindings, so remapped keys show as you set them. `?`
+or `Esc` closes it.
+
+## Moving between panes
+
+`ctrl+s` always focuses the sidebar (Grow's list in Grow, the thread list elsewhere), on the item
+you are on, so `j`/`k` or the arrows move at once. `ctrl+h` and `ctrl+l` move focus one pane to the left
+or right in screen order (sidebar, chat, right panel), from inside a text box too; each pane
+remembers what you had focused in it, and the focused pane gets a thin ring. Focus never enters a
+browser or preview frame on its own: leave it with `ctrl+h`. These chords override
+the terminal's Ctrl+L (clear) and Ctrl+H (backspace) inside T3 Code, and `ctrl+e` overrides
+end-of-line on a Mac in text boxes (not in the terminal). `ctrl+s` replaced Stash for the
+composer, now `mod+alt+s`. Rebind them under **Pane: Sidebar / Left / Right**.
+
+## Profiles
+
+`alt+r` (Option+R on a Mac) switches the code profile in view, and its manager with it, to the
+next one; `alt+shift+r` goes back. Grow takes a bare `r` and `shift+r` for the same, and its other
+keys are listed in [the manager guide](./manager.md#grow). Rebind the chords in
+**Settings → Keybindings**.
 
 ## Copy pull request references
 

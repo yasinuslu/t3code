@@ -59,12 +59,26 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // chords use Ctrl+Space), GNOME, Windows, terminals and Zed, so the desktop
   // app also takes it system-wide.
   { key: "ctrl+alt+space", command: "manager.toggle" },
+  // The same overlay on Ctrl+E, the one the UI advertises. `ctrl` rather than `mod`: it is
+  // the Control key on a Mac too, one key from Grow's bare T. It also works inside the
+  // composer and other inputs, where it replaces macOS's end-of-line. Not in a terminal,
+  // where Ctrl+E is end-of-line in every shell, and never system-wide (see ModeSwitch).
+  { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
   // Steps the code profile in view (yu, sn, ...) and its manager with it; Shift steps
-  // back. Q is the letter nearest the Ctrl+Option the left hand already holds, and
-  // the chord is free on macOS, GNOME, terminals, Zed and in T3. The physical key
-  // counts, so Option's @ on a Turkish layout does not get in the way.
-  { key: "ctrl+alt+q", command: "profile.next" },
-  { key: "ctrl+alt+shift+q", command: "profile.previous" },
+  // back. One light modifier and a letter under the left hand (Grow's bare R does the
+  // same). Never Q or W, which close things; Alt+R is free on macOS (it only types
+  // ®), GNOME, Windows menus, browsers, terminals and in T3. The physical key counts,
+  // so Option's ® on a Turkish layout does not get in the way.
+  { key: "alt+r", command: "profile.next", when: "!terminalFocus" },
+  { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
+  // Keyboard-only movement between the panes on screen, vim-style. `ctrl` rather than `mod`
+  // so it is the Control key on a Mac too. They work from inside inputs, the composer and
+  // a terminal alike, so focus never gets stuck in one pane. Ctrl+H is Backspace and Ctrl+L
+  // clears a terminal, which these override inside T3 only; Ctrl+L stays "focus the URL" in
+  // the browser panel, which is the right-most pane and has nothing to move to.
+  { key: "ctrl+s", command: "pane.sidebar" },
+  { key: "ctrl+h", command: "pane.left" },
+  { key: "ctrl+l", command: "pane.right", when: "!previewFocus" },
   // The two screens. `ctrl` rather than `mod`, like the panel chords above, so the
   // chord is the same physical keys everywhere; 0 switches between Grow and T3.
   { key: "ctrl+alt+1", command: "mode.grow" },
@@ -73,7 +87,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
   { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },
-  { key: "mod+s", command: "composer.stash", when: "!terminalFocus" },
+  { key: "mod+alt+s", command: "composer.stash", when: "!terminalFocus" },
   { key: "mod+shift+enter", command: "thread.steerQueuedMessage", when: "!terminalFocus" },
   { key: "alt+arrowup", command: "thread.editQueuedMessage", when: "composerFocus" },
   { key: "mod+enter", command: "composer.sendAlternate", when: "composerFocus && turnRunning" },

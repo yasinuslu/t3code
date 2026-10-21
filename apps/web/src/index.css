@@ -2390,3 +2390,10 @@ body:has(.home-overlay) [data-workspace-titlebar-controls]:not(.home-overlay *) 
     font-size: max(16px, 1em);
   }
 }
+
+/* The pane the keyboard is in (Ctrl+S / Ctrl+H / Ctrl+L, Tab): a subtle inset ring that the
+   mouse hides again. A static outline, nothing animated. */
+html[data-pane-ring] [data-pane][data-pane-active] {
+  outline: 2px solid color-mix(in oklab, var(--primary) 45%, transparent);
+  outline-offset: -2px;
+}

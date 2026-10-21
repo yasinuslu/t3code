@@ -127,6 +127,11 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
       when: "composerFocus && draftThreadRoute",
     },
   },
+  {
+    id: "manager.toggle:ctrl+e",
+    alongside: { key: "ctrl+alt+space", command: "manager.toggle" },
+    rule: { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
+  },
 ];
 
 function keybindingShortcutContext(rule: KeybindingRule): string | null {
@@ -168,7 +173,21 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{
     to: { key: "ctrl+alt+space", command: "manager.toggle" },
   },
   { from: { key: "mod+e", command: "manager.toggle", when: "!terminalFocus" }, to: null },
+  // Ctrl+S now focuses the sidebar everywhere, which on Windows and Linux is `mod+s`.
+  {
+    from: { key: "mod+s", command: "composer.stash", when: "!terminalFocus" },
+    to: { key: "mod+alt+s", command: "composer.stash", when: "!terminalFocus" },
+  },
   { from: { key: "ctrl+alt+2", command: "manager.toggle" }, to: null },
+  // The profile switch left Ctrl+Alt+Q: Q sits next to Cmd+Q, which quits on a Mac.
+  {
+    from: { key: "ctrl+alt+q", command: "profile.next" },
+    to: { key: "alt+r", command: "profile.next", when: "!terminalFocus" },
+  },
+  {
+    from: { key: "ctrl+alt+shift+q", command: "profile.previous" },
+    to: { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
+  },
 ];
 
 /**

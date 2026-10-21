@@ -322,6 +322,32 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
+  it.effect("moves a saved profile switch off Ctrl+Alt+Q on startup", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "ctrl+alt+q", command: "profile.next" },
+        { key: "ctrl+alt+shift+q", command: "profile.previous" },
+      ]);
+
+      yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+      });
+
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.isFalse(persisted.some((entry) => entry.key.endsWith("+q")));
+      assert.isTrue(
+        persisted.some((entry) => entry.command === "profile.next" && entry.key === "alt+r"),
+      );
+      assert.isTrue(
+        persisted.some(
+          (entry) => entry.command === "profile.previous" && entry.key === "alt+shift+r",
+        ),
+      );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
   it.effect("drops entries for the removed brainstorm.toggle command on startup", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
@@ -391,7 +417,11 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
         persisted.filter(
           (entry) => entry.command.startsWith("manager.") || entry.key === "ctrl+alt+2",
         ),
-        [{ key: "ctrl+alt+space", command: "manager.toggle" }],
+        [
+          { key: "ctrl+alt+space", command: "manager.toggle" },
+          // Ctrl+E joins the one chord as a second way in.
+          { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
+        ],
       );
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
@@ -528,6 +558,29 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
           (entry) => entry.command === "rightPanel.toggle" && entry.key === "mod+alt+b",
         ),
       );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("adds Ctrl+E next to the manager's Ctrl+Option+Space once", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      const existing = { key: "ctrl+alt+space", command: "manager.toggle" } as const;
+      const managerRules = Effect.map(readKeybindingsConfig(keybindingsConfigPath), (rules) =>
+        rules.filter((entry) => entry.command === "manager.toggle"),
+      );
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [existing]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      assert.deepStrictEqual(yield* managerRules, [
+        existing,
+        { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
+      ]);
+
+      // A later removal stays removed.
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [existing]);
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      assert.deepStrictEqual(yield* managerRules, [existing]);
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 

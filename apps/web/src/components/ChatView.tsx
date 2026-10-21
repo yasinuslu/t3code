@@ -11147,6 +11147,7 @@ export default function ChatView(props: ChatViewProps) {
           rightPanelMaximized ? "w-0 flex-none" : "flex-1",
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
+        data-pane="chat"
         data-manager-page={managerPage || undefined}
       >
         {managerPage ? (

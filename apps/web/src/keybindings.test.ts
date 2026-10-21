@@ -27,6 +27,7 @@ import {
   resolveShortcutCommand,
   shouldShowThreadJumpHintsForModifiers,
   shortcutLabelForCommand,
+  systemWideShortcutForCommand,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
   threadJumpCommandForIndex,
@@ -258,8 +259,51 @@ describe("manager shortcut", () => {
     }
     assert.strictEqual(
       shortcutLabelForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "manager.toggle", "Linux"),
-      "Ctrl+Alt+Space",
+      "Ctrl+E",
     );
+  });
+
+  it("also toggles with Ctrl+E, the Control key on a Mac too, but not from a terminal", () => {
+    for (const platform of ["MacIntel", "Linux", "Win32"]) {
+      const ctrlE = event({ key: "e", code: "KeyE", ctrlKey: true });
+      assert.strictEqual(
+        resolveShortcutCommand(ctrlE, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: false },
+        }),
+        "manager.toggle",
+      );
+      assert.notStrictEqual(
+        resolveShortcutCommand(ctrlE, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: true },
+        }),
+        "manager.toggle",
+      );
+    }
+    assert.isNull(
+      resolveShortcutCommand(
+        event({ key: "e", code: "KeyE", metaKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        {
+          platform: "MacIntel",
+          context: { terminalFocus: false },
+        },
+      ),
+    );
+  });
+
+  it("registers Ctrl+Option+Space system-wide, never a bare Ctrl+E", () => {
+    for (const mac of [true, false]) {
+      assert.deepInclude(
+        systemWideShortcutForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "manager.toggle", mac),
+        { key: " ", ctrlKey: true, altKey: true },
+      );
+    }
+    const rebound = mergeWithDefaultKeybindings(
+      compileResolvedKeybindingsConfig([{ key: "mod+e", command: "manager.toggle" }]),
+    );
+    assert.isNull(systemWideShortcutForCommand(rebound, "manager.toggle", false));
   });
 
   it("does not share its chord with any other default", () => {

@@ -781,6 +781,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
         className,
       ),
       "data-testid": "composer-editor",
+      "data-pane-focus": "",
       "data-composer-rich-text": richText ? "true" : "false",
       role: "textbox",
       "aria-multiline": "true",

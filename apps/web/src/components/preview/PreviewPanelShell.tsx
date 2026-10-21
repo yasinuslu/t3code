@@ -129,6 +129,7 @@ function PreviewPanelShellFrame(
           : undefined
       }
       data-preview-panel-mode={props.mode}
+      data-pane="panel"
       data-preview-panel-maximized={maximized ? "true" : "false"}
     >
       {isInline && !maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}

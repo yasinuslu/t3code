@@ -297,6 +297,26 @@ export function shortcutForCommand(
   return findEffectiveShortcutForCommand(keybindings, command);
 }
 
+/**
+ * The newest chord of a command that is safe to take system-wide: a bare Control+letter
+ * (Ctrl+E, ...) is an editing key in other apps, so a command with such a chord next to
+ * a heavier one (the manager's Ctrl+Option+Space) registers the heavier one.
+ */
+export function systemWideShortcutForCommand(
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand,
+  mac: boolean,
+): KeybindingShortcut | null {
+  for (let index = keybindings.length - 1; index >= 0; index -= 1) {
+    const binding = keybindings[index];
+    if (binding?.command !== command) continue;
+    const { ctrlKey, modKey, altKey, metaKey, shiftKey } = binding.shortcut;
+    const controlOnly = (ctrlKey || (modKey && !mac)) && !altKey && !metaKey && !shiftKey;
+    if (!controlOnly) return binding.shortcut;
+  }
+  return null;
+}
+
 export function shortcutLabelForCommand(
   keybindings: ResolvedKeybindingsConfig,
   command: KeybindingCommand | null,
