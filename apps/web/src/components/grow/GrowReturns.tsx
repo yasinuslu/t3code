@@ -905,19 +905,31 @@ function ReturnRow(props: {
 }) {
   const { item } = props;
   const sidebarRow = useSidebarThreadRowSlot((state) => state.render);
+  const projectTitle = useProjectTitle();
   if (sidebarRow) {
     return sidebarRow(item.thread, {
       isActive: props.current,
       onSelect: () => select(item.key),
-      accessory: (
-        <>
-          <RowMark item={item} />
-          <ProofMark item={item} />
-        </>
-      ),
+      // One mark at rest: the state. The proof mark waits for hover; the item shows the proof itself.
+      mark: <RowMark item={item} />,
+      subtitle: rowMeta(item, props.showProject, props.current, projectTitle),
+      details: <ProofMark item={item} />,
     });
   }
   return <OwnReturnRow {...props} />;
+}
+
+/** The quiet line under a title: the project when the list is not grouped by it, the branch when shown. */
+function rowMeta(
+  item: GrowReturn,
+  showProject: boolean,
+  current: boolean,
+  projectTitle: (thread: EnvironmentThreadShell) => string,
+): string | null {
+  const meta = [showProject ? projectTitle(item.thread) : null, current ? item.thread.branch : null]
+    .filter(Boolean)
+    .join(" · ");
+  return meta.length > 0 ? meta : null;
 }
 
 /** Grow's compact row, while the sidebar is not mounted (a phone, or the sidebar closed). */
@@ -944,12 +956,7 @@ function OwnReturnRow(props: {
       row.focus();
     }
   }, [props.current]);
-  const meta = [
-    props.showProject ? projectTitle(item.thread) : null,
-    props.current ? item.thread.branch : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const meta = rowMeta(item, props.showProject, props.current, projectTitle);
   return (
     <li>
       <button

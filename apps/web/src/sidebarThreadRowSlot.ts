@@ -7,7 +7,12 @@ export interface ExternalThreadRowOptions {
   readonly isActive: boolean;
   /** Replaces opening the thread: the host view selects it instead. */
   readonly onSelect: () => void;
-  readonly accessory?: ReactNode;
+  /** The host's one state mark, leading the row (Grow: working, needs you, shipped, playable). */
+  readonly mark?: ReactNode;
+  /** The quiet line under the title (Grow: project · branch). */
+  readonly subtitle?: string | null;
+  /** Host marks that matter less: shown only while the row is hovered or focused. */
+  readonly details?: ReactNode;
 }
 
 type RenderThreadRow = (

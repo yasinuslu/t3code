@@ -1093,7 +1093,10 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   thread: SidebarThreadSummary;
-  variant: "card" | "slim";
+  // "grow" is the row lent to Grow: one calm shape for every thread, the title
+  // first with room to wrap, the host's one state mark leading, everything else
+  // under the title or on hover.
+  variant: "card" | "slim" | "grow";
   // Settled rows un-settle, snoozed rows wake, and cards settle.
   variantAction: SidebarSweepAction;
   // False on environments whose server predates thread.settle/unsettle:
@@ -1164,8 +1167,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     threadKey: string,
     snapshot: ThreadChangeRequestSnapshot | null,
   ) => void;
-  // Marks a host view adds beside the row's own (Grow: proof, playable).
-  accessory?: ReactNode | undefined;
+  // The grow variant's host-provided parts (see ExternalThreadRowOptions).
+  mark?: ReactNode | undefined;
+  subtitle?: string | null | undefined;
+  details?: ReactNode | undefined;
 }) {
   const {
     isRenaming,
@@ -1556,32 +1561,46 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // like elevated cards while settled threads were plain rows, leaving neither
   // a useful hierarchy nor a reliable hover cue. Status now lives in the row
   // content; surface is reserved for interaction (hover, multi-select, route).
-  const rowSurfaceClassName = cn(
-    "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-    variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
-    props.isActive
-      ? "bg-sidebar-row-active text-sidebar-foreground"
-      : isSelected || props.sweepAction !== null
-        ? "bg-sidebar-row-selected text-sidebar-foreground"
-        : hasUnsentDraft
-          ? cn(draftSurfaceClassName, "text-sidebar-foreground")
-          : shouldRecede
-            ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    // Background work fades as a whole row, status label included, so it
-    // takes less attention than rows that need a human (input, approval).
-    shouldRecede &&
-      status === "working" &&
-      "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
-    isFileDragOver && "ring-1 ring-inset ring-primary/70",
-    isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
-    // The lifted row is an opaque card so the rows beneath it never show
-    // through. The row tint is translucent in dark themes and the pointer
-    // keeps the hover color applied, so both the tint and the solid sidebar
-    // color are stacked as background images.
-    props.sortable?.isDragging &&
-      "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground opacity-100 shadow-lg",
-  );
+  // Grow keeps its own accent and never fades a row: its list is a queue to
+  // read, so only the selection and settled history stand apart.
+  const rowSurfaceClassName =
+    variant === "grow"
+      ? cn(
+          "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          props.isActive
+            ? "bg-primary/15 text-foreground before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary hover:bg-primary/20"
+            : isSelected || props.sweepAction !== null
+              ? "bg-sidebar-row-selected text-foreground"
+              : "bg-transparent text-foreground hover:bg-accent",
+          isFileDragOver && "ring-1 ring-inset ring-primary/70",
+        )
+      : cn(
+          "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          variantAction === "unsettle" &&
+            "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
+          props.isActive
+            ? "bg-sidebar-row-active text-sidebar-foreground"
+            : isSelected || props.sweepAction !== null
+              ? "bg-sidebar-row-selected text-sidebar-foreground"
+              : hasUnsentDraft
+                ? cn(draftSurfaceClassName, "text-sidebar-foreground")
+                : shouldRecede
+                  ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                  : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+          // Background work fades as a whole row, status label included, so it
+          // takes less attention than rows that need a human (input, approval).
+          shouldRecede &&
+            status === "working" &&
+            "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
+          isFileDragOver && "ring-1 ring-inset ring-primary/70",
+          isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
+          // The lifted row is an opaque card so the rows beneath it never show
+          // through. The row tint is translucent in dark themes and the pointer
+          // keeps the hover color applied, so both the tint and the solid sidebar
+          // color are stacked as background images.
+          props.sortable?.isDragging &&
+            "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground opacity-100 shadow-lg",
+        );
   // dnd-kit props for the row root. Same bag on both variants: every row in
   // the list translates around the gap as the drag passes it.
   const sortable = props.sortable;
@@ -1642,28 +1661,35 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       aria-hidden
       className={cn(
         "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
-        shouldRecede ? "font-normal" : "font-medium",
-        variant === "card"
+        variant === "grow" || !shouldRecede ? "font-medium" : "font-normal",
+        // Grow: the title is the row. It wraps to two lines at full strength;
+        // only settled history is quieter.
+        variant === "grow"
           ? cn(
-              "truncate",
-              shouldRecede
-                ? "text-secondary-label"
-                : isUnread || isWoke || status === "input"
-                  ? "text-foreground"
-                  : status === "failed"
-                    ? "text-foreground/95"
-                    : "text-foreground/90",
+              "line-clamp-2 break-words",
+              variantAction === "unsettle" ? "text-muted-foreground" : "text-foreground",
             )
-          : cn(
-              "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
-              shouldRecede
-                ? "text-secondary-label/70"
-                : props.isActive || isWoke || status === "input"
-                  ? "text-foreground"
-                  : isUnread
-                    ? "text-muted-foreground"
-                    : "text-secondary-label/70",
-            ),
+          : variant === "card"
+            ? cn(
+                "truncate",
+                shouldRecede
+                  ? "text-secondary-label"
+                  : isUnread || isWoke || status === "input"
+                    ? "text-foreground"
+                    : status === "failed"
+                      ? "text-foreground/95"
+                      : "text-foreground/90",
+              )
+            : cn(
+                "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+                shouldRecede
+                  ? "text-secondary-label/70"
+                  : props.isActive || isWoke || status === "input"
+                    ? "text-foreground"
+                    : isUnread
+                      ? "text-muted-foreground"
+                      : "text-secondary-label/70",
+              ),
         isRegeneratingTitle && "opacity-55",
       )}
     >
@@ -1778,6 +1804,177 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     )
   ) : null;
 
+  // The row tail, shared by the slim and grow rows: the time at rest; the settle,
+  // un-settle or wake action in its place on hover and keyboard focus.
+  const timeAndActionSlot = sortable?.isDragging ? (
+    dragDestination
+  ) : (
+    <span
+      className={cn(
+        "relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
+        props.sweepAction !== null && "hidden",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
+          !isWoke && "group-any-hover/sidebar-row:opacity-0",
+        )}
+      >
+        {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
+          // Snoozed rows show when they come BACK, not when they were
+          // last touched — the return ticket is the row's whole story.
+          <span className="text-xs text-info-foreground tabular-nums">
+            {props.snoozeWakeLabelText}
+          </span>
+        ) : isWoke ? (
+          // A wake can land straight in the settled tail (e.g. PR
+          // merged while snoozed); the signal must survive the trip.
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Dismiss Woke notification"
+                  onClick={handleAcknowledgeWokeClick}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <AlarmClockIcon aria-hidden className="size-3" />
+                  <span role="status">Woke</span>
+                </button>
+              }
+            />
+            <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
+          </Tooltip>
+        ) : (
+          <span className="text-xs">
+            {variantAction === "unsettle" ? settledTimeLabel(thread) : threadTimeLabel(thread)}
+          </span>
+        )}
+      </span>
+      {variantAction === "unsnooze" ? (
+        !props.snoozeSupported ? null : (
+          <button
+            type="button"
+            aria-label="Wake thread now"
+            onClick={handleUnsnoozeClick}
+            onPointerDown={handleActionPointerDown}
+            className={cn(
+              "touch-target pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+              isWoke && "group-any-hover/sidebar-row:static",
+            )}
+          >
+            <AlarmClockOffIcon className="mb-px size-3" />
+          </button>
+        )
+      ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Un-settle thread"
+                onClick={handleUnsettleClick}
+                onPointerDown={handleActionPointerDown}
+                className={cn(
+                  "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+                  isWoke && "group-any-hover/sidebar-row:static",
+                )}
+              />
+            }
+          >
+            <Undo2Icon className="mb-px size-3.5" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">Un-settle thread</TooltipPopup>
+        </Tooltip>
+      ) : (
+        <button
+          type="button"
+          aria-label="Settle thread"
+          onClick={handleSettleClick}
+          onPointerDown={handleActionPointerDown}
+          className={cn(
+            "touch-target pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+            isWoke && "group-any-hover/sidebar-row:static",
+          )}
+        >
+          <CheckIcon className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+
+  if (variant === "grow") {
+    return (
+      <li
+        data-thread-item={threadKey}
+        {...{ [THREAD_PROJECT_KEY_ATTRIBUTE]: threadProjectKey }}
+        {...(fileDropHandlers ?? {})}
+        className="relative list-none [content-visibility:auto] [contain-intrinsic-size:auto_56px]"
+      >
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <div
+                ref={rowRef}
+                role="button"
+                tabIndex={0}
+                aria-label={accessibility.label}
+                aria-current={accessibility.current}
+                data-testid="sidebar-row-grow"
+                data-pane-row=""
+                aria-busy={isRegeneratingTitle || undefined}
+                className={cn(rowSurfaceClassName, "flex items-start gap-2 px-2 py-2")}
+                onClick={handleClick}
+                onDoubleClick={handleDoubleClick}
+                onKeyDown={handleKeyDown}
+                onContextMenu={handleContextMenu}
+              />
+            }
+          >
+            {accessibleTitle}
+            {/* The host's one state mark, on the title's first line. */}
+            <span className="flex h-5 shrink-0 items-center">
+              {props.mark ?? <span aria-hidden className="size-3.5" />}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="flex min-w-0 items-start gap-2">
+                {draftIndicator}
+                {title}
+                {isRegeneratingTitle ? (
+                  <span role="status" className="sr-only">
+                    Regenerating title
+                  </span>
+                ) : null}
+                {timeAndActionSlot}
+              </span>
+              {/* Where it lives, quietly, and one PR state. The rest waits for hover. */}
+              <span className="mt-0.5 flex h-5 min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
+                {props.project ? (
+                  <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
+                ) : null}
+                <span className="min-w-0 flex-1 truncate">
+                  {props.subtitle ?? props.projectDisplayName ?? thread.branch ?? ""}
+                </span>
+                {pinIndicator}
+                {terminalStatusIcon}
+                {prBadge}
+                <span className="hidden items-center gap-1.5 group-focus-within/sidebar-row:inline-flex group-any-hover/sidebar-row:inline-flex">
+                  {previewLinksChip}
+                  {sandboxIndicator}
+                  {props.details}
+                </span>
+              </span>
+            </span>
+            {props.sweepAction !== null ? dragDestination : null}
+          </TooltipTrigger>
+          {detailsTooltip}
+        </Tooltip>
+        <ThreadSpaceBadges projectKey={threadProjectKey} />
+      </li>
+    );
+  }
+
   if (variant === "slim") {
     return (
       <li
@@ -1828,7 +2025,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             {sandboxIndicator}
             {pinIndicator}
             {terminalStatusIcon}
-            {props.accessory}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
                 Regenerating title
@@ -1839,105 +2035,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               the time/jump label yields to the settle affordance. */}
             {prBadge}
             {previewLinksChip}
-            {sortable?.isDragging ? (
-              dragDestination
-            ) : (
-              <span
-                className={cn(
-                  "relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
-                  props.sweepAction !== null && "hidden",
-                )}
-              >
-                <span
-                  className={cn(
-                    "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-                    !isWoke && "group-any-hover/sidebar-row:opacity-0",
-                  )}
-                >
-                  {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
-                    // Snoozed rows show when they come BACK, not when they were
-                    // last touched — the return ticket is the row's whole story.
-                    <span className="text-xs text-info-foreground tabular-nums">
-                      {props.snoozeWakeLabelText}
-                    </span>
-                  ) : isWoke ? (
-                    // A wake can land straight in the settled tail (e.g. PR
-                    // merged while snoozed); the signal must survive the trip.
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            aria-label="Dismiss Woke notification"
-                            onClick={handleAcknowledgeWokeClick}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            <AlarmClockIcon aria-hidden className="size-3" />
-                            <span role="status">Woke</span>
-                          </button>
-                        }
-                      />
-                      <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
-                    </Tooltip>
-                  ) : (
-                    <span className="text-xs">
-                      {variantAction === "unsettle"
-                        ? settledTimeLabel(thread)
-                        : threadTimeLabel(thread)}
-                    </span>
-                  )}
-                </span>
-                {variantAction === "unsnooze" ? (
-                  !props.snoozeSupported ? null : (
-                    <button
-                      type="button"
-                      aria-label="Wake thread now"
-                      onClick={handleUnsnoozeClick}
-                      onPointerDown={handleActionPointerDown}
-                      className={cn(
-                        "touch-target pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                        isWoke && "group-any-hover/sidebar-row:static",
-                      )}
-                    >
-                      <AlarmClockOffIcon className="mb-px size-3" />
-                    </button>
-                  )
-                ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          type="button"
-                          aria-label="Un-settle thread"
-                          onClick={handleUnsettleClick}
-                          onPointerDown={handleActionPointerDown}
-                          className={cn(
-                            "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                            isWoke && "group-any-hover/sidebar-row:static",
-                          )}
-                        />
-                      }
-                    >
-                      <Undo2Icon className="mb-px size-3.5" />
-                    </TooltipTrigger>
-                    <TooltipPopup side="top">Un-settle thread</TooltipPopup>
-                  </Tooltip>
-                ) : (
-                  <button
-                    type="button"
-                    aria-label="Settle thread"
-                    onClick={handleSettleClick}
-                    onPointerDown={handleActionPointerDown}
-                    className={cn(
-                      "touch-target pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                      isWoke && "group-any-hover/sidebar-row:static",
-                    )}
-                  >
-                    <CheckIcon className="size-3" />
-                  </button>
-                )}
-              </span>
-            )}
+            {timeAndActionSlot}
             {props.sweepAction !== null ? dragDestination : null}
             {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
           </TooltipTrigger>
@@ -2178,7 +2276,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   <span className="text-diff-deletion-foreground">−{diff.deletions}</span>
                 </span>
               ) : null}
-              {props.accessory}
               <span
                 aria-hidden
                 className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
@@ -4959,7 +5056,8 @@ export default function Sidebar() {
     // not from the sidebar second-guessing what still matters.
     // Working rows stay cards so their live status shows.
     const isCard = section === "active" || section === "pinned" || section === "working";
-    const rowVariant = isCard ? "card" : "slim";
+    // Grow gets one row shape whatever the section: its list is read top to bottom.
+    const rowVariant = external ? "grow" : isCard ? "card" : "slim";
     return (
       <SidebarThreadRow
         // Fade between card and compact rows while the outer
@@ -5030,7 +5128,9 @@ export default function Sidebar() {
             ? (threadRef, position) => handleThreadContextMenu(threadRef, position, thread)
             : handleThreadContextMenu
         }
-        accessory={external?.accessory}
+        mark={external?.mark}
+        subtitle={external?.subtitle}
+        details={external?.details}
         onSettle={attemptSettle}
         onActionSweepStart={startActionSweep}
         onUnsettle={attemptUnsettle}
