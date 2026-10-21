@@ -21,12 +21,16 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildLivingPagePrompt,
   buildThreadTitlePrompt,
+  buildWidgetPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
+  generationTimeoutMs,
   sanitizeThreadTitle,
+  stripCodeFence,
 } from "./TextGenerationUtils.ts";
 import { cursorSdkModelSelection } from "../provider/cursorSdkModel.ts";
 import type { CursorAuth } from "../provider/CursorAuth.ts";
@@ -38,7 +42,9 @@ type CursorTextGenerationOperation =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateLivingPage"
+  | "generateWidget";
 
 function cursorSdkResultDetail(result: RunResult): string {
   switch (result.status) {
@@ -188,7 +194,7 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
         return yield* Effect.tryPromise(() => run.wait());
       }).pipe(Effect.scoped);
       const promptResult = yield* request.pipe(
-        Effect.timeoutOption(CURSOR_TIMEOUT_MS),
+        Effect.timeoutOption(generationTimeoutMs(operation, CURSOR_TIMEOUT_MS)),
         Effect.flatMap(
           Option.match({
             onNone: () =>
@@ -331,10 +337,54 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateLivingPage: TextGeneration.TextGeneration["Service"]["generateLivingPage"] =
+    Effect.fn("CursorTextGeneration.generateLivingPage")(function* (input) {
+      const { prompt, outputSchema } = buildLivingPagePrompt({
+        context: input.context,
+        pool: input.pool,
+        previous: input.previous,
+      });
+      const generated = yield* runCursorJson({
+        operation: "generateLivingPage",
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return {
+        unchanged: generated.unchanged,
+        blocks: generated.blocks,
+        missing: generated.missing,
+      } satisfies TextGeneration.LivingPageGenerationResult;
+    });
+
+  const generateWidget: TextGeneration.TextGeneration["Service"]["generateWidget"] = Effect.fn(
+    "CursorTextGeneration.generateWidget",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildWidgetPrompt({
+      name: input.name,
+      purpose: input.purpose,
+      readme: input.readme,
+      sample: input.sample,
+      existing: input.existing,
+    });
+    const generated = yield* runCursorJson({
+      operation: "generateWidget",
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+    return {
+      name: generated.name.trim(),
+      code: stripCodeFence(generated.code),
+    } satisfies TextGeneration.WidgetGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateLivingPage,
+    generateWidget,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

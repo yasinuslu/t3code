@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Widgets have no Fast Refresh: the page is sent again whole. Bundled dev serves this frame
+      // without the React plugin's preamble, so stand in for it.
+      window.__vite_plugin_react_preamble_installed__ = true;
+      window.$RefreshReg$ = () => {};
+      window.$RefreshSig$ = () => (type) => type;
+      // The sandbox has no storage, and shared modules read it while loading; widgets get a
+      // per-frame stand-in that is gone when the frame is.
+      const memoryStorage = () => {
+        const items = new Map();
+        return {
+          get length() {
+            return items.size;
+          },
+          key: (index) => [...items.keys()][index] ?? null,
+          getItem: (key) => items.get(String(key)) ?? null,
+          setItem: (key, value) => void items.set(String(key), String(value)),
+          removeItem: (key) => void items.delete(String(key)),
+          clear: () => items.clear(),
+        };
+      };
+      for (const name of ["localStorage", "sessionStorage"]) {
+        Object.defineProperty(window, name, { value: memoryStorage(), configurable: true });
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html,
+      body {
+        background: transparent !important;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/widgetFrame/main.tsx"></script>
+  </body>
+</html>

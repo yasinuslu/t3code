@@ -25,5 +25,10 @@ export function createGrowEnvironmentAtoms<R, E>(
       label: "grow:preview-environment",
       tag: WS_METHODS.threadPreviewEnvironment,
     }),
+    /** The workspace's widget pool, compiled for the living page's frame. */
+    widgetPool: createEnvironmentRpcCommand(runtime, {
+      label: "grow:widget-pool",
+      tag: WS_METHODS.growWidgetPool,
+    }),
   };
 }

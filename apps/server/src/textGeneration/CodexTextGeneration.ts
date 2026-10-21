@@ -26,13 +26,17 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildLivingPagePrompt,
   buildThreadTitlePrompt,
+  buildWidgetPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   normalizeCliError,
   sanitizeCommitSubject,
   sanitizePrTitle,
+  generationTimeoutMs,
   sanitizeThreadTitle,
+  stripCodeFence,
   toJsonSchemaObject,
 } from "./TextGenerationUtils.ts";
 import { codexModelFamily, getModelSelectionStringOptionValue } from "@t3tools/shared/model";
@@ -121,7 +125,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateLivingPage"
+      | "generateWidget",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -140,7 +146,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateLivingPage"
+      | "generateWidget",
     attachments: TextGeneration.BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -182,7 +190,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateLivingPage"
+      | "generateWidget";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -308,7 +318,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     return yield* Effect.gen(function* () {
       yield* runCodexCommand().pipe(
         Effect.scoped,
-        Effect.timeoutOption(CODEX_TIMEOUT_MS),
+        Effect.timeoutOption(generationTimeoutMs(operation, CODEX_TIMEOUT_MS)),
         Effect.flatMap(
           Option.match({
             onNone: () =>
@@ -453,10 +463,56 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateLivingPage: TextGeneration.TextGeneration["Service"]["generateLivingPage"] =
+    Effect.fn("CodexTextGeneration.generateLivingPage")(function* (input) {
+      const { prompt, outputSchema } = buildLivingPagePrompt({
+        context: input.context,
+        pool: input.pool,
+        previous: input.previous,
+      });
+      const generated = yield* runCodexJson({
+        operation: "generateLivingPage",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return {
+        unchanged: generated.unchanged,
+        blocks: generated.blocks,
+        missing: generated.missing,
+      } satisfies TextGeneration.LivingPageGenerationResult;
+    });
+
+  const generateWidget: TextGeneration.TextGeneration["Service"]["generateWidget"] = Effect.fn(
+    "CodexTextGeneration.generateWidget",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildWidgetPrompt({
+      name: input.name,
+      purpose: input.purpose,
+      readme: input.readme,
+      sample: input.sample,
+      existing: input.existing,
+    });
+    const generated = yield* runCodexJson({
+      operation: "generateWidget",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+    return {
+      name: generated.name.trim(),
+      code: stripCodeFence(generated.code),
+    } satisfies TextGeneration.WidgetGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateLivingPage,
+    generateWidget,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

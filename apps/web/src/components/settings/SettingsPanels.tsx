@@ -1,3 +1,4 @@
+import { WidgetGalleryButton } from "../grow/WidgetGallery";
 import { SettingsGroup } from "./SettingsGroup";
 import { Spinner } from "~/components/ui/spinner";
 import { NotificationSettings } from "./NotificationSettings";
@@ -646,6 +647,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
+      ...(settings.growWidgetPool !== DEFAULT_UNIFIED_SETTINGS.growWidgetPool
+        ? ["Grow widget pool"]
+        : []),
       ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
         ? ["Unpin confirmation"]
         : []),
@@ -686,6 +690,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sendShortcut,
       settings.followUpBehavior,
       settings.addProjectBaseDirectory,
+      settings.growWidgetPool,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffFilesCollapsed,
@@ -835,6 +840,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+      growWidgetPool: DEFAULT_UNIFIED_SETTINGS.growWidgetPool,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -2306,6 +2312,7 @@ export function GeneralSettingsPanel() {
   const backgroundActivityProfileOption = resolveBackgroundActivityProfileOption(settings);
   const mixedBackgroundActivity = useScopedSettingsMixed(["backgroundActivity"]);
   const mixedAddProjectBaseDirectory = useScopedSettingsMixed(["addProjectBaseDirectory"]);
+  const mixedGrowWidgetPool = useScopedSettingsMixed(["growWidgetPool"]);
   const mixedTextGenerationModel = useScopedSettingsMixed(["textGenerationModelSelection"]);
   const backgroundActivityDescription =
     backgroundActivityProfileOption === "advanced"
@@ -3201,6 +3208,36 @@ export function GeneralSettingsPanel() {
               spellCheck={false}
               aria-label="Add project base directory"
             />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["growWidgetPool"]}
+          {...searchableSetting("grow-widget-pool")}
+          description="The folder of widgets Grow draws each thread's living page from. Empty turns living pages off."
+          resetAction={
+            settings.growWidgetPool !== DEFAULT_UNIFIED_SETTINGS.growWidgetPool ? (
+              <SettingResetButton
+                label="Grow widget pool"
+                onClick={() =>
+                  updateSettings({ growWidgetPool: DEFAULT_UNIFIED_SETTINGS.growWidgetPool })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <DraftInput
+                size="sm"
+                className="w-full sm:w-72"
+                value={mixedGrowWidgetPool ? "" : settings.growWidgetPool}
+                onCommit={(next) => updateSettings({ growWidgetPool: next })}
+                placeholder={mixedGrowWidgetPool ? "Mixed" : "/path/to/brain/widgets"}
+                spellCheck={false}
+                aria-label="Grow widget pool folder"
+              />
+              {settings.growWidgetPool ? <WidgetGalleryButton /> : null}
+            </div>
           }
         />
       </SettingsSection>

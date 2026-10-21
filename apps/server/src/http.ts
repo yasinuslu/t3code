@@ -612,6 +612,9 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
     const headers: Record<string, string> = {
       "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
     };
+    // Grow's widget frame is sandboxed with an opaque origin, and module scripts load with CORS.
+    // The build is public, so its bundle can be read from anywhere.
+    if (relativePath.startsWith("assets/")) headers["Access-Control-Allow-Origin"] = "*";
     // Deployments can preserve HTML size and mtime while changing its bundle URLs.
     const modifiedAt = isHtml ? undefined : Option.getOrUndefined(fileInfo.mtime);
     const etag = modifiedAt

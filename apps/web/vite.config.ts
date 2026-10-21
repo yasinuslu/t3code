@@ -229,6 +229,11 @@ export default defineConfig(() => {
       port,
       strictPort: true,
       allowedHosts,
+      // The widget frame is sandboxed without same-origin, so its module requests come from
+      // origin "null"; Vite only answers its default local origins otherwise.
+      cors: {
+        origin: [/^https?:\/\/(?:(?:[^:]+\.)?localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/, "null"],
+      },
       // Transform the whole module graph at server start instead of on the
       // first request. Without this, a cold worktree discovers and transforms
       // modules one import-level at a time while the browser waits — which
@@ -282,6 +287,10 @@ export default defineConfig(() => {
       emptyOutDir: true,
       manifest: true,
       sourcemap: buildSourcemap,
+      rollupOptions: {
+        // The living page runs its widgets in this sandboxed page (src/widgetFrame).
+        input: { main: "index.html", widgetFrame: "widget-frame.html" },
+      },
     },
     test: {
       projects: [defineProject(unitTestProject)],

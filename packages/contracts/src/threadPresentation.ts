@@ -53,6 +53,18 @@ export const PresentationField = Schema.Struct({
 });
 export type PresentationField = typeof PresentationField.Type;
 
+/** Most blocks a widget page holds. */
+export const THREAD_PRESENTATION_MAX_BLOCKS = 40;
+
+/** A widget from the workspace pool by name, the props it is drawn with, and its width. */
+export const PresentationWidgetBlock = Schema.Struct({
+  widget: Schema.String.check(Schema.isPattern(/^[A-Z][A-Za-z0-9]{0,59}$/)),
+  props: Schema.Record(Schema.String, Schema.Unknown),
+  /** Half width sits beside the next half block on wide screens. */
+  span: Schema.optional(Schema.Literals(["full", "half"])),
+});
+export type PresentationWidgetBlock = typeof PresentationWidgetBlock.Type;
+
 /**
  * One page of a presentation. Files live in T3 storage: `image` and `file` are attachment
  * ids, and a doc's images are `attachment:<id>` links. A `form` asks the user to decide;
@@ -74,6 +86,14 @@ export const PresentationPage = Schema.Union([
     kind: Schema.Literal("html"),
     ...PageMeta,
     file: Schema.String,
+  }),
+  /** A page composed from the workspace's widget pool, which Grow's writer keeps current. */
+  Schema.Struct({
+    kind: Schema.Literal("widgets"),
+    ...PageMeta,
+    blocks: Schema.Array(PresentationWidgetBlock).check(
+      Schema.isMaxLength(THREAD_PRESENTATION_MAX_BLOCKS),
+    ),
   }),
   Schema.Struct({
     kind: Schema.Literal("form"),

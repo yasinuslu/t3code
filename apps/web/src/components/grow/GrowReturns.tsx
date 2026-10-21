@@ -17,6 +17,7 @@
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { WidgetThreadFacts } from "../../widgetFrame/protocol";
 import {
   ComposerContextId,
   type EnvironmentId,
@@ -2008,11 +2009,13 @@ function Visual(props: {
       }),
     [item.key],
   );
-  // Another version reorders or swaps the pages: stay on the page being read, by its key.
+  // Another version reorders or swaps the pages: stay on the page being read, by its key. Story
+  // alone means the pages had not loaded yet, so they open where they were left (the first).
   const [slidesSeen, setSlidesSeen] = useState(slides);
   if (slidesSeen !== slides) {
     setSlidesSeen(slides);
-    const key = slidesSeen[Math.min(shown, slidesSeen.length - 1)]?.key;
+    const key =
+      slidesSeen.length === 1 ? undefined : slidesSeen[Math.min(shown, slidesSeen.length - 1)]?.key;
     const at = key === undefined ? -1 : slides.findIndex((candidate) => candidate.key === key);
     if (at >= 0 && at !== shown) setShown(at);
   }
@@ -2052,6 +2055,23 @@ function Visual(props: {
         onClose={() => setZoom(null)}
       />
     );
+  const threadFacts = useMemo(
+    (): WidgetThreadFacts => ({
+      title: item.headline,
+      status: item.merged ? "merged" : (item.reason ?? item.kind),
+      ...(item.pullRequest
+        ? {
+            pullRequest: {
+              number: item.pullRequest.number,
+              url: item.pullRequest.url,
+              state: item.pullRequest.state ?? "open",
+            },
+          }
+        : {}),
+      ...(item.playUrl ? { previewUrl: item.playUrl } : {}),
+    }),
+    [item.headline, item.kind, item.merged, item.playUrl, item.pullRequest, item.reason],
+  );
   const proof =
     slide === undefined ? null : (
       <SlideView
@@ -2064,6 +2084,7 @@ function Visual(props: {
         requests={props.requests}
         onAnswer={(requestId, text) => void props.actions.answerForm(item, requestId, text)}
         readOnly={props.versions.past}
+        thread={threadFacts}
       />
     );
 

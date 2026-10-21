@@ -193,6 +193,7 @@ import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as GrowService from "./grow/GrowService.ts";
 import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
+import * as GrowWidgetPool from "./grow/GrowWidgetPool.ts";
 import * as UserNotifications from "./notifications/UserNotifications.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
@@ -1270,6 +1271,7 @@ const makeWsRpcLayer = (
       const brainstorm = yield* BrainstormService.BrainstormService;
       const grow = yield* GrowService.GrowService;
       const previewEnvironments = yield* PreviewEnvironmentService.PreviewEnvironmentService;
+      const widgetPool = yield* GrowWidgetPool.GrowWidgetPool;
       const notifications = yield* UserNotifications.UserNotifications;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
@@ -3347,6 +3349,19 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "orchestration" },
           ),
+        [WS_METHODS.growWidgetPool]: () =>
+          observeRpcEffect(
+            WS_METHODS.growWidgetPool,
+            widgetPool.read.pipe(
+              Effect.map((pool) => ({
+                configured: pool.dir !== "",
+                dir: pool.dir,
+                widgets: pool.widgets,
+                broken: pool.broken,
+              })),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.subscribeGrow]: () =>
           observeRpcStream(WS_METHODS.subscribeGrow, grow.changes, {
             "rpc.aggregate": "workspace",
@@ -3949,6 +3964,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     const brainstorm = yield* BrainstormService.BrainstormService;
     const grow = yield* GrowService.GrowService;
     const previewEnvironments = yield* PreviewEnvironmentService.PreviewEnvironmentService;
+    const widgetPool = yield* GrowWidgetPool.GrowWidgetPool;
     const notifications = yield* UserNotifications.UserNotifications;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
@@ -4025,6 +4041,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
                   previewEnvironments,
                 ),
               ),
+              Layer.provide(Layer.succeed(GrowWidgetPool.GrowWidgetPool, widgetPool)),
               Layer.provide(Layer.succeed(UserNotifications.UserNotifications, notifications)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(
