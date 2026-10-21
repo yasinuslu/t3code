@@ -8,7 +8,7 @@ import { useManagerThreadKeys, useThreadShellsWithoutBrainstorms } from "../brai
 import { useIsMobile } from "../hooks/useMediaQuery";
 import {
   resolveShortcutCommand,
-  shortcutForCommand,
+  systemWideShortcutForCommand,
   shortcutLabelForCommand,
 } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
@@ -68,8 +68,8 @@ export function ModeShortcuts() {
   useEffect(() => {
     const setManagerShortcut = window.desktopBridge?.setManagerShortcut;
     if (!setManagerShortcut) return;
-    const shortcut = shortcutForCommand(keybindings, "manager.toggle");
     const mac = isMacPlatform(navigator.platform);
+    const shortcut = systemWideShortcutForCommand(keybindings, "manager.toggle", mac);
     void setManagerShortcut(
       shortcut === null
         ? null

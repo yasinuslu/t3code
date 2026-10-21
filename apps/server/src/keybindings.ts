@@ -127,6 +127,11 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
       when: "composerFocus && draftThreadRoute",
     },
   },
+  {
+    id: "manager.toggle:ctrl+e",
+    alongside: { key: "ctrl+alt+space", command: "manager.toggle" },
+    rule: { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
+  },
 ];
 
 function keybindingShortcutContext(rule: KeybindingRule): string | null {

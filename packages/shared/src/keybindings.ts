@@ -59,6 +59,11 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // chords use Ctrl+Space), GNOME, Windows, terminals and Zed, so the desktop
   // app also takes it system-wide.
   { key: "ctrl+alt+space", command: "manager.toggle" },
+  // The same overlay on Ctrl+E, the one the UI advertises. `ctrl` rather than `mod`: it is
+  // the Control key on a Mac too, one key from Grow's bare T. It also works inside the
+  // composer and other inputs, where it replaces macOS's end-of-line. Not in a terminal,
+  // where Ctrl+E is end-of-line in every shell, and never system-wide (see ModeSwitch).
+  { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
   // Steps the code profile in view (yu, sn, ...) and its manager with it; Shift steps
   // back. One light modifier and a letter under the left hand (Grow's bare R does the
   // same). Never Q or W, which close things; Alt+R is free on macOS (it only types
