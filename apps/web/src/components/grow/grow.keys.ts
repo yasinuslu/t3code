@@ -18,6 +18,8 @@ export type GrowKeyAction =
 export interface GrowKeyState {
   /** A conversation is showing in place of the deck. */
   readonly conversationOpen: boolean;
+  /** The conversation already shows beside the item (wide screens), so `o` has nothing to open. */
+  readonly conversationShown?: boolean;
   /** The manager's chat is showing in place of the deck. */
   readonly managerOpen?: boolean;
   readonly item: GrowReturn | null;
@@ -65,7 +67,7 @@ export function growKeyAction(
   if ((event.key === "w" || event.key === "r") && open) return { type: "whatIf" };
   if (event.key === "x" && open) return { type: "letGo" };
   if (event.key === "a" && open && !item.thread.statusProof) return { type: "askProof" };
-  if (event.key === "o") return { type: "openThread" };
+  if (event.key === "o" && !state.conversationShown) return { type: "openThread" };
   if ((event.key === "p" || event.key === "Enter") && item.playUrl !== null) {
     return { type: "play" };
   }
