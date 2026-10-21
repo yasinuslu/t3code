@@ -81,6 +81,52 @@ export const isManagerShortcut = (
   input.shift === chord.shift &&
   inputKey(input) === chord.key;
 
+// Grow's keys (apps/web/src/components/grow/grow.keys.ts, GROW_KEY_CODES). Held with Alt they
+// work from anywhere, so they are taken from a preview page that has focus.
+const GROW_KEY_CODES = new Set([
+  "KeyW",
+  "KeyS",
+  "KeyA",
+  "KeyD",
+  "KeyQ",
+  "KeyE",
+  "KeyX",
+  "KeyZ",
+  "KeyR",
+  "KeyF",
+  "KeyG",
+  "KeyT",
+  "KeyV",
+  "Digit1",
+  "Digit2",
+  "Digit3",
+  "Digit4",
+]);
+
+/**
+ * The menu action for a Grow key held with Alt below the page (`grow-key:<code>:<shift>`),
+ * or null for any other press. The renderer replays it as the same key press.
+ */
+export function growKeyAction(
+  input: Pick<
+    Electron.Input,
+    "type" | "code" | "meta" | "control" | "alt" | "shift" | "isAutoRepeat"
+  >,
+): string | null {
+  if (input.type !== "keyDown" || !input.alt || input.control || input.meta) return null;
+  if (input.isAutoRepeat || !GROW_KEY_CODES.has(input.code)) return null;
+  return `grow-key:${input.code}:${input.shift ? 1 : 0}`;
+}
+
+/** The Grow keys that take focus out of the page (to a place, search, the manager). */
+export const growKeyLeavesPage = (code: string): boolean =>
+  code === "Digit1" ||
+  code === "Digit2" ||
+  code === "Digit4" ||
+  code === "KeyQ" ||
+  code === "KeyF" ||
+  code === "KeyT";
+
 /** Asks a window's renderer to show or hide the manager, bringing the window forward first. */
 export const sendManagerAction = (
   window: Electron.BrowserWindow,

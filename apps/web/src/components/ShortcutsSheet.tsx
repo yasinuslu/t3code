@@ -11,7 +11,6 @@ import { create } from "zustand";
 
 import { useForkFeatures } from "../hooks/useSettings";
 import { useHomeOverlayStore } from "../homeOverlayStore";
-import { useMediaQuery } from "../hooks/useMediaQuery";
 import { isEditableFocused } from "../lib/editableFocus";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -58,7 +57,6 @@ export function ShortcutsSheet() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const forkFeatures = useForkFeatures();
   const homeOpen = useHomeOverlayStore((state) => state.open);
-  const split = useMediaQuery("lg");
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -80,7 +78,6 @@ export function ShortcutsSheet() {
     platform,
     mac: isMacPlatform(platform),
     inGrow: homeOpen,
-    split,
     growAvailable: forkFeatures,
   });
   // One column per scope, in the order the sections come: Grow's on the left while Grow shows.

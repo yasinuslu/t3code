@@ -2397,3 +2397,9 @@ html[data-pane-ring] [data-pane][data-pane-active] {
   outline: 2px solid color-mix(in oklab, var(--primary) 45%, transparent);
   outline-offset: -2px;
 }
+
+/* The Grow place the keyboard is in (1 threads, 2 presentation, 3 live, 4 chat): a thin bar
+   on top, so a glance says where W, S and the rest land. The innermost one only; static. */
+[data-grow-zone]:focus-within:not(:has([data-grow-zone]:focus-within)) {
+  box-shadow: inset 0 2px 0 var(--primary);
+}

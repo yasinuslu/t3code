@@ -9,7 +9,6 @@ const options = {
   platform: "Linux",
   mac: false,
   inGrow: true,
-  split: false,
   growAvailable: true,
 };
 
@@ -25,18 +24,6 @@ describe("buildShortcutSections", () => {
     expect(scopes(false)).toEqual(["app", "grow"]);
   });
 
-  it("lists the whole-conversation key only where the conversation is not already beside the proof", () => {
-    expect(rowKeys(buildShortcutSections(options), "Whole conversation (again to close)")).toEqual([
-      "C",
-    ]);
-    expect(
-      rowKeys(
-        buildShortcutSections({ ...options, split: true }),
-        "Whole conversation (again to close)",
-      ),
-    ).toBeUndefined();
-  });
-
   it("leaves Grow out when the fork features are off", () => {
     const sections = buildShortcutSections({ ...options, growAvailable: false });
     expect(sections.every((section) => section.scope === "app")).toBe(true);
@@ -44,16 +31,16 @@ describe("buildShortcutSections", () => {
 
   it("writes the shifted profile key and the Alt chord for the platform", () => {
     const linux = buildShortcutSections(options);
-    expect(rowKeys(linux, "Next / previous profile")).toEqual(["R", "Shift+R"]);
+    expect(rowKeys(linux, "Next / previous profile")).toEqual(["V", "Shift+V"]);
     const global = (sections: typeof linux) =>
       sections.filter((section) => section.scope === "app");
-    expect(rowKeys(global(linux), "Next / previous profile")).toEqual(["Alt+R", "Alt+Shift+R"]);
+    expect(rowKeys(global(linux), "Next / previous profile")).toEqual(["Alt+V", "Alt+Shift+V"]);
 
     const mac = buildShortcutSections({ ...options, platform: "MacIntel", mac: true });
     expect(
       mac.filter((section) => section.scope === "grow").flatMap((section) => section.rows),
-    ).toContainEqual({ label: "Next / previous profile", keys: ["R", "⇧R"] });
-    expect(rowKeys(global(mac), "Next / previous profile")).toEqual(["⌥R", "⌥⇧R"]);
+    ).toContainEqual({ label: "Next / previous profile", keys: ["V", "⇧V"] });
+    expect(rowKeys(global(mac), "Next / previous profile")).toEqual(["⌥V", "⌥⇧V"]);
   });
 
   it("follows the live keybindings: a remapped command shows its new key, a removed one is dropped", () => {

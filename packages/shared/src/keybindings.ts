@@ -65,12 +65,11 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // where Ctrl+E is end-of-line in every shell, and never system-wide (see ModeSwitch).
   { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
   // Steps the code profile in view (yu, sn, ...) and its manager with it; Shift steps
-  // back. One light modifier and a letter under the left hand (Grow's bare R does the
-  // same). Never Q or W, which close things; Alt+R is free on macOS (it only types
-  // ®), GNOME, Windows menus, browsers, terminals and in T3. The physical key counts,
-  // so Option's ® on a Turkish layout does not get in the way.
-  { key: "alt+r", command: "profile.next", when: "!terminalFocus" },
-  { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
+  // back. One light modifier and a letter under the left hand (Grow's bare V does the
+  // same). Never Q or W, which close things; Alt+R is Grow's reload. The physical key
+  // counts, so what Option types on a Mac layout does not get in the way.
+  { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
+  { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
   // Keyboard-only movement between the panes on screen, vim-style. `ctrl` rather than `mod`
   // so it is the Control key on a Mac too. They work from inside inputs, the composer and
   // a terminal alike, so focus never gets stuck in one pane. Ctrl+H is Backspace and Ctrl+L
