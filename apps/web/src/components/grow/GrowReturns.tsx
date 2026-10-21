@@ -827,7 +827,6 @@ function ReturnRow(props: {
   readonly showProject: boolean;
 }) {
   const { item } = props;
-  const projectTitle = useProjectTitle();
   const sidebarRow = useSidebarThreadRowSlot((state) => state.render);
   if (sidebarRow) {
     return sidebarRow(item.thread, {
@@ -841,6 +840,17 @@ function ReturnRow(props: {
       ),
     });
   }
+  return <OwnReturnRow {...props} />;
+}
+
+/** Grow's compact row, while the sidebar is not mounted (a phone, or the sidebar closed). */
+function OwnReturnRow(props: {
+  readonly item: GrowReturn;
+  readonly current: boolean;
+  readonly showProject: boolean;
+}) {
+  const { item } = props;
+  const projectTitle = useProjectTitle();
   // The shown item says where it lives; a list that is not grouped by project names it on every row.
   const rowRef = useRef<HTMLButtonElement>(null);
   // Q / E / J / K move the selection; while the list holds focus, the focus goes with it.
