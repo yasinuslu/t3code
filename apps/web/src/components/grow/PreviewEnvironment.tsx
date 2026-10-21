@@ -75,11 +75,12 @@ export function StartPreviewButton(props: { readonly thread: EnvironmentThreadSh
 /** Stop a running preview environment, when the project says how. */
 export function StopPreviewButton(props: { readonly thread: EnvironmentThreadShell }) {
   const preview = usePreviewEnvironment(props.thread);
-  if (preview.status !== "running" || !preview.canStop) return null;
+  const stopping = preview.status === "stopping";
+  if ((preview.status !== "running" && !stopping) || !preview.canStop) return null;
   return (
-    <Button variant="ghost" size="sm" onClick={preview.stop}>
+    <Button variant="ghost" size="sm" disabled={stopping} onClick={preview.stop}>
       <SquareIcon />
-      Stop preview
+      {stopping ? "Stopping preview..." : "Stop preview"}
     </Button>
   );
 }
