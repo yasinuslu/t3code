@@ -8,6 +8,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { GrowRequestKind } from "./threadGrowRequest.ts";
 
 /**
  * Inline context records: the typed payload behind every composer chip.
@@ -28,6 +29,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "mention",
   "skill",
   "thread",
+  "grow-request",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -232,6 +234,17 @@ export const ThreadContextRecord = Schema.Struct({
 export type ThreadContextRecord = typeof ThreadContextRecord.Type;
 
 /**
+ * What the user asked for from Grow (a presentation, Ship, a change, a reply). The agent
+ * reads what is expected and how to answer it; the thread keeps it open until answered.
+ */
+export const GrowRequestContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("grow-request"),
+  request: GrowRequestKind,
+});
+export type GrowRequestContextRecord = typeof GrowRequestContextRecord.Type;
+
+/**
  * Catch-all for kinds this build does not know. Known discriminators are excluded so a
  * malformed known record fails its own schema instead of sliding through unchecked.
  * Mirrors `ChatUnknownAttachment`.
@@ -262,6 +275,7 @@ export const KnownComposerContextRecord = Schema.Union([
   MentionContextRecord,
   SkillContextRecord,
   ThreadContextRecord,
+  GrowRequestContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

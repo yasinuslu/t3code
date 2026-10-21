@@ -166,6 +166,24 @@ describe("provider projection", () => {
     expect(projected).toContain("- font-size: 12px → 20px");
   });
 
+  it("tells the agent what a Grow request asks and how to answer it", () => {
+    const projected = projectComposerContextForProvider({
+      text: "[Ship](t3-context://v1/grow-request/grow-1)",
+      records: [
+        {
+          version: 1,
+          contextId: ctx("grow-1"),
+          kind: "grow-request",
+          label: "Ship",
+          request: "ship",
+        },
+      ],
+    });
+    expect(projected).toContain("request: ship");
+    expect(projected).toContain("requestId: grow-1");
+    expect(projected).toContain("grow_request_close");
+  });
+
   it("returns text unchanged when there are no references", () => {
     expect(projectComposerContextForProvider({ text: "plain", records: [terminal] })).toBe("plain");
   });

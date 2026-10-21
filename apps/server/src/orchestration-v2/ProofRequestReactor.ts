@@ -1,5 +1,6 @@
 import {
   CommandId,
+  ComposerContextId,
   MessageId,
   type OrchestrationV2AppThread,
   type OrchestrationV2Command,
@@ -8,6 +9,7 @@ import {
   type ThreadId,
   threadStatusReportHasProof,
 } from "@t3tools/contracts";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { latestExecutedRun } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Cause from "effect/Cause";
@@ -25,9 +27,6 @@ import * as ThreadManagement from "./ThreadManagementService.ts";
 
 const PROOF_REQUEST_PREFIX = "proof-request:";
 const MAX_REMEMBERED_RUNS = 256;
-
-export const PROOF_REQUEST_TEXT =
-  "Your work has nothing to see yet. Before you stop, call presentation_set with what I understand at a glance: a screenshot of the result with marks on what changed (a short GIF if it moves), a short page, or for work with nothing on screen, an image of the evidence. Change nothing else.";
 
 /**
  * The message that asks a thread for proof after `runId` finished without
@@ -67,12 +66,28 @@ export function proofRequestCommand(input: {
     return null;
   }
   const identity = `${PROOF_REQUEST_PREFIX}${runId}`;
+  // A presentation request like Grow's, so the thread shows the ask and presentation_set answers it.
+  const contextId = ComposerContextId.make(
+    `proof-${runId.replace(/[^a-z0-9_-]/gi, "-")}`.slice(0, 128),
+  );
   return {
     type: "message.dispatch",
     commandId: CommandId.make(identity),
     messageId: MessageId.make(identity),
     threadId: thread.id,
-    text: PROOF_REQUEST_TEXT,
+    text: `Your work has nothing to see yet. ${formatComposerContextReference({ kind: "grow-request", contextId, label: "Presentation" })}`,
+    context: {
+      version: 1,
+      records: [
+        {
+          version: 1,
+          contextId,
+          kind: "grow-request",
+          label: "Presentation",
+          request: "presentation",
+        },
+      ],
+    },
     attachments: [],
     dispatchMode: { type: "start_immediately" },
     createdBy: "agent",

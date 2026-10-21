@@ -18,6 +18,7 @@ import {
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   THREAD_STATUS_REPORT_MAX_CHARS,
+  THREAD_GROW_REQUEST_TEXT_MAX_CHARS,
   THREAD_PRESENTATION_MAX_PAGES,
   THREAD_SUPERSEDE_NOTE_MAX_CHARS,
   type ChatAttachment,
@@ -83,6 +84,7 @@ import { CheckpointServiceV2 } from "./CheckpointService.ts";
 import { CommandPolicyV2, resolveMessageDispatchIntent } from "./CommandPolicy.ts";
 import { CommandReceiptStoreV2 } from "./CommandReceiptStore.ts";
 import { ContextHandoffServiceV2 } from "./ContextHandoffService.ts";
+import { closeGrowRequests, growRequestFromMessage, openGrowRequest } from "./growRequests.ts";
 import { notificationTurnItem } from "./Notification.ts";
 import { isRestartNoteSource } from "./RestartBackgroundNote.ts";
 import { isUndeliveredMailboxSteer } from "./NotificationMailbox.ts";
@@ -402,6 +404,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.preview-link.unlink":
     case "thread.status-report.set":
     case "thread.presentation.set":
+    case "thread.grow-request.close":
     case "thread.superseded-by.set":
     case "thread.pull-request.link":
     case "thread.pull-request.unlink":
@@ -2379,6 +2382,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.preview-link.unlink"
           | "thread.status-report.set"
           | "thread.presentation.set"
+          | "thread.grow-request.close"
           | "thread.superseded-by.set"
           | "thread.pull-request.link"
           | "thread.pull-request.unlink"
@@ -3010,15 +3014,34 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.presentation.set": {
           // Like the status report, setting it is the agent narrating, not new activity.
           const { presentation: _previous, ...rest } = thread;
-          return command.pages.length === 0
-            ? rest
-            : {
-                ...rest,
-                presentation: {
-                  pages: command.pages.slice(0, THREAD_PRESENTATION_MAX_PAGES),
-                  updatedAt: DateTime.formatIso(now),
-                },
-              };
+          if (command.pages.length === 0) return rest;
+          const at = DateTime.formatIso(now);
+          return {
+            ...rest,
+            presentation: {
+              pages: command.pages.slice(0, THREAD_PRESENTATION_MAX_PAGES),
+              updatedAt: at,
+            },
+            // A presentation answers every open ask for one.
+            ...closeGrowRequests(thread.growRequests, at, (request) =>
+              request.kind === "presentation" ? { outcome: "done" } : null,
+            ),
+          };
+        }
+        case "thread.grow-request.close": {
+          const at = DateTime.formatIso(now);
+          const note = command.note
+            ?.replace(/\s+/g, " ")
+            .trim()
+            .slice(0, THREAD_GROW_REQUEST_TEXT_MAX_CHARS);
+          return {
+            ...thread,
+            ...closeGrowRequests(thread.growRequests, at, (request) =>
+              request.id === command.requestId
+                ? { outcome: command.outcome, ...(note ? { note } : {}) }
+                : null,
+            ),
+          };
         }
         case "thread.superseded-by.set":
           return {
@@ -3278,6 +3301,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.preview-link.unlink":
         case "thread.status-report.set":
         case "thread.presentation.set":
+        case "thread.grow-request.close":
         case "thread.superseded-by.set":
           return "thread.metadata-updated" as const;
         case "thread.pull-request.link":
@@ -4630,6 +4654,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           providerInstanceId: thread.providerInstanceId,
           occurredAt: now,
           payload: thread,
+        });
+        projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+      }
+      // A request from Grow stays on the thread until the agent answers it.
+      const growRequest = growRequestFromMessage(
+        command.text,
+        command.context?.records ?? [],
+        DateTime.formatIso(yield* DateTime.now),
+      );
+      if (growRequest !== null) {
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "thread.metadata-updated",
+          threadId: command.threadId,
+          providerInstanceId: projection.thread.providerInstanceId,
+          occurredAt: yield* DateTime.now,
+          payload: {
+            ...projection.thread,
+            growRequests: openGrowRequest(projection.thread.growRequests, growRequest),
+          },
         });
         projection = yield* getProjectionWithPendingEvents(command.threadId, events);
       }
@@ -9794,6 +9840,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.preview-link.unlink":
       case "thread.status-report.set":
       case "thread.presentation.set":
+      case "thread.grow-request.close":
       case "thread.superseded-by.set":
       case "thread.title.regeneration.complete":
       case "thread.runtime-mode.set":

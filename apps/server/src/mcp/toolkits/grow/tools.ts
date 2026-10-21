@@ -1,4 +1,12 @@
-import { GrowDecision, GrowStage, OrchestratorMcpFailure, ThreadId } from "@t3tools/contracts";
+import {
+  GrowDecision,
+  GrowRequestOutcome,
+  GrowStage,
+  OrchestratorMcpFailure,
+  THREAD_GROW_REQUEST_TEXT_MAX_CHARS,
+  ThreadId,
+} from "@t3tools/contracts";
+import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
 import * as Tool from "effect/unstable/ai/Tool";
 import * as Toolkit from "effect/unstable/ai/Toolkit";
@@ -87,4 +95,35 @@ const GrowBoardTool = Tool.make("grow_board", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
-export const GrowToolkit = Toolkit.make(GrowUpdateTool, GrowBoardTool);
+const GrowRequestCloseTool = Tool.make("grow_request_close", {
+  description: [
+    "Answer a request the user sent this thread from Grow (Ship, for one), so Grow shows how it went instead of an open ask.",
+    "`done` when it is landed (for Ship: merged and live); `blocked` with a one-line `note` on what stops it, so the user knows their move.",
+    "Without `requestId` it answers the newest open request. A presentation request needs no call: presentation_set answers it.",
+  ].join(" "),
+  parameters: Schema.Struct({
+    requestId: Schema.optional(
+      Schema.String.annotate({ description: "The requestId from the request's context." }),
+    ),
+    outcome: GrowRequestOutcome,
+    note: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(THREAD_GROW_REQUEST_TEXT_MAX_CHARS)),
+    ),
+  }),
+  success: Schema.Struct({ requestId: Schema.String, outcome: GrowRequestOutcome }),
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    Orchestrator.OrchestratorV2,
+    Crypto.Crypto,
+  ],
+})
+  .annotate(Tool.Title, "Answer a Grow request")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+export const GrowToolkit = Toolkit.make(GrowUpdateTool, GrowBoardTool, GrowRequestCloseTool);

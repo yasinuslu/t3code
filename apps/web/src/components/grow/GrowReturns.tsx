@@ -13,11 +13,20 @@
  * Nothing here needs agents to fill in extra fields: everything is read off
  * the thread (previews, pull requests, status report, run state). The only
  * things recorded are the decision, in the thread's grow card, and what the
- * user sent from here, on this device (grow.asks).
+ * user asked from here, as typed requests on the thread itself.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, GrowDecision, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import {
+  ComposerContextId,
+  type EnvironmentId,
+  type GrowDecision,
+  type GrowRequestKind,
+  type ScopedThreadRef,
+  type ThreadGrowRequest,
+  type ThreadId,
+} from "@t3tools/contracts";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
@@ -70,7 +79,7 @@ import { Badge } from "../ui/badge";
 import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
 import { openFullView, setGrowOnScreen, useGrowFocusStore } from "../../growFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { cn, newMessageId } from "../../lib/utils";
+import { cn, newMessageId, randomUUID } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
 import { readThreadShell, useProjects, useThreadShell } from "../../state/entities";
 import { growEnvironment, useGrowCards, useGrowLoaded } from "../../state/grow";
@@ -96,7 +105,6 @@ import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
 import { SidebarChromeFooter } from "../sidebar/SidebarChrome";
 import { readEnvironmentSupportsSettlement } from "../../state/entities";
-import { type GrowAsk, recordGrowAsk, useGrowAsks } from "./grow.asks";
 import { decide, undo, usePendingDecisions } from "./grow.decide";
 import { GrowDetails } from "./GrowDetails";
 import { GrowPreview } from "./GrowPreview";
@@ -104,7 +112,6 @@ import {
   type GrowDeck,
   type GrowRelations,
   type GrowReturn,
-  SHIP_MESSAGE,
   buildGrowDeck,
   buildGrowRelations,
   supersedeCandidates,
@@ -123,7 +130,6 @@ import {
   growReturnKey,
   growSpark,
   growStep,
-  PROOF_MESSAGE,
 } from "./returns.logic";
 
 /** Where the deck is, kept while Home is closed: the shown item, the phone's view, the search. */
@@ -215,6 +221,14 @@ function hideManager() {
 
 const proofAsksInFlight = new Set<string>();
 
+/** The chip a Grow request shows as in the conversation. */
+const GROW_REQUEST_LABEL: Record<GrowRequestKind, string> = {
+  presentation: "Presentation",
+  ship: "Ship",
+  change: "What if",
+  reply: "Reply",
+};
+
 /** The actions on a return, wired to the thread and its grow card. */
 function useReturnActions(moveOn: (item: GrowReturn) => void) {
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
@@ -231,18 +245,31 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       input: { threadId: item.thread.id, decision },
     });
 
+  /** Sends a typed request: the agent reads what it asks, the thread keeps it until answered. */
   const send = async (
     item: GrowReturn,
-    text: string,
-    kind: GrowAsk["kind"],
+    request: GrowRequestKind,
+    words: string,
     dispatchMode?: "queue",
   ) => {
+    const contextId = ComposerContextId.make(`grow-${randomUUID()}`);
+    const label = GROW_REQUEST_LABEL[request];
+    const reference = formatComposerContextReference({ kind: "grow-request", contextId, label });
     const result = await startTurn({
       environmentId: item.thread.environmentId,
       input: {
         threadId: item.thread.id,
         ...(dispatchMode === undefined ? {} : { dispatchMode }),
-        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+        message: {
+          messageId: newMessageId(),
+          role: "user",
+          text: words === "" ? reference : `${reference} ${words}`,
+          context: {
+            version: 1,
+            records: [{ version: 1, contextId, kind: "grow-request", label, request }],
+          },
+          attachments: [],
+        },
         runtimeMode: item.thread.runtimeMode,
         interactionMode: item.thread.interactionMode,
       },
@@ -251,7 +278,6 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       toastManager.add({ type: "error", title: `Could not reach ${item.headline}` });
       return false;
     }
-    recordGrowAsk(item.key, { text, kind, at: Date.now() });
     return true;
   };
 
@@ -263,7 +289,7 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         title: `Shipping ${item.headline}`,
         run: async () => {
           // Recorded after the message, so the decision outlives the message (see heldDecision).
-          if (await send(item, SHIP_MESSAGE, "ship")) await record(item, "adopt");
+          if (await send(item, "ship", "")) await record(item, "adopt");
         },
       });
     },
@@ -273,7 +299,8 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         key: item.key,
         title: `Sending to ${item.headline}`,
         run: async () => {
-          if ((await send(item, text, kind)) && item.card?.decision !== undefined) {
+          const request = kind === "whatIf" ? "change" : "reply";
+          if ((await send(item, request, text)) && item.card?.decision !== undefined) {
             await record(item, null);
           }
         },
@@ -360,7 +387,7 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
       if (proofAsksInFlight.has(item.key)) return;
       proofAsksInFlight.add(item.key);
       try {
-        if (await send(item, PROOF_MESSAGE, "proof", "queue")) {
+        if (await send(item, "presentation", "", "queue")) {
           toastManager.add({ type: "success", title: `Asked ${item.headline} for a presentation` });
         }
       } finally {
@@ -1137,7 +1164,7 @@ function RowMark(props: { readonly item: GrowReturn }) {
     return <CircleDotIcon aria-label="Working" className="size-3.5 shrink-0 text-info" />;
   }
   if (item.kind === "urgent") {
-    const look = item.reason ? WORK_REASON_LOOK[item.reason] : null;
+    const look = item.reason ? REASON_LOOK[item.reason] : null;
     return <span aria-hidden className={cn("size-2 shrink-0 rounded-full", look?.dot)} />;
   }
   if (item.playUrl !== null) {
@@ -1396,7 +1423,7 @@ function Hero(props: {
   readonly step: (direction: 1 | -1) => void;
 }) {
   const { item, actions, wide } = props;
-  const { digest, presentation } = useThreadReport(item.thread);
+  const { digest, presentation, growRequests } = useThreadReport(item.thread);
   const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
   const slides = useSlides(item.thread.environmentId, presentation, images);
   const question = digest.questions[0] ?? null;
@@ -1434,6 +1461,7 @@ function Hero(props: {
       relations={props.relations}
       open={props.open}
       digest={digest}
+      requests={growRequests}
       position={wide ? props.position : null}
     />
   );
@@ -1511,6 +1539,12 @@ function Hero(props: {
   );
 }
 
+/** Why an urgent item needs the user: the thread's own reasons, plus a Grow request an agent could not do. */
+const REASON_LOOK = {
+  ...WORK_REASON_LOOK,
+  blocked: { label: "Blocked, needs you", dot: "bg-warning" },
+} as const;
+
 const STATUS_LOOK = {
   urgent: { label: "Needs you", dot: "bg-warning" },
   answer: { label: "Waiting for your answer", dot: "bg-warning" },
@@ -1544,6 +1578,7 @@ function Story(props: {
   readonly relations: GrowRelations;
   readonly open: (thread: EnvironmentThreadShell) => void;
   readonly digest: ReturnType<typeof useThreadReport>["digest"];
+  readonly requests: ReadonlyArray<ThreadGrowRequest>;
   readonly position: { readonly index: number; readonly total: number } | null;
   /** The conversation shows beside the story, so it needs no way in. */
   readonly conversationShown: boolean;
@@ -1553,7 +1588,7 @@ function Story(props: {
   const question = digest.questions[0] ?? null;
   const status =
     item.kind === "urgent" && item.reason
-      ? { label: WORK_REASON_LOOK[item.reason].label, dot: WORK_REASON_LOOK[item.reason].dot }
+      ? REASON_LOOK[item.reason]
       : STATUS_LOOK[statusOf(item, question !== null)];
   const subtitle = cleanLabel(item.thread.title);
 
@@ -1591,7 +1626,12 @@ function Story(props: {
           </div>
         ) : null}
       </section>
-      <StoryPath item={item} relations={props.relations} open={props.open} />
+      <StoryPath
+        item={item}
+        requests={props.requests}
+        relations={props.relations}
+        open={props.open}
+      />
       {digest.bullets.length > 0 ? (
         <section aria-label="What happened" className="flex flex-col gap-2">
           <h3 className="font-medium text-muted-foreground text-xs">What happened</h3>
@@ -1631,17 +1671,17 @@ function Story(props: {
  */
 function StoryPath(props: {
   readonly item: GrowReturn;
+  readonly requests: ReadonlyArray<ThreadGrowRequest>;
   readonly relations: GrowRelations;
   readonly open: (thread: EnvironmentThreadShell) => void;
 }) {
-  const { item, relations } = props;
-  const asks = useGrowAsks((state) => state.asks[item.key]);
+  const { item, relations, requests } = props;
   const parentKey = growParentKey(item.thread, item.card);
   const parent = parentKey === null ? undefined : relations.byKey.get(parentKey);
   const children = relations.children.get(item.key) ?? [];
   const supersedes = relations.supersedes.get(item.key) ?? [];
   const supersededBy = supersededChain(relations, item.thread);
-  const lastAsk = asks?.at(-1);
+  const lastAsk = requests.at(-1);
   const started =
     item.thread.createdBy === "agent"
       ? "Started by an agent"
@@ -1678,23 +1718,35 @@ function StoryPath(props: {
             </span>
           )}
         </PathStep>
-        {(asks ?? []).map((ask) => (
-          <PathStep
-            key={ask.at}
-            icon={ASK_LOOK[ask.kind].icon}
-            label={ASK_LOOK[ask.kind].label}
-            active={ask === lastAsk && item.kind === "working"}
-          >
-            {ask.kind === "ship" || ask.kind === "proof" ? null : (
-              <span className="italic">&ldquo;{ask.text}&rdquo;</span>
-            )}
-            <span className="text-muted-foreground text-xs">
-              {" "}
-              {formatRelativeTimeLabel(new Date(ask.at).toISOString())}
-              {ask === lastAsk && item.kind === "working" ? ", working on it" : ""}
-            </span>
-          </PathStep>
-        ))}
+        {requests.map((ask) => {
+          const working = ask === lastAsk && ask.closedAt === undefined && item.kind === "working";
+          return (
+            <PathStep
+              key={ask.id}
+              icon={ASK_LOOK[ask.kind].icon}
+              label={ASK_LOOK[ask.kind].label}
+              active={working}
+            >
+              {ask.text ? <span className="italic">&ldquo;{ask.text}&rdquo;</span> : null}
+              <span className="text-muted-foreground text-xs">
+                {" "}
+                {formatRelativeTimeLabel(ask.openedAt)}
+                {working ? ", working on it" : ""}
+              </span>
+              {ask.outcome ? (
+                <span
+                  className={cn(
+                    "block text-xs",
+                    ask.outcome === "blocked" ? "text-warning" : "text-muted-foreground",
+                  )}
+                >
+                  {ask.outcome === "blocked" ? "Blocked" : ASK_LOOK[ask.kind].done}
+                  {ask.note ? `: ${ask.note}` : ""}
+                </span>
+              ) : null}
+            </PathStep>
+          );
+        })}
         <PathStep
           icon={<CircleDotIcon />}
           label="Now"
@@ -1754,11 +1806,15 @@ function SupersedeEntry(props: {
 }
 
 const ASK_LOOK = {
-  ship: { icon: <RocketIcon />, label: "You said ship" },
-  reply: { icon: <ReplyIcon />, label: "You replied" },
-  whatIf: { icon: <SparklesIcon />, label: "Your what if" },
-  proof: { icon: <ImageIcon />, label: "You asked for a presentation" },
-} as const;
+  ship: { icon: <RocketIcon />, label: "You said ship", done: "Shipped" },
+  reply: { icon: <ReplyIcon />, label: "You replied", done: "Answered" },
+  change: { icon: <SparklesIcon />, label: "Your what if", done: "Done" },
+  presentation: {
+    icon: <ImageIcon />,
+    label: "Asked for a presentation",
+    done: "Presentation set",
+  },
+} as const satisfies Record<GrowRequestKind, unknown>;
 
 function NowLine(props: { readonly item: GrowReturn }) {
   const { item } = props;

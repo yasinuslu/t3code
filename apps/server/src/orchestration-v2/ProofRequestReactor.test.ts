@@ -59,6 +59,12 @@ describe("proofRequestCommand", () => {
       runId: done.id,
     });
     expect(command).toMatchObject({ type: "message.dispatch", threadId: THREAD_ID });
+    // A typed presentation request, so the thread shows the ask and presentation_set answers it.
+    const record = command?.type === "message.dispatch" ? command.context?.records[0] : undefined;
+    expect(record).toMatchObject({ kind: "grow-request", request: "presentation" });
+    expect(command?.type === "message.dispatch" && command.text).toContain(
+      `(t3-context://v1/grow-request/${record?.contextId})`,
+    );
   });
 
   it("leaves a thread alone once its report carries proof", () => {

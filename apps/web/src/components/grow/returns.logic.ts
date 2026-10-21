@@ -41,7 +41,8 @@ export interface GrowReturn {
   readonly kind: ReturnKind;
   readonly thread: EnvironmentThreadShell;
   readonly card: GrowCard | undefined;
-  readonly reason: WorkReason | null;
+  /** Why it needs the user; "blocked" when an agent could not do what Grow asked. */
+  readonly reason: WorkReason | "blocked" | null;
   readonly lastActivityAt: string;
   /** When the user last wrote to it (their own words, not another agent's); else its last activity. */
   readonly touchedAt: string;
@@ -229,6 +230,15 @@ export function buildGrowDeck(
     }
     if (placement?.group === "needsMe") {
       urgent.push(entry("urgent"));
+      continue;
+    }
+    // An agent answered a Grow request with "blocked" after the user's last word.
+    if (
+      !merged &&
+      thread.growBlockedAt !== undefined &&
+      epochMs(thread.growBlockedAt) >= epochMs(thread.latestUserMessageAt)
+    ) {
+      urgent.push({ ...entry("urgent"), reason: "blocked" });
       continue;
     }
     if (merged || decision === "adopt") {
@@ -472,14 +482,6 @@ export function growStep(deck: GrowDeck, current: string | null, direction: 1 | 
   // Past either end it wraps around, so holding S walks the whole list and comes back.
   return keys[(at + direction + keys.length) % keys.length] ?? null;
 }
-
-/** Sent when an item came back with nothing to see: every return carries a presentation. */
-export const PROOF_MESSAGE =
-  "Show me what this looks like. Call presentation_set with what I understand at a glance: a screenshot of the result with marks on what changed (a short GIF if it moves), a short page, or for work with nothing on screen, an image of the evidence. Nothing else changes.";
-
-/** What Ship sends the thread: the user's go-ahead to land it the way its repo lands work. */
-export const SHIP_MESSAGE =
-  "Ship it. Land this the usual way for this repo: open the PR if there is none, get CI green, merge, verify it is live, then settle this thread. If something blocks the merge, tell me in one line.";
 
 /** The project the shown item belongs to, wherever the deck lists it. */
 export function growFocusedProject(deck: GrowDeck, key: string | null): string | null {

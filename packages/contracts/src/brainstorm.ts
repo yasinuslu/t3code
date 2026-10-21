@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 
 import { ProjectId, RunId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ThreadPresentation } from "./threadPresentation.ts";
+import { ThreadGrowRequest } from "./threadGrowRequest.ts";
 
 /**
  * Brainstorm: the manager chats (one per code profile, each working in its
@@ -61,6 +62,8 @@ export const BrainstormThreadReportInput = Schema.Struct({
   statusUpdatedAt: Schema.optional(Schema.String),
   /** The presentation the client last saw; a new one is a new report. */
   presentationUpdatedAt: Schema.optional(Schema.String),
+  /** The Grow requests the client last saw; a change is a new report. */
+  growRequestsUpdatedAt: Schema.optional(Schema.String),
 });
 export type BrainstormThreadReportInput = typeof BrainstormThreadReportInput.Type;
 
@@ -74,6 +77,8 @@ export const BrainstormThreadReport = Schema.Struct({
   statusText: Schema.optional(Schema.String),
   /** The thread's presentation, when its agent set one. */
   presentation: Schema.optional(ThreadPresentation),
+  /** What the user asked the thread for from Grow, newest last. */
+  growRequests: Schema.optional(Schema.Array(ThreadGrowRequest)),
 });
 export type BrainstormThreadReport = typeof BrainstormThreadReport.Type;
 

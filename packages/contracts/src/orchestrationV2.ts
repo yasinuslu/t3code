@@ -50,6 +50,7 @@ import {
 } from "./threadPullRequest.ts";
 import { ThreadPreviewLink, ThreadPreviewLinkSource } from "./threadPreviewLink.ts";
 import { PresentationPage, ThreadPresentation } from "./threadPresentation.ts";
+import { GrowRequestOutcome, ThreadGrowRequest } from "./threadGrowRequest.ts";
 import { ThreadStatusReport } from "./threadStatusReport.ts";
 import { ThreadSupersededBy } from "./threadSupersede.ts";
 import {
@@ -393,6 +394,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   statusReport: Schema.optional(ThreadStatusReport),
   /** The presentation its agent last set (`presentation_set`); absent until one does. */
   presentation: Schema.optional(ThreadPresentation),
+  /** What the user asked it for from Grow, newest last; absent until they do. */
+  growRequests: Schema.optional(Schema.Array(ThreadGrowRequest)),
   /** The thread that took this one further (Let go, superseded by); absent until set. */
   supersededBy: Schema.optional(Schema.NullOr(ThreadSupersededBy)),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
@@ -1810,6 +1813,10 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   presentationUpdatedAt: Schema.optional(IsoDateTime),
   /** How many pages that presentation has; absent when there is none. */
   presentationPages: Schema.optional(Schema.Number),
+  /** When the thread's Grow requests last changed; the requests stay server-side. */
+  growRequestsUpdatedAt: Schema.optional(IsoDateTime),
+  /** When an agent last answered a Grow request with "blocked"; absent when none was. */
+  growBlockedAt: Schema.optional(IsoDateTime),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
@@ -2734,6 +2741,14 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     /** Replaces the previous presentation; empty removes it. Files must already be stored. */
     pages: Schema.Array(PresentationPage),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.grow-request.close"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    requestId: Schema.String,
+    outcome: GrowRequestOutcome,
+    note: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.superseded-by.set"),
