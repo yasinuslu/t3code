@@ -20,5 +20,10 @@ export function createGrowEnvironmentAtoms<R, E>(
       label: "grow:update",
       tag: WS_METHODS.growUpdate,
     }),
+    /** Starts or stops a thread's preview environment (the project's t3.json `preview` commands). */
+    previewEnvironment: createEnvironmentRpcCommand(runtime, {
+      label: "grow:preview-environment",
+      tag: WS_METHODS.threadPreviewEnvironment,
+    }),
   };
 }

@@ -4,6 +4,7 @@ When the t3-code MCP server exposes link_pull_request, you must use it to regist
 
 const PREVIEW_LINKING_INSTRUCTIONS = `<preview_linking>
 When the t3-code MCP server exposes link_preview and you start or hand the user a preview of your work (a dev server or preview URL they can open), call link_preview with it so it shows on the thread. Linking again is safe. The user opens previews from another machine, so never link localhost, 127.0.0.1 or 0.0.0.0 (they are rejected): serve it where they can reach it and link that URL.
+When the t3-code MCP server exposes preview_environment_up and the project defines a preview command in t3.json, use preview_environment_up instead of starting servers by hand (it links the URL for you), and stop it with preview_environment_down when you are done.
 </preview_linking>`;
 
 const STATUS_UPDATE_INSTRUCTIONS = `<thread_status>

@@ -80,6 +80,10 @@ import {
 } from "./brainstorm.ts";
 import { GrowCard, GrowState, GrowUpdateInput } from "./grow.ts";
 import {
+  ThreadPreviewEnvironmentError,
+  ThreadPreviewEnvironmentInput,
+} from "./threadPreviewEnvironment.ts";
+import {
   UserNotificationError,
   UserNotificationMarkReadInput,
   UserNotificationMarkReadResult,
@@ -392,6 +396,7 @@ export const WS_METHODS = {
   subscribeBrainstorm: "subscribeBrainstorm",
   growState: "grow.state",
   growUpdate: "grow.update",
+  threadPreviewEnvironment: "thread.previewEnvironment",
   subscribeGrow: "subscribeGrow",
   subscribeNotifications: "subscribeNotifications",
   notificationsNotify: "notifications.notify",
@@ -1281,6 +1286,11 @@ const WsGrowUpdateRpc = Rpc.make(WS_METHODS.growUpdate, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsThreadPreviewEnvironmentRpc = Rpc.make(WS_METHODS.threadPreviewEnvironment, {
+  payload: ThreadPreviewEnvironmentInput,
+  error: Schema.Union([ThreadPreviewEnvironmentError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribeGrowRpc = Rpc.make(WS_METHODS.subscribeGrow, {
   payload: Schema.Struct({}),
   success: GrowState,
@@ -1997,6 +2007,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeBrainstormRpc,
   WsGrowStateRpc,
   WsGrowUpdateRpc,
+  WsThreadPreviewEnvironmentRpc,
   WsSubscribeGrowRpc,
   WsSubscribeNotificationsRpc,
   WsNotificationsNotifyRpc,

@@ -50,6 +50,10 @@ import {
 } from "./threadPullRequest.ts";
 import { ThreadPreviewLink, ThreadPreviewLinkSource } from "./threadPreviewLink.ts";
 import { PresentationPage, ThreadPresentation } from "./threadPresentation.ts";
+import {
+  ThreadPreviewEnvironment,
+  ThreadPreviewEnvironmentStatus,
+} from "./threadPreviewEnvironment.ts";
 import { GrowRequestOutcome, ThreadGrowRequest } from "./threadGrowRequest.ts";
 import { ThreadStatusReport } from "./threadStatusReport.ts";
 import { ThreadSupersededBy } from "./threadSupersede.ts";
@@ -394,6 +398,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   statusReport: Schema.optional(ThreadStatusReport),
   /** The presentation its agent last set (`presentation_set`); absent until one does. */
   presentation: Schema.optional(ThreadPresentation),
+  /** The thread's project-declared preview environment; absent until one is started. */
+  previewEnvironment: Schema.optional(ThreadPreviewEnvironment),
   /** What the user asked it for from Grow, newest last; absent until they do. */
   growRequests: Schema.optional(Schema.Array(ThreadGrowRequest)),
   /** The thread that took this one further (Let go, superseded by); absent until set. */
@@ -1813,6 +1819,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   presentationUpdatedAt: Schema.optional(IsoDateTime),
   /** How many pages that presentation has; absent when there is none. */
   presentationPages: Schema.optional(Schema.Number),
+  /** Where the thread's preview environment stands; absent until one is started. */
+  previewEnvironment: Schema.optional(ThreadPreviewEnvironment),
   /** When the thread's Grow requests last changed; the requests stay server-side. */
   growRequestsUpdatedAt: Schema.optional(IsoDateTime),
   /** When an agent last answered a Grow request with "blocked"; absent when none was. */
@@ -2745,6 +2753,13 @@ export const OrchestrationV2Command = Schema.Union([
     run: Schema.optional(Schema.String),
     /** The stored pages of the version this one moves past, when it starts a new version. */
     snapshot: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.preview-environment.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    status: ThreadPreviewEnvironmentStatus,
+    note: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.grow-request.close"),

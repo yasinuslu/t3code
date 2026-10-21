@@ -405,6 +405,12 @@ export function summarizeT3ToolCalls(
     case "presentation-get":
       label = phrase("Read", "read", "the presentation");
       break;
+    case "preview-environment-up":
+      label = phrase("Started", "start", "the preview environment");
+      break;
+    case "preview-environment-down":
+      label = phrase("Stopped", "stop", "the preview environment");
+      break;
     case "grow-request-close":
       label = phrase("Answered", "answer", quantity(selected.length, "Grow request"));
       break;

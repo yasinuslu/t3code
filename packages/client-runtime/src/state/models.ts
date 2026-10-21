@@ -152,6 +152,8 @@ export interface EnvironmentThreadShell {
   readonly growRequestsUpdatedAt?: string;
   /** When an agent last answered a Grow request with "blocked". */
   readonly growBlockedAt?: string;
+  /** Where the thread's preview environment stands; absent until one is started. */
+  readonly previewEnvironment?: import("@t3tools/contracts").ThreadPreviewEnvironment;
   /** The thread that took this one further, with its one-line note. */
   readonly supersededBy?: import("@t3tools/contracts").ThreadSupersededBy;
   /**
@@ -274,6 +276,9 @@ export function presentThreadShell(
       ? {}
       : { growRequestsUpdatedAt: thread.growRequestsUpdatedAt }),
     ...(thread.growBlockedAt === undefined ? {} : { growBlockedAt: thread.growBlockedAt }),
+    ...(thread.previewEnvironment === undefined
+      ? {}
+      : { previewEnvironment: thread.previewEnvironment }),
     ...(thread.supersededBy == null ? {} : { supersededBy: thread.supersededBy }),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,
