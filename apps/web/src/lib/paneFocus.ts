@@ -22,6 +22,7 @@ const CURRENT = '[aria-current]:not([aria-current="false"]), [role="tab"][aria-s
 // Pages in these swallow every key, so a pane is never entered through one.
 const FOREIGN = "iframe, webview";
 const ROW = "[data-pane-row]";
+const CURRENT_ATTR = '[aria-current]:not([aria-current="false"])';
 
 /** Rendered and reachable by the keyboard, wherever it is scrolled to. */
 function isRendered(element: Element): element is HTMLElement {
@@ -125,6 +126,8 @@ function landingPoint(pane: HTMLElement): HTMLElement {
     candidate && isRendered(candidate) && !candidate.matches(FOREIGN) ? candidate : null;
   return (
     inside(pane.querySelector<HTMLElement>("[data-pane-focus]")) ??
+    inside(pane.querySelector<HTMLElement>(`${ROW}${CURRENT_ATTR}`)) ??
+    [...pane.querySelectorAll<HTMLElement>(ROW)].find(isRendered) ??
     inside(pane.querySelector<HTMLElement>(CURRENT)) ??
     [...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].find(
       (candidate) => isRendered(candidate) && !candidate.closest(FOREIGN),
