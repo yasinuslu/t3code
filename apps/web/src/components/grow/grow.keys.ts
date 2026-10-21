@@ -143,7 +143,7 @@ export const GROW_KEY_HELP: ReadonlyArray<{
   readonly entries: ReadonlyArray<GrowKeyHelp>;
 }> = [
   {
-    group: "Move (hold Alt to use them while typing or playing)",
+    group: "Move (every key here also works with Alt, even while typing or playing)",
     entries: [
       { keys: ["W", "S"], label: "Previous / next thread", action: "step" },
       { keys: ["A", "D"], label: "Previous / next page", action: "page" },

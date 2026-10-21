@@ -469,7 +469,8 @@ export function growStep(deck: GrowDeck, current: string | null, direction: 1 | 
   if (keys.length === 0) return null;
   const at = current === null ? -1 : keys.indexOf(current);
   if (at < 0) return keys[0] ?? null;
-  return keys[Math.min(keys.length - 1, Math.max(0, at + direction))] ?? null;
+  // Past either end it wraps around, so holding S walks the whole list and comes back.
+  return keys[(at + direction + keys.length) % keys.length] ?? null;
 }
 
 /** What Ship sends the thread: the user's go-ahead to land it the way its repo lands work. */

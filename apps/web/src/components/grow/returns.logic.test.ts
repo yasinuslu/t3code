@@ -211,10 +211,10 @@ describe("growCurrent", () => {
     expect(growNextAfter(deck, "env:three")).toBe("env:two");
   });
 
-  it("steps through the deck and stops at the ends", () => {
+  it("steps through the deck and wraps around at the ends", () => {
     expect(growStep(deck, "env:one", 1)).toBe("env:two");
-    expect(growStep(deck, "env:one", -1)).toBe("env:one");
-    expect(growStep(deck, "env:three", 1)).toBe("env:three");
+    expect(growStep(deck, "env:one", -1)).toBe("env:three");
+    expect(growStep(deck, "env:three", 1)).toBe("env:one");
   });
 });
 
