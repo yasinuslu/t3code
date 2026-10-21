@@ -62,6 +62,18 @@ export function closeGrowRequests(
   return changed ? { growRequests: next } : {};
 }
 
+/** When an agent last answered a request with "blocked", so Grow can hand the thread back. */
+export function growBlockedAt(
+  requests: ReadonlyArray<ThreadGrowRequest> | undefined,
+): string | undefined {
+  let latest: string | undefined;
+  for (const request of requests ?? []) {
+    const at = request.outcome === "blocked" ? request.closedAt : undefined;
+    if (at !== undefined && (latest === undefined || at > latest)) latest = at;
+  }
+  return latest;
+}
+
 /** When the requests last changed, for clients to know their copy is stale. */
 export function growRequestsUpdatedAt(
   requests: ReadonlyArray<ThreadGrowRequest> | undefined,

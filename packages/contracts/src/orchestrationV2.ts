@@ -1815,6 +1815,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   presentationPages: Schema.optional(Schema.Number),
   /** When the thread's Grow requests last changed; the requests stay server-side. */
   growRequestsUpdatedAt: Schema.optional(IsoDateTime),
+  /** When an agent last answered a Grow request with "blocked"; absent when none was. */
+  growBlockedAt: Schema.optional(IsoDateTime),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),

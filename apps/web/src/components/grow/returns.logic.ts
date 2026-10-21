@@ -41,7 +41,8 @@ export interface GrowReturn {
   readonly kind: ReturnKind;
   readonly thread: EnvironmentThreadShell;
   readonly card: GrowCard | undefined;
-  readonly reason: WorkReason | null;
+  /** Why it needs the user; "blocked" when an agent could not do what Grow asked. */
+  readonly reason: WorkReason | "blocked" | null;
   readonly lastActivityAt: string;
   /** When the user last wrote to it (their own words, not another agent's); else its last activity. */
   readonly touchedAt: string;
@@ -229,6 +230,15 @@ export function buildGrowDeck(
     }
     if (placement?.group === "needsMe") {
       urgent.push(entry("urgent"));
+      continue;
+    }
+    // An agent answered a Grow request with "blocked" after the user's last word.
+    if (
+      !merged &&
+      thread.growBlockedAt !== undefined &&
+      epochMs(thread.growBlockedAt) >= epochMs(thread.latestUserMessageAt)
+    ) {
+      urgent.push({ ...entry("urgent"), reason: "blocked" });
       continue;
     }
     if (merged || decision === "adopt") {

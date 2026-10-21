@@ -105,6 +105,25 @@ describe("buildGrowDeck", () => {
     expect(deck.shipped[0]?.merged).toBe(false);
   });
 
+  it("hands a shipped thread back when its agent was blocked, until the user writes again", () => {
+    const shipped = { previewLinks: preview(), latestUserMessageAt: hoursAgo(3) };
+    const deck = buildGrowDeck(
+      [
+        shell("blocked", { ...shipped, growBlockedAt: hoursAgo(2) }),
+        shell("answered", {
+          ...shipped,
+          growBlockedAt: hoursAgo(2),
+          latestUserMessageAt: hoursAgo(1),
+        }),
+      ],
+      new Map([card("blocked", "adopt", hoursAgo(3)), card("answered", "adopt", hoursAgo(3))]),
+      NOW,
+    );
+    expect(keys(deck.urgent)).toEqual(["blocked"]);
+    expect(deck.urgent[0]?.reason).toBe("blocked");
+    expect(keys(deck.returns)).toEqual(["answered"]);
+  });
+
   it("folds earlier returns and drops the ones past two weeks", () => {
     const deck = buildGrowDeck(
       [

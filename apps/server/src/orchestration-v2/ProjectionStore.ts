@@ -73,7 +73,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type * as Statement from "effect/unstable/sql/Statement";
-import { growRequestsUpdatedAt } from "./growRequests.ts";
+import { growBlockedAt, growRequestsUpdatedAt } from "./growRequests.ts";
 
 import {
   isThreadHistoryUserTurn,
@@ -515,10 +515,14 @@ function presentationShellFields(presentation: ThreadPresentation) {
   };
 }
 
-/** Shell fields for Grow requests: they stay server-side, when they changed travels. */
+/** Shell fields for Grow requests: they stay server-side, when they changed or got blocked travels. */
 function growRequestShellFields(requests: ReadonlyArray<ThreadGrowRequest> | undefined) {
   const updatedAt = growRequestsUpdatedAt(requests);
-  return updatedAt === undefined ? {} : { growRequestsUpdatedAt: updatedAt };
+  const blockedAt = growBlockedAt(requests);
+  return {
+    ...(updatedAt === undefined ? {} : { growRequestsUpdatedAt: updatedAt }),
+    ...(blockedAt === undefined ? {} : { growBlockedAt: blockedAt }),
+  };
 }
 
 function needsRecovery(

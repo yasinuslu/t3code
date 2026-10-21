@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   closeGrowRequests,
+  growBlockedAt,
   growRequestFromMessage,
   growRequestsUpdatedAt,
   openGrowRequest,
@@ -65,6 +66,8 @@ describe("closeGrowRequests", () => {
       closeGrowRequests(patch.growRequests, at, () => ({ outcome: "done" })).growRequests?.[1],
     ).toMatchObject({ outcome: "blocked" });
     expect(growRequestsUpdatedAt(patch.growRequests)).toBe(at);
+    expect(growBlockedAt(patch.growRequests)).toBe(at);
+    expect(growBlockedAt(open)).toBeUndefined();
   });
 
   it("keeps the newest requests past the cap", () => {

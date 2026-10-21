@@ -150,6 +150,8 @@ export interface EnvironmentThreadShell {
   readonly presentationPages?: number;
   /** When the thread's Grow requests last changed; absent until the first. */
   readonly growRequestsUpdatedAt?: string;
+  /** When an agent last answered a Grow request with "blocked". */
+  readonly growBlockedAt?: string;
   /** The thread that took this one further, with its one-line note. */
   readonly supersededBy?: import("@t3tools/contracts").ThreadSupersededBy;
   /**
@@ -271,6 +273,7 @@ export function presentThreadShell(
     ...(thread.growRequestsUpdatedAt === undefined
       ? {}
       : { growRequestsUpdatedAt: thread.growRequestsUpdatedAt }),
+    ...(thread.growBlockedAt === undefined ? {} : { growBlockedAt: thread.growBlockedAt }),
     ...(thread.supersededBy == null ? {} : { supersededBy: thread.supersededBy }),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,

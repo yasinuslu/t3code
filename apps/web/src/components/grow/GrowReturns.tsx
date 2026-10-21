@@ -1164,7 +1164,7 @@ function RowMark(props: { readonly item: GrowReturn }) {
     return <CircleDotIcon aria-label="Working" className="size-3.5 shrink-0 text-info" />;
   }
   if (item.kind === "urgent") {
-    const look = item.reason ? WORK_REASON_LOOK[item.reason] : null;
+    const look = item.reason ? REASON_LOOK[item.reason] : null;
     return <span aria-hidden className={cn("size-2 shrink-0 rounded-full", look?.dot)} />;
   }
   if (item.playUrl !== null) {
@@ -1539,6 +1539,12 @@ function Hero(props: {
   );
 }
 
+/** Why an urgent item needs the user: the thread's own reasons, plus a Grow request an agent could not do. */
+const REASON_LOOK = {
+  ...WORK_REASON_LOOK,
+  blocked: { label: "Blocked, needs you", dot: "bg-warning" },
+} as const;
+
 const STATUS_LOOK = {
   urgent: { label: "Needs you", dot: "bg-warning" },
   answer: { label: "Waiting for your answer", dot: "bg-warning" },
@@ -1582,7 +1588,7 @@ function Story(props: {
   const question = digest.questions[0] ?? null;
   const status =
     item.kind === "urgent" && item.reason
-      ? { label: WORK_REASON_LOOK[item.reason].label, dot: WORK_REASON_LOOK[item.reason].dot }
+      ? REASON_LOOK[item.reason]
       : STATUS_LOOK[statusOf(item, question !== null)];
   const subtitle = cleanLabel(item.thread.title);
 
