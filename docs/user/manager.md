@@ -6,8 +6,8 @@ is pinned at the top of the sidebar, above every other thread, so you can reach 
 
 ## Showing the manager
 
-Click the **Manager** row at the top of the sidebar, or press `ctrl+alt+space` (Ctrl+Option+Space
-on a Mac, three neighbouring keys for the left hand) from any screen, Grow, a thread or settings.
+Click the **Manager** row at the top of the sidebar, or press `ctrl+e` (the Control key on a Mac too) or `ctrl+alt+space` (Ctrl+Option+Space
+on a Mac) from any screen, Grow, a thread or settings.
 The manager opens like any thread, next to the sidebar, with its composer focused. Press the
 shortcut again to go back to where you were. Clicking another thread, or a thread link in its
 answer, takes you there.
@@ -39,8 +39,8 @@ decision waits five seconds with **Undo**. Anything an agent is still working on
 if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
 what you let go stay findable below, and a let-go item can be brought back. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
 previous and next item (the arrows and `j`/`k` do too). `s` ship, `d` done, `w` what if (or
-reply), `x` let go, `a` asks again for proof, `z` undo. `c` opens the conversation right in
-Grow, `v` shows the live preview, `f` finds (`/` too), `g` opens every project in the list, and
+reply), `x` let go, `a` asks again for proof, `z` undo. `c` opens the conversation on a narrow window (wide ones show it beside the proof), `b`/`Shift+b` or the left and right arrows
+step through the screenshots, `PgDn`/`PgUp` scroll the story, `v` shows the live preview, `f` finds (`/` too), `g` opens every project in the list, and
 `t` talks to the manager. `r` switches to the next profile, `Shift+r` to the previous one.
 `Esc` goes back from the conversation or the manager, even from its message box.
 

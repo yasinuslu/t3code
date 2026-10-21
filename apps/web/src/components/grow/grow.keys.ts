@@ -13,6 +13,8 @@ export type GrowKeyAction =
   | { readonly type: "closeThread" }
   | { readonly type: "toggleProjects" }
   | { readonly type: "play" }
+  | { readonly type: "image"; readonly direction: 1 | -1 }
+  | { readonly type: "scrollStory"; readonly direction: 1 | -1 }
   | { readonly type: "manager" }
   | { readonly type: "profile"; readonly direction: 1 | -1 };
 
@@ -25,6 +27,8 @@ export interface GrowKeyState {
   readonly managerOpen?: boolean;
   /** The deck shows the conversation beside the proof (1024 px and up), so no key opens it. */
   readonly conversationShown?: boolean;
+  /** Focus is inside a chat, where the arrows and Page keys scroll that conversation. */
+  readonly inChat?: boolean;
   readonly item: GrowReturn | null;
 }
 
@@ -37,6 +41,7 @@ export interface GrowKeyState {
  *   Q / E  previous / next item      S ship      D done     W what if (or reply)
  *   X settle (off the list)          Z undo      A ask for proof
  *   C the conversation (narrow)      V the live preview
+ *   B / Shift+B next / previous screenshot (the arrows too)   PgDn / PgUp scroll the story
  *   F find                           G expand every project
  *   T talk to the manager            R next profile (Shift+R: previous)
  *
@@ -68,6 +73,13 @@ export function growKeyAction(
   }
   const { item } = state;
   if (item === null) return null;
+  if (!state.inChat) {
+    if (key === "b" || key === "arrowright")
+      return { type: "image", direction: event.key === "B" ? -1 : 1 };
+    if (key === "arrowleft") return { type: "image", direction: -1 };
+    if (key === "pagedown") return { type: "scrollStory", direction: 1 };
+    if (key === "pageup") return { type: "scrollStory", direction: -1 };
+  }
   const open = item.kind === "return" || item.kind === "urgent";
   if (key === "s" && item.kind === "return" && item.shippable) return { type: "ship" };
   if (key === "d" && item.kind === "return") return { type: "done" };
@@ -132,6 +144,8 @@ export const GROW_KEY_HELP: ReadonlyArray<{
         narrowOnly: true,
       },
       { keys: ["V"], label: "Live preview", action: "play" },
+      { keys: ["B", "Shift+B"], label: "Next / previous screenshot", action: "image" },
+      { keys: ["PgDn", "PgUp"], label: "Scroll the story", action: "scrollStory" },
       { keys: ["T"], label: "Manager", action: "manager" },
     ],
   },

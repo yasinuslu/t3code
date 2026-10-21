@@ -23,23 +23,30 @@ const CURRENT = '[aria-current]:not([aria-current="false"]), [role="tab"][aria-s
 const FOREIGN = "iframe, webview";
 const ROW = "[data-pane-row]";
 
-function isShown(element: Element): element is HTMLElement {
+/** Rendered and reachable by the keyboard, wherever it is scrolled to. */
+function isRendered(element: Element): element is HTMLElement {
   if (!(element instanceof HTMLElement) || element.closest("[inert]")) return false;
   const box = element.getBoundingClientRect();
-  return (
-    box.width > 0 &&
-    box.height > 0 &&
-    box.right > 0 &&
-    box.left < window.innerWidth &&
-    box.bottom > 0 &&
-    box.top < window.innerHeight &&
-    element.checkVisibility() !== false
-  );
+  return box.width > 0 && box.height > 0 && element.checkVisibility() !== false;
+}
+
+/**
+ * A pane on screen and on top. A page that Grow or a sheet covers is still mounted and
+ * rendered, so what is on top at the pane's centre says whether the keyboard can reach it.
+ */
+function isOnScreen(pane: HTMLElement): boolean {
+  if (!isRendered(pane)) return false;
+  const box = pane.getBoundingClientRect();
+  if (box.right <= 0 || box.left >= window.innerWidth) return false;
+  const x = Math.min(Math.max(box.left + box.width / 2, 0), window.innerWidth - 1);
+  const y = Math.min(Math.max(box.top + box.height / 2, 0), window.innerHeight - 1);
+  const top = document.elementFromPoint(x, y);
+  return top !== null && pane.contains(top);
 }
 
 /** The visible panes that hold no other pane, in screen order. */
 export function visiblePanes(): HTMLElement[] {
-  const shown = [...document.querySelectorAll(PANE)].filter(isShown);
+  const shown = [...document.querySelectorAll<HTMLElement>(PANE)].filter(isOnScreen);
   const leaves = shown.filter(
     (pane) => !shown.some((other) => other !== pane && pane.contains(other)),
   );
@@ -111,16 +118,16 @@ export function installPaneFocus(): () => void {
 
 function landingPoint(pane: HTMLElement): HTMLElement {
   const remembered = lastFocus.get(pane);
-  if (remembered?.isConnected && pane.contains(remembered) && isShown(remembered)) {
+  if (remembered?.isConnected && pane.contains(remembered) && isRendered(remembered)) {
     return remembered;
   }
   const inside = (candidate: HTMLElement | null) =>
-    candidate && isShown(candidate) && !candidate.matches(FOREIGN) ? candidate : null;
+    candidate && isRendered(candidate) && !candidate.matches(FOREIGN) ? candidate : null;
   return (
     inside(pane.querySelector<HTMLElement>("[data-pane-focus]")) ??
     inside(pane.querySelector<HTMLElement>(CURRENT)) ??
     [...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].find(
-      (candidate) => isShown(candidate) && !candidate.closest(FOREIGN),
+      (candidate) => isRendered(candidate) && !candidate.closest(FOREIGN),
     ) ??
     pane
   );
@@ -164,7 +171,7 @@ export function focusPaneNamed(name: string): boolean {
 export function stepPaneRow(from: HTMLElement, direction: -1 | 1): boolean {
   const pane = from.closest<HTMLElement>(PANE);
   if (!pane || !from.matches(ROW)) return false;
-  const rows = [...pane.querySelectorAll<HTMLElement>(ROW)].filter(isShown);
+  const rows = [...pane.querySelectorAll<HTMLElement>(ROW)].filter(isRendered);
   const next = rows[rows.indexOf(from) + direction];
   if (!next) return true;
   next.focus();

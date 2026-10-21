@@ -67,10 +67,10 @@ describe("growKeyAction", () => {
 
   it("keeps every letter under the left hand", () => {
     const leftHand = new Set("qwertasdfgzxcvb");
-    const bound = "sdwxacvefqzgtr"
+    const bound = "sdwxacvefqzgtrb"
       .split("")
       .filter((value) => growKeyAction(key(value), deck()) !== null);
-    expect(bound).toHaveLength(14);
+    expect(bound).toHaveLength(15);
     for (const value of bound) expect(leftHand.has(value)).toBe(true);
   });
 
@@ -154,6 +154,21 @@ describe("growKeyAction", () => {
     });
   });
 
+  it("steps the screenshots with b, Shift+b and the arrows, and scrolls the story with the Page keys", () => {
+    expect(growKeyAction(key("b"), deck())).toEqual({ type: "image", direction: 1 });
+    expect(growKeyAction(key("B"), deck())).toEqual({ type: "image", direction: -1 });
+    expect(growKeyAction(key("ArrowRight"), deck())).toEqual({ type: "image", direction: 1 });
+    expect(growKeyAction(key("ArrowLeft"), deck())).toEqual({ type: "image", direction: -1 });
+    expect(growKeyAction(key("PageDown"), deck())).toEqual({ type: "scrollStory", direction: 1 });
+    expect(growKeyAction(key("PageUp"), deck())).toEqual({ type: "scrollStory", direction: -1 });
+  });
+
+  it("leaves the arrows and Page keys to a chat that has focus", () => {
+    for (const value of ["b", "ArrowRight", "ArrowLeft", "PageDown", "PageUp"]) {
+      expect(growKeyAction(key(value), { ...deck(), inChat: true })).toBeNull();
+    }
+  });
+
   it("keeps the deck's keys off while a conversation shows, and c goes back", () => {
     const conversation: GrowKeyState = { conversationOpen: true, item: returnItem() };
     expect(growKeyAction(key("c"), conversation)).toEqual({ type: "closeThread" });
@@ -172,13 +187,19 @@ describe("growKeyAction", () => {
     for (const { entries } of GROW_KEY_HELP) {
       for (const { keys, action, label } of entries) {
         for (const shown of keys) {
-          const value = shown.startsWith("Shift+") ? shown.slice(6) : shown.toLowerCase();
+          const value =
+            { PgDn: "PageDown", PgUp: "PageUp" }[shown] ??
+            (shown.startsWith("Shift+") ? shown.slice(6) : shown.toLowerCase());
           expect(growKeyAction(key(value), deck())?.type, `${label}: ${shown}`).toBe(action);
         }
       }
     }
     const listed = GROW_KEY_HELP.flatMap(({ entries }) => entries.flatMap(({ keys }) => keys));
-    const letters = new Set(listed.map((shown) => shown.slice(-1).toLowerCase()));
-    expect([...letters].toSorted()).toEqual([..."sdwxacvefqzgtr"].toSorted());
+    const letters = new Set(
+      listed
+        .filter((shown) => shown.replace("Shift+", "").length === 1)
+        .map((shown) => shown.slice(-1).toLowerCase()),
+    );
+    expect([...letters].toSorted()).toEqual([..."sdwxacvefqzgtrb"].toSorted());
   });
 });

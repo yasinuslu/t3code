@@ -132,6 +132,19 @@ const useReturnsStore = create<{
 /** What had focus when the manager came up, so Esc can give it back. */
 let managerFocusReturn: HTMLElement | null = null;
 
+/** Sent by the B / arrow keys; the proof on screen shows the next or previous screenshot. */
+const PROOF_IMAGE_EVENT = "grow:proof-image";
+
+/** Scrolls the item's story (the description under or beside the proof) by most of a page. */
+function scrollStory(direction: 1 | -1) {
+  const story = document.querySelector<HTMLElement>("[data-grow-story]");
+  const scroller = [story, ...(story?.children ?? [])].find(
+    (element): element is HTMLElement =>
+      element instanceof HTMLElement && element.scrollHeight > element.clientHeight,
+  );
+  scroller?.scrollBy({ top: direction * scroller.clientHeight * 0.85, behavior: "smooth" });
+}
+
 const select = (key: string | null) => {
   managerFocusReturn = null;
   useReturnsStore.setState({
@@ -357,6 +370,8 @@ export function GrowReturns(props: {
         conversationShown: wide && split,
         managerOpen: manager,
         conversationShown: split,
+        inChat:
+          event.target instanceof Element && event.target.closest('[data-pane="chat"]') !== null,
         item: current,
       });
       if (action === null) return;
@@ -403,6 +418,12 @@ export function GrowReturns(props: {
           break;
         case "openThread":
           if (item !== null) actions.openThread(item);
+          break;
+        case "image":
+          window.dispatchEvent(new CustomEvent(PROOF_IMAGE_EVENT, { detail: action.direction }));
+          break;
+        case "scrollStory":
+          scrollStory(action.direction);
           break;
         case "play":
           if (item === null || item.playUrl === null) return;
@@ -1557,6 +1578,16 @@ function Visual(props: {
   const [zoom, setZoom] = useState<number | null>(null);
   const index = Math.min(shown, images.length - 1);
   const image = images[index];
+  useEffect(() => {
+    const onStep = (event: Event) => {
+      const direction = event instanceof CustomEvent && event.detail === -1 ? -1 : 1;
+      setShown((current) =>
+        Math.max(0, Math.min(images.length - 1, Math.min(current, images.length - 1) + direction)),
+      );
+    };
+    window.addEventListener(PROOF_IMAGE_EVENT, onStep);
+    return () => window.removeEventListener(PROOF_IMAGE_EVENT, onStep);
+  }, [images.length]);
   const host = item.playUrl?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "");
   const live = props.wide && props.playing && item.playUrl !== null;
   const zoomDialog =
