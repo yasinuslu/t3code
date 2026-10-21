@@ -11,9 +11,13 @@
 # forge-ci). The build runs on nika's own nix daemon, so nika gets the path straight away.
 name: Nix desktop build (linux)
 
+# dev is the integration branch: feature PRs target it and self-merge once this build is green,
+# and a dev push rebuilds the dev instance (nep t3 dev, nepjua flake). Only yu-v2 pushes ship.
 on:
   push:
-    branches: [yu-v2]
+    branches: [yu-v2, dev]
+  pull_request:
+    branches: [dev]
   workflow_dispatch:
 
 concurrency:
@@ -28,23 +32,26 @@ jobs:
   build:
     runs-on: nix
     timeout-minutes: 120
+    env:
+      # A pull_request run builds the PR head, which the mirror has already pushed to GitHub.
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       # `origin` pushes to the forge and GitHub at once and the mirror follows within seconds,
       # but the flake URL is a GitHub tarball: wait until GitHub has the commit.
       - name: Wait for the commit on GitHub
         run: |
           for _ in $(seq 60); do
-            curl -sf -o /dev/null "https://api.github.com/repos/yasinuslu/t3code/commits/$GITHUB_SHA" && exit 0
+            curl -sf -o /dev/null "https://api.github.com/repos/yasinuslu/t3code/commits/$SHA" && exit 0
             sleep 5
           done
-          echo "commit $GITHUB_SHA not on GitHub after 5 min"
+          echo "commit $SHA not on GitHub after 5 min"
           exit 1
 
       - name: Build
         run: |
           set -euo pipefail
           nix build --print-build-logs --no-link --print-out-paths \
-            "github:yasinuslu/t3code/${GITHUB_SHA}#packages.x86_64-linux.default" \
+            "github:yasinuslu/t3code/${SHA}#packages.x86_64-linux.default" \
             > "$RUNNER_TEMP/out-paths.txt"
           cat "$RUNNER_TEMP/out-paths.txt"
 
@@ -66,7 +73,7 @@ jobs:
   # is reverting the pin commit there. Write access is a deploy key limited to that one repo.
   ship:
     needs: build
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/yu-v2'
     runs-on: nix
     timeout-minutes: 15
     steps:
