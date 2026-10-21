@@ -13,9 +13,18 @@ import {
   ChevronRightIcon,
   CodeIcon,
   FileTextIcon,
+  HistoryIcon,
   ListChecksIcon,
 } from "lucide-react";
-import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { useAssetUrls } from "../../assets/assetUrls";
 import { cn } from "../../lib/utils";
@@ -168,9 +177,17 @@ export function SlideView(props: {
   readonly onAnswer: (requestId: string, text: string) => void;
   /** An earlier version: its forms show their questions but take no answers. */
   readonly readOnly?: boolean;
+  /** What the story page shows; Grow writes it, not the agent. */
+  readonly story?: ReactNode;
 }) {
   const { slide } = props;
   switch (slide.kind) {
+    case "story":
+      return (
+        <ScrollArea className={cn("min-h-0", props.fit ? "max-h-[42vh]" : "flex-1")}>
+          <div className="mx-auto max-w-3xl px-6 py-5">{props.story}</div>
+        </ScrollArea>
+      );
     case "image":
       return (
         <button
@@ -475,6 +492,8 @@ export function SlideStrip(props: {
                 <FileTextIcon className="size-3.5 shrink-0" />
               ) : slide.kind === "form" ? (
                 <ListChecksIcon className="size-3.5 shrink-0" />
+              ) : slide.kind === "story" ? (
+                <HistoryIcon className="size-3.5 shrink-0" />
               ) : (
                 <CodeIcon className="size-3.5 shrink-0" />
               )}
