@@ -1,4 +1,4 @@
-import { useLocation, useParams } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 
 import {
@@ -51,13 +51,19 @@ function HomeOverlayLayer() {
   // Navigating anywhere (a card, a link in a chat's answer, a shortcut)
   // shows the destination. /home opens Home and goes to the start page, which
   // redirects on by itself; those hops keep Home open.
-  const pathname = useLocation({ select: (location) => location.pathname });
   // While Grow is the main view, a thread's route is Grow's own: it shows that thread
-  // (GrowRouting) instead of giving way to the thread page.
-  const onThreadRoute = useParams({
-    strict: false,
-    select: (params) => resolveThreadRouteRef(params) !== null,
+  // (GrowRouting) instead of giving way to the thread page. Read from one resolved state, so
+  // the path and whether it is a thread route never disagree mid-navigation (a stale "thread
+  // route" on the way to Settings would keep Grow over Settings).
+  const resolved = useRouterState({
+    select: (state) => {
+      const path = state.resolvedLocation?.pathname ?? state.location.pathname;
+      const thread = resolveThreadRouteRef(state.matches.at(-1)?.params ?? {}) !== null;
+      return `${thread ? "t" : "-"}${path}`;
+    },
   });
+  const pathname = resolved.slice(1);
+  const onThreadRoute = resolved.startsWith("t");
   const previousPathname = useRef(pathname);
   useEffect(() => {
     const before = previousPathname.current;
