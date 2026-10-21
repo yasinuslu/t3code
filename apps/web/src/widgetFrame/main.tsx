@@ -69,9 +69,15 @@ function loadWidget(code: string): React.ComponentType<Record<string, unknown>> 
   return result;
 }
 
-/** A neutral stand-in for `example:<word>` images in the gallery. */
+/**
+ * A neutral stand-in for `example:<word>` images in the gallery. The word sits at a quarter and
+ * three quarters across, so either half of a before/after wipe still reads.
+ */
 function exampleImage(word: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="100%" height="100%" fill="#8882"/><text x="50%" y="50%" fill="#888" font-family="system-ui" font-size="48" text-anchor="middle" dominant-baseline="middle">${word.replace(/[^\w -]/g, "")}</text></svg>`;
+  const safe = word.replace(/[^\w -]/g, "");
+  const label = (x: string) =>
+    `<text x="${x}" y="50%" fill="#aaa" font-family="system-ui" font-size="44" text-anchor="middle" dominant-baseline="middle">${safe}</text>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640"><rect width="100%" height="100%" fill="#3b3b3b"/>${label("25%")}${label("75%")}</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 

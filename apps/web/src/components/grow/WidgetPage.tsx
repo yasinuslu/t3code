@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalSt
 import { growEnvironment } from "../../state/grow";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAssetUrls } from "../../assets/assetUrls";
+import { Skeleton } from "../ui/skeleton";
 import {
   attachmentRefs,
   type WidgetBlockInput,
@@ -89,8 +90,12 @@ export function WidgetPage(props: {
   const urls = useAssetUrls(props.environmentId, resources);
   const theme = useRootTheme();
   const frame = useRef<HTMLIFrameElement>(null);
-  const [ready, setReady] = useState(false);
+  // Bumped by every frame document that can take the page: its `load` event (module scripts have
+  // run by then, and it cannot race the listener below) or its own ready message.
+  const [ready, setReady] = useState(0);
   const [height, setHeight] = useState(240);
+  // Hidden until the widgets first draw, so loading shows a skeleton, not a blank frame.
+  const [drawn, setDrawn] = useState(false);
 
   const render = useMemo((): WidgetFrameRender | null => {
     if (pool === null) return null;
@@ -120,10 +125,13 @@ export function WidgetPage(props: {
       const data = event.data as WidgetFrameMessage | null;
       switch (data?.type) {
         case "t3-widgets-ready":
-          setReady(true);
+          setReady((count) => count + 1);
           break;
         case "t3-widgets-height":
-          if (typeof data.height === "number" && data.height > 0) setHeight(data.height);
+          if (typeof data.height === "number" && data.height > 0) {
+            setHeight(data.height);
+            setDrawn(true);
+          }
           break;
         case "t3-artifact-answer":
           if (typeof data.text === "string") onAnswer(data.text.slice(0, 4000));
@@ -140,18 +148,30 @@ export function WidgetPage(props: {
   }, []);
 
   useEffect(() => {
-    if (ready && render !== null) frame.current?.contentWindow?.postMessage(render, "*");
+    if (ready > 0 && render !== null) frame.current?.contentWindow?.postMessage(render, "*");
   }, [ready, render]);
 
   return (
-    <iframe
-      ref={frame}
-      title="Living page"
-      src="/widget-frame.html"
-      // Scripts only: no same-origin, so a widget cannot reach the app, its storage or socket.
-      sandbox="allow-scripts"
-      className="block w-full border-0 bg-transparent"
-      style={{ height }}
-    />
+    <div className="relative">
+      <iframe
+        ref={frame}
+        title="Living page"
+        src="/widget-frame.html"
+        // Scripts only: no same-origin, so a widget cannot reach the app, its storage or socket.
+        sandbox="allow-scripts"
+        onLoad={() => setReady((count) => count + 1)}
+        className="block w-full border-0 bg-transparent"
+        // Until it draws, the frame is unthemed and its light color scheme paints a white box.
+        // Transparent rather than hidden: Chrome stops rendering hidden cross-origin frames, and
+        // then the frame never measures itself to say it drew.
+        style={{ height, opacity: drawn ? 1 : 0 }}
+      />
+      {drawn ? null : (
+        <div className="absolute inset-0 flex flex-col gap-3 p-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      )}
+    </div>
   );
 }
