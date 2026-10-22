@@ -92,24 +92,85 @@ export function readElementsLibrary(knownHash?: string): ElementsLibraryState {
     : loaded.state;
 }
 
-/** One compact line per prop: name, type, whether required, and its description. */
-function propLines(schema: Record<string, unknown>): string[] {
-  const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
-  const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : []);
-  return Object.entries(properties).map(([name, prop]) => {
-    const type = typeof prop.type === "string" ? prop.type : "any";
-    const choices = Array.isArray(prop.enum) ? ` (${(prop.enum as unknown[]).join("|")})` : "";
-    const description = typeof prop.description === "string" ? `: ${prop.description}` : "";
-    return `  - ${name}${required.has(name) ? "" : "?"} ${type}${choices}${description}`;
-  });
+/** First sentence of a description, trimmed to about `max` characters. */
+function firstSentence(text: string, max = 100): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const stop = flat.search(/[.!?](\s|$)/);
+  const sentence = stop === -1 ? flat : flat.slice(0, stop);
+  return sentence.length <= max ? sentence : `${sentence.slice(0, max - 1).trimEnd()}…`;
 }
 
-function usage(component: ElementManifest): string {
-  const body = component.body ?? "json";
-  if (body.startsWith("text:")) {
-    return `<${component.tag} attr="...">${body.slice(5)} text</${component.tag}>`;
-  }
-  return `<${component.tag}>\n{"...": "..."}\n</${component.tag}>`;
+/** Prop names in schema order, `*` on the required ones. */
+function propNames(schema: Record<string, unknown>): string {
+  const properties = (schema.properties ?? {}) as Record<string, unknown>;
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : []);
+  return Object.keys(properties)
+    .map((name) => (required.has(name) ? `${name}*` : name))
+    .join(", ");
+}
+
+/** One catalog line: tag, interactivity, a short summary and the prop names. */
+export function compactLine(component: ElementManifest): string {
+  const props = propNames(component.props);
+  const text = component.body?.startsWith("text:")
+    ? ` [text body = ${component.body.slice(5)}]`
+    : "";
+  return `<${component.tag}>${component.interactive ? " (interactive)" : ""} - ${firstSentence(component.description)}${text}${props === "" ? "" : `; props: ${props}`}`;
+}
+
+export type ElementDescription = {
+  readonly tag: string;
+  readonly description?: string;
+  readonly body?: string;
+  readonly props?: Record<string, unknown>;
+  readonly example?: Record<string, unknown>;
+  readonly interactive?: boolean;
+  readonly error?: string;
+};
+
+function closeNames(tag: string, names: ReadonlyArray<string>): string[] {
+  const needle = tag.replace(/^<|>$/g, "").replace(/^t3-/, "").toLowerCase();
+  return names
+    .filter((name) => {
+      const bare = name.slice(3);
+      return needle.length > 0 && (bare.includes(needle) || needle.includes(bare));
+    })
+    .slice(0, 5);
+}
+
+/**
+ * The full manifest entries for the given tags, for the `elements_describe` MCP tool. An unknown
+ * tag becomes an error entry naming close tags. No tags returns the compact catalog.
+ */
+export function describeElements(tags: ReadonlyArray<string>): {
+  readonly catalog?: string;
+  readonly components: ReadonlyArray<ElementDescription>;
+} {
+  const { state } = load(elementsLibraryDir());
+  const components = state.components.filter((component) => component.hidden !== true);
+  if (tags.length === 0) return { catalog: components.map(compactLine).join("\n"), components: [] };
+  const byTag = new Map(components.map((component) => [component.tag, component]));
+  return {
+    components: tags.map((raw): ElementDescription => {
+      const tag = raw.trim().replace(/^<|>$/g, "");
+      const found = byTag.get(tag);
+      if (found === undefined) {
+        const close = closeNames(tag, [...byTag.keys()]);
+        return {
+          tag,
+          error: `Unknown component ${tag}.${close.length > 0 ? ` Close names: ${close.join(", ")}.` : " Call with no tags for the catalog."}`,
+        };
+      }
+      return {
+        tag,
+        description: found.description,
+        body: found.body ?? "json",
+        props: found.props,
+        ...(found.example === undefined ? {} : { example: found.example }),
+        interactive: found.interactive === true,
+      };
+    }),
+  };
 }
 
 /**
@@ -121,17 +182,7 @@ export function elementsInstructions(): string {
   const { state } = load(dir);
   const components = state.components.filter((component) => component.hidden !== true);
   if (components.length === 0) return "";
-  const catalog = components
-    .map((component) =>
-      [
-        `### <${component.tag}>${component.interactive ? " (interactive)" : ""}`,
-        component.description,
-        `write: ${usage(component).replaceAll("\n", " ")}`,
-        ...propLines(component.props),
-        ...(component.example ? [`example: ${JSON.stringify(component.example)}`] : []),
-      ].join("\n"),
-    )
-    .join("\n\n");
+  const catalog = components.map(compactLine).join("\n");
   return `<web_components>
 T3 Code renders a library of web components inline in your replies. Use them: they are your richer language with the user, not decoration. Reach for one whenever it says something better than prose: a decision you need from the user, a checklist, metrics, a chart, a diff, a screenshot with boxes on what changed, a quick set of replies the user can tap, a small form. Interactive components send the user's choice back to you as their next message, so you can talk with the user through them instead of asking them to type.
 
@@ -146,6 +197,8 @@ Example:
 If no component fits and one would really help, add it to the library at ${dir} (read its README: one folder per component, element.ts plus manifest.json, then bun run build); it is live at once for new replies.
 
 ## Components
+One line each: tag, summary, prop names (* = required). Props are JSON keys in the body (or attributes for text-body components).
+Before using a component you have not used in this thread, or when unsure about its props, call the \`elements_describe\` tool with its tags (cheap; returns description, body kind, full props schema and an example), then write it. A mistaken prop renders a visible error card, so describe before guessing on complex ones (t3-whatif, t3-explain, t3-datatable, t3-sankey, t3-form, t3-flow).
 ${catalog}
 </web_components>`;
 }

@@ -63,6 +63,7 @@ export type T3McpToolSummaryAction =
   | "presentation-set"
   | "presentation-edit"
   | "presentation-get"
+  | "elements-describe"
   | "preview-environment-up"
   | "preview-environment-down"
   | "grow-update"
@@ -132,6 +133,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   presentation_set: tool(["Set", "Setting", "Set", "the presentation"], "presentation-set"),
   presentation_edit: tool(["Edit", "Editing", "Edited", "the presentation"], "presentation-edit"),
   presentation_get: tool(["Read", "Reading", "Read", "the presentation"], "presentation-get"),
+  elements_describe: tool(
+    ["Describe", "Describing", "Described", "web components"],
+    "elements-describe",
+  ),
   preview_environment_up: tool(
     ["Start", "Starting", "Started", "the preview environment"],
     "preview-environment-up",

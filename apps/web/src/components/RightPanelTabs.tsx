@@ -297,10 +297,10 @@ function SurfaceMenuItem(props: {
       className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
       onClick={props.onClick}
       disabled={!props.available}
-      aria-keyshortcuts={props.shortcut}
+      aria-keyshortcuts={`Alt+${props.shortcut}`}
     >
       {props.children}
-      <MenuShortcut>{props.shortcut}</MenuShortcut>
+      <MenuShortcut>{surfaceShortcutLabel(props.shortcut)}</MenuShortcut>
     </MenuItem>
   );
   if (props.available || !props.disabledReason) return item;
@@ -519,7 +519,7 @@ function RightPanelEmptyState(props: {
                   >
                     {action.label}
                   </span>
-                  <Kbd>{action.shortcut}</Kbd>
+                  <Kbd>{surfaceShortcutLabel(action.shortcut)}</Kbd>
                 </button>
                 {/*
                   Same choice the tab bar's "+" menu offers: the row opens the
@@ -565,7 +565,7 @@ function RightPanelEmptyState(props: {
                   >
                     {actionIcon(action, "size-4")}
                     <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                    <Kbd>{action.shortcut}</Kbd>
+                    <Kbd>{surfaceShortcutLabel(action.shortcut)}</Kbd>
                   </div>
                 }
               />
@@ -1252,7 +1252,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                         <MenuSub key={action.label}>
                           <MenuSubTrigger
                             className="[&>svg:last-child]:ms-0"
-                            aria-keyshortcuts={action.shortcut}
+                            aria-keyshortcuts={`Alt+${action.shortcut}`}
                             onClick={(event) => {
                               const pointerType =
                                 "pointerType" in event.nativeEvent &&
@@ -1271,7 +1271,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                           >
                             <Icon />
                             {action.label}
-                            <MenuShortcut>{action.shortcut}</MenuShortcut>
+                            <MenuShortcut>{surfaceShortcutLabel(action.shortcut)}</MenuShortcut>
                           </MenuSubTrigger>
                           {/*
                             Capped and truncated: profile names are user-supplied

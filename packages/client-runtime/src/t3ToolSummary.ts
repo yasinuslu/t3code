@@ -402,6 +402,9 @@ export function summarizeT3ToolCalls(
         `the presentation${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
+    case "elements-describe":
+      label = phrase("Described", "describe", "web components");
+      break;
     case "presentation-get":
       label = phrase("Read", "read", "the presentation");
       break;
