@@ -1,5 +1,7 @@
 import {
   AuthOrchestrationReadScope,
+  CLIENT_PROFILE_HEADER,
+  ProjectId,
   EnvironmentHttpApi,
   ThreadId,
   TurnItemId,
@@ -19,6 +21,9 @@ import {
 } from "../auth/http.ts";
 import * as OrchestrationEventStore from "../persistence/Services/OrchestrationEventStore.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import * as ProfileVisibility from "../workspace/ProfileVisibility.ts";
+import * as Option from "effect/Option";
 import {
   buildBoundedThreadProjection,
   decodeThreadHistoryCursor,
@@ -72,6 +77,32 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
     const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
     const projectStore = yield* ProjectStore.ProjectStoreV2;
     const projectEnrichment = yield* ProjectEnrichmentService.ProjectEnrichmentService;
+    const projectService = yield* ProjectService.ProjectService;
+    const profileVisibility = yield* ProfileVisibility.make;
+    const shellFilterFor = (headers: { readonly [CLIENT_PROFILE_HEADER]?: string | undefined }) =>
+      ProfileVisibility.makeShellItemFilter(
+        ProfileVisibility.parseProfileLock(headers[CLIENT_PROFILE_HEADER]),
+        (projectId) =>
+          projectService.getShell(ProjectId.make(projectId)).pipe(
+            Effect.map(Option.getOrNull),
+            Effect.orElseSucceed(() => null),
+          ),
+      ).pipe(Effect.provideService(ProfileVisibility.ProfileVisibility, profileVisibility));
+    // A profile-locked client gets a 404 for a thread of another profile.
+    const requireThreadVisible = Effect.fnUntraced(function* (
+      headers: { readonly [CLIENT_PROFILE_HEADER]?: string | undefined },
+      threadId: ThreadId,
+    ) {
+      if (ProfileVisibility.parseProfileLock(headers[CLIENT_PROFILE_HEADER]) === null) return;
+      const shell = yield* threadManagement
+        .getThreadShell(threadId)
+        .pipe(Effect.orElseSucceed(() => null));
+      if (shell === null) return;
+      const filter = yield* shellFilterFor(headers);
+      if (!(yield* filter.isProjectVisible(shell.projectId))) {
+        return yield* failEnvironmentNotFound("thread_not_found");
+      }
+    });
 
     const enrichProjectShells = Effect.fn("http.orchestration.enrichProjectShells")(
       (projects: ReadonlyArray<OrchestrationProjectShell>) =>
@@ -173,7 +204,9 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.shellSnapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          const filter = yield* shellFilterFor(args.headers);
           return yield* loadShellSnapshot().pipe(
+            Effect.flatMap(filter.filterSnapshot),
             Effect.catch((cause) =>
               failEnvironmentInternal("orchestration_snapshot_failed", cause),
             ),
@@ -185,6 +218,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.threadSnapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          yield* requireThreadVisible(args.headers, args.params.threadId);
           const snapshot = yield* loadThreadSnapshot(
             args.params.threadId,
             "orchestration_thread_snapshot_failed",
@@ -200,6 +234,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.threadBoundedSnapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          yield* requireThreadVisible(args.headers, args.params.threadId);
           const snapshot = yield* loadThreadSnapshotWindow(args.params.threadId);
           const bounded = buildBoundedThreadProjection({
             projection: snapshot.projection,
@@ -220,6 +255,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.threadHistoryPage")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          yield* requireThreadVisible(args.headers, args.params.threadId);
           let anchorItemId;
           try {
             anchorItemId = TurnItemId.make(decodeThreadHistoryCursor(args.query.cursor).si);

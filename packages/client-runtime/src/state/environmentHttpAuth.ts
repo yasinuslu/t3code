@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import {
+  CLIENT_PROFILE_HEADER,
   ORCHESTRATION_PROTOCOL_HEADER,
   ORCHESTRATION_PROTOCOL_VERSION_TEXT,
 } from "@t3tools/contracts";
@@ -10,6 +11,7 @@ import { FetchHttpClient, type HttpMethod } from "effect/unstable/http";
 import type { RemoteEnvironmentAuthorization } from "../authorization/service.ts";
 import type { PreparedConnection, PreparedHttpAuthorization } from "../connection/model.ts";
 import type { ManagedRelayDpopSigner } from "../relay/managedRelay.ts";
+import { getClientProfileLock } from "../profileLock.ts";
 import {
   executeEnvironmentHttpRequest,
   makeEnvironmentHttpApiGroupClient,
@@ -27,10 +29,13 @@ export function withOrchestrationProtocolHeader(
   headers: EnvironmentHttpAuthHeaders,
 ): EnvironmentHttpAuthHeaders & {
   readonly [ORCHESTRATION_PROTOCOL_HEADER]: typeof ORCHESTRATION_PROTOCOL_VERSION_TEXT;
+  readonly [CLIENT_PROFILE_HEADER]?: string;
 } {
+  const profileLock = getClientProfileLock();
   return {
     ...headers,
     [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT,
+    ...(profileLock === null ? {} : { [CLIENT_PROFILE_HEADER]: profileLock }),
   };
 }
 

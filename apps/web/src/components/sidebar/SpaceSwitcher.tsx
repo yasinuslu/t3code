@@ -33,6 +33,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { profileLockNow } from "../../profileLock";
 
 const DynamicIcon = lazy(() =>
   import("lucide-react/dynamic").then((module) => ({ default: module.DynamicIcon })),
@@ -282,7 +283,14 @@ export function useSpaceMouseButtons(onSwitch: (spaceId: string) => void) {
  * Zen-style row of space icons at the bottom of the sidebar. Click switches,
  * right-click edits (and deletes a custom space), "+" adds a custom space.
  */
-export const SpaceSwitcher = memo(function SpaceSwitcher({
+/** Hidden in a profile-locked app, which has nothing to switch between. */
+export const SpaceSwitcher = memo(function SpaceSwitcher(props: {
+  readonly onSwitch: (spaceId: string) => void;
+}) {
+  return profileLockNow() === null ? <UnlockedSpaceSwitcher {...props} /> : null;
+});
+
+const UnlockedSpaceSwitcher = memo(function UnlockedSpaceSwitcher({
   onSwitch,
 }: {
   readonly onSwitch: (spaceId: string) => void;

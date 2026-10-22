@@ -36,6 +36,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { projectFaviconCache } from "../assets/projectFaviconCache";
+import { profileLockNow } from "../profileLock";
 
 const DATABASE_NAME = "t3code:connection-runtime";
 const DATABASE_VERSION = 4;
@@ -45,6 +46,12 @@ const THREAD_STORE_NAME = "thread";
 const SERVER_CONFIG_STORE_NAME = "server-config";
 const VCS_REFS_STORE_NAME = "vcs-refs";
 const CATALOG_KEY = "document";
+// A profile-locked load keeps its own shell cache, so a shell cached without
+// the lock (with every profile's projects) never renders under it.
+const shellCacheKey = (environmentId: string) => {
+  const lock = profileLockNow();
+  return lock === null ? environmentId : `${environmentId}#profile=${lock}`;
+};
 const StoredShellSnapshot = StoredOrchestrationShellSnapshot;
 const StoredShellSnapshotJson = Schema.fromJsonString(StoredShellSnapshot);
 const StoredThreadSnapshot = StoredOrchestrationThreadSnapshot;
@@ -220,8 +227,13 @@ function removeDatabaseValuesInRange(database: IDBDatabase, storeName: string, r
   }).pipe(Effect.withSpan("web.connectionStorage.removeDatabaseValuesInRange"));
 }
 
+// Locked loads keep their own thread cache too, so a thread cached unlocked
+// never renders under a lock that hides it. The key stays in the environment's range.
 function threadCacheKey(environmentId: EnvironmentId, threadId: ThreadId) {
-  return `${environmentId}:${threadId}`;
+  const lock = profileLockNow();
+  return lock === null
+    ? `${environmentId}:${threadId}`
+    : `${environmentId}:${threadId}#profile=${lock}`;
 }
 
 function vcsRefsCacheKey(environmentId: EnvironmentId, cwd: string) {
@@ -560,7 +572,7 @@ export const connectionStorageLayer = Layer.effectContext(
     });
     const cacheStore = Persistence.EnvironmentCacheStore.of({
       loadShell: (environmentId) =>
-        readDatabaseValue(database, SHELL_STORE_NAME, environmentId).pipe(
+        readDatabaseValue(database, SHELL_STORE_NAME, shellCacheKey(environmentId)).pipe(
           Effect.tap(() => Effect.promise(() => projectFaviconCache.hydrate())),
           Effect.flatMap((raw) => {
             if (typeof raw !== "string") {
@@ -575,7 +587,7 @@ export const connectionStorageLayer = Layer.effectContext(
                     : Option.none(),
                 ),
               ),
-              removeDatabaseValue(database, SHELL_STORE_NAME, environmentId),
+              removeDatabaseValue(database, SHELL_STORE_NAME, shellCacheKey(environmentId)),
             );
           }),
           Effect.mapError((cause) => persistenceError("load-shell", cause)),
@@ -587,7 +599,12 @@ export const connectionStorageLayer = Layer.effectContext(
             environmentId,
             snapshot,
           }).pipe(Effect.mapError((cause) => persistenceError("save-shell", cause)));
-          yield* writeDatabaseValue(database, SHELL_STORE_NAME, environmentId, encoded);
+          yield* writeDatabaseValue(
+            database,
+            SHELL_STORE_NAME,
+            shellCacheKey(environmentId),
+            encoded,
+          );
         }).pipe(
           Effect.mapError((cause) =>
             cause._tag === "ConnectionPersistenceError"
@@ -742,7 +759,7 @@ export const connectionStorageLayer = Layer.effectContext(
         Effect.all(
           [
             Effect.promise(() => projectFaviconCache.clearEnvironment(environmentId)),
-            removeDatabaseValue(database, SHELL_STORE_NAME, environmentId),
+            removeDatabaseValue(database, SHELL_STORE_NAME, shellCacheKey(environmentId)),
             removeDatabaseValuesInRange(
               database,
               THREAD_STORE_NAME,

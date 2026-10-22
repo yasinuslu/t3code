@@ -317,6 +317,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["manager home code profile machine server remote split"],
   },
   {
+    id: "profile-lock",
+    title: "Only this profile",
+    to: "/settings/general",
+    searchTerms: ["profile lock code profile separate hide yu sn work personal window focus"],
+  },
+  {
     id: "auto-resume-limited-threads",
     title: "Auto-resume limited threads",
     to: "/settings/general",
