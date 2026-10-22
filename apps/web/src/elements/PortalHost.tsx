@@ -115,7 +115,7 @@ export function PortalHost(props: PortalHostProps) {
       data-t3-portal={request.kind}
       className={cn(
         "t3-portal t3-element-host fixed inset-0 z-[200] flex flex-col outline-none",
-        request.kind === "image" ? "bg-black/95 text-white" : "bg-background text-foreground",
+        request.kind === "image" ? "bg-black text-white" : "bg-background text-foreground",
       )}
     >
       {request.kind === "image" ? (
