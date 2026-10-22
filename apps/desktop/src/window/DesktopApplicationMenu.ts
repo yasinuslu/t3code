@@ -164,6 +164,8 @@ export const make = Effect.gen(function* () {
       (profile, index) => ({
         label: `${profile} Window`,
         accelerator: `Alt+${index + 1}`,
+        // Shown only; DesktopWindow takes the keys before the page does.
+        registerAccelerator: false,
         click: () => {
           runMenuEffect("open-profile-window", desktopWindow.openProfileWindow(profile));
         },

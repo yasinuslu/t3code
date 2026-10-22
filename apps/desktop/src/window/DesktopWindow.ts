@@ -191,6 +191,17 @@ export function profileWindowTitle(displayName: string, profile: string | null):
   return profile === null ? displayName : `${displayName} · ${profile}`;
 }
 
+/** Alt+1 ... Alt+9 (Option on macOS) as a 0-based profile index, by physical key. */
+export function profileWindowShortcutIndex(
+  input: Pick<Electron.Input, "type" | "alt" | "control" | "meta" | "shift" | "code">,
+): number | null {
+  if (input.type !== "keyDown" || !input.alt || input.control || input.meta || input.shift) {
+    return null;
+  }
+  const match = /^Digit([1-9])$/.exec(input.code);
+  return match ? Number(match[1]) - 1 : null;
+}
+
 function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
   return shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
 }
@@ -364,6 +375,9 @@ export const make = Effect.gen(function* () {
   // and reported by the renderer for the main window (its app-wide lock).
   const windowProfiles = new Map<Electron.BrowserWindow, string | null>();
   const profileWindows = new Set<Electron.BrowserWindow>();
+  // Profiles being opened right now, so a second Alt+1 does not open a second window.
+  const openingProfiles = new Set<string>();
+  let profileChoices = (yield* desktopSettings.get).profileWindowChoices;
   const profileChoicesListeners = new Set<() => void>();
   // Bounds flushers of every open window, run before quit.
   const boundsFlushers = new Set<Effect.Effect<void>>();
@@ -725,6 +739,19 @@ export const make = Effect.gen(function* () {
         sendManagerAction(window, TOGGLE_MANAGER_ACTION);
         return;
       }
+      // Alt+1, Alt+2, ...: the Window menu's profile windows. Taken here rather
+      // than by the menu accelerator, which the page sees first and a hidden
+      // Linux menu bar never gets.
+      const profileIndex = profileWindowShortcutIndex(input);
+      if (profileIndex !== null) {
+        const profile = profileChoices[profileIndex];
+        if (profile !== undefined) {
+          event.preventDefault();
+          if (!input.isAutoRepeat)
+            void runPromise(openProfileWindow(profile).pipe(Effect.ignoreCause));
+          return;
+        }
+      }
       if (input.type !== "keyDown" || !input.isAutoRepeat) return;
       const modifier = environment.platform === "darwin" ? input.meta : input.control;
       if (modifier && !input.alt && !input.shift && input.key.toLowerCase() === "w") {
@@ -1040,7 +1067,11 @@ export const make = Effect.gen(function* () {
       yield* electronWindow.reveal(existing.value);
       return;
     }
-    yield* createProfileWindow(profile);
+    if (openingProfiles.has(profile)) return;
+    openingProfiles.add(profile);
+    yield* createProfileWindow(profile).pipe(
+      Effect.ensuring(Effect.sync(() => openingProfiles.delete(profile))),
+    );
   });
 
   const restoreProfileWindows = Effect.gen(function* () {
@@ -1171,9 +1202,13 @@ export const make = Effect.gen(function* () {
         Effect.catch((error) =>
           logWindowWarning("failed to persist profile window choices", {
             message: error.message,
-          }).pipe(Effect.as({ changed: false })),
+          }).pipe(
+            Effect.andThen(desktopSettings.get),
+            Effect.map((settings) => ({ settings, changed: false })),
+          ),
         ),
       );
+      profileChoices = change.settings.profileWindowChoices;
       if (change.changed) for (const listener of profileChoicesListeners) listener();
     }),
     onProfileChoicesChanged: (listener) =>
