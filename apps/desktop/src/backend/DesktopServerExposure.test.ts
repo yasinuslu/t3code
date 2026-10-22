@@ -258,6 +258,8 @@ describe("DesktopServerExposure", () => {
       setWslDistro: () => Effect.die("unexpected WSL distro change"),
       setWslOnly: () => Effect.die("unexpected WSL-only toggle"),
       setLocalEnvironmentEnabled: () => Effect.die("unexpected local environment toggle"),
+      setProfileWindow: () => Effect.die("unexpected profile window update"),
+      setProfileWindowChoices: () => Effect.die("unexpected profile window choices update"),
       applyWslWindowsFallback: Effect.die("unexpected WSL Windows fallback"),
       applyWslWindowsFallbackInMemory: Effect.die("unexpected WSL Windows fallback"),
     } satisfies DesktopAppSettings.DesktopAppSettings["Service"]);

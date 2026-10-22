@@ -11,6 +11,7 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 
@@ -110,6 +111,8 @@ export const make = Effect.gen(function* () {
   const electronApp = yield* ElectronApp.ElectronApp;
   const electronMenu = yield* ElectronMenu.ElectronMenu;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
+  const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const appName = yield* electronApp.name;
   const context = yield* Effect.context<DesktopApplicationMenuRuntimeServices>();
   const runPromise = Effect.runPromiseWith(context);
@@ -154,6 +157,20 @@ export const make = Effect.gen(function* () {
       runMenuEffect(`zoom-${direction}`, zoomMainWindow(direction));
     };
     const template: Electron.MenuItemConstructorOptions[] = [];
+    // One window per code profile, side by side: Alt+1 opens or focuses the
+    // first profile's window, Alt+2 the second, and so on.
+    const { profileWindowChoices } = yield* desktopSettings.get;
+    const profileWindowItems: Electron.MenuItemConstructorOptions[] = profileWindowChoices.map(
+      (profile, index) => ({
+        label: `${profile} Window`,
+        accelerator: `Alt+${index + 1}`,
+        // Shown only; DesktopWindow takes the keys before the page does.
+        registerAccelerator: false,
+        click: () => {
+          runMenuEffect("open-profile-window", desktopWindow.openProfileWindow(profile));
+        },
+      }),
+    );
 
     if (environment.platform === "darwin") {
       template.push({
@@ -253,7 +270,20 @@ export const make = Effect.gen(function* () {
           { role: "togglefullscreen" },
         ],
       },
-      { role: "windowMenu" },
+      {
+        role: "windowMenu",
+        submenu: [
+          { role: "minimize" },
+          ...(environment.platform === "darwin" ? [{ role: "zoom" as const }] : []),
+          { role: "close" },
+          ...(profileWindowItems.length > 0
+            ? [{ type: "separator" as const }, ...profileWindowItems]
+            : []),
+          ...(environment.platform === "darwin"
+            ? [{ type: "separator" as const }, { role: "front" as const }]
+            : []),
+        ],
+      },
       {
         role: "help",
         submenu: [
@@ -267,6 +297,8 @@ export const make = Effect.gen(function* () {
 
     yield* electronMenu.setApplicationMenu(template);
   }).pipe(Effect.withSpan("desktop.menu.configure"));
+
+  yield* desktopWindow.onProfileChoicesChanged(() => void runPromise(configure));
 
   return DesktopApplicationMenu.of({
     configure,

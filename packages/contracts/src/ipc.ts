@@ -1144,6 +1144,16 @@ export interface DesktopBridge {
   ) => Promise<boolean>;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;
   /**
+   * Tells the desktop which code profile this window is locked to (null when
+   * it is not) and which profiles its server knows, for the Window menu.
+   */
+  reportWindowProfile?: (input: {
+    lock: string | null;
+    profiles: readonly string[];
+  }) => Promise<void>;
+  /** Focuses this profile's window, or opens a new window locked to it. */
+  openProfileWindow?: (profile: string) => Promise<void>;
+  /**
    * The OS locale as a BCP-47 tag, which the renderer cannot read for itself:
    * the packaged app ships only the `en-US` Chromium locale pak, so
    * `navigator.language` and the default `Intl` locale are pinned to `en-US`

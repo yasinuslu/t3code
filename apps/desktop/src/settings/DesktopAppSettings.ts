@@ -30,6 +30,12 @@ export interface DesktopSettings {
   readonly linuxPasswordStore: LinuxPasswordStorePreference;
   readonly mainWindowBounds: DesktopWindowBounds | null;
   readonly mainWindowMaximized: boolean;
+  // Windows locked to one code profile. Each keeps its place after it closes,
+  // and `open` ones come back on the next launch.
+  readonly profileWindows: readonly ProfileWindowState[];
+  // The code profiles the renderer last reported, in order: the Window menu
+  // lists them and Alt+1, Alt+2, ... open them.
+  readonly profileWindowChoices: readonly string[];
   readonly serverExposureMode: DesktopServerExposureMode;
   readonly tailscaleServeEnabled: boolean;
   readonly tailscaleServePort: number;
@@ -69,6 +75,14 @@ export const DesktopWindowBoundsSchema = Schema.Struct({
   height: Schema.Int.check(Schema.isGreaterThanOrEqualTo(MIN_MAIN_WINDOW_SIZE.height)),
 });
 export type DesktopWindowBounds = typeof DesktopWindowBoundsSchema.Type;
+export interface ProfileWindowState {
+  readonly profile: string;
+  readonly bounds: DesktopWindowBounds | null;
+  readonly maximized: boolean;
+  readonly open: boolean;
+}
+export type ProfileWindowPatch = Partial<Omit<ProfileWindowState, "profile">>;
+const MAX_PROFILE_WINDOWS = 9;
 export const DEFAULT_MAIN_WINDOW_SIZE = {
   width: 1100,
   height: 780,
@@ -79,6 +93,8 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   linuxPasswordStore: DEFAULT_LINUX_PASSWORD_STORE,
   mainWindowBounds: null,
   mainWindowMaximized: false,
+  profileWindows: [],
+  profileWindowChoices: [],
   serverExposureMode: "local-only",
   tailscaleServeEnabled: false,
   tailscaleServePort: DEFAULT_TAILSCALE_SERVE_PORT,
@@ -101,6 +117,17 @@ const DesktopSettingsDocument = Schema.Struct({
   linuxPasswordStore: Schema.optionalKey(Schema.Unknown),
   mainWindowBounds: Schema.optionalKey(Schema.NullOr(DesktopWindowBoundsDocument)),
   mainWindowMaximized: Schema.optionalKey(Schema.Boolean),
+  profileWindows: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        profile: Schema.String,
+        bounds: Schema.optionalKey(Schema.NullOr(DesktopWindowBoundsDocument)),
+        maximized: Schema.optionalKey(Schema.Boolean),
+        open: Schema.optionalKey(Schema.Boolean),
+      }),
+    ),
+  ),
+  profileWindowChoices: Schema.optionalKey(Schema.Array(Schema.String)),
   serverExposureMode: Schema.optionalKey(DesktopServerExposureModeSchema),
   tailscaleServeEnabled: Schema.optionalKey(Schema.Boolean),
   tailscaleServePort: Schema.optionalKey(Schema.Number),
@@ -164,6 +191,13 @@ export class DesktopAppSettings extends Context.Service<
       bounds: DesktopWindowBounds,
       isMaximized: boolean,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
+    readonly setProfileWindow: (
+      profile: string,
+      patch: ProfileWindowPatch,
+    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
+    readonly setProfileWindowChoices: (
+      profiles: readonly string[],
+    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly setServerExposureMode: (
       mode: DesktopServerExposureMode,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
@@ -212,6 +246,38 @@ export function normalizeMainWindowBounds(value: unknown): DesktopWindowBounds |
   return Option.getOrNull(decodeDesktopWindowBounds(value));
 }
 
+function normalizeProfileName(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === "" || trimmed.length > 64 ? null : trimmed;
+}
+
+function normalizeProfileWindowChoices(values: readonly string[] | undefined): readonly string[] {
+  const names: string[] = [];
+  for (const value of values ?? []) {
+    const name = normalizeProfileName(value);
+    if (name !== null && !names.includes(name)) names.push(name);
+  }
+  return names.slice(0, MAX_PROFILE_WINDOWS);
+}
+
+function normalizeProfileWindows(
+  values: DesktopSettingsDocument["profileWindows"],
+): readonly ProfileWindowState[] {
+  const windows: ProfileWindowState[] = [];
+  for (const value of values ?? []) {
+    const profile = normalizeProfileName(value.profile);
+    if (profile === null || windows.some((window) => window.profile === profile)) continue;
+    const bounds = normalizeMainWindowBounds(value.bounds);
+    windows.push({
+      profile,
+      bounds,
+      maximized: bounds !== null && value.maximized === true,
+      open: value.open === true,
+    });
+  }
+  return windows.slice(0, MAX_PROFILE_WINDOWS);
+}
+
 function normalizeDesktopSettingsDocument(
   parsed: DesktopSettingsDocument,
   appVersion: string,
@@ -236,6 +302,8 @@ function normalizeDesktopSettingsDocument(
     linuxPasswordStore: normalizeLinuxPasswordStorePreference(parsed.linuxPasswordStore),
     mainWindowBounds,
     mainWindowMaximized: mainWindowBounds !== null && parsed.mainWindowMaximized === true,
+    profileWindows: normalizeProfileWindows(parsed.profileWindows),
+    profileWindowChoices: normalizeProfileWindowChoices(parsed.profileWindowChoices),
     serverExposureMode:
       parsed.serverExposureMode === "network-accessible" ? "network-accessible" : "local-only",
     tailscaleServeEnabled: parsed.tailscaleServeEnabled === true,
@@ -268,6 +336,17 @@ function toDesktopSettingsDocument(
   }
   if (settings.mainWindowMaximized) {
     document.mainWindowMaximized = true;
+  }
+  if (settings.profileWindows.length > 0) {
+    document.profileWindows = settings.profileWindows.map((window) => ({
+      profile: window.profile,
+      ...(window.bounds === null ? {} : { bounds: window.bounds }),
+      ...(window.maximized ? { maximized: true } : {}),
+      ...(window.open ? { open: true } : {}),
+    }));
+  }
+  if (settings.profileWindowChoices.length > 0) {
+    document.profileWindowChoices = [...settings.profileWindowChoices];
   }
   if (settings.serverExposureMode !== defaults.serverExposureMode) {
     document.serverExposureMode = settings.serverExposureMode;
@@ -323,6 +402,47 @@ function setMainWindowBounds(
         mainWindowBounds: bounds,
         mainWindowMaximized: isMaximized,
       };
+}
+
+function setProfileWindow(
+  settings: DesktopSettings,
+  profile: string,
+  patch: ProfileWindowPatch,
+): DesktopSettings {
+  const existing = settings.profileWindows.find((window) => window.profile === profile);
+  const base: ProfileWindowState = existing ?? {
+    profile,
+    bounds: null,
+    maximized: false,
+    open: false,
+  };
+  const next: ProfileWindowState = { ...base, ...patch, profile };
+  if (
+    existing !== undefined &&
+    existing.open === next.open &&
+    existing.maximized === next.maximized &&
+    (existing.bounds === null
+      ? next.bounds === null
+      : next.bounds !== null && desktopWindowBoundsEquivalence(existing.bounds, next.bounds))
+  ) {
+    return settings;
+  }
+  const others = settings.profileWindows.filter((window) => window.profile !== profile);
+  return {
+    ...settings,
+    profileWindows: [...others, next].slice(-MAX_PROFILE_WINDOWS),
+  };
+}
+
+function setProfileWindowChoices(
+  settings: DesktopSettings,
+  profiles: readonly string[],
+): DesktopSettings {
+  const next = normalizeProfileWindowChoices(profiles);
+  return next.length === settings.profileWindowChoices.length &&
+    next.every((name, index) => settings.profileWindowChoices[index] === name)
+    ? settings
+    : { ...settings, profileWindowChoices: next };
 }
 
 function setTailscaleServe(
@@ -550,6 +670,14 @@ export const make = Effect.gen(function* () {
           },
         }),
       ),
+    setProfileWindow: (profile, patch) =>
+      persist((settings) => setProfileWindow(settings, profile, patch)).pipe(
+        Effect.withSpan("desktop.settings.setProfileWindow", { attributes: { profile } }),
+      ),
+    setProfileWindowChoices: (profiles) =>
+      persist((settings) => setProfileWindowChoices(settings, profiles)).pipe(
+        Effect.withSpan("desktop.settings.setProfileWindowChoices"),
+      ),
     setServerExposureMode: (mode) =>
       persist((settings) => setServerExposureMode(settings, mode)).pipe(
         Effect.withSpan("desktop.settings.setServerExposureMode", { attributes: { mode } }),
@@ -613,6 +741,10 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
         load: SynchronizedRef.get(settingsRef),
         setMainWindowBounds: (bounds, isMaximized) =>
           update((settings) => setMainWindowBounds(settings, bounds, isMaximized)),
+        setProfileWindow: (profile, patch) =>
+          update((settings) => setProfileWindow(settings, profile, patch)),
+        setProfileWindowChoices: (profiles) =>
+          update((settings) => setProfileWindowChoices(settings, profiles)),
         setServerExposureMode: (mode) =>
           update((settings) => setServerExposureMode(settings, mode)),
         setTailscaleServe: (input) => update((settings) => setTailscaleServe(settings, input)),

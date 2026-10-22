@@ -1,3 +1,5 @@
+// First: a profile window swaps in its own localStorage before any store reads it.
+import "./windowStorage";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { createHashHistory, createBrowserHistory } from "@tanstack/react-router";

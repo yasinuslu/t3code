@@ -97,6 +97,10 @@ function makeDesktopWindowLayer(
     dispatchSnapShotEvent: () => Effect.void,
     zoomMain: () => Effect.void,
     syncAppearance: Effect.void,
+    openProfileWindow: () => Effect.void,
+    restoreProfileWindows: Effect.void,
+    reportRendererProfile: () => Effect.void,
+    onProfileChoicesChanged: () => Effect.void,
   });
 }
 

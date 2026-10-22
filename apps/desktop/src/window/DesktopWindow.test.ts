@@ -258,6 +258,8 @@ function makeTestLayer(input: {
     setWslDistro: () => Effect.die("unexpected WSL distro change"),
     setWslOnly: () => Effect.die("unexpected WSL-only toggle"),
     setLocalEnvironmentEnabled: () => Effect.die("unexpected local environment toggle"),
+    setProfileWindow: () => Effect.die("unexpected profile window update"),
+    setProfileWindowChoices: () => Effect.die("unexpected profile window choices update"),
     applyWslWindowsFallback: Effect.die("unexpected WSL Windows fallback"),
     applyWslWindowsFallbackInMemory: Effect.die("unexpected WSL Windows fallback"),
   } satisfies DesktopAppSettings.DesktopAppSettings["Service"]);
@@ -405,6 +407,7 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
           DesktopAppSettings.layerTest(),
           desktopClientSettingsLayer,
           desktopServerExposureLayer,
+          DesktopState.layer,
           electronAppLayer,
           electronMenuLayer,
           Layer.succeed(ElectronShell.ElectronShell, {
@@ -1630,4 +1633,29 @@ describe("DesktopWindow", () => {
       }).pipe(Effect.provide(layer));
     }),
   );
+});
+
+describe("profileWindowShortcutIndex", () => {
+  const key = (
+    code: string,
+    modifiers: Partial<Record<"alt" | "control" | "meta" | "shift", boolean>>,
+  ) =>
+    DesktopWindow.profileWindowShortcutIndex({
+      type: "keyDown",
+      code,
+      alt: false,
+      control: false,
+      meta: false,
+      shift: false,
+      ...modifiers,
+    });
+
+  it("maps Alt+1..Alt+9 by physical key, whatever character Option types", () => {
+    assert.equal(key("Digit1", { alt: true }), 0);
+    assert.equal(key("Digit9", { alt: true }), 8);
+    assert.isNull(key("Digit0", { alt: true }));
+    assert.isNull(key("Digit1", {}));
+    assert.isNull(key("Digit1", { alt: true, shift: true }));
+    assert.isNull(key("Digit1", { alt: true, control: true }));
+  });
 });

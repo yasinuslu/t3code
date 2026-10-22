@@ -223,7 +223,11 @@ import {
   ThreadCommandSubtitle,
 } from "./ThreadCommandSubtitle";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
-import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
+import {
+  primaryServerKeybindingsAtom,
+  primaryServerProvidersAtom,
+  primaryServerSettingsAtom,
+} from "../state/server";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -858,6 +862,7 @@ function OpenCommandPaletteDialog(props: {
     ];
   }, [customThemes, environmentThemes]);
   const providers = useAtomValue(primaryServerProvidersAtom);
+  const codeProfiles = useAtomValue(primaryServerSettingsAtom).codeProfiles;
   const providerEntryByEnvironmentAndInstanceId = useMemo(() => {
     const map = new Map<string, ProviderInstanceEntry>();
     for (const environment of environments) {
@@ -2273,6 +2278,24 @@ function OpenCommandPaletteDialog(props: {
       },
     ],
   });
+
+  // Desktop: one window per code profile, the same as Window menu > <profile> Window.
+  const openProfileWindow = window.desktopBridge?.openProfileWindow;
+  if (openProfileWindow) {
+    Object.keys(codeProfiles).forEach((profile, index) => {
+      actionItems.push({
+        kind: "action",
+        value: `action:profile-window:${profile}`,
+        searchTerms: ["window", "profile", profile, "open"],
+        title: `Open ${profile} window`,
+        description: index < 9 ? `Alt+${index + 1}` : undefined,
+        icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await openProfileWindow(profile);
+        },
+      });
+    });
+  }
 
   useLayoutEffect(() => {
     if (openIntent?.kind !== "change-theme") return;
