@@ -8,6 +8,8 @@ import {
   cleanLabel,
   filterGrowDeck,
   growCurrent,
+  growDeckItems,
+  growEntry,
   growFocusedProject,
   growHeadline,
   growNextAfter,
@@ -59,6 +61,66 @@ const card = (threadId: string, decision: GrowCard["decision"], updatedAt: strin
 
 const keys = (items: ReadonlyArray<{ readonly thread: { readonly id: string } }>) =>
   items.map((item) => item.thread.id);
+
+describe("pinned threads", () => {
+  const pinnedAt = hoursAgo(5);
+
+  it("lists a pinned thread whatever state it is in, in pin order", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("settled-chat", { pinnedAt, settledOverride: "settled", pinOrderKey: "b" }),
+        shell("ancient", {
+          pinnedAt,
+          pinOrderKey: "a",
+          latestUserMessageAt: hoursAgo(24 * 40),
+          latestRun: { completedAt: hoursAgo(24 * 40) },
+          updatedAt: hoursAgo(24 * 40),
+        }),
+        shell("recent", { pinnedAt, pinOrderKey: "c", previewLinks: preview() }),
+        shell("plain"),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.pinned)).toEqual(["ancient", "settled-chat", "recent"]);
+    expect(keys(deck.returns)).toEqual(["plain"]);
+    expect(keys(growDeckItems(deck))).toContain("settled-chat");
+  });
+
+  it("leaves a pinned thread that is running or needs the user in its own section", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("busy", { pinnedAt, runtime: { status: "running" } }),
+        shell("asks", { pinnedAt, hasPendingUserInput: true }),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.working)).toEqual(["busy"]);
+    expect(keys(deck.urgent)).toEqual(["asks"]);
+    expect(deck.pinned).toEqual([]);
+  });
+
+  it("still leaves out archived pinned threads", () => {
+    const deck = buildGrowDeck(
+      [shell("gone", { pinnedAt, archivedAt: hoursAgo(1) })],
+      new Map(),
+      NOW,
+    );
+    expect(deck.pinned).toEqual([]);
+  });
+});
+
+describe("growEntry", () => {
+  it("makes a list item for a thread the deck leaves out", () => {
+    const thread = shell("settled-chat", { settledOverride: "settled" });
+    const deck = buildGrowDeck([thread], new Map(), NOW);
+    expect(growDeckItems(deck)).toEqual([]);
+    const entry = growEntry(thread, undefined, "return");
+    expect(entry.key).toBe("env:settled-chat");
+    expect(entry.headline).toBe("settled-chat");
+  });
+});
 
 describe("buildGrowDeck", () => {
   it("sorts threads into what needs the user, returns, shipped and working", () => {

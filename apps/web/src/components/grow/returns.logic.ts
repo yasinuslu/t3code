@@ -4,6 +4,7 @@ import {
   classifyWorkThread,
   threadLastActivityAt,
 } from "@t3tools/client-runtime/state/work-overview";
+import { sortPinnedThreadsByOrderKey } from "@t3tools/client-runtime/state/thread-sort";
 import type { GrowCard } from "@t3tools/contracts";
 
 /**
@@ -64,6 +65,8 @@ export interface GrowReturnPullRequest {
 }
 
 export interface GrowDeck {
+  /** Pinned threads, in the sidebar's pin order, whatever state they are in. */
+  readonly pinned: ReadonlyArray<GrowReturn>;
   readonly urgent: ReadonlyArray<GrowReturn>;
   /** Fresh returns, grouped by project (the project with the newest one first). */
   readonly returns: ReadonlyArray<GrowReturn>;
@@ -183,6 +186,7 @@ export function buildGrowDeck(
   const shipped: GrowReturn[] = [];
   const letGo: GrowReturn[] = [];
   const working: GrowReturn[] = [];
+  const pinned: GrowReturn[] = [];
   for (const thread of threads) {
     const key = growReturnKey(thread);
     if (
@@ -201,31 +205,22 @@ export function buildGrowDeck(
     const merged = pullRequest?.state === "merged";
     const lastActivityAt = threadLastActivityAt(thread);
     const age = now - epochMs(lastActivityAt);
-    const touchedAt = growTouchedAt(thread, lastActivityAt);
-    const entry = (kind: ReturnKind): GrowReturn => ({
-      key,
-      kind,
-      thread,
-      card,
-      reason: placement?.reason ?? null,
-      lastActivityAt,
-      touchedAt,
-      headline: growHeadline(thread),
-      playUrl: latestPreview(thread)?.url ?? null,
-      pullRequest,
-      merged,
-      shippable:
-        pullRequest === null
-          ? !isReport(thread)
-          : pullRequest.state === "open" || pullRequest.state === null,
-    });
+    const entry = (kind: ReturnKind) => growEntry(thread, card, kind, placement?.reason ?? null);
+    // A pinned thread is listed under Pinned whatever state it is in, including the ones the
+    // deck would otherwise drop (settled, idle for weeks, never started). Running ones and
+    // the ones that need the user stay in Working and Needs you now, which lead the list.
+    const pin = thread.pinnedAt != null;
+    const place = (list: GrowReturn[], kind: ReturnKind) => (pin ? pinned : list).push(entry(kind));
+    const dropped = () => {
+      if (pin) pinned.push(entry("return"));
+    };
     if (placement?.group === "working") {
       working.push(entry("working"));
       continue;
     }
     const decision = heldDecision(thread, card);
     if (decision === "shelve" || decision === "pivot") {
-      letGo.push(entry("letGo"));
+      place(letGo, "letGo");
       continue;
     }
     if (placement?.group === "needsMe") {
@@ -242,25 +237,37 @@ export function buildGrowDeck(
       continue;
     }
     if (merged || decision === "adopt") {
-      if (age <= SHIPPED_WINDOW_MS) shipped.push(entry("shipped"));
+      if (age <= SHIPPED_WINDOW_MS) place(shipped, "shipped");
+      else dropped();
       continue;
     }
-    if (age > DECK_WINDOW_MS) continue;
+    if (age > DECK_WINDOW_MS) {
+      dropped();
+      continue;
+    }
     // Never started: nothing came back.
-    if (thread.latestUserMessageAt === null && thread.latestRun === null) continue;
+    if (thread.latestUserMessageAt === null && thread.latestRun === null) {
+      dropped();
+      continue;
+    }
     // A settled thread returns only with something to open (a closed pull
     // request ended it); an unsettled one finished and is waiting either way.
     const openable =
       Boolean(thread.previewLinks?.length) ||
       (pullRequest !== null && pullRequest.state !== "closed");
-    if (isSettled(thread) && !openable) continue;
-    (age <= FRESH_WINDOW_MS ? fresh : older).push(entry("return"));
+    if (isSettled(thread) && !openable) {
+      dropped();
+      continue;
+    }
+    place(age <= FRESH_WINDOW_MS ? fresh : older, "return");
   }
   const newestFirst = (left: GrowReturn, right: GrowReturn) =>
     epochMs(right.lastActivityAt) - epochMs(left.lastActivityAt);
   const lastTouchedFirst = (left: GrowReturn, right: GrowReturn) =>
     epochMs(right.touchedAt) - epochMs(left.touchedAt);
+  const pinOrder = sortPinnedThreadsByOrderKey(pinned.map((item) => item.thread));
   return {
+    pinned: pinOrder.flatMap((thread) => pinned.filter((item) => item.thread === thread)),
     urgent: urgent.sort(lastTouchedFirst),
     returns:
       options.grouping === "recent"
@@ -270,6 +277,34 @@ export function buildGrowDeck(
     shipped: shipped.sort(newestFirst),
     letGo: letGo.sort(newestFirst),
     working: working.sort(newestFirst),
+  };
+}
+
+/** One thread as a list item, whichever section holds it. */
+export function growEntry(
+  thread: EnvironmentThreadShell,
+  card: GrowCard | undefined,
+  kind: ReturnKind,
+  reason: GrowReturn["reason"] = null,
+): GrowReturn {
+  const pullRequest = pullRequestOf(thread);
+  const lastActivityAt = threadLastActivityAt(thread);
+  return {
+    key: growReturnKey(thread),
+    kind,
+    thread,
+    card,
+    reason,
+    lastActivityAt,
+    touchedAt: growTouchedAt(thread, lastActivityAt),
+    headline: growHeadline(thread),
+    playUrl: latestPreview(thread)?.url ?? null,
+    pullRequest,
+    merged: pullRequest?.state === "merged",
+    shippable:
+      pullRequest === null
+        ? !isReport(thread)
+        : pullRequest.state === "open" || pullRequest.state === null,
   };
 }
 
@@ -428,7 +463,7 @@ export function growQueue(deck: GrowDeck): ReadonlyArray<GrowReturn> {
 
 /** Every item the deck can show, the queue first. */
 export function growDeckItems(deck: GrowDeck): ReadonlyArray<GrowReturn> {
-  return [...deck.working, ...growQueue(deck), ...deck.shipped, ...deck.letGo];
+  return [...deck.pinned, ...deck.working, ...growQueue(deck), ...deck.shipped, ...deck.letGo];
 }
 
 /**
@@ -451,6 +486,7 @@ export function filterGrowDeck(deck: GrowDeck, query: string): GrowDeck {
         item.thread.title.toLowerCase().includes(needle),
     );
   return {
+    pinned: keep(deck.pinned),
     urgent: keep(deck.urgent),
     returns: keep(deck.returns),
     older: keep(deck.older),
@@ -487,6 +523,7 @@ export function growStep(deck: GrowDeck, current: string | null, direction: 1 | 
 export function growFocusedProject(deck: GrowDeck, key: string | null): string | null {
   if (key === null) return null;
   for (const section of [
+    deck.pinned,
     deck.working,
     deck.urgent,
     deck.returns,

@@ -118,15 +118,17 @@ export function installPaneFocus(): () => void {
 }
 
 function landingPoint(pane: HTMLElement): HTMLElement {
+  const inside = (candidate: HTMLElement | null) =>
+    candidate && isRendered(candidate) && !candidate.matches(FOREIGN) ? candidate : null;
+  // A list pane lands on its current row (the open thread), not on a header clicked last.
+  const current = inside(pane.querySelector<HTMLElement>(`${ROW}${CURRENT_ATTR}`));
+  if (current) return current;
   const remembered = lastFocus.get(pane);
   if (remembered?.isConnected && pane.contains(remembered) && isRendered(remembered)) {
     return remembered;
   }
-  const inside = (candidate: HTMLElement | null) =>
-    candidate && isRendered(candidate) && !candidate.matches(FOREIGN) ? candidate : null;
   return (
     inside(pane.querySelector<HTMLElement>("[data-pane-focus]")) ??
-    inside(pane.querySelector<HTMLElement>(`${ROW}${CURRENT_ATTR}`)) ??
     [...pane.querySelectorAll<HTMLElement>(ROW)].find(isRendered) ??
     inside(pane.querySelector<HTMLElement>(CURRENT)) ??
     [...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].find(
