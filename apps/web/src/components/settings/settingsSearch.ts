@@ -220,6 +220,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["wide full width column layout messages composer monitor"],
   },
   {
+    id: "window-layout",
+    title: "Window layout",
+    to: "/settings/appearance",
+    searchTerms: ["portrait landscape vertical rotated monitor stacked tall panel below"],
+  },
+  {
     id: "panel-animations",
     title: "Panel animations",
     to: "/settings/appearance",

@@ -81,6 +81,7 @@ import { Badge } from "../ui/badge";
 import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
 import { openFullView, setGrowOnScreen, useGrowFocusStore } from "../../growFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useStackedLayout } from "../../hooks/useStackedLayout";
 import { cn, newMessageId, randomUUID } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
 import { readThreadShell, useProjects, useThreadShell } from "../../state/entities";
@@ -1509,6 +1510,7 @@ function Hero(props: {
   readonly step: (direction: 1 | -1) => void;
 }) {
   const { item, actions, wide } = props;
+  const stackedLayout = useStackedLayout();
   const { digest, presentation, growRequests } = useThreadReport(item.thread);
   const images = useReportImages(item.thread.environmentId, item.thread.id, digest.screenshots);
   const { presentation: shown, versions } = usePresentationVersion(
@@ -1584,13 +1586,18 @@ function Hero(props: {
       </article>
     );
   }
-  // The conversation beside the thing it made, and the choices pinned under it.
+  // The conversation beside the thing it made (above it on a tall window), and the choices pinned under it.
   return (
     <article
       aria-label={item.headline}
-      className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,1fr)_minmax(24rem,1.1fr)]"
+      className={cn(
+        "grid min-h-0 flex-1",
+        stackedLayout
+          ? "grid-rows-[minmax(16rem,1fr)_minmax(24rem,1.4fr)]"
+          : "grid-cols-[minmax(20rem,1fr)_minmax(24rem,1.1fr)]",
+      )}
     >
-      <div className="flex min-h-0 min-w-0 flex-col border-e">
+      <div className={cn("flex min-h-0 min-w-0 flex-col", stackedLayout ? "border-b" : "border-e")}>
         <Conversation thread={item.thread} />
       </div>
       <div

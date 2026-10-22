@@ -22,6 +22,8 @@ export type PreviewPanelMode = "inline" | "sheet" | "sidebar" | "embedded";
 interface PreviewPanelShellProps {
   mode: PreviewPanelMode;
   maximized?: boolean;
+  /** Inline only: the panel sits below the chat (portrait layout) and inlineSize is its height. */
+  stacked?: boolean;
   inlineSize?: PreviewPanelInlineSize;
   open?: boolean;
   /**
@@ -62,6 +64,8 @@ function PreviewPanelShellFrame(
 ) {
   const useDragRegion = isElectron && props.mode !== "sheet" && props.mode !== "embedded";
   const isInline = props.mode === "inline";
+  const stacked = isInline && (props.stacked ?? false);
+  const sizeProperty = stacked ? "height" : "width";
   const collapsible = isInline && props.open !== undefined;
   const open = props.open ?? true;
   const maximized = props.maximized ?? false;
@@ -109,34 +113,53 @@ function PreviewPanelShellFrame(
     <div
       ref={hostRef}
       className={cn(
-        "relative flex h-full min-h-0 min-w-0 max-w-full flex-col self-stretch bg-background",
+        "relative flex min-h-0 min-w-0 max-w-full flex-col self-stretch bg-background",
+        stacked ? "w-full" : "h-full",
         isInline
-          ? maximized
-            ? "flex-1 border-l border-border"
-            : "shrink-0 border-l border-border"
+          ? cn(
+              maximized ? "flex-1" : "shrink-0",
+              stacked ? "border-t" : "border-l",
+              "border-border",
+            )
           : "w-full",
         collapsible &&
-          "[[data-panel-animations=true]_&]:transition-[width] [[data-panel-animations=true]_&]:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:ease-out",
-        collapsible && open && "[[data-panel-animations=true]_&]:starting:w-0!",
+          (stacked
+            ? "[[data-panel-animations=true]_&]:transition-[height]"
+            : "[[data-panel-animations=true]_&]:transition-[width]"),
+        collapsible &&
+          "[[data-panel-animations=true]_&]:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:ease-out",
+        collapsible &&
+          open &&
+          (stacked
+            ? "[[data-panel-animations=true]_&]:starting:h-0!"
+            : "[[data-panel-animations=true]_&]:starting:w-0!"),
         collapsible && !open && "pointer-events-none",
       )}
       style={
         isInline
           ? {
-              width: maximized ? "100%" : collapsible && !open ? "0px" : `${width}px`,
+              [sizeProperty]: maximized ? "100%" : collapsible && !open ? "0px" : `${width}px`,
               transitionDuration: suppressWidthTransition ? "0ms" : undefined,
             }
           : undefined
       }
       data-preview-panel-mode={props.mode}
       data-pane="panel"
+      data-preview-panel-stacked={stacked ? "true" : undefined}
       data-preview-panel-maximized={maximized ? "true" : "false"}
     >
-      {isInline && !maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}
+      {isInline && !maximized ? (
+        <RightPanelResizeHandle
+          handlers={handlers}
+          orientation={stacked ? "horizontal" : "vertical"}
+        />
+      ) : null}
       <div className={cn("h-full min-h-0 w-full", collapsible && "overflow-clip")}>
         <div
           className="flex h-full min-h-0 min-w-0 flex-col"
-          style={collapsible && !maximized ? { width: `calc(${width}px - 1px)` } : undefined}
+          style={
+            collapsible && !maximized ? { [sizeProperty]: `calc(${width}px - 1px)` } : undefined
+          }
         >
           {props.children}
         </div>

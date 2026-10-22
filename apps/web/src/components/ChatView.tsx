@@ -235,7 +235,11 @@ import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useElementWidth } from "../hooks/useElementWidth";
-import { usePreviewPanelInlineSize } from "../hooks/usePreviewPanelInlineSize";
+import {
+  usePreviewPanelInlineSize,
+  usePreviewPanelStackedSize,
+} from "../hooks/usePreviewPanelInlineSize";
+import { useStackedLayout } from "../hooks/useStackedLayout";
 import {
   RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY,
   type ThreadPanelPresentation,
@@ -1966,7 +1970,11 @@ export default function ChatView(props: ChatViewProps) {
   >({});
   const [pendingUserInputQuestionIndexByRequestId, setPendingUserInputQuestionIndexByRequestId] =
     useState<Record<string, number>>({});
-  const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
+  // Portrait stacks the panel below the chat, so a narrow portrait window
+  // keeps it inline instead of falling back to the overlay sheet.
+  const stackedLayout = useStackedLayout();
+  const narrowWindow = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
+  const shouldUsePlanSidebarSheet = narrowWindow && !stackedLayout;
   const isMobileViewport = useMediaQuery("max-sm");
   const [workspaceLayoutRef, workspaceLayoutWidth] = useElementWidth<HTMLDivElement>();
   const threadPanelPopoverAnchorRef = useRef<HTMLElement | null>(null);
@@ -2286,6 +2294,7 @@ export default function ChatView(props: ChatViewProps) {
     containerWidth: workspaceLayoutWidth ?? undefined,
     widthStorageKey: `t3code:preview-panel-width:${activeThreadKey}`,
   });
+  const previewPanelStackedSize = usePreviewPanelStackedSize();
   const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
   const timelineThreadError =
     serverRuntime?.status === "failed" &&
@@ -2402,7 +2411,6 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelPresent = rightPanelPresence.present;
   const rightPanelControlsInPanel =
     shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
-  const rightPanelControlsAtRoot = rightPanelPresent && !shouldUsePlanSidebarSheet;
   const renderedRightPanelSurface = rightPanelPresence.value?.activeSurface ?? null;
   const renderedRightPanelSurfaces = rightPanelPresence.value?.surfaces ?? [];
   const previewMiniPlayerVisible = shouldRenderPreviewMiniPlayer(
@@ -2412,7 +2420,13 @@ export default function ChatView(props: ChatViewProps) {
   const canMaximizeRightPanel = rightPanelOpen && !shouldUsePlanSidebarSheet;
   const rightPanelMaximized =
     canMaximizeRightPanel && maximizedRightPanelThreadKey === routeThreadKey;
-  const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
+  // Stacked below the chat, the panel leaves the titlebar and its controls to
+  // the chat header; maximized, it fills the column and takes them back.
+  const rightPanelStacked = stackedLayout && !rightPanelMaximized;
+  const rightPanelControlsAtRoot =
+    rightPanelPresent && !shouldUsePlanSidebarSheet && !rightPanelStacked;
+  const inlineRightPanelOwnsTitleBar =
+    rightPanelOpen && !shouldUsePlanSidebarSheet && !rightPanelStacked;
   const [threadPanelPresentation, setThreadPanelPresentation] =
     useState<ThreadPanelPresentation>("inline");
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
@@ -11114,7 +11128,11 @@ export default function ChatView(props: ChatViewProps) {
   return (
     <div
       ref={workspaceLayoutRef}
-      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+      className={cn(
+        "relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background",
+        stackedLayout && "flex-col",
+      )}
+      data-stacked-layout={stackedLayout ? "true" : undefined}
     >
       <Dialog
         open={
@@ -11144,7 +11162,7 @@ export default function ChatView(props: ChatViewProps) {
         className={cn(
           "relative flex min-h-0 min-w-0 flex-col overflow-x-hidden",
           managerPage && "bg-primary/10",
-          rightPanelMaximized ? "w-0 flex-none" : "flex-1",
+          rightPanelMaximized ? (stackedLayout ? "h-0 flex-none" : "w-0 flex-none") : "flex-1",
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-pane="chat"
@@ -11814,7 +11832,8 @@ export default function ChatView(props: ChatViewProps) {
           mode="inline"
           open={rightPanelOpen}
           maximized={rightPanelMaximized}
-          inlineSize={previewPanelInlineSize}
+          stacked={rightPanelStacked}
+          inlineSize={rightPanelStacked ? previewPanelStackedSize : previewPanelInlineSize}
           surfaces={renderedRightPanelSurfaces}
           environmentId={activeThreadRef.environmentId}
           activeSurfaceId={renderedRightPanelSurface?.id ?? null}

@@ -60,6 +60,10 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
+  PanelBottomIcon,
+  ProportionsIcon,
+  RectangleHorizontalIcon,
+  RectangleVerticalIcon,
   RotateCcwIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -91,7 +95,13 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { useClientSettings, useForkFeatures, useGrowIsHome } from "../hooks/useSettings";
+import {
+  useClientSettings,
+  useForkFeatures,
+  useGrowIsHome,
+  useUpdateClientSettings,
+} from "../hooks/useSettings";
+import { WINDOW_LAYOUT_OPTIONS } from "../hooks/useStackedLayout";
 import { useTheme } from "../hooks/useTheme";
 import { useCustomThemes } from "../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
@@ -735,6 +745,7 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
   const clientSettings = useClientSettings();
+  const updateClientSettings = useUpdateClientSettings();
   const forkFeatures = useForkFeatures();
   const growIsHome = useGrowIsHome();
   const appMode = useAppMode();
@@ -2216,6 +2227,52 @@ function OpenCommandPaletteDialog(props: {
     ],
   };
   actionItems.push(changeAppearanceItem);
+
+  actionItems.push({
+    kind: "submenu",
+    value: "action:window-layout",
+    searchTerms: [
+      "window layout",
+      "portrait",
+      "landscape",
+      "vertical",
+      "monitor",
+      "stacked",
+      "rotate",
+    ],
+    title: "Window layout",
+    icon: <PanelBottomIcon className={ITEM_ICON_CLASS} />,
+    addonIcon: <PanelBottomIcon className={ADDON_ICON_CLASS} />,
+    groups: [
+      {
+        value: "window-layout",
+        label: "Window layout",
+        items: WINDOW_LAYOUT_OPTIONS.map(({ value, label, description }) => {
+          const Icon =
+            value === "auto"
+              ? ProportionsIcon
+              : value === "portrait"
+                ? RectangleVerticalIcon
+                : RectangleHorizontalIcon;
+          return {
+            kind: "action",
+            value: `window-layout:${value}`,
+            title: label,
+            description,
+            searchTerms: [label, "layout", "window"],
+            icon: <Icon className={ITEM_ICON_CLASS} />,
+            titleTrailingContent:
+              clientSettings.windowLayout === value ? (
+                <span className="text-xs text-muted-foreground/70">Current</span>
+              ) : undefined,
+            run: async () => {
+              await updateClientSettings({ windowLayout: value });
+            },
+          };
+        }),
+      },
+    ],
+  });
 
   useLayoutEffect(() => {
     if (openIntent?.kind !== "change-theme") return;

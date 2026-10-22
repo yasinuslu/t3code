@@ -2,10 +2,15 @@ import { type PointerEvent, useCallback, useEffect, useLayoutEffect, useRef } fr
 
 interface ResizeSession {
   width: number;
-  edge: "left" | "right";
+  /** "top" resizes a bottom-anchored panel along the y axis. */
+  edge: "left" | "right" | "top";
   resize: (width: number) => number;
   finish: (width: number, moved: boolean) => void;
   cleanup?: () => void;
+}
+
+function pointerCoordinate(event: PointerEvent, edge: ResizeSession["edge"]): number {
+  return edge === "top" ? event.clientY : event.clientX;
 }
 
 /** Shared pointer lifecycle for side panels, including interrupted and sub-frame drags. */
@@ -27,7 +32,7 @@ export function useResizeDrag<T extends HTMLElement>(
   const flush = useCallback(() => {
     const active = drag.current;
     if (!active) return;
-    const delta = (active.pendingX - active.startX) * (active.session.edge === "left" ? -1 : 1);
+    const delta = (active.pendingX - active.startX) * (active.session.edge === "right" ? 1 : -1);
     active.moved ||= Math.abs(delta) > 2;
     active.width = active.session.resize(active.session.width + delta);
   }, []);
@@ -76,7 +81,7 @@ export function useResizeDrag<T extends HTMLElement>(
     const active = drag.current;
     if (!active || active.pointerId !== event.pointerId) return;
     event.preventDefault();
-    if (usePosition) active.pendingX = event.clientX;
+    if (usePosition) active.pendingX = pointerCoordinate(event, active.session.edge);
     finish();
   };
 
@@ -97,21 +102,21 @@ export function useResizeDrag<T extends HTMLElement>(
         session,
         target: event.currentTarget,
         pointerId: event.pointerId,
-        startX: event.clientX,
-        pendingX: event.clientX,
+        startX: pointerCoordinate(event, session.edge),
+        pendingX: pointerCoordinate(event, session.edge),
         width: session.width,
         moved: false,
         frame: null,
       };
-      document.body.style.cursor = "col-resize";
+      document.body.style.cursor = session.edge === "top" ? "row-resize" : "col-resize";
       document.body.style.userSelect = "none";
     },
     onPointerMove(event: PointerEvent<T>) {
       const active = drag.current;
       if (!active || active.pointerId !== event.pointerId) return;
       event.preventDefault();
-      active.pendingX = event.clientX;
-      active.moved ||= Math.abs(event.clientX - active.startX) > 2;
+      active.pendingX = pointerCoordinate(event, active.session.edge);
+      active.moved ||= Math.abs(active.pendingX - active.startX) > 2;
       if (active.frame !== null) return;
       active.frame = requestAnimationFrame(() => {
         active.frame = null;
