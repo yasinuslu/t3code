@@ -131,6 +131,7 @@ import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http.ts";
+import * as ElementsDemoSeeder from "./elements/ElementsDemoSeeder.ts";
 import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -170,6 +171,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import {
   OrchestrationEventInfrastructureLayerLive,
   OrchestrationV2ProductionLayerLive,
+  OrchestrationV2EventSinkLayerLive,
   ProjectServiceLayerLive,
   ProjectSetupScriptRunnerLayerLive,
 } from "./orchestration-v2/runtimeLayer.ts";
@@ -570,6 +572,8 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   // telemetry instead of waiting for the next status probe.
   ProviderUsageLimitsIngestionLive,
   ProviderInstallationRefreshLive,
+  // Experimental: demo threads from T3CODE_ELEMENTS_DEMO (no-op when unset).
+  ElementsDemoSeeder.layer.pipe(Layer.provide(OrchestrationV2EventSinkLayerLive)),
   ReplayMarkers.layer,
 ).pipe(
   // Core Services

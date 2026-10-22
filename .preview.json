@@ -4,6 +4,7 @@
   "startTimeoutSeconds": 60,
   "idleMinutes": 1,
   "env": {
-    "T3CODE_ELEMENTS_LIBRARY": "~/code/yu/github/yasinuslu/t3-elements"
+    "T3CODE_ELEMENTS_LIBRARY": "~/code/yu/github/yasinuslu/t3-elements",
+    "T3CODE_ELEMENTS_DEMO": "~/code/yu/yu-brain/wiki/queries/t3-web-components/demo"
   }
 }
