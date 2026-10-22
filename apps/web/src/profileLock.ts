@@ -5,8 +5,13 @@
  * (`?t3Profile=` clears it). A locked app connects every environment with the
  * lock, so the servers send only that profile's and the common projects, and
  * it shows no space or manager-profile switcher.
+ *
+ * A window opened with `?t3Window=<name>` (see windowStorage) is locked to
+ * that profile for its whole life, whatever the app-wide lock says.
  */
 import { setClientProfileLock } from "@t3tools/client-runtime/profile-lock";
+
+import { windowProfile } from "./windowStorage";
 
 const STORAGE_KEY = "t3code:profile-lock";
 export const PROFILE_LOCK_URL_PARAM = "t3Profile";
@@ -35,6 +40,11 @@ let currentLock: string | null | undefined;
 /** Reads the lock (a `?t3Profile=` in the URL wins and is saved) before anything connects. */
 export function applyStoredProfileLock(): string | null {
   if (currentLock !== undefined) return currentLock;
+  if (windowProfile !== null) {
+    currentLock = windowProfile;
+    setClientProfileLock(windowProfile);
+    return windowProfile;
+  }
   let lock = readStorage();
   try {
     const url = new URL(window.location.href);
@@ -58,8 +68,14 @@ export function profileLockNow(): string | null {
   return currentLock === undefined ? applyStoredProfileLock() : currentLock;
 }
 
+/** Whether this window's lock comes from the window itself and cannot be changed here. */
+export function isWindowProfileLock(): boolean {
+  return windowProfile !== null;
+}
+
 /** Saves a new lock and reloads, since open connections keep the old one. */
 export function changeProfileLock(profile: string | null): void {
+  if (windowProfile !== null) return;
   const next = profile?.trim() ? profile.trim() : null;
   if (next === profileLockNow()) return;
   writeStorage(next);

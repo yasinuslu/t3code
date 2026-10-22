@@ -127,6 +127,8 @@ describe("DesktopSettings", () => {
         localEnvironmentEnabled: true,
         mainWindowBounds: null,
         mainWindowMaximized: false,
+        profileWindows: [],
+        profileWindowChoices: [],
         serverExposureMode: "local-only",
         tailscaleServeEnabled: false,
         tailscaleServePort: 443,
@@ -157,6 +159,8 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          profileWindows: [],
+          profileWindowChoices: [],
           serverExposureMode: "network-accessible",
           tailscaleServeEnabled: true,
           tailscaleServePort: 8443,
@@ -265,6 +269,8 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: { x: 120, y: 80, width: 1280, height: 900 },
           mainWindowMaximized: false,
+          profileWindows: [],
+          profileWindowChoices: [],
           serverExposureMode: "network-accessible",
           tailscaleServeEnabled: true,
           tailscaleServePort: 8443,
@@ -322,6 +328,8 @@ describe("DesktopSettings", () => {
             localEnvironmentEnabled: true,
             mainWindowBounds: null,
             mainWindowMaximized: false,
+            profileWindows: [],
+            profileWindowChoices: [],
             serverExposureMode: "network-accessible",
             tailscaleServeEnabled: true,
             tailscaleServePort: 8443,
@@ -353,6 +361,28 @@ describe("DesktopSettings", () => {
           mainWindowMaximized: true,
           serverExposureMode: "network-accessible",
         } satisfies typeof DesktopSettingsPatch.Type);
+      }),
+    ),
+  );
+
+  it.effect("keeps each profile window's place and whether it reopens", () =>
+    withSettings(
+      Effect.gen(function* () {
+        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+        const bounds = { x: 1200, y: 40, width: 1000, height: 800 };
+        yield* settings.setProfileWindowChoices(["yu", " sn ", "yu", ""]);
+        yield* settings.setProfileWindow("sn", { open: true });
+        yield* settings.setProfileWindow("sn", { bounds, maximized: false });
+        yield* settings.setProfileWindow("yu", { open: true });
+        yield* settings.setProfileWindow("yu", { open: false });
+        assert.isFalse((yield* settings.setProfileWindow("sn", { bounds })).changed);
+
+        const loaded = yield* settings.load;
+        assert.deepEqual(loaded.profileWindowChoices, ["yu", "sn"]);
+        assert.deepEqual(loaded.profileWindows, [
+          { profile: "sn", bounds, maximized: false, open: true },
+          { profile: "yu", bounds: null, maximized: false, open: false },
+        ]);
       }),
     ),
   );
@@ -399,6 +429,8 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          profileWindows: [],
+          profileWindowChoices: [],
           serverExposureMode: "local-only",
           tailscaleServeEnabled: false,
           tailscaleServePort: 443,
@@ -428,6 +460,8 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          profileWindows: [],
+          profileWindowChoices: [],
           serverExposureMode: "local-only",
           tailscaleServeEnabled: false,
           tailscaleServePort: 443,
@@ -456,6 +490,8 @@ describe("DesktopSettings", () => {
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
           mainWindowMaximized: false,
+          profileWindows: [],
+          profileWindowChoices: [],
           serverExposureMode: "local-only",
           tailscaleServeEnabled: true,
           tailscaleServePort: 443,

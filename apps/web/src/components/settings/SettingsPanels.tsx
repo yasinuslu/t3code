@@ -117,7 +117,7 @@ import {
 } from "../ui/dialog";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
-import { changeProfileLock, profileLockNow } from "../../profileLock";
+import { changeProfileLock, isWindowProfileLock, profileLockNow } from "../../profileLock";
 import {
   DEFAULT_CODE_FONT_STACK,
   DEFAULT_SANS_FONT_STACK,
@@ -2099,6 +2099,18 @@ const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfter
 function ProfileLockInput() {
   const current = profileLockNow() ?? "";
   const [draft, setDraft] = useState(current);
+  // A profile window (Window menu, Alt+1, Alt+2, ...) is locked for its whole life.
+  if (isWindowProfileLock()) {
+    return (
+      <Input
+        size="sm"
+        className="w-full sm:w-40"
+        value={current}
+        disabled
+        aria-label="Only this profile (set by this window)"
+      />
+    );
+  }
   const commit = () => {
     if (draft.trim() !== current) changeProfileLock(draft);
   };
@@ -2552,7 +2564,7 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           {...searchableSetting("profile-lock")}
-          description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes."
+          description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes. In the desktop app, Window > <profile> Window (Alt+1, Alt+2, ...) opens a window locked to one profile next to this one."
           control={<ProfileLockInput />}
         />
 

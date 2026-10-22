@@ -4,6 +4,7 @@ import { receiveProviderAuthCallback, cancelProviderAuthCallback } from "./metho
 import * as DesktopIpc from "./DesktopIpc.ts";
 import { installNotificationBadge } from "./methods/notificationBadge.ts";
 import { installManagerShortcut } from "./methods/managerShortcut.ts";
+import { openProfileWindow, reportWindowProfile } from "./methods/profileWindows.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import {
   clearConnectionCatalog,
@@ -79,6 +80,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* installManagerShortcut();
   yield* PreviewIpc.installPreviewEventForwarding();
 
+  yield* ipc.handle(reportWindowProfile);
+  yield* ipc.handle(openProfileWindow);
   yield* ipc.handle(AppActivationIpc.setReady);
   yield* ipc.handle(AppActivationIpc.complete);
 

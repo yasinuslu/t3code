@@ -12,6 +12,7 @@ import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/con
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopState from "../app/DesktopState.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
@@ -85,6 +86,7 @@ type DesktopWindowRuntimeServices =
   | DesktopAssets.DesktopAssets
   | DesktopAppSettings.DesktopAppSettings
   | DesktopClientSettings.DesktopClientSettings
+  | DesktopState.DesktopState
   | ElectronApp.ElectronApp
   | ElectronMenu.ElectronMenu
   | ElectronShell.ElectronShell
@@ -142,6 +144,21 @@ export class DesktopWindow extends Context.Service<
     // the main window.
     readonly zoomMain: (direction: MainWindowZoomDirection) => Effect.Effect<void>;
     readonly syncAppearance: Effect.Effect<void>;
+    /**
+     * Focuses the window showing `profile` (a profile window, or one whose
+     * renderer reported that lock), or opens a profile window for it.
+     */
+    readonly openProfileWindow: (profile: string) => Effect.Effect<void, DesktopWindowError>;
+    /** Reopens the profile windows that were open when the app last quit. */
+    readonly restoreProfileWindows: Effect.Effect<void, DesktopWindowError>;
+    /** A renderer reports the profile it is locked to and the code profiles it knows. */
+    readonly reportRendererProfile: (input: {
+      readonly window: Electron.BrowserWindow;
+      readonly lock: string | null;
+      readonly profiles: readonly string[];
+    }) => Effect.Effect<void>;
+    /** Runs `listener` whenever the known code profiles change (the menu rebuilds). */
+    readonly onProfileChoicesChanged: (listener: () => void) => Effect.Effect<void>;
   }
 >()("@t3tools/desktop/window/DesktopWindow") {}
 
@@ -158,6 +175,20 @@ function getIconOption(
     onNone: () => ({}),
     onSome: (icon) => ({ icon }),
   });
+}
+
+/** The URL parameter that locks one window's renderer to a code profile (see web profileLock). */
+export const WINDOW_PROFILE_URL_PARAM = "t3Window";
+
+export function profileWindowUrl(applicationUrl: string, profile: string | null): string {
+  if (profile === null) return applicationUrl;
+  const url = new URL(applicationUrl);
+  url.searchParams.set(WINDOW_PROFILE_URL_PARAM, profile);
+  return url.toString();
+}
+
+export function profileWindowTitle(displayName: string, profile: string | null): string {
+  return profile === null ? displayName : `${displayName} · ${profile}`;
 }
 
 function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
@@ -328,6 +359,14 @@ export const make = Effect.gen(function* () {
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
   const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
   const electronApp = yield* ElectronApp.ElectronApp;
+  const desktopState = yield* DesktopState.DesktopState;
+  // The profile each open window shows: set at creation for profile windows,
+  // and reported by the renderer for the main window (its app-wide lock).
+  const windowProfiles = new Map<Electron.BrowserWindow, string | null>();
+  const profileWindows = new Set<Electron.BrowserWindow>();
+  const profileChoicesListeners = new Set<() => void>();
+  // Bounds flushers of every open window, run before quit.
+  const boundsFlushers = new Set<Effect.Effect<void>>();
   // Window-side latch for the primary backend's readiness. Set by
   // handleBackendReady (driven by the pool's onReady callback), cleared
   // by handleBackendNotReady (driven by onShutdown). Only consumed by
@@ -340,7 +379,6 @@ export const make = Effect.gen(function* () {
   const context = yield* Effect.context<DesktopWindowRuntimeServices>();
   const runFork = Effect.runForkWith(context);
   const runPromise = Effect.runPromiseWith(context);
-  let flushMainWindowBounds: Effect.Effect<void> = Effect.void;
 
   const dismissConnectingSplash = Effect.gen(function* () {
     const splash = yield* Ref.getAndSet(splashWindowRef, Option.none());
@@ -368,17 +406,28 @@ export const make = Effect.gen(function* () {
   const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
   const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(Effect.flatMap(withoutSplash));
 
-  const createWindow = Effect.fn("desktop.window.createWindow")(function* (): Effect.fn.Return<
-    Electron.BrowserWindow,
-    DesktopWindowError
-  > {
+  const createWindow = Effect.fn("desktop.window.createWindow")(function* (
+    profile: string | null = null,
+  ): Effect.fn.Return<Electron.BrowserWindow, DesktopWindowError> {
     yield* previewManager.getBrowserSession();
-    const applicationUrl = getDesktopUrl(environment.isDevelopment);
+    const applicationUrl = profileWindowUrl(getDesktopUrl(environment.isDevelopment), profile);
+    const title = profileWindowTitle(environment.displayName, profile);
     const iconPaths = yield* assets.iconPaths;
     const iconOption = getIconOption(iconPaths, environment.platform);
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
     const persistedSettings = yield* desktopSettings.get;
-    const persistedBounds = persistedSettings.mainWindowBounds;
+    const persistedProfileWindow =
+      profile === null
+        ? undefined
+        : persistedSettings.profileWindows.find((window) => window.profile === profile);
+    const persistedBounds =
+      profile === null
+        ? persistedSettings.mainWindowBounds
+        : (persistedProfileWindow?.bounds ?? null);
+    const persistedMaximized =
+      profile === null
+        ? persistedSettings.mainWindowMaximized
+        : (persistedProfileWindow?.maximized ?? false);
     const displayBoundsResult = yield* Effect.sync(() => {
       try {
         return {
@@ -409,7 +458,7 @@ export const make = Effect.gen(function* () {
       ...(environment.platform === "darwin" ? { disableAutoHideCursor: true } : {}),
       backgroundColor: getInitialWindowBackgroundColor(shouldUseDarkColors),
       ...iconOption,
-      title: environment.displayName,
+      title,
       ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
       webPreferences: {
         preload: environment.preloadPath,
@@ -448,7 +497,7 @@ export const make = Effect.gen(function* () {
       });
     };
     const fallbackWindowBounds = boundsPersistenceEnabled ? null : readPersistableBounds();
-    const fallbackWindowMaximized = persistedSettings.mainWindowMaximized;
+    const fallbackWindowMaximized = persistedMaximized;
     const persistCurrentBounds = (): Fiber.Fiber<void, never> | undefined => {
       if (!boundsPersistenceEnabled) {
         return pendingBoundsPersistFiber;
@@ -457,8 +506,12 @@ export const make = Effect.gen(function* () {
       if (bounds === null) {
         return pendingBoundsPersistFiber;
       }
+      const save =
+        profile === null
+          ? desktopSettings.setMainWindowBounds(bounds, window.isMaximized())
+          : desktopSettings.setProfileWindow(profile, { bounds, maximized: window.isMaximized() });
       pendingBoundsPersistFiber = runFork(
-        desktopSettings.setMainWindowBounds(bounds, window.isMaximized()).pipe(
+        save.pipe(
           Effect.asVoid,
           Effect.catch((error) =>
             logWindowWarning("failed to persist main window bounds", {
@@ -514,9 +567,12 @@ export const make = Effect.gen(function* () {
         fiber === undefined ? Effect.void : Fiber.join(fiber).pipe(Effect.asVoid),
       ),
     );
-    flushMainWindowBounds = flushBoundsPersist;
+    boundsFlushers.add(flushBoundsPersist);
+    windowProfiles.set(window, profile);
+    if (profile !== null) profileWindows.add(window);
 
-    yield* previewManager.setMainWindow(window);
+    // The in-app browser (preview) is hosted by the main window only.
+    if (profile === null) yield* previewManager.setMainWindow(window);
     window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
       if (
         typeof params.partition !== "string" ||
@@ -681,7 +737,7 @@ export const make = Effect.gen(function* () {
 
     window.on("page-title-updated", (event) => {
       event.preventDefault();
-      window.setTitle(environment.displayName);
+      window.setTitle(title);
     });
     window.on("resize", scheduleBoundsPersist);
     window.on("move", scheduleBoundsPersist);
@@ -756,7 +812,7 @@ export const make = Effect.gen(function* () {
       }
       clearDevelopmentLoadRetry();
       developmentLoadRetryIndex = 0;
-      window.setTitle(environment.displayName);
+      window.setTitle(title);
       if (environment.platform === "darwin") syncMacosWindowButtons(window);
     });
     window.webContents.on(
@@ -835,7 +891,7 @@ export const make = Effect.gen(function* () {
       }
       // Reveal the real window, then close the connecting splash (if any) so the
       // two don't overlap and there's no blank gap between them.
-      if (persistedSettings.mainWindowMaximized) {
+      if (persistedMaximized) {
         window.maximize();
       }
       void runPromise(Effect.andThen(electronWindow.reveal(window), dismissConnectingSplash));
@@ -849,7 +905,24 @@ export const make = Effect.gen(function* () {
     window.on("closed", () => {
       clearDevelopmentLoadRetry();
       clearBoundsPersist();
-      void runPromise(electronWindow.clearMain(Option.some(window)));
+      boundsFlushers.delete(flushBoundsPersist);
+      windowProfiles.delete(window);
+      profileWindows.delete(window);
+      if (profile === null) {
+        void runPromise(electronWindow.clearMain(Option.some(window)));
+        return;
+      }
+      // Closed by the user, not by quitting: don't bring it back next launch.
+      void runPromise(
+        Ref.get(desktopState.quitting).pipe(
+          Effect.flatMap((quitting) =>
+            quitting ? Effect.void : desktopSettings.setProfileWindow(profile, { open: false }),
+          ),
+          Effect.catch((error) =>
+            logWindowWarning("failed to persist profile window state", { message: error.message }),
+          ),
+        ),
+      );
     });
 
     return window;
@@ -888,6 +961,7 @@ export const make = Effect.gen(function* () {
     const existingWindow = yield* currentMainWindow;
     if (Option.isSome(existingWindow)) return;
     yield* createMain;
+    yield* restoreProfileWindows;
   }).pipe(Effect.withSpan("desktop.window.createMainIfBackendReady"));
 
   const showConnectingSplash = Effect.gen(function* () {
@@ -935,6 +1009,48 @@ export const make = Effect.gen(function* () {
     ),
     Effect.withSpan("desktop.window.showConnectingSplash"),
   );
+
+  const findProfileWindow = (profile: string) => {
+    for (const [window, windowProfile] of windowProfiles) {
+      if (windowProfile === profile && !window.isDestroyed()) return Option.some(window);
+    }
+    return Option.none<Electron.BrowserWindow>();
+  };
+
+  const createProfileWindow = Effect.fn("desktop.window.createProfileWindow")(function* (
+    profile: string,
+  ) {
+    const window = yield* createWindow(profile);
+    yield* desktopSettings
+      .setProfileWindow(profile, { open: true })
+      .pipe(
+        Effect.catch((error) =>
+          logWindowWarning("failed to persist profile window state", { message: error.message }),
+        ),
+      );
+    yield* logWindowInfo("profile window created", { profile });
+    return window;
+  });
+
+  const openProfileWindow = Effect.fn("desktop.window.openProfileWindow")(function* (
+    profile: string,
+  ) {
+    const existing = findProfileWindow(profile);
+    if (Option.isSome(existing)) {
+      yield* electronWindow.reveal(existing.value);
+      return;
+    }
+    yield* createProfileWindow(profile);
+  });
+
+  const restoreProfileWindows = Effect.gen(function* () {
+    const settings = yield* desktopSettings.get;
+    for (const saved of settings.profileWindows) {
+      if (saved.open && Option.isNone(findProfileWindow(saved.profile))) {
+        yield* createProfileWindow(saved.profile);
+      }
+    }
+  }).pipe(Effect.withSpan("desktop.window.restoreProfileWindows"));
 
   const dispatchRendererEvent = Effect.fn("desktop.window.dispatchRendererEvent")(function* (
     channel: string,
@@ -1001,9 +1117,9 @@ export const make = Effect.gen(function* () {
     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
       Effect.withSpan("desktop.window.handleBackendNotReady"),
     ),
-    flushMainWindowBounds: Effect.suspend(() => flushMainWindowBounds).pipe(
-      Effect.withSpan("desktop.window.flushMainWindowBounds"),
-    ),
+    flushMainWindowBounds: Effect.suspend(() =>
+      Effect.all([...boundsFlushers], { concurrency: "unbounded", discard: true }),
+    ).pipe(Effect.withSpan("desktop.window.flushMainWindowBounds")),
     dispatchMenuAction: Effect.fn("desktop.window.dispatchMenuAction")(function* (action, options) {
       yield* Effect.annotateCurrentSpan({ action });
       yield* dispatchRendererEvent(MENU_ACTION_CHANNEL, action, options);
@@ -1040,6 +1156,30 @@ export const make = Effect.gen(function* () {
         syncWindowAppearance(window, shouldUseDarkColors, environment.platform),
       );
     }).pipe(Effect.withSpan("desktop.window.syncAppearance")),
+    openProfileWindow,
+    restoreProfileWindows,
+    reportRendererProfile: Effect.fn("desktop.window.reportRendererProfile")(function* ({
+      window,
+      lock,
+      profiles,
+    }) {
+      // A profile window's lock is fixed by its URL; only the main window's can change.
+      if (windowProfiles.has(window) && !profileWindows.has(window)) {
+        windowProfiles.set(window, lock);
+      }
+      const change = yield* desktopSettings.setProfileWindowChoices(profiles).pipe(
+        Effect.catch((error) =>
+          logWindowWarning("failed to persist profile window choices", {
+            message: error.message,
+          }).pipe(Effect.as({ changed: false })),
+        ),
+      );
+      if (change.changed) for (const listener of profileChoicesListeners) listener();
+    }),
+    onProfileChoicesChanged: (listener) =>
+      Effect.sync(() => {
+        profileChoicesListeners.add(listener);
+      }),
   });
 });
 

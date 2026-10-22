@@ -76,6 +76,10 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
   setManagerShortcut: (chord) =>
     ipcRenderer.invoke(IpcChannels.SET_MANAGER_SHORTCUT_CHANNEL, chord),
+  reportWindowProfile: (input) =>
+    ipcRenderer.invoke(IpcChannels.REPORT_WINDOW_PROFILE_CHANNEL, input),
+  openProfileWindow: (profile) =>
+    ipcRenderer.invoke(IpcChannels.OPEN_PROFILE_WINDOW_CHANNEL, profile),
   onNotificationBadgeClear: (listener) => {
     const handler = () => listener();
     ipcRenderer.on(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, handler);
