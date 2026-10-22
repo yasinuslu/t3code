@@ -392,8 +392,18 @@ export function SpreadsheetEditor(props: {
   const cell = selected ? sheet.rows[selected.row]?.[selected.column] : undefined;
   const readout = selected ? (cellHasFormula(cell) ? `=${cell?.f}` : cellText(cell)) : "";
 
+  // Formula results are the file's cached values; nothing here recalculates them.
+  const noteFormulas = () => {
+    if (sheet.hasFormulas) {
+      setRowNotice(
+        "Formulas are not recalculated here: results update when the file is opened in a spreadsheet app, and row changes do not adjust references.",
+      );
+    }
+  };
+
   const commit = (value: string, move: "down" | "right" | "stay") => {
     if (!selected || !onChange) return;
+    if (value !== cellText(cell)) noteFormulas();
     onChange(setCellText(doc, activeIndex, selected.row, selected.column, value));
     setEditing(null);
     if (move === "down") {
@@ -410,9 +420,7 @@ export function SpreadsheetEditor(props: {
   const structural = (next: SpreadsheetDocument, select: Cell | null) => {
     onChange?.(next);
     setSelected(select);
-    if (sheet.hasFormulas) {
-      setRowNotice("Formulas in this sheet do not adjust when rows are added or removed.");
-    }
+    noteFormulas();
   };
 
   const addRow = () => {
@@ -429,8 +437,8 @@ export function SpreadsheetEditor(props: {
     });
   };
 
-  const notice = props.notice ?? rowNotice;
-  const dismissNotice = props.notice ? props.onDismissNotice : () => setRowNotice(null);
+  const notice = rowNotice ?? props.notice;
+  const dismissNotice = rowNotice ? () => setRowNotice(null) : props.onDismissNotice;
 
   return (
     <div ref={gridRef} className="flex min-h-0 flex-1 flex-col">
@@ -454,8 +462,8 @@ export function SpreadsheetEditor(props: {
         {props.onSave ? (
           <>
             {props.dirty ? (
-              <span className="text-muted-foreground" role="status">
-                Unsaved changes
+              <span className="size-2 shrink-0 rounded-full bg-primary" role="status">
+                <span className="sr-only">Unsaved changes</span>
               </span>
             ) : null}
             <Button size="compact" disabled={!props.dirty || props.saving} onClick={props.onSave}>
