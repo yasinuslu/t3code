@@ -130,6 +130,7 @@ import {
   filterGrowDeck,
   growCurrent,
   growDeckItems,
+  growEntry,
   growFocusedProject,
   growProjectOpen,
   cleanLabel,
@@ -543,6 +544,14 @@ export function GrowReturns(props: {
     () => (onScreenKey === null ? null : threadRefOfKey(onScreenKey)),
     [onScreenKey],
   );
+  // The thread on screen gets a row even when no section lists it (settled, idle for weeks,
+  // snoozed, a manager's, filtered out by the search).
+  const outsideRow = useMemo(() => {
+    const onScreenThread = threadShell ?? current?.thread;
+    if (onScreenThread === undefined || onScreenKey === null) return null;
+    if (growDeckItems(shown).some((item) => item.key === onScreenKey)) return null;
+    return growEntry(onScreenThread, cards.get(onScreenKey), "return");
+  }, [cards, current, onScreenKey, shown, threadShell]);
   const navigate = useNavigate();
   const landed = useGrowFocusStore((state) => state.landed);
   const growOpen = useHomeOverlayStore((state) => state.open);
@@ -801,7 +810,12 @@ export function GrowReturns(props: {
               </Button>
             </div>
             <div className="px-3 pb-2">{header}</div>
-            <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
+            <ReturnsList
+              deck={shown}
+              current={onScreenKey}
+              outside={outsideRow}
+              managerOpen={manager}
+            />
             <SidebarChromeFooter />
           </div>
         ) : (
@@ -825,7 +839,12 @@ export function GrowReturns(props: {
         data-grow-zone="threads"
       >
         {header}
-        <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
+        <ReturnsList
+          deck={shown}
+          current={onScreenKey}
+          outside={outsideRow}
+          managerOpen={manager}
+        />
         {/* The thread list's own footer: Settings, Pull Requests, Usage, and the update pill. */}
         <SidebarChromeFooter />
       </div>
@@ -911,10 +930,17 @@ function ReturnsHeader(props: {
   );
 }
 
-/** What is being worked on, the queue by project, then the older ones, what shipped and what was settled (folded). */
+/**
+ * What is being worked on, the queue by project, then the older ones, what shipped and what was
+ * settled (folded). The thread on screen is always in it: its section opens when it holds it, a
+ * section the user folds still shows its row, and one the list leaves out gets an Open row.
+ */
 function ReturnsList(props: {
   readonly deck: GrowDeck;
+  /** The thread on screen, whether or not the deck holds it. */
   readonly current: string | null;
+  /** The thread on screen, when no section of the deck lists it. */
+  readonly outside: GrowReturn | null;
   readonly managerOpen: boolean;
 }) {
   const { deck } = props;
@@ -923,12 +949,18 @@ function ReturnsList(props: {
   // returns to the focused project only (or what Expand all holds).
   const searching = useReturnsStore((state) => state.query.trim() !== "");
   const expandAll = useReturnsStore((state) => state.expandAll) || searching;
-  // A folded section opens while searching, and while it holds the item on screen, so the
-  // current row stays visible as W and S step through it.
-  const foldOpen = (items: ReadonlyArray<GrowReturn>) =>
-    searching || items.some((item) => item.key === props.current)
-      ? { open: true, resetOn: props.current }
-      : {};
+  // A section opens while it holds the item on screen (and folded ones while searching), so the
+  // current row stays visible as W and S step through it. If the user folds it again, its header
+  // still carries that row.
+  const holding = (items: ReadonlyArray<GrowReturn>, folded = false) => {
+    const held = items.find((item) => item.key === props.current);
+    return {
+      ...(held !== undefined || (folded && searching)
+        ? { open: true, resetOn: props.current }
+        : {}),
+      held: held === undefined ? undefined : row(held),
+    };
+  };
   const listMode = useReturnsStore((state) => state.listMode);
   const focused = growFocusedProject(deck, props.current);
   const groups = useMemo(() => {
@@ -941,7 +973,7 @@ function ReturnsList(props: {
     }
     return [...byProject.entries()];
   }, [deck.returns, projectTitle]);
-  const row = (item: GrowReturn, showProject = false) => (
+  const row = (item: GrowReturn, showProject = listMode === "recent") => (
     <ReturnRow
       key={item.key}
       item={item}
@@ -949,8 +981,21 @@ function ReturnsList(props: {
       showProject={showProject}
     />
   );
+  // The open thread scrolls into view when it changes, even from a folded section's header.
+  const listRef = useRef<HTMLElement>(null);
+  const currentKey = props.current;
+  useEffect(() => {
+    if (currentKey === null) return;
+    listRef.current
+      ?.querySelector('[aria-current]:not([aria-current="false"])')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [currentKey]);
   return (
-    <nav aria-label="Returns" className="@container -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-6">
+    <nav
+      ref={listRef}
+      aria-label="Returns"
+      className="@container -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-6"
+    >
       <ManagerRow open={props.managerOpen} />
       <div className="flex items-center justify-between gap-2">
         <ToggleGroup
@@ -992,18 +1037,30 @@ function ReturnsList(props: {
           </button>
         ) : null}
       </div>
+      {props.outside !== null ? (
+        <ListSection title="Open" open resetOn={props.current} held={row(props.outside)}>
+          {row(props.outside)}
+        </ListSection>
+      ) : null}
+      {deck.pinned.length > 0 ? (
+        <ListSection title={`Pinned (${deck.pinned.length})`} {...holding(deck.pinned)}>
+          {deck.pinned.map((item) => row(item))}
+        </ListSection>
+      ) : null}
       {deck.working.length > 0 ? (
-        <ListSection title="Working">{deck.working.map((item) => row(item))}</ListSection>
+        <ListSection title="Working" {...holding(deck.working)}>
+          {deck.working.map((item) => row(item))}
+        </ListSection>
       ) : null}
       {deck.urgent.length > 0 ? (
-        <ListSection title="Needs you now" tone="warning">
+        <ListSection title="Needs you now" tone="warning" {...holding(deck.urgent)}>
           {deck.urgent.map((item) => row(item))}
         </ListSection>
       ) : null}
       {listMode === "recent" ? (
         deck.returns.length > 0 ? (
-          <ListSection title={`Recent (${deck.returns.length})`}>
-            {deck.returns.map((item) => row(item, true))}
+          <ListSection title={`Recent (${deck.returns.length})`} {...holding(deck.returns)}>
+            {deck.returns.map((item) => row(item))}
           </ListSection>
         ) : null
       ) : (
@@ -1013,13 +1070,14 @@ function ReturnsList(props: {
             title={`${group.title} (${group.items.length})`}
             open={growProjectOpen(key, focused, expandAll)}
             resetOn={props.current}
+            held={holding(group.items).held}
           >
             {group.items.map((item) => row(item))}
           </ListSection>
         ))
       )}
       {deck.older.length > 0 ? (
-        <ListSection title={`Earlier (${deck.older.length})`} folded {...foldOpen(deck.older)}>
+        <ListSection title={`Earlier (${deck.older.length})`} folded {...holding(deck.older, true)}>
           {deck.older.map((item) => row(item))}
         </ListSection>
       ) : null}
@@ -1027,13 +1085,13 @@ function ReturnsList(props: {
         <ListSection
           title={`Done this week (${deck.shipped.length})`}
           folded
-          {...foldOpen(deck.shipped)}
+          {...holding(deck.shipped, true)}
         >
           {deck.shipped.map((item) => row(item))}
         </ListSection>
       ) : null}
       {deck.letGo.length > 0 ? (
-        <ListSection title={`Settled (${deck.letGo.length})`} folded {...foldOpen(deck.letGo)}>
+        <ListSection title={`Settled (${deck.letGo.length})`} folded {...holding(deck.letGo, true)}>
           {deck.letGo.map((item) => row(item))}
         </ListSection>
       ) : null}
@@ -1048,6 +1106,8 @@ function ListSection(props: {
   /** Whether it is open until clicked; defaults to open, or closed when folded. A click holds until `open` or `resetOn` changes. */
   readonly open?: boolean;
   readonly resetOn?: string | null;
+  /** The row of the item on screen, which stays under the header while the section is folded. */
+  readonly held?: ReactNode;
   readonly children: ReactNode;
 }) {
   const initial = props.open ?? !props.folded;
@@ -1070,7 +1130,11 @@ function ListSection(props: {
         <ChevronDownIcon className={cn("size-3.5 transition-transform", !open && "-rotate-90")} />
         {props.title}
       </button>
-      {open ? <ul className="flex flex-col gap-0.5">{props.children}</ul> : null}
+      {open ? (
+        <ul className="flex flex-col gap-0.5">{props.children}</ul>
+      ) : props.held ? (
+        <ul className="flex flex-col gap-0.5">{props.held}</ul>
+      ) : null}
     </section>
   );
 }
