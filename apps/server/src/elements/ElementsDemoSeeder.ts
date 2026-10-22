@@ -1,5 +1,5 @@
 /**
- * Experimental: seeds hand-written demo conversations as real, settled threads
+ * Experimental: seeds hand-written demo conversations as real, active threads
  * from `T3CODE_ELEMENTS_DEMO` (a directory of `*.json` files), without starting
  * any provider session. Threads are written the way AgentSessionImporter writes
  * imported ones. Idempotent: the thread id comes from the file name, and a
@@ -297,9 +297,9 @@ export const seedElementsDemo = Effect.gen(function* () {
           createdAt,
           updatedAt,
           archivedAt: null,
-          settledOverride: "settled",
-          settledAt: updatedAt,
-          unsettledAt: null,
+          settledOverride: "active",
+          settledAt: null,
+          unsettledAt: updatedAt,
           snoozedUntil: null,
           snoozedAt: null,
           pinnedAt: null,
