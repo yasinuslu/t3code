@@ -227,8 +227,13 @@ function removeDatabaseValuesInRange(database: IDBDatabase, storeName: string, r
   }).pipe(Effect.withSpan("web.connectionStorage.removeDatabaseValuesInRange"));
 }
 
+// Locked loads keep their own thread cache too, so a thread cached unlocked
+// never renders under a lock that hides it. The key stays in the environment's range.
 function threadCacheKey(environmentId: EnvironmentId, threadId: ThreadId) {
-  return `${environmentId}:${threadId}`;
+  const lock = profileLockNow();
+  return lock === null
+    ? `${environmentId}:${threadId}`
+    : `${environmentId}:${threadId}#profile=${lock}`;
 }
 
 function vcsRefsCacheKey(environmentId: EnvironmentId, cwd: string) {

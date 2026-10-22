@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
+import { ProjectId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import {
@@ -75,8 +76,8 @@ describe("isProfileVisible", () => {
 
 describe("makeShellItemFilter", () => {
   const projects = [
-    { id: "p-sn", workspaceRoot: "/sn" },
-    { id: "p-yu", workspaceRoot: "/yu" },
+    { id: ProjectId.make("p-sn"), workspaceRoot: "/sn" },
+    { id: ProjectId.make("p-yu"), workspaceRoot: "/yu" },
   ];
   const visibility = ProfileVisibility.of({
     profilesOf: (list) =>

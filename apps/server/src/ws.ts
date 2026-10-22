@@ -60,6 +60,9 @@ import {
   OrchestrationV2GetThreadProjectionError,
   OrchestrationV2ThreadLaunchError,
   type OrchestrationProjectShell,
+  type PullRequestListInput,
+  type ScheduledTaskListResult,
+  type UserNotificationsState,
   type OrchestrationV2ShellSnapshot,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -1235,6 +1238,60 @@ const makeWsRpcLayer = (
               const filter = yield* makeShellFilter();
               return yield* filter.isProjectVisible(shell.projectId);
             });
+      // Project ids a locked connection may see; null when unlocked.
+      const visibleProjectIdsNow: Effect.Effect<ReadonlySet<string> | null> =
+        profileLock === null
+          ? Effect.succeed(null)
+          : projectService.listShells().pipe(
+              Effect.orElseSucceed((): ReadonlyArray<OrchestrationProjectShell> => []),
+              Effect.flatMap((projects) =>
+                profileVisibility.visibleProjectIds(profileLock, projects),
+              ),
+            );
+      // Notifications carry no thread id; an in-app link (/<environmentId>/<threadId>) names it.
+      const filterNotifications = (state: UserNotificationsState) =>
+        profileLock === null
+          ? Effect.succeed(state)
+          : Effect.gen(function* () {
+              const items = yield* Effect.filter(state.items, (item) => {
+                const segment = item.link?.startsWith("/") ? item.link.split("/")[2] : undefined;
+                if (segment === undefined || segment === "") return Effect.succeed(true);
+                let threadId: string;
+                try {
+                  threadId = decodeURIComponent(segment.split(/[?#]/)[0] ?? "");
+                } catch {
+                  return Effect.succeed(true);
+                }
+                return threadId === ""
+                  ? Effect.succeed(true)
+                  : isThreadVisible(ThreadId.make(threadId));
+              });
+              return {
+                ...state,
+                items,
+                unreadCount: items.filter((item) => item.readAt === undefined).length,
+              };
+            });
+      const filterScheduledTasks = (result: ScheduledTaskListResult) =>
+        visibleProjectIdsNow.pipe(
+          Effect.map((visible) =>
+            visible === null
+              ? result
+              : { ...result, tasks: result.tasks.filter((task) => visible.has(task.projectId)) },
+          ),
+        );
+      const scopePullRequestInput = <I extends PullRequestListInput>(input: I) =>
+        visibleProjectIdsNow.pipe(
+          Effect.map((visible): I => {
+            if (visible === null) return input;
+            const asked =
+              input.projectIds ?? (input.projectId === undefined ? undefined : [input.projectId]);
+            const projectIds = (asked ?? [...visible].map((id) => ProjectId.make(id))).filter(
+              (id) => visible.has(id),
+            );
+            return { ...input, projectIds };
+          }),
+        );
       const requireThreadVisible = (threadId: ThreadId) =>
         isThreadVisible(threadId).pipe(
           Effect.flatMap((visible) =>
@@ -2164,13 +2221,21 @@ const makeWsRpcLayer = (
             },
           ),
         [WS_METHODS.scheduledTasksList]: (_input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksList, scheduledTasks.list(), {
-            "rpc.aggregate": "scheduledTasks",
-          }),
+          observeRpcEffect(
+            WS_METHODS.scheduledTasksList,
+            scheduledTasks.list().pipe(Effect.flatMap(filterScheduledTasks)),
+            {
+              "rpc.aggregate": "scheduledTasks",
+            },
+          ),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
-          observeRpcStream(WS_METHODS.scheduledTasksSubscribe, scheduledTasks.subscribeList(), {
-            "rpc.aggregate": "scheduledTasks",
-          }),
+          observeRpcStream(
+            WS_METHODS.scheduledTasksSubscribe,
+            scheduledTasks.subscribeList().pipe(Stream.mapEffect(filterScheduledTasks)),
+            {
+              "rpc.aggregate": "scheduledTasks",
+            },
+          ),
         [WS_METHODS.scheduledTasksUpsert]: (input) =>
           observeRpcEffect(WS_METHODS.scheduledTasksUpsert, scheduledTasks.upsert(input), {
             "rpc.aggregate": "scheduledTasks",
@@ -2813,9 +2878,13 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "cloud" },
           ),
         [WS_METHODS.pullRequestsList]: (input) =>
-          observeRpcEffect(WS_METHODS.pullRequestsList, pullRequests.list(input), {
-            "rpc.aggregate": "pull-requests",
-          }),
+          observeRpcEffect(
+            WS_METHODS.pullRequestsList,
+            scopePullRequestInput(input).pipe(Effect.flatMap(pullRequests.list)),
+            {
+              "rpc.aggregate": "pull-requests",
+            },
+          ),
         [WS_METHODS.pullRequestsListStats]: (input) =>
           observeRpcEffect(WS_METHODS.pullRequestsListStats, pullRequests.listStats(input), {
             "rpc.aggregate": "pull-requests",
@@ -3441,9 +3510,13 @@ const makeWsRpcLayer = (
             "rpc.aggregate": "workspace",
           }),
         [WS_METHODS.subscribeNotifications]: () =>
-          observeRpcStream(WS_METHODS.subscribeNotifications, notifications.changes, {
-            "rpc.aggregate": "workspace",
-          }),
+          observeRpcStream(
+            WS_METHODS.subscribeNotifications,
+            notifications.changes.pipe(Stream.mapEffect(filterNotifications)),
+            {
+              "rpc.aggregate": "workspace",
+            },
+          ),
         [WS_METHODS.notificationsNotify]: (input) =>
           observeRpcEffect(WS_METHODS.notificationsNotify, notifications.notify(input), {
             "rpc.aggregate": "workspace",

@@ -158,7 +158,11 @@ interface ShellSnapshotLike {
 
 type ShellItemLike =
   | { readonly kind: "synchronized" }
-  | { readonly kind: "snapshot"; readonly snapshot: ShellSnapshotLike }
+  | {
+      readonly kind: "snapshot";
+      readonly snapshot: ShellSnapshotLike;
+      readonly resolvedRepositoryIdentityRoots?: ReadonlyArray<string>;
+    }
   | { readonly kind: "project.updated"; readonly sequence: number; readonly project: ProjectRef }
   | { readonly kind: "project.removed"; readonly sequence: number; readonly projectId: string }
   | {
@@ -219,8 +223,18 @@ export const makeShellItemFilter = Effect.fn("ProfileVisibility.makeShellItemFil
   const filterItem = Effect.fnUntraced(function* <I extends ShellItemLike>(item: I) {
     if (lock === null) return item;
     switch (item.kind) {
-      case "snapshot":
-        return { ...item, snapshot: yield* filterSnapshot(item.snapshot) } as I;
+      case "snapshot": {
+        const snapshot = yield* filterSnapshot(item.snapshot);
+        // An enrichment refresh also names the roots it resolved; keep only visible ones.
+        const roots = item.resolvedRepositoryIdentityRoots;
+        if (roots === undefined) return { ...item, snapshot } as I;
+        const visibleRoots = new Set(snapshot.projects.map((project) => project.workspaceRoot));
+        return {
+          ...item,
+          snapshot,
+          resolvedRepositoryIdentityRoots: roots.filter((root) => visibleRoots.has(root)),
+        } as I;
+      }
       case "project.updated": {
         yield* judge([item.project]);
         return known.get(item.project.id) === true

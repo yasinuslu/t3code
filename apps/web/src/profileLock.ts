@@ -29,10 +29,12 @@ function writeStorage(profile: string | null): void {
   }
 }
 
-let currentLock: string | null = null;
+// undefined until first read; stores that hydrate at import time read it before main.tsx runs.
+let currentLock: string | null | undefined;
 
 /** Reads the lock (a `?t3Profile=` in the URL wins and is saved) before anything connects. */
 export function applyStoredProfileLock(): string | null {
+  if (currentLock !== undefined) return currentLock;
   let lock = readStorage();
   try {
     const url = new URL(window.location.href);
@@ -53,13 +55,13 @@ export function applyStoredProfileLock(): string | null {
 
 /** The lock this load connected with; fixed until the next reload. */
 export function profileLockNow(): string | null {
-  return currentLock;
+  return currentLock === undefined ? applyStoredProfileLock() : currentLock;
 }
 
 /** Saves a new lock and reloads, since open connections keep the old one. */
 export function changeProfileLock(profile: string | null): void {
   const next = profile?.trim() ? profile.trim() : null;
-  if (next === currentLock) return;
+  if (next === profileLockNow()) return;
   writeStorage(next);
   window.location.reload();
 }
