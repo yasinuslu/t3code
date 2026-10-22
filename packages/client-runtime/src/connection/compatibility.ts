@@ -1,10 +1,12 @@
 import {
+  CLIENT_PROFILE_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_VERSION,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
 
 import { ConnectionBlockedError } from "./model.ts";
+import { getClientProfileLock } from "../profileLock.ts";
 
 export function orchestrationProtocolCompatibilityError(
   descriptor: ExecutionEnvironmentDescriptor,
@@ -38,5 +40,9 @@ function canSelfUpdate(descriptor: ExecutionEnvironmentDescriptor): boolean {
 export function appendOrchestrationProtocol(socketUrl: string): string {
   const url = new URL(socketUrl);
   url.searchParams.set(ORCHESTRATION_PROTOCOL_QUERY_PARAM, String(ORCHESTRATION_PROTOCOL_VERSION));
+  const profileLock = getClientProfileLock();
+  if (profileLock !== null) {
+    url.searchParams.set(CLIENT_PROFILE_QUERY_PARAM, profileLock);
+  }
   return url.toString();
 }

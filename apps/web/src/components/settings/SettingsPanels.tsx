@@ -117,6 +117,7 @@ import {
 } from "../ui/dialog";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
+import { changeProfileLock, profileLockNow } from "../../profileLock";
 import {
   DEFAULT_CODE_FONT_STACK,
   DEFAULT_SANS_FONT_STACK,
@@ -2095,6 +2096,30 @@ function FontFamilySettingsRow({
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
 
+function ProfileLockInput() {
+  const current = profileLockNow() ?? "";
+  const [draft, setDraft] = useState(current);
+  const commit = () => {
+    if (draft.trim() !== current) changeProfileLock(draft);
+  };
+  return (
+    <Input
+      size="sm"
+      className="w-full sm:w-40"
+      placeholder="Every profile"
+      autoCapitalize="off"
+      autoComplete="off"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+      }}
+      aria-label="Only this profile"
+    />
+  );
+}
+
 function ManagerProfilesInput({
   value,
   onCommit,
@@ -2524,6 +2549,11 @@ export function GeneralSettingsPanel() {
               onCommit={(managerProfiles) => updateSettings({ managerProfiles })}
             />
           }
+        />
+        <SettingsRow
+          {...searchableSetting("profile-lock")}
+          description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes."
+          control={<ProfileLockInput />}
         />
 
         <SettingsRow

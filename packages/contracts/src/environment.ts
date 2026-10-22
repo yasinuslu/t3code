@@ -15,6 +15,17 @@ export const ORCHESTRATION_PROTOCOL_VERSION_TEXT = "2";
 export const ORCHESTRATION_PROTOCOL_QUERY_PARAM = "orchestrationProtocol";
 export const ORCHESTRATION_PROTOCOL_HEADER = "x-t3-orchestration-protocol";
 
+/**
+ * Profile lock a client asks for, on the /ws upgrade URL and on orchestration
+ * HTTP requests. A locked connection gets only the projects of that code
+ * profile plus the common ones; the server leaves the rest out of every
+ * snapshot, stream and search it answers on that connection.
+ */
+export const CLIENT_PROFILE_QUERY_PARAM = "clientProfile";
+export const CLIENT_PROFILE_HEADER = "x-t3-client-profile";
+/** Pseudo profile for projects every profile sees (shared tooling). */
+export const COMMON_PROFILE = "common";
+
 export const ExecutionEnvironmentPlatformOs = Schema.Literals([
   "darwin",
   "linux",

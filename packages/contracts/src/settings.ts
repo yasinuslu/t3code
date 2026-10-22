@@ -1521,6 +1521,14 @@ export const ServerSettings = Schema.Struct({
   codeProfiles: Schema.Record(TrimmedNonEmptyString, CodeProfile).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /**
+   * Folders whose projects belong to another profile than their path says,
+   * keyed by folder (`~` allowed, deepest wins). The value is a profile name
+   * or `common`, which every profile-locked client sees.
+   */
+  projectProfiles: Schema.Record(TrimmedNonEmptyString, TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -1830,6 +1838,10 @@ export const ServerSettingsPatch = Schema.Struct({
   /** Each entry replaces one profile; `null` removes it. */
   codeProfiles: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(CodeProfile)),
+  ),
+  /** Each entry replaces one folder's profile; `null` removes it. */
+  projectProfiles: Schema.optionalKey(
+    Schema.Record(TrimmedNonEmptyString, Schema.NullOr(TrimmedNonEmptyString)),
   ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;

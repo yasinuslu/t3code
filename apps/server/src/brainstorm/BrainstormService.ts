@@ -38,6 +38,7 @@ import {
   type BrainstormThreadReport,
   BrainstormError,
   CommandId,
+  COMMON_PROFILE,
   DEFAULT_MODEL,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type ModelSelection,
@@ -66,6 +67,7 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveCodeProfiles, resolveDefaultCodeProfile } from "../workspace/CodeProfiles.ts";
+import { resolveProjectProfiles } from "../workspace/ProfileVisibility.ts";
 import * as ManagerScope from "../mcp/ManagerScope.ts";
 import * as ManagerRole from "./ManagerRole.ts";
 import {
@@ -355,11 +357,20 @@ export const make = Effect.gen(function* () {
       profiles.find((profile) => profile.name === state.defaultProfile) ??
       profiles.find((profile) => profile.name === fallbackProfile) ??
       null;
+    // `settings.projectProfiles` can move a project to another profile or to
+    // `common`, which every profile's manager reaches.
+    const projectProfileOverrides = yield* serverSettings.getSettings.pipe(
+      Effect.map((settings) => settings.projectProfiles),
+      Effect.orElseSucceed((): Readonly<Record<string, string>> => ({})),
+    );
+    const projectProfiles = yield* Effect.promise(() =>
+      resolveProjectProfiles(
+        projects.map((project) => project.workspaceRoot),
+        projectProfileOverrides,
+      ),
+    );
     const profileByProjectId = new Map(
-      projects.map((project, index) => [
-        project.id as string,
-        resolved.assignments[index]?.profile ?? null,
-      ]),
+      projects.map((project, index) => [project.id as string, projectProfiles[index] ?? null]),
     );
     // A profile the client has no space for yet still gets its manager's space.
     const spaces = [
@@ -1116,8 +1127,8 @@ export const make = Effect.gen(function* () {
 export const layer = Layer.effect(BrainstormService, make);
 
 /**
- * A profile's manager reaches its profile's projects; the one manager without
- * profile brains reaches every project.
+ * A profile's manager reaches its profile's projects and the common ones; the
+ * one manager without profile brains reaches every project.
  */
 export const managerScopeLayer = Layer.effect(
   ManagerScope.ManagerScope,
@@ -1135,7 +1146,8 @@ export const managerScopeLayer = Layer.effect(
               .filter(
                 (project) =>
                   manager.profile === null ||
-                  ctx.profileByProjectId.get(project.id) === manager.profile,
+                  ctx.profileByProjectId.get(project.id) === manager.profile ||
+                  ctx.profileByProjectId.get(project.id) === COMMON_PROFILE,
               )
               .map((project) => project.id as string),
           );

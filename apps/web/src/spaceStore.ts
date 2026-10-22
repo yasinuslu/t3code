@@ -19,6 +19,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "./lib/storage";
+import { profileLockNow } from "./profileLock";
 import { deriveProjectIdentity } from "./projectIdentity";
 import { PROJECT_ICON_COLORS } from "./projectIconColors";
 
@@ -441,9 +442,14 @@ export const useSpaceStore = create<SpaceStore>()(
   persist(
     (set) => ({
       ...initialSpaceState,
+      // A profile-locked app stays on All: the server already sends only its
+      // profile's and the common projects, so the other spaces would only
+      // relabel those.
       setActiveSpace: (spaceId) =>
         set((state) =>
-          state.activeSpaceId === spaceId || !state.spaces.some((space) => space.id === spaceId)
+          state.activeSpaceId === spaceId ||
+          !state.spaces.some((space) => space.id === spaceId) ||
+          (profileLockNow() !== null && spaceId !== ALL_SPACE_ID)
             ? state
             : { activeSpaceId: spaceId },
         ),
@@ -516,7 +522,10 @@ export const useSpaceStore = create<SpaceStore>()(
       }),
       migrate: (persisted, version) =>
         (version < 2 ? migrateSpaceStateFromV1(persisted) : persisted) as SpaceStore,
-      merge: (persisted, current) => ({ ...current, ...parsePersistedSpaceState(persisted) }),
+      merge: (persisted, current) => {
+        const merged = { ...current, ...parsePersistedSpaceState(persisted) };
+        return profileLockNow() === null ? merged : { ...merged, activeSpaceId: ALL_SPACE_ID };
+      },
     },
   ),
 );

@@ -282,6 +282,7 @@ export function applyServerSettingsPatch(
     usagePriceOverrides: usagePriceOverridesPatch,
     usageModelAliases: usageModelAliasesPatch,
     codeProfiles: codeProfilesPatch,
+    projectProfiles: projectProfilesPatch,
     // Entry replacement: deepMerge would keep keys the client meant to clear.
     projectSettingsOverrides: projectSettingsOverridesPatch,
     // Already translated into `projectSettingsOverrides` above; the legacy
@@ -403,6 +404,9 @@ export function applyServerSettingsPatch(
             usageModelAliasesPatch,
           ),
         }
+      : {}),
+    ...(projectProfilesPatch !== undefined
+      ? { projectProfiles: mergeSettingsEntries(current.projectProfiles, projectProfilesPatch) }
       : {}),
     ...(codeProfilesPatch !== undefined
       ? { codeProfiles: mergeSettingsEntries(current.codeProfiles, codeProfilesPatch) }

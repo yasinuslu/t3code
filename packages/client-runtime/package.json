@@ -27,6 +27,10 @@
       "types": "./src/load-balancing.ts",
       "default": "./src/load-balancing.ts"
     },
+    "./profile-lock": {
+      "types": "./src/profileLock.ts",
+      "default": "./src/profileLock.ts"
+    },
     "./project-favicon-cache": {
       "types": "./src/projectFaviconCache.ts",
       "default": "./src/projectFaviconCache.ts"

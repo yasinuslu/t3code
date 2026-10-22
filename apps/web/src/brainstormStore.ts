@@ -10,6 +10,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveManagerProfile } from "./components/brainstorm/brainstorm.logic";
 import { resolveStorage } from "./lib/storage";
+import { profileLockNow } from "./profileLock";
 import { isInSpace, useProjectSpaceResolver, useSpaceStore } from "./spaceStore";
 import { useThreadShells } from "./state/entities";
 
@@ -83,8 +84,13 @@ function mergeManagers(byEnvironment: Readonly<Record<string, EnvironmentManager
       {},
       ...reports.map((report) => report.managerThreadKeyBySlot),
     ) as Record<string, string>,
+    // A profile-locked app knows only its own profile's manager.
     profiles:
-      reports.length === 0 ? null : [...new Set(reports.flatMap((report) => report.profiles))],
+      reports.length === 0
+        ? null
+        : [...new Set(reports.flatMap((report) => report.profiles))].filter(
+            (profile) => profileLockNow() === null || profile === profileLockNow(),
+          ),
     serverDefaultProfile:
       reports.find((report) => report.serverDefaultProfile !== null)?.serverDefaultProfile ?? null,
     hiddenThreadKeys: new Set(reports.flatMap((report) => [...report.hiddenThreadKeys])),

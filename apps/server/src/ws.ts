@@ -53,6 +53,7 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_V2_WS_METHODS,
   ORCHESTRATION_PROTOCOL_QUERY_PARAM,
+  CLIENT_PROFILE_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_VERSION,
   OrchestrationV2DispatchCommandError,
   OrchestrationV2GetShellSnapshotError,
@@ -87,7 +88,7 @@ import {
   PersistChatAttachmentsError,
   RpcClientId,
   EnvironmentAuthorizationError,
-  type ProjectId,
+  ProjectId,
   type ProviderDriverKind,
   type ProviderInstanceId,
   ThreadId,
@@ -176,6 +177,7 @@ import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import * as ProfileVisibility from "./workspace/ProfileVisibility.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
@@ -1192,6 +1194,7 @@ const makeWsRpcLayer = (
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
+  profileLock: string | null,
 ) =>
   ServerWsRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -1209,6 +1212,56 @@ const makeWsRpcLayer = (
       const projectService = yield* ProjectService.ProjectService;
       const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
       const threadSearch = yield* ThreadSearch.ThreadSearch;
+      // A profile-locked connection never receives another profile's projects
+      // or threads (see ProfileVisibility).
+      const profileVisibility = yield* ProfileVisibility.make;
+      const lookupProjectRef = (projectId: string) =>
+        projectService.getShell(ProjectId.make(projectId)).pipe(
+          Effect.map(Option.getOrNull),
+          Effect.orElseSucceed(() => null),
+        );
+      const makeShellFilter = () =>
+        ProfileVisibility.makeShellItemFilter(profileLock, lookupProjectRef).pipe(
+          Effect.provideService(ProfileVisibility.ProfileVisibility, profileVisibility),
+        );
+      const isThreadVisible = (threadId: ThreadId) =>
+        profileLock === null
+          ? Effect.succeed(true)
+          : Effect.gen(function* () {
+              const shell = yield* threadManagement
+                .getThreadShell(threadId)
+                .pipe(Effect.orElseSucceed(() => null));
+              if (shell === null) return true;
+              const filter = yield* makeShellFilter();
+              return yield* filter.isProjectVisible(shell.projectId);
+            });
+      const requireThreadVisible = (threadId: ThreadId) =>
+        isThreadVisible(threadId).pipe(
+          Effect.flatMap((visible) =>
+            visible
+              ? Effect.void
+              : Effect.fail(
+                  new OrchestrationV2GetThreadProjectionError({
+                    threadId,
+                    message: `Thread ${threadId} belongs to another profile`,
+                  }),
+                ),
+          ),
+        );
+      const filterShellStream = <
+        A extends Parameters<Effect.Success<ReturnType<typeof makeShellFilter>>["filterItem"]>[0],
+        E,
+        R,
+      >(
+        stream: Stream.Stream<A, E, R>,
+      ) =>
+        profileLock === null
+          ? Effect.succeed(stream)
+          : makeShellFilter().pipe(
+              Effect.map((filter) =>
+                stream.pipe(Stream.mapEffect((item) => filter.filterItem(item))),
+              ),
+            );
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const analytics = yield* AnalyticsService.AnalyticsService;
@@ -1759,6 +1812,9 @@ const makeWsRpcLayer = (
               Effect.map(({ projects }) => ({ ...snapshot, projects })),
             ),
           ),
+          Effect.flatMap((snapshot) =>
+            makeShellFilter().pipe(Effect.flatMap((filter) => filter.filterSnapshot(snapshot))),
+          ),
           Effect.mapError(
             (cause) =>
               new OrchestrationV2GetShellSnapshotError({
@@ -1930,6 +1986,18 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_V2_WS_METHODS.searchThreads,
             threadSearch.search(input).pipe(
+              Effect.flatMap((result) =>
+                profileLock === null
+                  ? Effect.succeed(result)
+                  : makeShellFilter().pipe(
+                      Effect.flatMap((filter) =>
+                        Effect.filter(result.matches, (match) =>
+                          filter.isProjectVisible(match.projectId),
+                        ),
+                      ),
+                      Effect.map((matches) => ({ ...result, matches })),
+                    ),
+              ),
               Effect.mapError(
                 (cause) =>
                   new OrchestrationSearchThreadsError({
@@ -1951,28 +2019,32 @@ const makeWsRpcLayer = (
             ORCHESTRATION_V2_WS_METHODS.getThreadProjection,
             // Pre-pagination clients still call this compatibility endpoint.
             // Keep stale clients from materializing an unbounded transcript.
-            threadManagement
-              .getThreadSnapshotWindow(input.threadId, {
-                rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
-              })
-              .pipe(
-                Effect.map((snapshot) =>
-                  projectThreadProjectionForWire(
-                    buildBoundedThreadProjection({
-                      projection: snapshot.projection,
-                      snapshotSequence: snapshot.snapshotSequence,
-                    }).projection,
+            requireThreadVisible(input.threadId).pipe(
+              Effect.andThen(
+                threadManagement
+                  .getThreadSnapshotWindow(input.threadId, {
+                    rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
+                  })
+                  .pipe(
+                    Effect.map((snapshot) =>
+                      projectThreadProjectionForWire(
+                        buildBoundedThreadProjection({
+                          projection: snapshot.projection,
+                          snapshotSequence: snapshot.snapshotSequence,
+                        }).projection,
+                      ),
+                    ),
+                    Effect.mapError(
+                      (cause) =>
+                        new OrchestrationV2GetThreadProjectionError({
+                          threadId: input.threadId,
+                          message: `Failed to load orchestration V2 thread ${input.threadId}`,
+                          cause,
+                        }),
+                    ),
                   ),
-                ),
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationV2GetThreadProjectionError({
-                      threadId: input.threadId,
-                      message: `Failed to load orchestration V2 thread ${input.threadId}`,
-                      cause,
-                    }),
-                ),
               ),
+            ),
             {
               "rpc.aggregate": "orchestrationV2",
               "orchestration_v2.thread_id": input.threadId,
@@ -2069,13 +2141,13 @@ const makeWsRpcLayer = (
         [ORCHESTRATION_V2_WS_METHODS.subscribeArchivedShell]: (_input) =>
           observeRpcStreamEffect(
             ORCHESTRATION_V2_WS_METHODS.subscribeArchivedShell,
-            subscribeOrchestrationV2ArchivedShell(),
+            subscribeOrchestrationV2ArchivedShell().pipe(Effect.flatMap(filterShellStream)),
             { "rpc.aggregate": "orchestration" },
           ),
         [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: (input) =>
           observeRpcStreamEffect(
             ORCHESTRATION_V2_WS_METHODS.subscribeShell,
-            subscribeOrchestrationV2Shell(input),
+            subscribeOrchestrationV2Shell(input).pipe(Effect.flatMap(filterShellStream)),
             {
               "rpc.aggregate": "orchestrationV2",
             },
@@ -2083,7 +2155,9 @@ const makeWsRpcLayer = (
         [ORCHESTRATION_V2_WS_METHODS.subscribeThread]: (input) =>
           observeRpcStreamEffect(
             ORCHESTRATION_V2_WS_METHODS.subscribeThread,
-            subscribeOrchestrationV2Thread(input),
+            requireThreadVisible(input.threadId).pipe(
+              Effect.flatMap(() => subscribeOrchestrationV2Thread(input)),
+            ),
             {
               "rpc.aggregate": "orchestrationV2",
               "orchestration_v2.thread_id": input.threadId,
@@ -3998,6 +4072,9 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           ),
         );
         const clientOrigin = readClientConnectionOrigin(request);
+        const profileLock = ProfileVisibility.parseProfileLock(
+          requestUrl.value.searchParams.get(CLIENT_PROFILE_QUERY_PARAM),
+        );
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
         yield* analytics.record("client.connected", clientAnalyticsProps);
@@ -4024,6 +4101,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               clientOrigin,
               clientAnalyticsProps,
               previewAutomationBroker,
+              profileLock,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
