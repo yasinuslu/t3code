@@ -28,7 +28,7 @@ describe("Usage shortcuts while typing", () => {
         metaKey: false,
         ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         target,
       };
 

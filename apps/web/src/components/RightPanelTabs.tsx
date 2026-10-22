@@ -40,7 +40,8 @@ import {
 import { isElectron } from "~/env";
 import type { DesktopPreviewOverlay } from "~/previewStateStore";
 import type { RightPanelSurface } from "~/rightPanelStore";
-import { cn } from "~/lib/utils";
+import { isInlineComponentEvent } from "~/lib/editableFocus";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { Button } from "~/components/ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -245,16 +246,24 @@ function tabAudioState(overlay: DesktopPreviewOverlay | null): TabAudioState {
 type SurfaceShortcutEvent = Pick<
   KeyboardEvent,
   "altKey" | "ctrlKey" | "defaultPrevented" | "isComposing" | "key" | "metaKey"
->;
+> &
+  Partial<Pick<KeyboardEvent, "code">>;
+
+/** The launcher letters need Alt, so they never compete with typing or inline components. */
+function surfaceShortcutLabel(shortcut: string): string {
+  return `${isMacPlatform(navigator.platform) ? "⌥" : "Alt+"}${shortcut}`;
+}
 
 export function surfaceShortcutActionForKey<
   const Action extends { available: boolean; shortcut: string },
 >(actions: readonly Action[], event: SurfaceShortcutEvent): Action | null {
   if (event.defaultPrevented || event.isComposing) return null;
-  if (event.metaKey || event.ctrlKey || event.altKey) return null;
+  if (!event.altKey || event.metaKey || event.ctrlKey) return null;
+  // Alt changes the typed character on macOS, so the physical key is matched first.
+  const letter = event.code?.startsWith("Key") ? event.code.slice(3) : event.key;
   return (
     actions.find(
-      (action) => action.available && action.shortcut.toLowerCase() === event.key.toLowerCase(),
+      (action) => action.available && action.shortcut.toLowerCase() === letter.toLowerCase(),
     ) ?? null
   );
 }
@@ -414,6 +423,7 @@ function RightPanelEmptyState(props: {
       const action = surfaceShortcutActionForKey(shortcutActionsRef.current, event);
       if (!action) return;
       if (document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
+      if (isInlineComponentEvent(event)) return;
       const target = event.target;
       if (target instanceof Element && surfaceShortcutTargetsTypingContext(target)) return;
       event.preventDefault();

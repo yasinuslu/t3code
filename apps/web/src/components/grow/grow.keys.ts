@@ -33,8 +33,8 @@ export interface GrowKeyState {
  *
  * Built for a left hand resting on WASD while the right one stays on the mouse, the way an
  * FPS is played. Keys are matched by their physical place (`event.code`), so the layout under
- * them does not matter. A plain key works wherever nothing is being typed; held with Alt (the
- * thumb) the same key works everywhere, from the composer and from inside the live app too.
+ * them does not matter. Every key is held with Alt (the thumb), which makes it work everywhere,
+ * from the composer, from inside the live app and from inline components too.
  *
  *   W / S   previous / next thread (the place you are in stays: live stays live)
  *   A / D   previous / next page of the presentation
@@ -51,7 +51,8 @@ export function growKeyAction(
   state: GrowKeyState,
 ): GrowKeyAction | null {
   if (event.metaKey || event.ctrlKey || event.isComposing) return null;
-  if (!event.altKey && (state.typing || state.inLive)) return null;
+  // Alt is required everywhere: plain keys belong to the inline components in replies.
+  if (!event.altKey) return null;
   return mapCode(event.code, event.shiftKey, state);
 }
 
@@ -143,7 +144,7 @@ export const GROW_KEY_HELP: ReadonlyArray<{
   readonly entries: ReadonlyArray<GrowKeyHelp>;
 }> = [
   {
-    group: "Move (every key here also works with Alt, even while typing or playing)",
+    group: "Move (hold Alt with every key here; it works even while typing or playing)",
     entries: [
       { keys: ["W", "S"], label: "Previous / next thread", action: "step" },
       { keys: ["A", "D"], label: "Previous / next page", action: "page" },

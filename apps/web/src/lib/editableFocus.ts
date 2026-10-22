@@ -25,20 +25,29 @@ export function isEditableFocused(target: EventTarget | null = document.activeEl
   return false;
 }
 
+/** The slice of an element the guard reads, so it can be exercised without a DOM. */
+interface PathNode {
+  readonly localName?: string;
+  matches?(selector: string): boolean;
+  getRootNode?(): { readonly host?: unknown };
+}
+
 /**
  * Whether a key event comes from an inline component (a `t3-*` element or anything inside its
  * shadow root) or from an editable control inside any shadow root. The event target is
  * retargeted to the shadow host, so only `composedPath()` shows what was really focused.
- * Bare-key shortcut handlers must ignore such events.
+ * Bare-key shortcut handlers must ignore such events; `resolveShortcutCommand` already does.
  */
-export function isInlineComponentEvent(
-  event: Pick<Event, "target"> & { composedPath?: () => EventTarget[] },
-): boolean {
+export function isInlineComponentEvent(event: {
+  readonly target?: EventTarget | null;
+  composedPath?: () => ReadonlyArray<unknown>;
+}): boolean {
   const path = event.composedPath?.() ?? (event.target ? [event.target] : []);
-  for (const node of path) {
-    if (!(node instanceof Element)) continue;
+  for (const entry of path) {
+    const node = entry as PathNode;
+    if (typeof node?.localName !== "string") continue;
     if (node.localName.startsWith(INLINE_COMPONENT_PREFIX)) return true;
-    if (node.getRootNode() instanceof ShadowRoot && node.matches(EDITABLE_SELECTOR)) return true;
+    if (node.getRootNode?.()?.host !== undefined && node.matches?.(EDITABLE_SELECTOR)) return true;
   }
   return false;
 }

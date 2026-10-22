@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
 import { resolveShortcutCommand } from "../keybindings";
+import { isInlineComponentEvent } from "../lib/editableFocus";
 import { installPaneFocus, focusPaneNamed, movePane, stepPaneRow } from "../lib/paneFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -12,8 +13,8 @@ const OPEN_DIALOG = '[data-slot="dialog-popup"], [data-slot="alert-dialog-popup"
 
 /**
  * Keyboard-only movement around the screen. Ctrl+S jumps to the sidebar (Grow's list in
- * Grow), Ctrl+H and Ctrl+L step one pane left and right in screen order, and J / K step the
- * rows of the sidebar once it has focus. Caught in the capture phase so an editor, the
+ * Grow), Ctrl+H and Ctrl+L step one pane left and right in screen order, and Alt+J / Alt+K (or the arrow
+ * keys) step the rows of the sidebar once it has focus. Caught in the capture phase so an editor, the
  * composer or a terminal cannot swallow the chord; a closed sidebar is opened first. Panes
  * are marked in the layouts with `data-pane` (see lib/paneFocus).
  */
@@ -42,13 +43,16 @@ export function PaneShortcuts() {
         target instanceof HTMLElement &&
         !event.ctrlKey &&
         !event.metaKey &&
-        !event.altKey &&
-        target.closest("[data-app-sidebar]")
+        target.closest("[data-app-sidebar]") &&
+        !isInlineComponentEvent(event)
       ) {
+        // Letters need Alt; the arrows are the list widget's own keys.
+        const letter = event.altKey ? event.code : "";
+        const arrow = event.altKey ? "" : event.key;
         const direction =
-          event.key === "j" || event.key === "ArrowDown"
+          letter === "KeyJ" || arrow === "ArrowDown"
             ? 1
-            : event.key === "k" || event.key === "ArrowUp"
+            : letter === "KeyK" || arrow === "ArrowUp"
               ? -1
               : null;
         if (direction !== null && stepPaneRow(target, direction)) {

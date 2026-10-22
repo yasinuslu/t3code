@@ -82,6 +82,7 @@ import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
 import { openFullView, setGrowOnScreen, useGrowFocusStore } from "../../growFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useStackedLayout } from "../../hooks/useStackedLayout";
+import { isInlineComponentEvent } from "../../lib/editableFocus";
 import { cn, newMessageId, randomUUID } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
 import { readThreadShell, useProjects, useThreadShell } from "../../state/entities";
@@ -727,7 +728,7 @@ export function GrowReturns(props: {
   useEffect(() => {
     if (!manager) return;
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || event.isComposing || isInlineComponentEvent(event)) return;
       if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -739,7 +740,7 @@ export function GrowReturns(props: {
   useEffect(() => {
     if (!conversationOpen) return;
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || event.isComposing || isInlineComponentEvent(event)) return;
       if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return;
       event.preventDefault();
       event.stopPropagation();
