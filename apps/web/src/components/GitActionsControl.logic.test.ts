@@ -1,8 +1,9 @@
-import type { VcsStatusResult } from "@t3tools/contracts";
+import { SourceControlProviderError, type VcsStatusResult } from "@t3tools/contracts";
 import { assert, describe, it } from "vite-plus/test";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
+  describeGitActionFailure,
   formatGitActionElapsed,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
@@ -1236,5 +1237,27 @@ describe("resolveAutoFeatureBranchName", () => {
   it("falls back to feature/update when no preferred name is provided", () => {
     const ref = resolveAutoFeatureBranchName(["main"]);
     assert.equal(ref, "feature/update");
+  });
+});
+
+describe("describeGitActionFailure", () => {
+  it("names the provider and keeps only its detail for a provider failure", () => {
+    const error = new SourceControlProviderError({
+      provider: "gitcode",
+      operation: "listChangeRequests",
+      cwd: "/repo",
+      detail:
+        "Failed to list change requests: T3CODE_GITCODE_ACCESS_TOKEN is not set, and git has no HTTPS credential for gitcode.com.",
+    });
+
+    assert.equal(
+      describeGitActionFailure(error),
+      "GitCode: Failed to list change requests: T3CODE_GITCODE_ACCESS_TOKEN is not set, and git has no HTTPS credential for gitcode.com.",
+    );
+  });
+
+  it("falls back to the error message for other failures", () => {
+    assert.equal(describeGitActionFailure(new Error("push rejected")), "push rejected");
+    assert.equal(describeGitActionFailure("nope"), "An error occurred.");
   });
 });

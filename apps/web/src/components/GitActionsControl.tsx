@@ -62,6 +62,7 @@ import {
   type GitActionMenuItem,
   type GitQuickAction,
   type DefaultBranchConfirmableAction,
+  describeGitActionFailure,
   requiresDefaultBranchConfirmation,
   resolveDefaultBranchActionDialogCopy,
   resolveGitActionProgressPresentation,
@@ -1385,7 +1386,7 @@ export default function GitActionsControl({
           stackedThreadToast({
             type: "error",
             title: "Action failed",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            description: describeGitActionFailure(error),
             timeout: errorToastTiming.timeout,
             ...(scopedToastData !== undefined ? { data: scopedToastData } : {}),
           }),
@@ -1530,7 +1531,7 @@ export default function GitActionsControl({
             stackedThreadToast({
               type: "error",
               title: "Pull failed",
-              description: error instanceof Error ? error.message : "An error occurred.",
+              description: describeGitActionFailure(error),
               timeout: errorToastTiming.timeout,
               ...(threadToastData !== undefined ? { data: threadToastData } : {}),
             }),
