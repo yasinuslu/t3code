@@ -2,5 +2,8 @@
   "build": "nep t3 preview build",
   "run": "nep t3 preview serve",
   "startTimeoutSeconds": 60,
-  "idleMinutes": 1
+  "idleMinutes": 1,
+  "env": {
+    "T3CODE_ELEMENTS_LIBRARY": "~/code/yu/github/yasinuslu/t3-elements"
+  }
 }
