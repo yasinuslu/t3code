@@ -24,6 +24,7 @@ import {
 import { useLoadBalancedEnvironment } from "../hooks/useLoadBalancedEnvironment";
 import { useScratchProject } from "../hooks/useScratchProject";
 import { useIsManagerThread } from "../brainstormStore";
+import { useManagerMachineChoice } from "./brainstorm/ManagerMachineSwitcher";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
@@ -2383,6 +2384,11 @@ export default function ChatView(props: ChatViewProps) {
   );
   const previewPanelOpen = activeRightPanelKind === "preview" && isPreviewSupportedInRuntime();
   const rightPanelOpen = !embedded && rightPanelState.isOpen;
+  // A manager's "Run on" row picks whose manager to show: each machine runs its own.
+  const managerMachines = useManagerMachineChoice(
+    activeThreadRef?.environmentId ?? null,
+    activeThreadRef?.threadId ?? null,
+  );
   // The manager on its own page is framed in its color, so the page says where you are.
   const managerPage =
     useIsManagerThread(activeThreadRef?.environmentId ?? "", activeThreadRef?.threadId ?? "") &&
@@ -11007,16 +11013,18 @@ export default function ChatView(props: ChatViewProps) {
     gitCwd,
     isGitRepo,
     envLocked,
-    availableEnvironments: logicalProjectEnvironments,
+    ...(managerMachines === null ? {} : { switchesManagerMachine: true }),
+    availableEnvironments: managerMachines?.options ?? logicalProjectEnvironments,
     autoEnvironmentLabel,
     onAutoEnvironment:
+      managerMachines === null &&
       draftId &&
       !envLocked &&
       canAutoBalanceEnvironments &&
       loadBalancingSettings.loadBalancingEnabled
         ? onAutoEnvironment
         : undefined,
-    onEnvironmentChange,
+    onEnvironmentChange: managerMachines?.select ?? onEnvironmentChange,
     onEnvModeChange,
     envMode,
     sandboxesAvailable: sandboxesAvailable && isServerThread,

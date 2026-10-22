@@ -78,14 +78,21 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
           className={displayMode === "panel" ? THREAD_DETAILS_PANEL_ICON_CLASS : "size-3 shrink-0"}
         />
         <ComposerContextLabel displayMode={displayMode}>
-          {activeEnvironment?.label ?? "Run on"}
+          {/* The panel row sits among pickers; it says outright that this one is fixed. */}
+          {activeEnvironment === null
+            ? "Run on"
+            : displayMode === "panel"
+              ? `Runs on ${activeEnvironment.label}`
+              : activeEnvironment.label}
         </ComposerContextLabel>
       </span>
     );
     return (
       <Tooltip>
         <TooltipTrigger render={lockedRow} />
-        <TooltipPopup>{activeEnvironment?.label ?? "Run on"}</TooltipPopup>
+        <TooltipPopup>
+          {activeEnvironment === null ? "Run on" : `This thread runs on ${activeEnvironment.label}`}
+        </TooltipPopup>
       </Tooltip>
     );
   }
@@ -157,10 +164,15 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
             </SelectItem>
           )}
           {availableEnvironments.map((env) => (
-            <SelectItem key={env.environmentId} value={env.environmentId}>
+            <SelectItem
+              key={env.environmentId}
+              value={env.environmentId}
+              disabled={env.offline === true && env.environmentId !== environmentId}
+            >
               <span className="inline-flex items-center gap-1.5">
                 <EnvironmentMachineIcon kind={env.machine} className="size-3" />
                 {env.label}
+                {env.offline ? <span className="text-muted-foreground">offline</span> : null}
               </span>
             </SelectItem>
           ))}

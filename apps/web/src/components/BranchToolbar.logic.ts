@@ -21,6 +21,8 @@ export interface EnvironmentOption {
   label: string;
   isPrimary: boolean;
   machine: EnvironmentMachineKind;
+  /** Listed but cannot be picked now: the machine cannot be reached. */
+  offline?: boolean;
 }
 
 export const EnvMode = Schema.Literals(["local", "worktree"]);
