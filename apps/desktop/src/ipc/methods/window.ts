@@ -352,22 +352,12 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
   payload: Schema.Undefined,
   result: Schema.Void,
   handler: Effect.fn("desktop.ipc.window.pasteAsText")(function* (_input, event) {
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const window = yield* electronWindow.main;
-    if (
-      event === undefined ||
-      Option.isNone(window) ||
-      window.value.isDestroyed() ||
-      window.value.webContents.id !== event.sender.id
-    ) {
-      return;
-    }
+    // Any app window (the main one or a profile window) pastes into its own
+    // focused contents, never into another window's.
     const focused = Electron.webContents.getFocusedWebContents();
-    if (
-      focused &&
-      !focused.isDestroyed() &&
-      Electron.BrowserWindow.fromWebContents(focused) === window.value
-    ) {
+    if (event === undefined || !focused || focused.isDestroyed()) return;
+    const owner: Electron.BrowserWindow | null = Electron.BrowserWindow.fromWebContents(focused);
+    if (owner?.webContents?.id === event.sender.id && !owner.isDestroyed()) {
       focused.paste();
     }
   }),
