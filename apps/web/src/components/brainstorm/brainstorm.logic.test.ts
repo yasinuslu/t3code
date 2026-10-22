@@ -117,13 +117,35 @@ describe("resolveManagerEnvironmentId", () => {
     expect(resolveManagerEnvironmentId(desktop, both, "sn", desktop)).toBe(laptop);
   });
 
-  it("keeps an offline machine's pick, and only moves on once it is gone", () => {
-    // Offline machines keep their last config, so the pick stays and Home says it is offline.
+  it("shows a reachable machine while the pick is offline, and the pick once it is back", () => {
+    // Offline machines keep their last config, so the pick is still a host.
     const both = configs({ laptop: ["yu"], desktop: ["yu"] });
+    const laptopOffline = (id: EnvironmentId) => id !== laptop;
     expect(resolveManagerEnvironmentId(desktop, both, "yu", laptop)).toBe(laptop);
+    expect(resolveManagerEnvironmentId(desktop, both, "yu", laptop, laptopOffline)).toBe(desktop);
+    // With nothing reachable the pick stays, and Home says it is offline.
+    expect(resolveManagerEnvironmentId(desktop, both, "yu", laptop, () => false)).toBe(laptop);
     expect(resolveManagerEnvironmentId(desktop, configs({ desktop: ["yu"] }), "yu", laptop)).toBe(
       desktop,
     );
+  });
+
+  it("defaults to the always-on host over the primary, while it can be reached", () => {
+    const nika = "nika" as EnvironmentId;
+    const split = new Map([
+      ...configs({ laptop: ["sn", "yu"] }),
+      [
+        nika,
+        { settings: { hostsManager: true, managerProfiles: ["yu"] } } as unknown as ServerConfig,
+      ],
+    ]);
+    expect(resolveManagerHostIds(laptop, split, "yu")).toEqual([nika, laptop]);
+    expect(resolveManagerEnvironmentId(laptop, split, "yu")).toBe(nika);
+    expect(resolveManagerEnvironmentId(laptop, split, "yu", null, (id) => id !== nika)).toBe(
+      laptop,
+    );
+    // A pick still wins.
+    expect(resolveManagerEnvironmentId(laptop, split, "yu", laptop)).toBe(laptop);
   });
 
   it("lists every machine that runs a manager", () => {

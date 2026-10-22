@@ -69,7 +69,8 @@ export function membershipChangesToAdopt(
 }
 
 /**
- * Every environment that runs `profile`'s manager, primary first: those that
+ * Every environment that runs `profile`'s manager, an always-on host
+ * (`hostsManager`) first, then the primary: those that
  * name the profile in `managerProfiles`, else one that hosts every manager
  * (`hostsManager` with no names), else the primary. Each machine that names a
  * profile runs its own manager for it, with its own thread and history. Lets
@@ -83,10 +84,11 @@ export function resolveManagerHostIds(
   serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
   profile: string | null = null,
 ): EnvironmentId[] {
-  const ordered = [...serverConfigs].toSorted(
-    ([left], [right]) =>
-      Number(right === primaryEnvironmentId) - Number(left === primaryEnvironmentId),
-  );
+  // An always-on machine (`hostsManager`) leads, then the primary: a laptop's
+  // app opens the main manager host's manager until the user picks another.
+  const rank = ([environmentId, config]: [EnvironmentId, ServerConfig]) =>
+    (config.settings.hostsManager ? 2 : 0) + (environmentId === primaryEnvironmentId ? 1 : 0);
+  const ordered = [...serverConfigs].toSorted((left, right) => rank(right) - rank(left));
   const named = ordered
     .filter(([, config]) => profile !== null && config.settings.managerProfiles.includes(profile))
     .map(([environmentId]) => environmentId);
@@ -101,17 +103,23 @@ export function resolveManagerHostIds(
 
 /**
  * The environment whose manager Home shows for `profile`: the machine the
- * user picked last when it still hosts that manager, else the first host (see
- * `resolveManagerHostIds`). Null when no connected machine hosts it.
+ * user picked last when it still hosts that manager and can be reached, else
+ * the first reachable host (see `resolveManagerHostIds`). An unreachable pick
+ * is kept, not replaced, so it comes back with its machine; when no host can
+ * be reached, the pick (or the first host) stays and Home says it is offline.
+ * Null when no connected machine hosts it.
  */
 export function resolveManagerEnvironmentId(
   primaryEnvironmentId: EnvironmentId | null,
   serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
   profile: string | null = null,
   pickedEnvironmentId: string | null = null,
+  isReachable: (environmentId: EnvironmentId) => boolean = () => true,
 ): EnvironmentId | null {
   const hosts = resolveManagerHostIds(primaryEnvironmentId, serverConfigs, profile);
-  return hosts.find((environmentId) => environmentId === pickedEnvironmentId) ?? hosts[0] ?? null;
+  const picked = hosts.find((environmentId) => environmentId === pickedEnvironmentId) ?? null;
+  if (picked !== null && isReachable(picked)) return picked;
+  return hosts.find(isReachable) ?? picked ?? hosts[0] ?? null;
 }
 
 /**

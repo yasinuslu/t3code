@@ -76,6 +76,7 @@ import {
   useThreadShellsWithoutBrainstorms,
 } from "../../brainstormStore";
 import { setGrowManagerToggle } from "../../lib/goToManager";
+import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
 import { useEnsureManagerThread } from "../brainstorm/useOpenManagerThread";
 import { Badge } from "../ui/badge";
 import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
@@ -1352,10 +1353,11 @@ function ManagerPane(props: { readonly wide: boolean }) {
           Manager
         </Badge>
         {profile ? (
-          <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">{profile}</span>
-        ) : (
-          <span className="flex-1" />
-        )}
+          <span className="min-w-0 shrink truncate text-muted-foreground text-sm">{profile}</span>
+        ) : null}
+        {/* Each machine that runs this profile's manager has its own; pick whose to talk to. */}
+        <ManagerMachineSwitcher className="shrink-0" />
+        <span className="flex-1" />
         <Button
           variant="ghost"
           size={props.wide ? "sm" : "icon-sm"}

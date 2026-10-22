@@ -7,10 +7,13 @@ import { useMemo } from "react";
 import { useBrainstormStore } from "../brainstormStore";
 import {
   SINGLE_MANAGER_KEY,
+  isEnvironmentUnreachable,
+  resolveManagerEnvironmentId,
   resolveManagerEnvironmentIds,
   resolveManagerHostIds,
 } from "../components/brainstorm/brainstorm.logic";
 import { connectionAtomRuntime } from "../connection/runtime";
+import { environmentPresentations } from "./presentation";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
 import { environmentServerConfigsAtom } from "./server";
 
@@ -42,11 +45,20 @@ export function useManagerHostIds(profile: string | null): ReadonlyArray<Environ
 
 /** The machine whose manager Home shows; see `resolveManagerEnvironmentId`. */
 export function useManagerEnvironmentId(profile: string | null): EnvironmentId | null {
-  const hosts = useManagerHostIds(profile);
+  const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
+  const serverConfigs = useAtomValue(environmentServerConfigsAtom);
+  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const picked = useBrainstormStore(
     (state) => state.lastManagerEnvironmentByProfile[profile ?? SINGLE_MANAGER_KEY] ?? null,
   );
-  return hosts.find((environmentId) => environmentId === picked) ?? hosts[0] ?? null;
+  return resolveManagerEnvironmentId(
+    primaryEnvironmentId,
+    serverConfigs,
+    profile,
+    picked,
+    (environmentId) =>
+      !isEnvironmentUnreachable(presentations.get(environmentId)?.connection.phase),
+  );
 }
 
 export function useManagerEnvironmentIds(): ReadonlyArray<EnvironmentId> {

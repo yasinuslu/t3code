@@ -4,12 +4,18 @@
  * machine's manager is a separate chat; switching moves nothing between them.
  * Shown in a manager's header; renders nothing with fewer than two.
  */
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type ThreadId,
+  resolveEnvironmentMachineKind,
+} from "@t3tools/contracts";
+import { useMemo } from "react";
 
 import { useBrainstormStore, useManagerProfile } from "../../brainstormStore";
 import { useManagerEnvironmentId, useManagerHostIds } from "../../state/brainstorm";
 import { useThreadShell } from "../../state/entities";
-import { useEnvironment } from "../../state/environments";
+import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
+import type { EnvironmentOption } from "../BranchToolbar.logic";
 import { hasUnseenCompletion, resolveSidebarThreadStatus } from "../Sidebar.logic";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { SINGLE_MANAGER_KEY, isEnvironmentUnreachable, managerSlot } from "./brainstorm.logic";
@@ -92,4 +98,49 @@ function MachineSegment(props: {
       ) : null}
     </Toggle>
   );
+}
+
+/**
+ * The machines a manager thread can switch between, for the thread details'
+ * "Run on" row: a manager does not move, picking a machine shows that
+ * machine's own manager. Null for any other thread, or with one host.
+ */
+export function useManagerMachineChoice(
+  environmentId: EnvironmentId | null,
+  threadId: ThreadId | null,
+): {
+  readonly options: ReadonlyArray<EnvironmentOption>;
+  readonly select: (environmentId: EnvironmentId) => void;
+} | null {
+  const slot = useBrainstormStore((state) => {
+    if (environmentId === null || threadId === null) return null;
+    const key = `${environmentId}:${threadId}`;
+    return (
+      Object.entries(state.managerThreadKeyBySlot).find(([, value]) => value === key)?.[0] ?? null
+    );
+  });
+  // A slot is `${environmentId}:${profile}`; profile names never contain a colon.
+  const profileKey = slot === null ? null : slot.slice(slot.lastIndexOf(":") + 1);
+  const profile = profileKey === null || profileKey === SINGLE_MANAGER_KEY ? null : profileKey;
+  const hosts = useManagerHostIds(profile);
+  const { presentationById } = useEnvironments();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const setLastManagerEnvironment = useBrainstormStore((state) => state.setLastManagerEnvironment);
+  return useMemo(() => {
+    if (profileKey === null || hosts.length < 2) return null;
+    return {
+      options: hosts.map((host) => {
+        const presentation = presentationById.get(host);
+        return {
+          environmentId: host,
+          projectId: null,
+          label: presentation?.entry.target.label ?? host,
+          isPrimary: host === primaryEnvironmentId,
+          machine: resolveEnvironmentMachineKind(presentation?.serverConfig ?? null),
+          offline: isEnvironmentUnreachable(presentation?.connection.phase),
+        };
+      }),
+      select: (picked: EnvironmentId) => setLastManagerEnvironment(profileKey, picked),
+    };
+  }, [hosts, presentationById, primaryEnvironmentId, profileKey, setLastManagerEnvironment]);
 }
