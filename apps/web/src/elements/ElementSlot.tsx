@@ -10,6 +10,7 @@ import { BlocksIcon, TriangleAlertIcon } from "lucide-react";
 import {
   Component,
   type ReactNode,
+  useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -24,6 +25,8 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { toastManager } from "../components/ui/toast";
 import { elementPlainText, elementProps } from "./elementProps";
 import { useElementsLibrary } from "./library";
+import { PortalHost } from "./PortalHost";
+import { type PortalRequest, parsePortalRequest } from "./portalLogic";
 
 interface ElementSlotProps {
   readonly tag: string;
@@ -94,6 +97,7 @@ function LiveElement(props: {
   const host = useRef<HTMLSpanElement>(null);
   const element = useRef<HTMLElement | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [portal, setPortal] = useState<PortalRequest | null>(null);
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const send = useEffectEvent((text: string) => {
     const threadRef = props.threadRef;
@@ -117,6 +121,29 @@ function LiveElement(props: {
     });
   });
 
+  const onSend = useEffectEvent((event: Event) => {
+    const text = (event as CustomEvent<{ text?: unknown }>).detail?.text;
+    if (typeof text === "string" && text.trim() !== "") send(text.trim().slice(0, 4000));
+  });
+  const onOpen = useEffectEvent((event: Event) => {
+    const url = (event as CustomEvent<{ url?: unknown }>).detail?.url;
+    if (typeof url === "string" && /^(https?:|data:image\/)/.test(url)) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  });
+  // `t3-portal`: a component asks for a full screen view. Handling it (preventDefault) tells the
+  // component not to fall back to its own overlay.
+  const onPortal = useEffectEvent((event: Event) => {
+    const request = parsePortalRequest(
+      (event as CustomEvent).detail,
+      (tag) => customElements.get(tag) !== undefined,
+    );
+    if (request === null) return;
+    event.preventDefault();
+    setPortal(request);
+  });
+  const closePortal = useCallback(() => setPortal(null), []);
+
   // One element per tag for the slot's life; new props are set on it, so it keeps its state.
   useEffect(() => {
     const container = host.current;
@@ -128,23 +155,15 @@ function LiveElement(props: {
       setFailure(error instanceof Error ? error.message : String(error));
       return;
     }
-    const onSend = (event: Event) => {
-      const text = (event as CustomEvent<{ text?: unknown }>).detail?.text;
-      if (typeof text === "string" && text.trim() !== "") send(text.trim().slice(0, 4000));
-    };
-    const onOpen = (event: Event) => {
-      const url = (event as CustomEvent<{ url?: unknown }>).detail?.url;
-      if (typeof url === "string" && /^(https?:|data:image\/)/.test(url)) {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
-    };
     created.addEventListener("t3-send", onSend);
     created.addEventListener("t3-open", onOpen);
+    created.addEventListener("t3-portal", onPortal);
     container.replaceChildren(created);
     element.current = created;
     return () => {
       created.removeEventListener("t3-send", onSend);
       created.removeEventListener("t3-open", onOpen);
+      created.removeEventListener("t3-portal", onPortal);
       created.remove();
       element.current = null;
     };
@@ -170,6 +189,17 @@ function LiveElement(props: {
   return (
     <span className="t3-element-host my-3 block" data-t3-live={props.tag}>
       <span ref={host} className="block" />
+      {portal !== null ? (
+        <PortalHost
+          request={portal}
+          onClose={closePortal}
+          onSend={(event) => {
+            onSend(event);
+            closePortal();
+          }}
+          onOpen={(event) => onOpen(event)}
+        />
+      ) : null}
       {/* Copy and screen readers get the component's words, not its shadow DOM. */}
       <span className="sr-only">{props.plainText}</span>
     </span>

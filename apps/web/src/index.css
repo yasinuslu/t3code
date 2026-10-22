@@ -2422,3 +2422,24 @@ html[data-pane-ring] [data-pane][data-pane-active] {
   --t3-radius: 12px;
   --t3-mono: var(--font-mono, ui-monospace, monospace);
 }
+
+/* exp/web-components: the full screen portal fades in once; nothing loops. */
+@keyframes t3-portal-in {
+  from {
+    opacity: 0;
+  }
+}
+.t3-portal {
+  animation: t3-portal-in 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .t3-portal {
+    animation: none;
+  }
+}
+.t3-portal-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+.t3-portal-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
