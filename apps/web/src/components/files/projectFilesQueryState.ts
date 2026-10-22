@@ -58,10 +58,15 @@ export function getProjectFileQueryAtom(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string | null,
+  encoding?: "base64",
 ) {
   return projectEnvironment.readFile({
     environmentId,
-    input: { cwd, relativePath: relativePath ?? EMPTY_PROJECT_FILE_PATH },
+    input: {
+      cwd,
+      relativePath: relativePath ?? EMPTY_PROJECT_FILE_PATH,
+      ...(encoding ? { encoding } : {}),
+    },
   });
 }
 
@@ -204,11 +209,13 @@ export function useProjectFileQuery(
   cwd: string,
   relativePath: string | null,
   enabled = true,
+  /** "base64" reads a binary file's bytes; the in-app text overlay does not apply to those. */
+  encoding?: "base64",
 ): ProjectFileQueryState {
   // The caller decides what to read. A media path is not skipped here: a folder
   // named `assets.png` is only knowable as a folder from the read failure.
   const atom = enabled
-    ? getProjectFileQueryAtom(environmentId, cwd, relativePath)
+    ? getProjectFileQueryAtom(environmentId, cwd, relativePath, encoding)
     : EMPTY_PROJECT_FILE_QUERY_ATOM;
   const result = useAtomValue(atom);
   const refreshAtom = useAtomRefresh(atom);
@@ -217,7 +224,7 @@ export function useProjectFileQuery(
   const optimisticResult = useAtomValue(
     optimisticFileAtom(environmentId, cwd, relativePath ?? EMPTY_PROJECT_FILE_PATH),
   );
-  const optimisticFile = relativePath === null ? null : optimisticResult;
+  const optimisticFile = relativePath === null || encoding ? null : optimisticResult;
   const cause = failureCause(result);
 
   return {
