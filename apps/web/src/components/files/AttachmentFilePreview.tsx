@@ -2,7 +2,12 @@ import { filePreviewDelimiter } from "@t3tools/shared/delimitedPreview";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { readFilePreviewResponse } from "@t3tools/client-runtime/file-preview";
-import { filePreviewKind, FILE_TEXT_PREVIEW_MAX_BYTES } from "@t3tools/shared/filePreview";
+import {
+  filePreviewKind,
+  FILE_TEXT_PREVIEW_MAX_BYTES,
+  SPREADSHEET_MAX_BYTES,
+  spreadsheetFormat,
+} from "@t3tools/shared/filePreview";
 import { ChevronRightIcon, DownloadIcon, Trash2Icon, WrapTextIcon, XIcon } from "lucide-react";
 import { Check, Code2, Copy, Eye, Table2 } from "lucide";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +24,7 @@ import { cn } from "~/lib/utils";
 import { AudioPreview } from "./AudioPreview";
 import { BrowserDocumentFrame } from "./BrowserDocumentFrame";
 import { DelimitedTablePreview } from "./DelimitedTablePreview";
+import { WorkbookPreview } from "./SpreadsheetFileSurface";
 import {
   FILE_SURFACE_SUBHEADER_CLASS,
   FileSurfaceAction,
@@ -28,6 +34,42 @@ import {
 } from "./fileSurfaceChrome";
 
 const SourcePreview = lazy(() => import("./ReadOnlySourcePreview"));
+
+/** A workbook attachment: fetched whole, then shown read-only. */
+function AttachmentWorkbook(props: {
+  name: string;
+  format: "xlsx" | "xls";
+  sizeBytes: number;
+  url: string;
+  onFailed: (message: string) => void;
+}) {
+  const [bytes, setBytes] = useState<Uint8Array | null>(null);
+  const { url, sizeBytes, onFailed } = props;
+  useEffect(() => {
+    if (sizeBytes > SPREADSHEET_MAX_BYTES) {
+      onFailed("This workbook is larger than 12 MB. Save it to open in a spreadsheet app.");
+      return;
+    }
+    const controller = new AbortController();
+    void fetch(url, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("The file could not be loaded. Try again.");
+        return response.arrayBuffer();
+      })
+      .then((buffer) => setBytes(new Uint8Array(buffer)))
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          onFailed(cause instanceof Error ? cause.message : "Could not load this file.");
+        }
+      });
+    return () => controller.abort();
+  }, [url, sizeBytes, onFailed]);
+  return bytes ? (
+    <WorkbookPreview name={props.name} format={props.format} bytes={bytes} />
+  ) : (
+    <FileSurfaceLoading />
+  );
+}
 
 /** Signed asset URLs live for an hour; treat anything older than this as worth re-minting. */
 const STALE_URL_MS = 5 * 60_000;
@@ -65,6 +107,7 @@ export function AttachmentFilePreview(props: {
 }) {
   const kind = filePreviewKind(props);
   const delimiter = filePreviewDelimiter(props);
+  const workbookFormat = spreadsheetFormat(props);
   const renderedMode =
     kind === "markdown" ? "markdown" : kind === "html" ? "html" : delimiter ? "table" : null;
   const attachmentId = props.asset?.attachmentId;
@@ -231,6 +274,15 @@ export function AttachmentFilePreview(props: {
     />
   ) : !url || (needsText && !content) ? (
     <FileSurfaceLoading />
+  ) : workbookFormat ? (
+    <AttachmentWorkbook
+      key={url}
+      name={props.name}
+      format={workbookFormat}
+      sizeBytes={props.sizeBytes}
+      url={url}
+      onFailed={setError}
+    />
   ) : needsText && content ? (
     delimiter && rendered ? (
       <DelimitedTablePreview name={props.name} text={content.text} delimiter={delimiter} />

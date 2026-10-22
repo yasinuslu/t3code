@@ -410,6 +410,9 @@ export const ProjectReadFileInput = Schema.Struct({
   // Workspace-relative, or an absolute host path for a file outside the
   // workspace. Only workspace-relative paths can be written back.
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
+  // "base64" returns the raw bytes of a binary file (a workbook) as base64 in
+  // `contents`, with a larger size limit and no text check.
+  encoding: Schema.optionalKey(Schema.Literal("base64")),
 });
 export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
 
@@ -482,6 +485,8 @@ export const ProjectWriteFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
   contents: Schema.String,
+  // "base64" means `contents` encodes the file's bytes instead of its UTF-8 text.
+  encoding: Schema.optionalKey(Schema.Literal("base64")),
 });
 export type ProjectWriteFileInput = typeof ProjectWriteFileInput.Type;
 

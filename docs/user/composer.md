@@ -242,6 +242,13 @@ Select a file chip in your draft or a sent message to preview it. Code and JSON 
 highlighting; Markdown, HTML, CSV, and TSV offer rendered and raw views. Audio files have
 playback controls. Large text files show a limited preview; save the file to read it in full.
 
+Spreadsheets (`.xlsx`, `.xls`, `.csv`, `.tsv`) open as a grid with sheet tabs. In a workspace file
+you can edit a cell, add or delete a row, and save back to the same file. CSV and TSV save as you
+type. An `.xlsx` has a **Save** button and keeps other sheets, formulas, number formats, merged
+cells and column widths; fonts, colors and borders on edited sheets are dropped, and a notice says
+so before you save. Saving a legacy `.xls` writes a new `.xlsx` next to it. Workbooks over 12 MB
+do not open, and attached spreadsheets are view-only.
+
 On web and desktop, files open beside the conversation with the same controls as a workspace
 file: a header row with the view toggle, **Copy contents** and **Save file**. On mobile, documents
 open in the same file screen as workspace files; its menu holds **Copy contents**, **Save or

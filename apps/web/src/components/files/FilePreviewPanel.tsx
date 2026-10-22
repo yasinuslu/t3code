@@ -11,6 +11,7 @@ import {
   isWorkspaceAudioPreviewPath,
   isWorkspaceImagePreviewPath,
   isWorkspaceVideoPreviewPath,
+  spreadsheetFormat,
 } from "@t3tools/shared/filePreview";
 import { VirtualizedFile, type SelectedLineRange } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/editor";
@@ -83,6 +84,7 @@ import {
   FileSurfaceLoading,
 } from "./fileSurfaceChrome";
 import SourceFilePreview from "./ReadOnlySourcePreview";
+import { WorkbookFileSurface } from "./SpreadsheetFileSurface";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey, projectFileEditorCacheKey } from "./fileContentRevision";
@@ -900,6 +902,40 @@ function RenderedMarkdownSurface({
   );
 }
 
+/** A CSV or TSV grid that saves itself the way the text editor does. */
+function EditableTableSurface(props: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly relativePath: string;
+  readonly text: string;
+  readonly delimiter: "," | "\t";
+  readonly readOnly: boolean;
+  readonly onPendingChange: (relativePath: string, pending: boolean) => void;
+}) {
+  const { environmentId, cwd, relativePath } = props;
+  const saveCoordinator = useFileSaveCoordinator({
+    environmentId,
+    cwd,
+    relativePath,
+    onPendingChange: props.onPendingChange,
+  });
+  return (
+    <DelimitedTablePreview
+      name={relativePath}
+      text={props.text}
+      delimiter={props.delimiter}
+      {...(props.readOnly
+        ? {}
+        : {
+            onTextChange: (next: string) => {
+              setProjectFileQueryData(environmentId, cwd, relativePath, next);
+              saveCoordinator.change(next);
+            },
+          })}
+    />
+  );
+}
+
 function renderedToggleLabel(mode: "markdown" | "html" | "table", rendered: boolean): string {
   if (mode === "markdown") return rendered ? "Show markdown source" : "Show rendered markdown";
   if (mode === "table") return rendered ? "Show source" : "Show table";
@@ -959,12 +995,25 @@ export default function FilePreviewPanel({
   // shown. The read still runs: a folder named `assets.png` is only knowable as a
   // folder from the read failure, and the server stats before reading, so a folder
   // costs an open and a stat and returns no body.
-  const file = useProjectFileQuery(
+  // A workbook is binary: its bytes come over as base64 and the text read is skipped.
+  const workbookFormat =
+    attachment === undefined && relativePath !== null
+      ? spreadsheetFormat({ name: relativePath })
+      : null;
+  const textFile = useProjectFileQuery(
     environmentId,
     cwd,
     relativePath,
-    attachment === undefined && relativePath !== null,
+    attachment === undefined && relativePath !== null && workbookFormat === null,
   );
+  const workbookFile = useProjectFileQuery(
+    environmentId,
+    cwd,
+    relativePath,
+    workbookFormat !== null,
+    "base64",
+  );
+  const file = workbookFormat === null ? textFile : workbookFile;
   const isReportFile = isHtml && file.data !== null && isReportPage(file.data.contents);
   // A chat link cannot tell a folder from a file, so a folder arrives here as
   // a file surface and the read fails. Keep the breadcrumbs, drop the preview
@@ -1028,6 +1077,7 @@ export default function FilePreviewPanel({
   // browser frame all lay themselves out, so the toggle stays hidden rather than inert.
   const showsRawText =
     previewPath !== null &&
+    workbookFormat === null &&
     file.data !== null &&
     !(isMarkdown && renderMarkdown) &&
     !(tableDelimiter && renderTable) &&
@@ -1196,6 +1246,7 @@ export default function FilePreviewPanel({
       attachment === undefined &&
       !isMedia &&
       !renderBrowserFile &&
+      workbookFormat === null &&
       file.data?.truncated ? (
         <div className="shrink-0 border-b border-warning/20 bg-warning-surface px-3 py-1.5 text-2xs text-warning-foreground">
           Preview limited to the first 1 MB of a {file.data.byteLength.toLocaleString()} byte file.
@@ -1247,7 +1298,9 @@ export default function FilePreviewPanel({
             // would only say the preview failed, so name the real state.
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center text-xs leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">Not written yet</span>
-              <span>This file does not exist on disk yet. It will appear here once it is written.</span>
+              <span>
+                This file does not exist on disk yet. It will appear here once it is written.
+              </span>
             </div>
           ) : relativePath && renderBrowserFile && absolutePath ? (
             <WorkspaceBrowserPreview
@@ -1269,7 +1322,24 @@ export default function FilePreviewPanel({
               <Spinner size="lg" />
             </div>
           ) : relativePath && file.data ? (
-            isMarkdown && renderMarkdown ? (
+            workbookFormat !== null ? (
+              file.data.truncated ? (
+                <FileSurfaceFailure message="This workbook is larger than 12 MB, so it is not opened here. Open it in a spreadsheet app." />
+              ) : (
+                <WorkbookFileSurface
+                  key={relativePath}
+                  environmentId={environmentId}
+                  cwd={cwd}
+                  relativePath={relativePath}
+                  format={workbookFormat}
+                  contents={file.data.contents}
+                  readOnly={isHostFile}
+                  refresh={file.refresh}
+                  onOpenFile={onOpenFile}
+                  onPendingChange={onPendingChange}
+                />
+              )
+            ) : isMarkdown && renderMarkdown ? (
               // Markdown reconciles in place across text updates, so a file
               // switch needs a new key or the previous file's disclosure and
               // wrap state carries into the next document.
@@ -1284,11 +1354,16 @@ export default function FilePreviewPanel({
                 onPendingChange={onPendingChange}
               />
             ) : tableDelimiter && renderTable ? (
-              <DelimitedTablePreview
+              <EditableTableSurface
                 key={relativePath}
-                name={relativePath}
+                environmentId={environmentId}
+                cwd={cwd}
+                relativePath={relativePath}
                 text={file.data.contents}
                 delimiter={tableDelimiter}
+                // A host file or a file cut at the read limit cannot be written back whole.
+                readOnly={isHostFile || file.data.truncated}
+                onPendingChange={onPendingChange}
               />
             ) : file.data.truncated || isHostFile ? (
               <SourceFilePreview

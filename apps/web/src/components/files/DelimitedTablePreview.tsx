@@ -1,63 +1,44 @@
-/* oxlint-disable react/no-array-index-key -- Table rows and columns have stable positions and may contain identical values. */
-import { parseDelimitedPreview } from "@t3tools/shared/delimitedPreview";
-import { useMemo } from "react";
+import { useState } from "react";
 
-import { FileSurfaceNotice } from "./fileSurfaceChrome";
+import { SpreadsheetEditor } from "./SpreadsheetEditor";
+import { createCsvDocument, serializeCsvDocument } from "./spreadsheetDocument";
 
-/** A bounded, readable table for CSV and TSV text; the source view keeps every byte. */
+/**
+ * CSV and TSV as a grid. With `onTextChange` the cells are editable and every edit hands back
+ * the whole file as text, in the line ending and quoting style it was read in; without it the
+ * grid is read-only.
+ */
 export function DelimitedTablePreview(props: {
   readonly name: string;
   readonly text: string;
   readonly delimiter: "," | "\t";
+  readonly onTextChange?: (text: string) => void;
 }) {
-  const table = useMemo(
-    () => parseDelimitedPreview(props.text, props.delimiter),
-    [props.text, props.delimiter],
-  );
-  const [header, ...body] = table.rows;
+  // `source` is the text the document was built from or last wrote, so a text prop that
+  // matches it is our own save coming back and anything else is a change from outside.
+  const [state, setState] = useState(() => ({
+    source: props.text,
+    doc: createCsvDocument(props.text, props.delimiter),
+  }));
+  let { doc } = state;
+  if (props.text !== state.source) {
+    doc = createCsvDocument(props.text, props.delimiter);
+    setState({ source: props.text, doc });
+  }
+  const { onTextChange } = props;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {table.truncated ? (
-        <FileSurfaceNotice>
-          Table limited to the first 100 rows and 30 columns. Switch to source for the rest.
-        </FileSurfaceNotice>
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table
-          className="min-w-full border-separate border-spacing-0 text-xs"
-          aria-label={props.name}
-        >
-          {header ? (
-            <thead className="sticky top-0 z-10">
-              <tr>
-                {header.map((cell, columnIndex) => (
-                  <th
-                    key={columnIndex}
-                    scope="col"
-                    className="max-w-80 border-b border-border bg-muted/60 px-3 py-1.5 text-left align-bottom font-medium whitespace-pre-wrap break-words backdrop-blur"
-                  >
-                    {cell}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-          ) : null}
-          <tbody>
-            {body.map((row, rowIndex) => (
-              <tr key={rowIndex} className="even:bg-muted/30">
-                {row.map((cell, columnIndex) => (
-                  <td
-                    key={columnIndex}
-                    className="max-w-80 border-b border-border/60 px-3 py-1.5 align-top whitespace-pre-wrap break-words tabular-nums"
-                  >
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <SpreadsheetEditor
+      name={props.name}
+      doc={doc}
+      {...(onTextChange
+        ? {
+            onChange: (next) => {
+              const text = serializeCsvDocument(next);
+              setState({ source: text, doc: next });
+              onTextChange(text);
+            },
+          }
+        : {})}
+    />
   );
 }
