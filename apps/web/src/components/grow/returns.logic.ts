@@ -159,11 +159,27 @@ const isSettled = (thread: EnvironmentThreadShell) =>
   thread.settledOverride === "settled" ||
   (thread.settledAt !== null && thread.settledOverride !== "active");
 
-/** Its agent's report says the user owes a move, and the user has not written since. */
-const reportAsksUser = (thread: EnvironmentThreadShell) =>
-  thread.statusOutcome === "needs-you" &&
-  epochMs(thread.statusUpdatedAt) >=
-    epochMs(thread.latestUserAuthoredMessageAt ?? thread.latestUserMessageAt);
+/**
+ * Its agent's report says the user owes a move, and nothing has answered it since: no message
+ * from the user, no later run, no pull request that merged or closed after it (the merge OK it
+ * waited for). Mirrors the server, which holds such a thread out of auto-settle.
+ */
+function reportAsksUser(thread: EnvironmentThreadShell): boolean {
+  if (thread.statusOutcome !== "needs-you") return false;
+  const reportAt = epochMs(thread.statusUpdatedAt);
+  const userWords =
+    thread.latestUserAuthoredMessageAt === undefined
+      ? thread.latestUserMessageAt
+      : thread.latestUserAuthoredMessageAt;
+  if (reportAt < epochMs(userWords) || reportAt < epochMs(thread.latestRun?.startedAt)) {
+    return false;
+  }
+  return !thread.pullRequests.some((link) => {
+    const snapshot = link.snapshot;
+    if (!snapshot || snapshot.state === "open") return false;
+    return epochMs(snapshot.state === "merged" ? snapshot.mergedAt : snapshot.closedAt) >= reportAt;
+  });
+}
 
 /**
  * A decision holds until the user writes to the thread again: Grow records it

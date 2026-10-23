@@ -145,7 +145,7 @@ describe("buildGrowDeck", () => {
     expect(deck.working).toHaveLength(1);
   });
 
-  it("puts a report that asks the user first, until they write back or it settles", () => {
+  it("puts a report that asks the user first, until something answers it", () => {
     const asks = {
       statusOutcome: "needs-you",
       statusUpdatedAt: hoursAgo(1),
@@ -155,6 +155,18 @@ describe("buildGrowDeck", () => {
       [
         shell("waiting", asks),
         shell("answered", { ...asks, latestUserMessageAt: hoursAgo(0.5) }),
+        shell("rerun", { ...asks, latestRun: { startedAt: hoursAgo(0.5) } }),
+        shell("merged", {
+          ...asks,
+          pullRequests: [
+            {
+              url: "https://pr/1",
+              number: 1,
+              source: "agent",
+              snapshot: { state: "merged", mergedAt: hoursAgo(0.5) },
+            },
+          ],
+        }),
         shell("settled", { ...asks, settledOverride: "settled" }),
         shell("pinned", { pinnedAt: hoursAgo(5), pinOrderKey: "a" }),
       ],
@@ -163,7 +175,8 @@ describe("buildGrowDeck", () => {
     );
     expect(keys(deck.urgent)).toEqual(["waiting"]);
     expect(deck.urgent[0]?.reason).toBe("asks");
-    expect(keys(deck.returns)).toEqual(["answered"]);
+    expect(keys(deck.returns)).toEqual(["answered", "rerun"]);
+    expect(keys(deck.shipped)).toEqual(["merged"]);
     expect(keys(deck.letGo)).toEqual(["settled"]);
     // The list leads with what waits on the user, and stepping follows the list.
     expect(keys(growDeckItems(deck)).slice(0, 2)).toEqual(["waiting", "pinned"]);

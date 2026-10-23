@@ -556,6 +556,31 @@ describe("resolveAutoSettlementAt", () => {
         pullRequest: null,
       }),
     ).toBeNull();
+    // The merge it waited for: a pull request that merged after the report releases it.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...input.thread, statusReport: report("needs-you", -3 * 60 * 60 * 1_000) },
+        defaultBranch: null,
+      }),
+    ).toEqual(at(-50 * 60 * 1_000));
+    // A run that started after the report (a watch woke it) made news the report does not cover.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...input.thread, latestRunStartedAt: at(-55 * 60 * 1_000) },
+      }),
+    ).toBeNull();
+    // A branch thread waits for its branch lookup before a done settles it.
+    const onBranch = {
+      ...input,
+      thread: { ...input.thread, branch: "feature" },
+      pullRequest: null,
+    };
+    expect(ThreadSettlementService.resolveAutoSettlementAt(onBranch)).toBeNull();
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({ ...onBranch, branchChecked: true }),
+    ).toEqual(at(-50 * 60 * 1_000));
     // Once the user answers, the inactivity rule applies again.
     expect(
       ThreadSettlementService.resolveAutoSettlementAt({
