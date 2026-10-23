@@ -218,7 +218,7 @@ If no component fits and one would really help, add it to the library at ${dir} 
 
 ## Components
 One line each: tag, summary, prop names (* = required). Props are JSON keys in the body (or attributes for text-body components).
-Before using a component you have not used in this thread, or when unsure about its props, call the \`elements_describe\` tool with its tags (cheap; returns description, body kind, full props schema and an example), then write it. A mistaken prop renders a visible error card, so describe before guessing on complex ones (t3-whatif, t3-explain, t3-datatable, t3-sankey, t3-form, t3-flow).
+Before the first time you use a component in a thread, call the \`elements_describe\` tool with its tags (one cheap call; returns description, body kind, full props schema and an example), then write it exactly like the example. The one-line props below are not enough to write from: a guessed prop or tag renders a visible error card.
 ${catalog}
 </web_components>`;
 }
