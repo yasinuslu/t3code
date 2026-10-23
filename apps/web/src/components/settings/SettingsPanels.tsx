@@ -2104,7 +2104,7 @@ const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfter
 function ProfileLockInput() {
   const current = profileLockNow() ?? "";
   const [draft, setDraft] = useState(current);
-  // A profile window (Window menu, Alt+1, Alt+2, ...) is locked for its whole life.
+  // A profile window (Window menu, Alt+Shift+1, ...) is locked for its whole life.
   if (isWindowProfileLock()) {
     return (
       <Input
@@ -2569,7 +2569,7 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           {...searchableSetting("profile-lock")}
-          description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes. In the desktop app, Window > <profile> Window (Alt+1, Alt+2, ...) opens a window locked to one profile next to this one."
+          description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes. In the desktop app, Window > <profile> Window (Alt+Shift+1, Alt+Shift+2, ..., Ctrl+Shift+N on a Mac) opens a window locked to one profile next to this one."
           control={<ProfileLockInput />}
         />
 

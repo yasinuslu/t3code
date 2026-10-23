@@ -5,6 +5,7 @@ import {
   FileJsonIcon,
   MinusIcon,
   PlusIcon,
+  RotateCcwIcon,
   SearchIcon,
   TriangleAlertIcon,
   XIcon,
@@ -27,7 +28,10 @@ import {
   type ServerRemoveKeybindingInput,
   type ServerUpsertKeybindingInput,
 } from "@t3tools/contracts";
-import { mergeWithDefaultKeybindings } from "@t3tools/shared/keybindings";
+import {
+  DEFAULT_RESOLVED_KEYBINDINGS,
+  mergeWithDefaultKeybindings,
+} from "@t3tools/shared/keybindings";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -35,6 +39,7 @@ import {
 
 import { isElectron } from "../../env";
 import { useOpenInPreferredEditor } from "../../editorPreferences";
+import { readLocalApi } from "../../localApi";
 import { formatShortcutLabel } from "../../keybindings";
 import { cn } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
@@ -59,6 +64,7 @@ import {
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   parseWhenExpressionDraft,
+  shortcutToKeybindingInput,
   type KeybindingCommandOption,
   type KeybindingRow,
   type WhenVariableOption,
@@ -94,7 +100,9 @@ function KeybindingPill({ value }: { value: string }) {
                   ? "⌥"
                   : "Alt"
                 : part === "ctrl"
-                  ? "⌃"
+                  ? navigator.platform.toLowerCase().includes("mac")
+                    ? "⌃"
+                    : "Ctrl"
                   : part.length === 1
                     ? part.toUpperCase()
                     : part}
@@ -1273,7 +1281,7 @@ function KeybindingsList(props: KeybindingsListProps) {
     props;
   const newProps: NewKeybindingProps = {
     commandOptions,
-    allRows: rows,
+    allRows: rowActions.allRows,
     variables: rowActions.variables,
     isSaving: savingCommand !== null,
     onSave: rowActions.onSave,
@@ -1352,6 +1360,8 @@ export function KeybindingsSettingsPanel() {
   const [savingCommand, setSavingCommand] = useState<KeybindingCommand | null>(null);
   const [isAddingBinding, setIsAddingBinding] = useState(false);
   const rows = useMemo(() => buildKeybindingRows(keybindings, query), [keybindings, query]);
+  // Conflicts are checked against every binding, not only the ones the search shows.
+  const allRows = useMemo(() => buildKeybindingRows(keybindings, ""), [keybindings]);
   // The search-target context is provided by this panel's own page container,
   // so the jump target is read from the route hash here.
   const searchTargetId = useLocation({ select: (location) => location.hash.replace(/^#/, "") });
@@ -1487,6 +1497,89 @@ export function KeybindingsSettingsPanel() {
     [saveKeybinding],
   );
 
+  // Every rule back to the shipped defaults: what was changed or added goes, what was removed
+  // returns. Project scripts' own keys are not defaults and stay.
+  const resetAllKeybindings = useCallback(() => {
+    if (!primaryEnvironment) return;
+    const ruleId = (rule: (typeof keybindings)[number]) =>
+      [
+        rule.command,
+        shortcutToKeybindingInput(rule.shortcut),
+        whenAstToExpression(rule.whenAst),
+      ].join("\u0000");
+    const defaults = new Map(DEFAULT_RESOLVED_KEYBINDINGS.map((rule) => [ruleId(rule), rule]));
+    const current = new Map(
+      keybindings
+        .filter((rule) => !String(rule.command).startsWith("script."))
+        .map((rule) => [ruleId(rule), rule]),
+    );
+    const toRemove = [...current].filter(([id]) => !defaults.has(id)).map(([, rule]) => rule);
+    const toAdd = [...defaults].filter(([id]) => !current.has(id)).map(([, rule]) => rule);
+    void (async () => {
+      if (toRemove.length + toAdd.length === 0) {
+        toastManager.add({ title: "Every keybinding is already at its default", type: "info" });
+        return;
+      }
+      const api = readLocalApi();
+      const confirmed = api
+        ? await api.dialogs.confirm(
+            `Reset every keybinding to its default?\n${toRemove.length} changed or added, ${toAdd.length} missing.`,
+            { variant: "destructive" },
+          )
+        : true;
+      if (!confirmed) return;
+      const run = async (
+        send: (target: (typeof connectedEnvironments)[number]) => Promise<{ _tag: string }>,
+      ) => {
+        const results = await Promise.all(connectedEnvironments.map(send));
+        return results.find((result) => result._tag === "Failure") ?? null;
+      };
+      let failed: { _tag: string } | null = null;
+      for (const rule of toRemove) {
+        const when = whenAstToExpression(rule.whenAst);
+        failed = await run((target) =>
+          removeKeybindingMutation({
+            environmentId: target.environmentId,
+            input: {
+              command: rule.command,
+              key: shortcutToKeybindingInput(rule.shortcut),
+              ...(when.length > 0 ? { when } : {}),
+            },
+          }),
+        );
+        if (failed) break;
+      }
+      if (!failed) {
+        for (const rule of toAdd) {
+          const when = whenAstToExpression(rule.whenAst);
+          failed = await run((target) =>
+            upsertKeybinding({
+              environmentId: target.environmentId,
+              input: {
+                command: rule.command,
+                key: shortcutToKeybindingInput(rule.shortcut),
+                ...(when.length > 0 ? { when } : {}),
+              },
+            }),
+          );
+          if (failed) break;
+        }
+      }
+      setSavingCommand(null);
+      toastManager.add(
+        failed
+          ? { title: "Unable to reset every keybinding", type: "error" }
+          : { title: "Keybindings reset to their defaults", type: "success" },
+      );
+    })();
+  }, [
+    connectedEnvironments,
+    keybindings,
+    primaryEnvironment,
+    removeKeybindingMutation,
+    upsertKeybinding,
+  ]);
+
   const cancelAdd = useCallback(() => setIsAddingBinding(false), []);
 
   const bindingsCount = (
@@ -1498,7 +1591,7 @@ export function KeybindingsSettingsPanel() {
 
   const listProps: KeybindingsListProps = {
     rows,
-    allRows: rows,
+    allRows,
     commandOptions,
     variables: whenVariables,
     savingCommand,
@@ -1538,6 +1631,22 @@ export function KeybindingsSettingsPanel() {
                 }
               />
               <TooltipPopup side="top">Add keybinding</TooltipPopup>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    onClick={resetAllKeybindings}
+                    aria-label="Reset all keybindings"
+                  >
+                    <RotateCcwIcon />
+                  </Button>
+                }
+              />
+              <TooltipPopup side="top">Reset all keybindings</TooltipPopup>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger

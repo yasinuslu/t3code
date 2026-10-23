@@ -37,6 +37,7 @@ import {
   sendManagerAction,
 } from "./ManagerShortcut.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
+import { profileWindowShortcutIndex } from "./ShellChords.ts";
 
 const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
@@ -189,17 +190,6 @@ export function profileWindowUrl(applicationUrl: string, profile: string | null)
 
 export function profileWindowTitle(displayName: string, profile: string | null): string {
   return profile === null ? displayName : `${displayName} · ${profile}`;
-}
-
-/** Alt+1 ... Alt+9 (Option on macOS) as a 0-based profile index, by physical key. */
-export function profileWindowShortcutIndex(
-  input: Pick<Electron.Input, "type" | "alt" | "control" | "meta" | "shift" | "code">,
-): number | null {
-  if (input.type !== "keyDown" || !input.alt || input.control || input.meta || input.shift) {
-    return null;
-  }
-  const match = /^Digit([1-9])$/.exec(input.code);
-  return match ? Number(match[1]) - 1 : null;
 }
 
 function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
@@ -375,7 +365,7 @@ export const make = Effect.gen(function* () {
   // and reported by the renderer for the main window (its app-wide lock).
   const windowProfiles = new Map<Electron.BrowserWindow, string | null>();
   const profileWindows = new Set<Electron.BrowserWindow>();
-  // Profiles being opened right now, so a second Alt+1 does not open a second window.
+  // Profiles being opened right now, so a second profile key does not open a second window.
   const openingProfiles = new Set<string>();
   let profileChoices = (yield* desktopSettings.get).profileWindowChoices;
   const profileChoicesListeners = new Set<() => void>();
@@ -739,10 +729,10 @@ export const make = Effect.gen(function* () {
         sendManagerAction(window, TOGGLE_MANAGER_ACTION);
         return;
       }
-      // Alt+1, Alt+2, ...: the Window menu's profile windows. Taken here rather
-      // than by the menu accelerator, which the page sees first and a hidden
-      // Linux menu bar never gets.
-      const profileIndex = profileWindowShortcutIndex(input);
+      // The Window menu's profile windows (Alt+Shift+1, ... by default; Settings › Keyboard).
+      // Taken here rather than by the menu accelerator, which the page sees first and a
+      // hidden Linux menu bar never gets.
+      const profileIndex = profileWindowShortcutIndex(input, environment.platform);
       if (profileIndex !== null) {
         const profile = profileChoices[profileIndex];
         if (profile !== undefined) {

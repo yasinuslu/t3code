@@ -12,6 +12,7 @@ import { create } from "zustand";
 
 import { managerProfileNow, useBrainstormStore } from "../brainstormStore";
 import { resolveShortcutCommand } from "../keybindings";
+import { isEditableFocused } from "../lib/editableFocus";
 import { cn } from "../lib/utils";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -51,7 +52,10 @@ export function ProfileShortcuts() {
         return;
       }
       const command = resolveShortcutCommand(event, keybindings, {
-        context: { terminalFocus: isTerminalFocused() },
+        context: {
+          terminalFocus: isTerminalFocused(),
+          editableFocus: isEditableFocused(event.target),
+        },
       });
       if (command !== "profile.next" && command !== "profile.previous") return;
       event.preventDefault();

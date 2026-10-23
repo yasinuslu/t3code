@@ -5,6 +5,8 @@ import {
   MAX_KEYBINDINGS_COUNT,
   MAX_WHEN_EXPRESSION_DEPTH,
   MODEL_PICKER_JUMP_KEYBINDING_COMMANDS,
+  PROFILE_WINDOW_KEYBINDING_COMMANDS,
+  type GrowKeybindingCommand,
   type ResolvedKeybindingRule,
   type ResolvedKeybindingsConfig,
   THREAD_JUMP_KEYBINDING_COMMANDS,
@@ -18,7 +20,65 @@ type WhenToken =
   | { type: "lparen" }
   | { type: "rparen" };
 
+/**
+ * Grow's keys, one per command: the physical key on the left hand, held with the Grow
+ * modifier. That is Alt on Windows and Linux and Control on a Mac, where Option types special
+ * characters. Two rules per command, told apart by `isMac`, so the one keybindings file serves
+ * a Mac and a PC alike. `growOpen` scopes them to the Grow screen, which also lets them take a
+ * Control chord there (Ctrl+S) that means something else elsewhere.
+ */
+const GROW_KEYS: ReadonlyArray<{
+  readonly command: GrowKeybindingCommand;
+  readonly key: string;
+  /** The Mac chord when it cannot be plain Control+key. */
+  readonly mac?: string;
+}> = [
+  { command: "grow.step.previous", key: "w" },
+  { command: "grow.step.next", key: "s" },
+  { command: "grow.page.previous", key: "a" },
+  { command: "grow.page.next", key: "d" },
+  { command: "grow.zone.threads", key: "1" },
+  { command: "grow.zone.presentation", key: "2" },
+  { command: "grow.zone.live", key: "3" },
+  { command: "grow.zone.chat", key: "4" },
+  { command: "grow.back", key: "q" },
+  { command: "grow.manager", key: "t" },
+  // Ctrl+E is the manager everywhere on a Mac (and the emacs end-of-line).
+  { command: "grow.main", key: "e", mac: "ctrl+shift+e" },
+  { command: "grow.settle", key: "x" },
+  { command: "grow.supersede", key: "shift+x" },
+  { command: "grow.undo", key: "z" },
+  { command: "grow.reload", key: "r" },
+  { command: "grow.search", key: "f" },
+  { command: "grow.toggleProjects", key: "g" },
+];
+
+const GROW_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = GROW_KEYS.flatMap(
+  ({ command, key, mac }) => [
+    { key: `alt+${key}`, command, when: "growOpen && !isMac" },
+    { key: mac ?? `ctrl+${key}`, command, when: "growOpen && isMac" },
+  ],
+);
+
+/**
+ * The profile windows (desktop): Alt+Shift+1 ... 9, Control+Shift+1 ... 9 on a Mac. Not plain
+ * Alt+digit, which is Grow's places.
+ */
+const PROFILE_WINDOW_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> =
+  PROFILE_WINDOW_KEYBINDING_COMMANDS.flatMap((command, index) => [
+    { key: `alt+shift+${index + 1}`, command, when: "isDesktop && !isMac" },
+    { key: `ctrl+shift+${index + 1}`, command, when: "isDesktop && isMac" },
+  ]);
+
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
+  // The desktop menu's own accelerators. The preview's zoom keeps its chord while a preview
+  // has focus, so these step aside for it.
+  { key: "mod+/", command: "shortcuts.toggle" },
+  { key: "mod+,", command: "settings.open", when: "isDesktop" },
+  { key: "mod+=", command: "zoom.in", when: "isDesktop && !previewFocus" },
+  { key: "mod++", command: "zoom.in", when: "isDesktop && !previewFocus" },
+  { key: "mod+-", command: "zoom.out", when: "isDesktop && !previewFocus" },
+  { key: "mod+0", command: "zoom.reset", when: "isDesktop && !previewFocus" },
   { key: "mod+b", command: "sidebar.toggle" },
   { key: "mod+[", command: "navigation.back", when: "!terminalFocus" },
   { key: "mod+]", command: "navigation.forward", when: "!terminalFocus" },
@@ -70,6 +130,13 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // counts, so what Option types on a Mac layout does not get in the way.
   { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
   { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
+  // On a Mac the profile keys follow Grow's: Control, not Option.
+  { key: "ctrl+v", command: "profile.next", when: "!terminalFocus && !editableFocus && isMac" },
+  {
+    key: "ctrl+shift+v",
+    command: "profile.previous",
+    when: "!terminalFocus && !editableFocus && isMac",
+  },
   // Keyboard-only movement between the panes on screen, vim-style. `ctrl` rather than `mod`
   // so it is the Control key on a Mac too. They work from inside inputs, the composer and
   // a terminal alike, so focus never gets stuck in one pane. Ctrl+H is Backspace and Ctrl+L
@@ -78,6 +145,16 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+s", command: "pane.sidebar" },
   { key: "ctrl+h", command: "pane.left" },
   { key: "ctrl+l", command: "pane.right", when: "!previewFocus" },
+  // Rows of the sidebar once it has focus, vim-style (the arrow keys work as well). Control
+  // on a Mac, where Option types special characters.
+  { key: "alt+k", command: "pane.rowPrevious", when: "!isMac" },
+  { key: "alt+j", command: "pane.rowNext", when: "!isMac" },
+  { key: "ctrl+k", command: "pane.rowPrevious", when: "isMac && !editableFocus" },
+  { key: "ctrl+j", command: "pane.rowNext", when: "isMac && !editableFocus" },
+  // Grow's keys come after the pane chords: on a Mac Ctrl+S is "next thread" while Grow is
+  // open, and the last matching rule wins.
+  ...GROW_DEFAULT_KEYBINDINGS,
+  ...PROFILE_WINDOW_DEFAULT_KEYBINDINGS,
   // The two screens. `ctrl` rather than `mod`, like the panel chords above, so the
   // chord is the same physical keys everywhere; 0 switches between Grow and T3.
   { key: "ctrl+alt+1", command: "mode.grow" },
@@ -402,4 +479,41 @@ export function mergeWithDefaultKeybindings(
   }
 
   return merged.slice(-MAX_KEYBINDINGS_COUNT);
+}
+
+/**
+ * Control+letter chords a macOS text field reads as editing (emacs: A/E line start and end,
+ * B/F back and forward, D delete, H backspace, K kill, N/P lines, O open line, T transpose,
+ * Y yank). Grow holds its keys with Control on a Mac, so while the caret is in a text field
+ * these stay with the text, and a page below the app keeps them too.
+ */
+const MAC_TEXT_EDITING_LETTERS: ReadonlySet<string> = new Set([
+  "a",
+  "b",
+  "d",
+  "e",
+  "f",
+  "h",
+  "k",
+  "n",
+  "o",
+  "p",
+  "t",
+  "y",
+]);
+
+export function isMacTextEditingChord(chord: {
+  readonly key: string;
+  readonly control: boolean;
+  readonly alt: boolean;
+  readonly meta: boolean;
+  readonly shift: boolean;
+}): boolean {
+  return (
+    chord.control &&
+    !chord.alt &&
+    !chord.meta &&
+    !chord.shift &&
+    MAC_TEXT_EDITING_LETTERS.has(chord.key.toLowerCase())
+  );
 }

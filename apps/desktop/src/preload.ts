@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
   setManagerShortcut: (chord) =>
     ipcRenderer.invoke(IpcChannels.SET_MANAGER_SHORTCUT_CHANNEL, chord),
+  setShellChords: (chords) => ipcRenderer.invoke(IpcChannels.SET_SHELL_CHORDS_CHANNEL, chords),
   reportWindowProfile: (input) =>
     ipcRenderer.invoke(IpcChannels.REPORT_WINDOW_PROFILE_CHANNEL, input),
   openProfileWindow: (profile) =>

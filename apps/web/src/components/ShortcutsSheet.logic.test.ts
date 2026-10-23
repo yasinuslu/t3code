@@ -7,13 +7,15 @@ import { buildShortcutSections } from "./ShortcutsSheet.logic";
 const options = {
   keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
   platform: "Linux",
-  mac: false,
   inGrow: true,
   growAvailable: true,
 };
 
 const rowKeys = (sections: ReturnType<typeof buildShortcutSections>, label: string) =>
   sections.flatMap((section) => section.rows).find((row) => row.label === label)?.keys;
+
+const grow = (sections: ReturnType<typeof buildShortcutSections>) =>
+  sections.filter((section) => section.scope === "grow");
 
 describe("buildShortcutSections", () => {
   it("puts Grow's keys first in Grow, and the app-wide ones first elsewhere", () => {
@@ -29,26 +31,52 @@ describe("buildShortcutSections", () => {
     expect(sections.every((section) => section.scope === "app")).toBe(true);
   });
 
-  it("writes the shifted profile key and the Alt chord for the platform", () => {
-    const linux = buildShortcutSections(options);
-    expect(rowKeys(linux, "Next / previous profile")).toEqual(["V", "Shift+V"]);
-    const global = (sections: typeof linux) =>
-      sections.filter((section) => section.scope === "app");
-    expect(rowKeys(global(linux), "Next / previous profile")).toEqual(["Alt+V", "Alt+Shift+V"]);
+  it("writes Grow's keys with Alt on a PC and with Control on a Mac", () => {
+    const linux = grow(buildShortcutSections(options));
+    expect(rowKeys(linux, "Previous / next thread")).toEqual(["Alt+W", "Alt+S"]);
+    expect(rowKeys(linux, "Settle, superseded by...")).toEqual(["Alt+Shift+X"]);
 
-    const mac = buildShortcutSections({ ...options, platform: "MacIntel", mac: true });
+    const mac = grow(buildShortcutSections({ ...options, platform: "MacIntel" }));
+    expect(rowKeys(mac, "Previous / next thread")).toEqual(["⌃W", "⌃S"]);
+    expect(rowKeys(mac, "Settle, superseded by...")).toEqual(["⌃⇧X"]);
+    // Ctrl+E is the manager on a Mac, so the card's main move sits on Ctrl+Shift+E.
+    expect(rowKeys(mac, "Ship, or done")).toEqual(["⌃⇧E"]);
+  });
+
+  it("writes the profile keys for the platform", () => {
+    const linux = buildShortcutSections(options);
+    expect(rowKeys(grow(linux), "Next / previous profile")).toEqual(["Alt+V", "Alt+Shift+V"]);
+    const mac = buildShortcutSections({ ...options, platform: "MacIntel" });
+    expect(rowKeys(grow(mac), "Next / previous profile")).toEqual(["⌃V", "⌃⇧V"]);
     expect(
-      mac.filter((section) => section.scope === "grow").flatMap((section) => section.rows),
-    ).toContainEqual({ label: "Next / previous profile", keys: ["V", "⇧V"] });
-    expect(rowKeys(global(mac), "Next / previous profile")).toEqual(["⌥V", "⌥⇧V"]);
+      rowKeys(
+        mac.filter((section) => section.scope === "app"),
+        "Next / previous profile",
+      ),
+    ).toEqual(["⌃V", "⌃⇧V"]);
+  });
+
+  it("shows the sidebar chord outside Grow only, where a Mac's Ctrl+S steps threads", () => {
+    const mac = { ...options, platform: "MacIntel" };
+    expect(rowKeys(buildShortcutSections({ ...mac, inGrow: false }), "Focus the sidebar")).toEqual([
+      "⌃S",
+    ]);
+    expect(
+      rowKeys(buildShortcutSections({ ...mac, inGrow: true }), "Focus the sidebar"),
+    ).toBeUndefined();
+    expect(
+      rowKeys(buildShortcutSections({ ...options, inGrow: true }), "Focus the sidebar"),
+    ).toEqual(["Ctrl+S"]);
   });
 
   it("follows the live keybindings: a remapped command shows its new key, a removed one is dropped", () => {
     const keybindings = compileResolvedKeybindingsConfig([
       { key: "mod+shift+y", command: "manager.toggle" },
+      { key: "alt+i", command: "grow.step.previous" },
     ]);
     const sections = buildShortcutSections({ ...options, inGrow: false, keybindings });
     expect(rowKeys(sections, "Manager")).toEqual(["Ctrl+Shift+Y"]);
     expect(rowKeys(sections, "Command palette")).toBeUndefined();
+    expect(rowKeys(grow(sections), "Previous / next thread")).toEqual(["Alt+I"]);
   });
 });

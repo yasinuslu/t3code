@@ -6,11 +6,13 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { KeyboardIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { create } from "zustand";
 
 import { useForkFeatures } from "../hooks/useSettings";
 import { useHomeOverlayStore } from "../homeOverlayStore";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { buildShortcutSections, type ShortcutSection } from "./ShortcutsSheet.logic";
@@ -59,23 +61,22 @@ export function ShortcutsSheet() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.defaultPrevented || event.repeat || event.isComposing) return;
-      // A bare key would collide with inline components and typing; the chord is Mod+/.
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+      if (event.defaultPrevented || event.repeat || event.isComposing) return;
+      // A bare key would collide with inline components and typing; the chord is Mod+/ by default.
+      if (resolveShortcutCommand(event, keybindings) !== "shortcuts.toggle") return;
       event.preventDefault();
       const { open: isOpen, setOpen } = useShortcutsSheetStore.getState();
       setOpen(!isOpen);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [keybindings]);
 
   if (!open) return null;
   const platform = navigator.platform;
   const sections = buildShortcutSections({
     keybindings,
     platform,
-    mac: isMacPlatform(platform),
     inGrow: homeOpen,
     growAvailable: forkFeatures,
   });
@@ -102,8 +103,22 @@ export function ShortcutsSheet() {
             ))}
           </div>
           <p className="pt-1 text-muted-foreground text-xs">
-            <Kbd>?</Kbd> or <Kbd>Esc</Kbd> closes this.
+            <Kbd>Esc</Kbd> closes this. Every key can be changed in{" "}
+            <Link
+              to="/settings/keybindings"
+              className="underline underline-offset-2"
+              onClick={() => useShortcutsSheetStore.getState().setOpen(false)}
+            >
+              Settings › Keybindings
+            </Link>
+            .
           </p>
+          {columns.some(({ scope }) => scope === "grow") && isMacPlatform(platform) ? (
+            <p className="pt-1 text-muted-foreground text-xs">
+              On a Mac Grow's keys are held with <Kbd>⌃</Kbd>. While the caret is in a text box, the
+              ones a Mac text field uses itself (A, D, F, T) stay with the text.
+            </p>
+          ) : null}
         </DialogPanel>
       </DialogPopup>
     </Dialog>
@@ -112,6 +127,8 @@ export function ShortcutsSheet() {
 
 /** The keyboard button for the top-right corner, beside the notifications bell. */
 export function ShortcutsButton() {
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcut = shortcutLabelForCommand(keybindings, "shortcuts.toggle");
   return (
     <Tooltip>
       <TooltipTrigger
@@ -129,7 +146,7 @@ export function ShortcutsButton() {
         <KeyboardIcon />
       </TooltipTrigger>
       <TooltipPopup side="bottom">
-        Keyboard shortcuts ({isMacPlatform(navigator.platform) ? "⌘/" : "Ctrl+/"})
+        Keyboard shortcuts{shortcut ? ` (${shortcut})` : ""}
       </TooltipPopup>
     </Tooltip>
   );

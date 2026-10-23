@@ -49,6 +49,7 @@ import { GrowRouting } from "./grow/GrowRouting";
 import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
 import { PaneShortcuts } from "./PaneShortcuts";
 import { ProfileShortcuts } from "./ProfileShortcuts";
+import { ShellShortcuts } from "./ShellShortcuts";
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { PhoneTabBar } from "./PhoneTabBar";
 import LegacyThreadSidebar from "./LegacySidebar";
@@ -385,6 +386,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         ) : null}
         <NavigationHistoryShortcuts />
         <PaneShortcuts />
+        <ShellShortcuts />
         <ShortcutsSheet />
         <MainAppLocationTracker />
       </SidebarProvider>

@@ -15,6 +15,7 @@
  * things recorded are the decision, in the thread's grow card, and what the
  * user asked from here, as typed requests on the thread itself.
  */
+import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { WidgetThreadFacts } from "../../widgetFrame/protocol";
@@ -22,6 +23,7 @@ import {
   ComposerContextId,
   type EnvironmentId,
   type GrowDecision,
+  type GrowKeybindingCommand,
   type GrowRequestKind,
   type ScopedThreadRef,
   type ThreadGrowRequest,
@@ -96,8 +98,8 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatView from "../ChatView";
 import { type GrowZone, growKeyAction } from "./grow.keys";
 import { activeZone, focusZone, installZoneMemory, reloadLive, zoneOf } from "./grow.zones";
-import { stepProfile } from "../ProfileShortcuts";
 import { useShortcutsSheetOpen } from "../ShortcutsSheet";
+import { primaryServerKeybindingsAtom } from "../../state/server";
 import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { WORK_REASON_LOOK, useReportImages, useThreadReport } from "../home/ThreadReportCard";
 import {
@@ -115,6 +117,7 @@ import { StartPreviewButton, StopPreviewButton } from "./PreviewEnvironment";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
+import { GrowKbd, useGrowKeyLabel } from "./GrowKbd";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
@@ -442,6 +445,9 @@ function useProjectTitle() {
   }, [projects]);
 }
 
+/** A presentation's page asks for focus back (Esc inside its frame). */
+const GROW_PRESENTATION_ESCAPE_EVENT = "t3-grow-presentation-escape";
+
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.isContentEditable || target.closest("input, textarea, select, [role=dialog]") !== null);
@@ -513,6 +519,7 @@ export function GrowReturns(props: {
   };
 
   const sheetOpen = useShortcutsSheetOpen();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   // A thread link landed (GrowRouting): show that thread, as its item when the deck has it.
   const focusTarget = useGrowFocusStore((state) => state.target);
   const focusManager = useGrowFocusStore((state) => state.manager);
@@ -618,20 +625,21 @@ export function GrowReturns(props: {
       // is a dialog too, but not a modal one.
       if (sheetOpen || event.defaultPrevented) return;
       if (document.querySelector('[role="menu"], [role="listbox"], [aria-modal="true"]')) return;
-      const action = growKeyAction(event, {
-        typing: isTyping(event.target),
-        inLive: zoneOf(event.target) === "live",
-        managerOpen: manager,
-        item: current,
-      });
+      const action = growKeyAction(
+        event,
+        {
+          typing: isTyping(event.target),
+          inLive: zoneOf(event.target) === "live",
+          managerOpen: manager,
+          item: current,
+        },
+        keybindings,
+      );
       if (action === null) return;
       const item = current;
       switch (action.type) {
         case "manager":
           showManager();
-          break;
-        case "profile":
-          stepProfile(action.direction);
           break;
         case "toggleProjects":
           // Everything with a match is already open while searching.
@@ -691,20 +699,43 @@ export function GrowReturns(props: {
       event.preventDefault();
       event.stopPropagation();
     };
-    // Capture, so a key held with Alt reaches Grow before the composer or a field takes it.
+    // Esc inside a presentation's page gives focus back to the presentation.
+    const onPresentationEscape = () => jump("presentation");
+    // Capture, so a Grow key reaches Grow before the composer or a field takes it.
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [actions, current, manager, playing, presentation, query, sheetOpen, shown, split, wide]);
+    window.addEventListener(GROW_PRESENTATION_ESCAPE_EVENT, onPresentationEscape);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener(GROW_PRESENTATION_ESCAPE_EVENT, onPresentationEscape);
+    };
+  }, [
+    actions,
+    current,
+    keybindings,
+    manager,
+    playing,
+    presentation,
+    query,
+    sheetOpen,
+    shown,
+    split,
+    wide,
+  ]);
 
-  // The desktop catches Grow's Alt keys inside the live app, whose page swallows every key,
-  // and hands them here as the same key press.
+  // The desktop catches Grow's keys inside the live app, whose page swallows every key,
+  // and hands them here as the same key press (`grow-key:<code>:<shift><alt><ctrl>`).
   useEffect(
     () =>
       window.desktopBridge?.onMenuAction((action) => {
-        const [, code, shift] = /^grow-key:(\w+):([01])$/.exec(action) ?? [];
-        if (code === undefined) return;
+        const [, code, flags] = /^grow-key:(\w+):([01]{3})$/.exec(action) ?? [];
+        if (code === undefined || flags === undefined) return;
         window.dispatchEvent(
-          new KeyboardEvent("keydown", { code, altKey: true, shiftKey: shift === "1" }),
+          new KeyboardEvent("keydown", {
+            code,
+            shiftKey: flags[0] === "1",
+            altKey: flags[1] === "1",
+            ctrlKey: flags[2] === "1",
+          }),
         );
       }),
     [],
@@ -714,14 +745,27 @@ export function GrowReturns(props: {
     const onMessage = (event: MessageEvent) => {
       const data: unknown = event.data;
       if (typeof data !== "object" || data === null || !("type" in data)) return;
-      if (data.type !== "t3-grow-key" || !("code" in data) || typeof data.code !== "string") return;
+      if (data.type !== "t3-grow-key") return;
       const fromPage = [
         ...document.querySelectorAll<HTMLIFrameElement>('[data-grow-zone="presentation"] iframe'),
       ].some((frame) => frame.contentWindow === event.source);
       if (!fromPage) return;
-      const shiftKey = "shift" in data && data.shift === true;
+      if ("escape" in data && data.escape === true) {
+        window.dispatchEvent(new Event(GROW_PRESENTATION_ESCAPE_EVENT));
+        return;
+      }
+      if (!("code" in data) || typeof data.code !== "string") return;
+      const flag = (name: string) =>
+        name in data && (data as Record<string, unknown>)[name] === true;
+      // A page stored before the modifier was reported posts only code and shift: it meant Alt.
+      const legacy = !("alt" in data) && !("ctrl" in data);
       window.dispatchEvent(
-        new KeyboardEvent("keydown", { code: data.code, altKey: true, shiftKey }),
+        new KeyboardEvent("keydown", {
+          code: data.code,
+          shiftKey: flag("shift"),
+          altKey: legacy || flag("alt"),
+          ctrlKey: flag("ctrl"),
+        }),
       );
     };
     window.addEventListener("message", onMessage);
@@ -875,6 +919,7 @@ function ReturnsHeader(props: {
   readonly query: string;
   readonly phoneList: (() => void) | null;
 }) {
+  const searchKey = useGrowKeyLabel("grow.search");
   return (
     <div className="flex flex-col gap-2 pb-3">
       <div className="flex items-baseline gap-2">
@@ -908,7 +953,7 @@ function ReturnsHeader(props: {
             size="sm"
             data-grow-search=""
             aria-label="Search"
-            placeholder="Search  F"
+            placeholder={searchKey ? `Search  ${searchKey}` : "Search"}
             value={props.query}
             onChange={(event) => useReturnsStore.setState({ query: event.currentTarget.value })}
             onKeyDown={(event) => {
@@ -1039,7 +1084,7 @@ function ReturnsList(props: {
               {expandAll ? "Only this project" : "Expand all"}
             </span>
             <span className="hidden md:@min-[15.5rem]:contents">
-              <Kbd>G</Kbd>
+              <GrowKbd command="grow.toggleProjects" />
             </span>
           </button>
         ) : null}
@@ -1316,7 +1361,7 @@ function ManagerRow(props: { readonly open: boolean }) {
         <span aria-label="Manager is working" className="size-1.5 shrink-0 rounded-full bg-info" />
       ) : null}
       <span className="hidden md:contents">
-        <Kbd>T</Kbd>
+        <GrowKbd command="grow.manager" />
       </span>
     </button>
   );
@@ -1753,7 +1798,7 @@ function StoryBody(props: {
         >
           <MessageSquareIcon />
           Whole conversation
-          <Kbd>4</Kbd>
+          <GrowKbd command="grow.zone.chat" />
         </Button>
       )}
     </div>
@@ -2447,7 +2492,7 @@ function Choices(props: {
       label="Ship"
       hint="Merge it the usual way"
       icon={<RocketIcon />}
-      keyHint="E"
+      keyCommand="grow.main"
       primary={!props.question}
       wide={wide}
       stacked={stacked}
@@ -2459,7 +2504,7 @@ function Choices(props: {
       label="Done"
       hint="Nothing to merge"
       icon={<CheckIcon />}
-      keyHint="E"
+      keyCommand="grow.main"
       primary={!props.question}
       wide={wide}
       stacked={stacked}
@@ -2471,7 +2516,7 @@ function Choices(props: {
       label="Settle"
       hint="Off the list, nothing sent"
       icon={<XIcon />}
-      keyHint="X"
+      keyCommand="grow.settle"
       wide={wide}
       stacked={stacked}
       onClick={() => actions.settle(item)}
@@ -2485,7 +2530,7 @@ function Choices(props: {
             label="Answer"
             hint="In the thread"
             icon={<MessageSquareIcon />}
-            keyHint="4"
+            keyCommand="grow.zone.chat"
             primary
             wide={wide}
             stacked={stacked}
@@ -2560,7 +2605,7 @@ function SupersedeLink(props: {
     >
       <LayersIcon />
       {props.settled ? "Superseded by..." : "Settle, superseded by..."}
-      {props.wide ? <Kbd>Shift X</Kbd> : null}
+      {props.wide ? <GrowKbd command="grow.supersede" /> : null}
     </Button>
   );
 }
@@ -2700,7 +2745,7 @@ function Choice(props: {
   readonly label: string;
   readonly hint: string;
   readonly icon: ReactNode;
-  readonly keyHint?: string;
+  readonly keyCommand?: GrowKeybindingCommand;
   readonly primary?: boolean;
   readonly wide: boolean;
   readonly stacked: boolean;
@@ -2717,7 +2762,7 @@ function Choice(props: {
         {props.icon}
         {props.label}
         <span className="ms-auto truncate font-normal text-xs opacity-70">{props.hint}</span>
-        {props.wide && props.keyHint ? <Kbd>{props.keyHint}</Kbd> : null}
+        {props.wide && props.keyCommand ? <GrowKbd command={props.keyCommand} /> : null}
       </Button>
     );
   }
@@ -2730,7 +2775,9 @@ function Choice(props: {
       >
         {props.icon}
         {props.label}
-        {props.wide && props.keyHint ? <Kbd className="max-sm:hidden">{props.keyHint}</Kbd> : null}
+        {props.wide && props.keyCommand ? (
+          <GrowKbd command={props.keyCommand} className="max-sm:hidden" />
+        ) : null}
       </Button>
       <span className="text-balance text-center text-muted-foreground text-xs">{props.hint}</span>
     </div>

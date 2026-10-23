@@ -34,7 +34,7 @@ export interface DesktopSettings {
   // and `open` ones come back on the next launch.
   readonly profileWindows: readonly ProfileWindowState[];
   // The code profiles the renderer last reported, in order: the Window menu
-  // lists them and Alt+1, Alt+2, ... open them.
+  // lists them and Alt+Shift+1, Alt+Shift+2, ... open them.
   readonly profileWindowChoices: readonly string[];
   readonly serverExposureMode: DesktopServerExposureMode;
   readonly tailscaleServeEnabled: boolean;

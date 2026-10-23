@@ -106,9 +106,11 @@ export const storePresentationPages = Effect.fn("storePresentationPages")(functi
 
 /**
  * Grow's keys reach the app from inside a page: the page runs sandboxed in its own frame and
- * keeps every key it gets, so it hands Alt keys to Grow, and Esc gives focus back to Grow.
+ * keeps every key it gets, so it hands the Grow modifier's keys (Alt, or Control on a Mac,
+ * except a Mac text field's own Control+letter editing keys) to Grow, and Esc gives focus back
+ * to Grow. Which of them acts is the app's call, from its keybindings.
  */
-const GROW_KEYS_SCRIPT = `<script>addEventListener("keydown",function(e){var m=null;if(e.altKey&&!e.ctrlKey&&!e.metaKey)m={code:e.code,shift:e.shiftKey};else if(e.key==="Escape")m={code:"Digit2",shift:false};if(m){e.preventDefault();parent.postMessage({type:"t3-grow-key",code:m.code,shift:m.shift},"*")}},true)</script>`;
+const GROW_KEYS_SCRIPT = `<script>(function(){var mac=/mac/i.test(navigator.platform);addEventListener("keydown",function(e){var m=null;if(e.metaKey){}else if(mac?e.ctrlKey&&!e.altKey&&(e.shiftKey||!/^Key[ABDEFHKNOPTY]$/.test(e.code)):e.altKey&&!e.ctrlKey)m={type:"t3-grow-key",code:e.code,shift:e.shiftKey,alt:e.altKey,ctrl:e.ctrlKey};else if(e.key==="Escape")m={type:"t3-grow-key",escape:true};if(m){e.preventDefault();parent.postMessage(m,"*")}},true)})()</script>`;
 
 /** The page with the key script first, after a doctype so the page keeps its mode. */
 export function withGrowKeys(html: string): string {

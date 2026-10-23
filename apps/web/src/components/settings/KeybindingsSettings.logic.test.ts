@@ -410,3 +410,58 @@ describe("KeybindingsSettings.logic", () => {
     ).toEqual(["Chat: New Local"]);
   });
 });
+
+describe("platform rules", () => {
+  const growRows = (mac: boolean) =>
+    buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "grow.step.next", mac);
+
+  it("lists only the rule for this platform, so a Grow key shows once", () => {
+    expect(growRows(false).map((row) => [row.key, row.source])).toEqual([["alt+s", "Default"]]);
+    expect(growRows(true).map((row) => [row.key, row.source])).toEqual([["ctrl+s", "Default"]]);
+  });
+
+  it("keeps every other rule on both platforms", () => {
+    const names = (mac: boolean) =>
+      new Set(buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "", mac).map((r) => r.command));
+    expect(names(false).has("grow.step.next")).toBe(true);
+    expect(names(true).has("grow.step.next")).toBe(true);
+    expect(names(false).has("profile.next")).toBe(true);
+    // The Mac-only profile rule is hidden on a PC; the shared one stays.
+    expect(
+      buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "profile.next", false).map((r) => r.key),
+    ).toEqual(["alt+v"]);
+    expect(
+      buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "profile.next", true).map((r) => r.key),
+    ).toEqual(["alt+v", "ctrl+v"]);
+  });
+
+  it("names the new commands for people", () => {
+    expect(commandLabel("grow.step.next")).toBe("Grow: Next thread");
+    expect(commandLabel("window.profile.2")).toBe("Desktop: Open Profile Window 2");
+    expect(commandLabel("zoom.in")).toBe("Desktop: Zoom In");
+    expect(commandLabel("shortcuts.toggle")).toBe("Keyboard Shortcuts: Show or Hide");
+  });
+
+  it("offers isMac and growOpen as conditions without flagging them unknown", () => {
+    const rule = DEFAULT_RESOLVED_KEYBINDINGS.find(
+      (entry) => entry.command === "grow.main" && entry.shortcut.shiftKey,
+    );
+    expect(unknownWhenVariables(rule?.whenAst)).toEqual([]);
+    expect(buildWhenVariableOptions()).toEqual(expect.arrayContaining(["isMac", "growOpen"]));
+  });
+
+  it("captures Control as itself on a Mac, where Cmd is mod", () => {
+    const event = {
+      key: "w",
+      code: "KeyW",
+      metaKey: false,
+      ctrlKey: true,
+      altKey: false,
+      shiftKey: false,
+    };
+    expect(keybindingFromKeyboardEvent(event, "MacIntel")).toBe("ctrl+w");
+    expect(keybindingFromKeyboardEvent({ ...event, ctrlKey: false, altKey: true }, "Linux")).toBe(
+      "alt+w",
+    );
+  });
+});

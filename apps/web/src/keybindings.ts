@@ -40,6 +40,10 @@ export interface ShortcutMatchContext {
   previewOpen: boolean;
   isWeb: boolean;
   isDesktop: boolean;
+  /** The client runs on macOS, for rules that differ there (Grow's Control, not Alt). */
+  isMac?: boolean;
+  /** The Grow screen is showing; set by the handlers that serve it. */
+  growOpen?: boolean;
   /** A text field, textarea, select or rich-text editor owns the keyboard.
       Optional: only chords that collide with native editing consult it. */
   editableFocus?: boolean;
@@ -158,6 +162,7 @@ function resolveContext(options: ShortcutMatchOptions | undefined): ShortcutMatc
     previewOpen: false,
     isWeb: !isElectron,
     isDesktop: isElectron,
+    isMac: isMacPlatform(resolvePlatform(options)),
     editableFocus: false,
     ...options?.context,
   };
@@ -228,6 +233,32 @@ function findEffectiveShortcutForCommand(
   }
 
   return null;
+}
+
+/**
+ * Every shortcut in force right now for the commands `matches` picks, each with its command.
+ * The same precedence as `findEffectiveShortcutForCommand`: a chord a later rule claims is not
+ * reported for an earlier one. For hosts that act on chords below the page (the desktop shell).
+ */
+export function effectiveShortcutsForCommands(
+  keybindings: ResolvedKeybindingsConfig,
+  matches: (command: KeybindingCommand) => boolean,
+  options?: ShortcutMatchOptions,
+): ReadonlyArray<{ readonly command: KeybindingCommand; readonly shortcut: KeybindingShortcut }> {
+  const platform = resolvePlatform(options);
+  const context = resolveContext(options);
+  const claimedShortcuts = new Set<string>();
+  const found: Array<{ command: KeybindingCommand; shortcut: KeybindingShortcut }> = [];
+  for (let index = keybindings.length - 1; index >= 0; index -= 1) {
+    const binding = keybindings[index];
+    if (!binding || !matchesWhenClause(binding.whenAst, context)) continue;
+    const conflictKey = shortcutConflictKey(binding.shortcut, platform);
+    if (claimedShortcuts.has(conflictKey)) continue;
+    claimedShortcuts.add(conflictKey);
+    if (matches(binding.command))
+      found.push({ command: binding.command, shortcut: binding.shortcut });
+  }
+  return found.toReversed();
 }
 
 function matchesCommandShortcut(
