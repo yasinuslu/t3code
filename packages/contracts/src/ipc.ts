@@ -1142,6 +1142,20 @@ export interface DesktopBridge {
       shift: boolean;
     } | null,
   ) => Promise<boolean>;
+  /**
+   * Reports the chords the desktop shell acts on below the page, `mod` already resolved:
+   * the profile windows, the menu's Settings and zoom, and Grow's keys over a preview page.
+   */
+  setShellChords?: (
+    chords: ReadonlyArray<{
+      command: string;
+      key: string;
+      control: boolean;
+      alt: boolean;
+      meta: boolean;
+      shift: boolean;
+    }>,
+  ) => Promise<void>;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;
   /**
    * Tells the desktop which code profile this window is locked to (null when

@@ -336,7 +336,9 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       });
 
       const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
-      assert.isFalse(persisted.some((entry) => entry.key.endsWith("+q")));
+      assert.isFalse(
+        persisted.some((entry) => entry.command.startsWith("profile.") && entry.key.endsWith("+q")),
+      );
       assert.isTrue(
         persisted.some((entry) => entry.command === "profile.next" && entry.key === "alt+v"),
       );
@@ -344,6 +346,30 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
         persisted.some(
           (entry) => entry.command === "profile.previous" && entry.key === "alt+shift+v",
         ),
+      );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
+  it.effect("adds the Mac profile keys next to an untouched Alt+V pair, once", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
+        { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
+      ]);
+
+      const keybindings = yield* Keybindings.Keybindings;
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      const macNext = persisted.filter(
+        (entry) => entry.command === "profile.next" && entry.key === "ctrl+v",
+      );
+      assert.lengthOf(macNext, 1);
+      assert.include(macNext[0]?.when ?? "", "isMac");
+      assert.isTrue(
+        persisted.some((entry) => entry.command === "profile.next" && entry.key === "alt+v"),
       );
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );

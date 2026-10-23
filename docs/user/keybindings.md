@@ -1,7 +1,10 @@
 # Keybindings
 
-Customize shortcuts in **Settings → Keybindings** on web and desktop. That page
-also lists the command IDs and defaults available in your version.
+Every shortcut can be changed. Open **Settings → Keybindings** on web and desktop: search the
+list, click a key to record a new one, and a warning shows when it clashes with another command.
+Reset one binding, or use **Reset all keybindings** to return to the defaults. The page also lists
+the command IDs and defaults available in your version, and your changes are saved to
+the [configuration file](#edit-the-configuration-file), which you can edit by hand too.
 
 ## Composer controls
 
@@ -65,11 +68,23 @@ the terminal's Ctrl+L (clear) and Ctrl+H (backspace) inside T3 Code, and `ctrl+e
 end-of-line on a Mac in text boxes (not in the terminal). `ctrl+s` replaced Stash for the
 composer, now `mod+alt+s`. Rebind them under **Pane: Sidebar / Left / Right**.
 
+## Grow keys
+
+On the Grow screen the left hand sits on WASD, with Alt on Windows and Linux and Control on a Mac
+(where Option types special characters): `alt+w` / `alt+s` (Mac: `ctrl+w` / `ctrl+s`) step to the
+previous and next thread, `a` / `d` turn pages, `1`-`4` jump to the threads, presentation, live app
+and chat, `q` goes back, `e` ships or clears the card (Mac: `ctrl+shift+e`, since `ctrl+e` is the
+manager), `x` settles, `z` undoes, `r` reloads, `f` finds, `g` opens every project and `t` talks to the
+manager. On a Mac, `ctrl+a`, `ctrl+d`, `ctrl+f` and `ctrl+t` stay with the text while the caret is in a
+text box, and `ctrl+s` moves to the next thread instead of focusing the sidebar while Grow shows.
+Each one is a `grow.*` command, scoped by the `growOpen` condition, with one rule for `!isMac` and
+one for `isMac`. Rebind any of them in Settings and the cheat sheet follows.
+
 ## Profiles
 
-`alt+r` (Option+R on a Mac) switches the code profile in view, and its manager with it, to the
-next one; `alt+shift+r` goes back. Grow takes a bare `r` and `shift+r` for the same, and its other
-keys are listed in [the manager guide](./manager.md#grow). Rebind the chords in
+`alt+v` switches the code profile in view, and its manager with it, to the next one; `alt+shift+v`
+goes back (`ctrl+v` and `ctrl+shift+v` on a Mac). In the desktop app, `alt+shift+1` to
+`alt+shift+9` (`ctrl+shift+1` to `9` on a Mac) open or focus a profile window. Rebind the chords in
 **Settings → Keybindings**.
 
 ## Copy pull request references
@@ -128,8 +143,9 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 ## When conditions
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
-`previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
+`previewOpen`, `growOpen`, `isMac`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
 `turnRunning`, `editableFocus`, `isWeb`, and `isDesktop`.
+`growOpen` is true on the Grow screen and `isMac` on macOS.
 `editableFocus` is true while a text field, the composer, or another editor has
 the keyboard. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.

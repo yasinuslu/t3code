@@ -14,6 +14,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
+import { menuAccelerator, onShellChordsChanged, shellChords } from "./ShellChords.ts";
 
 export class DesktopApplicationMenuActionError extends Schema.TaggedError<DesktopApplicationMenuActionError>()(
   "DesktopApplicationMenuActionError",
@@ -157,13 +158,35 @@ export const make = Effect.gen(function* () {
       runMenuEffect(`zoom-${direction}`, zoomMainWindow(direction));
     };
     const template: Electron.MenuItemConstructorOptions[] = [];
-    // One window per code profile, side by side: Alt+1 opens or focuses the
-    // first profile's window, Alt+2 the second, and so on.
+    // The menu's accelerators are the chords of Settings › Keyboard, as the renderer
+    // reported them (the defaults until it does). A command can have several chords: the
+    // first is shown, the others are hidden items so they work all the same.
+    const chordsOf = (command: string) =>
+      shellChords(environment.platform).filter((chord) => chord.command === command);
+    const acceleratorsOf = (command: string) =>
+      chordsOf(command).flatMap((chord) => {
+        const accelerator = menuAccelerator(chord, environment.platform);
+        return accelerator === null ? [] : [accelerator];
+      });
+    const withAccelerators = (
+      command: string,
+      item: Electron.MenuItemConstructorOptions,
+    ): Electron.MenuItemConstructorOptions[] => {
+      const [first, ...rest] = acceleratorsOf(command);
+      return [
+        first === undefined ? item : { ...item, accelerator: first },
+        ...rest.map((accelerator) => ({ ...item, accelerator, visible: false })),
+      ];
+    };
+    // One window per code profile, side by side: Alt+Shift+1 opens or focuses the
+    // first profile's window, Alt+Shift+2 the second, and so on.
     const { profileWindowChoices } = yield* desktopSettings.get;
     const profileWindowItems: Electron.MenuItemConstructorOptions[] = profileWindowChoices.map(
       (profile, index) => ({
         label: `${profile} Window`,
-        accelerator: `Alt+${index + 1}`,
+        ...(acceleratorsOf(`window.profile.${index + 1}`)[0] === undefined
+          ? {}
+          : { accelerator: acceleratorsOf(`window.profile.${index + 1}`)[0] }),
         // Shown only; DesktopWindow takes the keys before the page does.
         registerAccelerator: false,
         click: () => {
@@ -182,11 +205,7 @@ export const make = Effect.gen(function* () {
             click: checkForUpdatesClick,
           },
           { type: "separator" },
-          {
-            label: "Settings...",
-            accelerator: "CmdOrCtrl+,",
-            click: settingsClick,
-          },
+          ...withAccelerators("settings.open", { label: "Settings...", click: settingsClick }),
           { type: "separator" },
           { role: "services" },
           { type: "separator" },
@@ -206,11 +225,10 @@ export const make = Effect.gen(function* () {
           ...(environment.platform === "darwin"
             ? []
             : [
-                {
+                ...withAccelerators("settings.open", {
                   label: "Settings...",
-                  accelerator: "CmdOrCtrl+,",
                   click: settingsClick,
-                },
+                }),
                 { type: "separator" as const },
               ]),
           { role: environment.platform === "darwin" ? "close" : "quit" },
@@ -257,15 +275,9 @@ export const make = Effect.gen(function* () {
             page and the app UI appears stuck. These always zoom the main
             window (see DesktopWindow.zoomMain).
           */
-          { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: zoomClick("reset") },
-          { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: zoomClick("in") },
-          {
-            label: "Zoom In",
-            accelerator: "CmdOrCtrl+Plus",
-            visible: false,
-            click: zoomClick("in"),
-          },
-          { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: zoomClick("out") },
+          ...withAccelerators("zoom.reset", { label: "Actual Size", click: zoomClick("reset") }),
+          ...withAccelerators("zoom.in", { label: "Zoom In", click: zoomClick("in") }),
+          ...withAccelerators("zoom.out", { label: "Zoom Out", click: zoomClick("out") }),
           { type: "separator" },
           { role: "togglefullscreen" },
         ],
@@ -299,6 +311,8 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.withSpan("desktop.menu.configure"));
 
   yield* desktopWindow.onProfileChoicesChanged(() => void runPromise(configure));
+  // Rebinding a key in Settings › Keyboard changes the accelerators the menu shows.
+  onShellChordsChanged(() => void runPromise(configure));
 
   return DesktopApplicationMenu.of({
     configure,

@@ -4,8 +4,9 @@ import * as Schema from "effect/Schema";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 import { registerManagerShortcut } from "../../window/ManagerShortcut.ts";
+import { setShellChords } from "../../window/ShellChords.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
-import { SET_MANAGER_SHORTCUT_CHANNEL } from "../channels.ts";
+import { SET_MANAGER_SHORTCUT_CHANNEL, SET_SHELL_CHORDS_CHANNEL } from "../channels.ts";
 
 const ManagerChord = Schema.NullOr(
   Schema.Struct({
@@ -16,6 +17,33 @@ const ManagerChord = Schema.NullOr(
     shift: Schema.Boolean,
   }),
 );
+
+const ShellChords = Schema.Array(
+  Schema.Struct({
+    command: Schema.String.check(Schema.isMaxLength(48)),
+    key: Schema.String.check(Schema.isMaxLength(16)),
+    control: Schema.Boolean,
+    alt: Schema.Boolean,
+    meta: Schema.Boolean,
+    shift: Schema.Boolean,
+  }),
+).check(Schema.isMaxLength(256));
+
+/**
+ * The renderer reports the chords the shell acts on below the page (profile windows, menu
+ * Settings and zoom, Grow's keys over a preview), resolved from its keybindings.
+ */
+export const installShellChords = Effect.fn("desktop.ipc.installShellChords")(function* () {
+  const ipc = yield* DesktopIpc.DesktopIpc;
+  yield* ipc.handle(
+    DesktopIpc.makeIpcMethod({
+      channel: SET_SHELL_CHORDS_CHANNEL,
+      payload: ShellChords,
+      result: Schema.Void,
+      handler: (chords) => Effect.sync(() => setShellChords(chords)),
+    }),
+  );
+});
 
 /** The renderer reports its `manager.toggle` chord; the main process takes it system-wide. */
 export const installManagerShortcut = Effect.fn("desktop.ipc.installManagerShortcut")(function* () {

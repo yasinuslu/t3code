@@ -39,6 +39,8 @@ const GLOBAL_ROWS: ReadonlyArray<{
       { label: "Command palette", commands: ["commandPalette.toggle"] },
       { label: "Find a file", commands: ["filePicker.toggle"] },
       { label: "Back / forward", commands: ["navigation.back", "navigation.forward"] },
+      { label: "Settings", commands: ["settings.open"] },
+      { label: "This sheet", commands: ["shortcuts.toggle"] },
     ],
   },
   {
@@ -61,11 +63,6 @@ const GLOBAL_ROWS: ReadonlyArray<{
   },
 ];
 
-/** `Shift+R` as the platform writes it: a Mac shows the symbol, the rest the word. */
-function growKeyLabel(key: string, mac: boolean): string {
-  return key.startsWith("Shift+") ? `${mac ? "⇧" : "Shift+"}${key.slice(6)}` : key;
-}
-
 /**
  * The sheet's sections, in the order they show: Grow's keys first while Grow is open, the
  * app-wide ones first everywhere else. Grow's come from the table beside its key mapper and
@@ -74,7 +71,6 @@ function growKeyLabel(key: string, mac: boolean): string {
 export function buildShortcutSections(options: {
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly platform: string;
-  readonly mac: boolean;
   readonly inGrow: boolean;
   /** Grow ships with the fork features; without them its keys are not listed. */
   readonly growAvailable: boolean;
@@ -84,10 +80,17 @@ export function buildShortcutSections(options: {
         id: `grow-${group}`,
         scope: "grow" as const,
         title: group,
-        rows: entries.map(({ label, keys }) => ({
-          label,
-          keys: keys.map((key) => growKeyLabel(key, options.mac)),
-        })),
+        rows: entries.flatMap(({ label, commands }) => {
+          const keys = commands.flatMap((command) => {
+            // Grow's keys only exist while Grow shows; the sheet lists them as they act there.
+            const shortcut = shortcutLabelForCommand(options.keybindings, command, {
+              platform: options.platform,
+              context: { growOpen: true },
+            });
+            return shortcut === null ? [] : [shortcut];
+          });
+          return keys.length === 0 ? [] : [{ label, keys }];
+        }),
       })).filter((section) => section.rows.length > 0)
     : [];
   const global: ShortcutSection[] = GLOBAL_ROWS.map(({ title, rows }) => ({
@@ -96,7 +99,10 @@ export function buildShortcutSections(options: {
     title,
     rows: rows.flatMap(({ label, commands }) => {
       const keys = commands.flatMap((command) => {
-        const shortcut = shortcutLabelForCommand(options.keybindings, command, options.platform);
+        const shortcut = shortcutLabelForCommand(options.keybindings, command, {
+          platform: options.platform,
+          context: { growOpen: options.inGrow },
+        });
         return shortcut === null ? [] : [shortcut];
       });
       return keys.length === 0 ? [] : [{ label, keys }];

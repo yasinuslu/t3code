@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
+import { useHomeOverlayStore } from "../homeOverlayStore";
 import { resolveShortcutCommand } from "../keybindings";
 import { isInlineComponentEvent } from "../lib/editableFocus";
 import { installPaneFocus, focusPaneNamed, movePane, stepPaneRow } from "../lib/paneFocus";
@@ -21,6 +22,9 @@ const OPEN_DIALOG = '[data-slot="dialog-popup"], [data-slot="alert-dialog-popup"
 export function PaneShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { isMobile, state, setOpen } = useSidebar();
+  // Grow's keys outrank these where they share a chord (Ctrl+S on a Mac), so the chord is
+  // resolved the way Grow sees it.
+  const growOpen = useHomeOverlayStore((store) => store.open);
 
   useEffect(() => installPaneFocus(), []);
 
@@ -39,20 +43,25 @@ export function PaneShortcuts() {
       if (target instanceof HTMLElement && target.closest("[data-keybinding-capture]")) return;
       if (document.querySelector(OPEN_DIALOG)) return;
 
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: isTerminalFocused(),
+          previewFocus: isPreviewFocused(),
+          growOpen,
+        },
+      });
+
       if (
         target instanceof HTMLElement &&
-        !event.ctrlKey &&
-        !event.metaKey &&
         target.closest("[data-app-sidebar]") &&
         !isInlineComponentEvent(event)
       ) {
-        // Letters need Alt; the arrows are the list widget's own keys.
-        const letter = event.altKey ? event.code : "";
-        const arrow = event.altKey ? "" : event.key;
+        // The arrows are the list widget's own keys; the rest are `pane.row*`.
+        const plainArrow = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
         const direction =
-          letter === "KeyJ" || arrow === "ArrowDown"
+          command === "pane.rowNext" || (plainArrow && event.key === "ArrowDown")
             ? 1
-            : letter === "KeyK" || arrow === "ArrowUp"
+            : command === "pane.rowPrevious" || (plainArrow && event.key === "ArrowUp")
               ? -1
               : null;
         if (direction !== null && stepPaneRow(target, direction)) {
@@ -62,9 +71,6 @@ export function PaneShortcuts() {
         }
       }
 
-      const command = resolveShortcutCommand(event, keybindings, {
-        context: { terminalFocus: isTerminalFocused(), previewFocus: isPreviewFocused() },
-      });
       if (command !== "pane.sidebar" && command !== "pane.left" && command !== "pane.right") {
         return;
       }
@@ -81,7 +87,7 @@ export function PaneShortcuts() {
     // Capture, so a focused editor, the composer or a terminal cannot swallow the chord.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [isMobile, keybindings, setOpen, state]);
+  }, [growOpen, isMobile, keybindings, setOpen, state]);
 
   return null;
 }

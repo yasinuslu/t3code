@@ -1,3 +1,16 @@
+import {
+  type GrowKeybindingCommand,
+  type KeybindingCommand,
+  type ResolvedKeybindingsConfig,
+} from "@t3tools/contracts";
+import { isMacTextEditingChord } from "@t3tools/shared/keybindings";
+
+import {
+  resolveShortcutCommand,
+  shortcutKeyFromEvent,
+  type ShortcutEventLike,
+} from "../../keybindings";
+import { isMacPlatform } from "../../lib/utils";
 import type { GrowReturn } from "./returns.logic";
 
 /** The places on the Grow screen the number keys jump to, like weapon slots. */
@@ -15,8 +28,7 @@ export type GrowKeyAction =
   | { readonly type: "reload" }
   | { readonly type: "search" }
   | { readonly type: "toggleProjects" }
-  | { readonly type: "manager" }
-  | { readonly type: "profile"; readonly direction: 1 | -1 };
+  | { readonly type: "manager" };
 
 export interface GrowKeyState {
   /** Focus is in a text field (the composer, search), which owns the plain keys. */
@@ -28,115 +40,178 @@ export interface GrowKeyState {
   readonly item: GrowReturn | null;
 }
 
+const ACTIONS: Readonly<Record<GrowKeybindingCommand, GrowKeyAction>> = {
+  "grow.step.previous": { type: "step", direction: -1 },
+  "grow.step.next": { type: "step", direction: 1 },
+  "grow.page.previous": { type: "page", direction: -1 },
+  "grow.page.next": { type: "page", direction: 1 },
+  "grow.zone.threads": { type: "zone", zone: "threads" },
+  "grow.zone.presentation": { type: "zone", zone: "presentation" },
+  "grow.zone.live": { type: "zone", zone: "live" },
+  "grow.zone.chat": { type: "zone", zone: "chat" },
+  "grow.back": { type: "back" },
+  "grow.manager": { type: "manager" },
+  "grow.main": { type: "main" },
+  "grow.settle": { type: "settle" },
+  "grow.supersede": { type: "supersede" },
+  "grow.undo": { type: "undo" },
+  "grow.reload": { type: "reload" },
+  "grow.search": { type: "search" },
+  "grow.toggleProjects": { type: "toggleProjects" },
+};
+
+export const isGrowCommand = (command: string | null): command is GrowKeybindingCommand =>
+  command !== null && Object.hasOwn(ACTIONS, command);
+
 /**
  * What a key does on the Grow screen. Pure, so each key has a test.
  *
  * Built for a left hand resting on WASD while the right one stays on the mouse, the way an
- * FPS is played. Keys are matched by their physical place (`event.code`), so the layout under
- * them does not matter. Every key is held with Alt (the thumb), which makes it work everywhere,
- * from the composer, from inside the live app and from inline components too.
+ * FPS is played. The keys are the `grow.*` keybindings (Settings › Keybindings), held by default
+ * with Alt (the thumb) on Windows and Linux and with Control on a Mac, where Option types
+ * special characters. Letters and digits are matched by their physical place (`event.code`),
+ * so the layout under them does not matter. A key works everywhere, from the composer, from
+ * inside the live app and from inline components too.
  *
  *   W / S   previous / next thread (the place you are in stays: live stays live)
  *   A / D   previous / next page of the presentation
  *   1 threads   2 presentation   3 live   4 chat        Q back to where you just were
  *   E the card's main move (ship, or done)   X settle   Shift+X superseded by...   Z undo
  *   R reload the live app   F find   G expand every project   T manager
- *   V / Shift+V next / previous profile
+ *   V / Shift+V next / previous profile (the global `profile.*` keys)
+ *
+ * On a Mac a Control+letter that a text field reads as editing (A, D, E, F, T, ...) stays with
+ * the text while the caret is in one.
  */
 export function growKeyAction(
-  event: Pick<
-    KeyboardEvent,
-    "code" | "shiftKey" | "metaKey" | "ctrlKey" | "altKey" | "isComposing"
-  >,
+  event: ShortcutEventLike & { readonly isComposing?: boolean },
   state: GrowKeyState,
+  keybindings: ResolvedKeybindingsConfig,
+  platform: string = navigator.platform,
 ): GrowKeyAction | null {
-  if (event.metaKey || event.ctrlKey || event.isComposing) return null;
-  // Alt is required everywhere: plain keys belong to the inline components in replies.
-  if (!event.altKey) return null;
-  return mapCode(event.code, event.shiftKey, state);
+  if (event.isComposing) return null;
+  if (
+    state.typing &&
+    isMacPlatform(platform) &&
+    isMacTextEditingChord({
+      key: event.code?.match(/^Key([A-Z])$/)?.[1] ?? shortcutKeyFromEvent(event),
+      control: event.ctrlKey,
+      alt: event.altKey,
+      meta: event.metaKey,
+      shift: event.shiftKey,
+    })
+  ) {
+    return null;
+  }
+  const command = resolveShortcutCommand(physicalKey(event), keybindings, {
+    platform,
+    context: { growOpen: true },
+  });
+  return isGrowCommand(command) ? allowed(ACTIONS[command], state) : null;
 }
 
-function mapCode(code: string, shift: boolean, state: GrowKeyState): GrowKeyAction | null {
-  switch (code) {
-    case "KeyW":
-      return { type: "step", direction: -1 };
-    case "KeyS":
-      return { type: "step", direction: 1 };
-    case "Digit1":
-      return { type: "zone", zone: "threads" };
-    case "KeyT":
-      return { type: "manager" };
-    case "KeyV":
-      return { type: "profile", direction: shift ? -1 : 1 };
-    case "KeyF":
-      return { type: "search" };
-    case "KeyZ":
-      return { type: "undo" };
-    case "KeyQ":
-      return { type: "back" };
+/**
+ * A letter or digit read by its place on the keyboard: the event without the layout's key, so
+ * an AZERTY, Dvorak or Turkish F keyboard keeps WASD under the left hand. Other keys (arrows,
+ * Enter, F-keys) have no place of their own and are read as typed.
+ */
+function physicalKey<Event extends ShortcutEventLike>(event: Event): ShortcutEventLike {
+  if (!/^(Key[A-Z]|Digit[0-9])$/.test(event.code ?? "")) return event;
+  return {
+    ...(event.type !== undefined && { type: event.type }),
+    ...(event.code !== undefined && { code: event.code }),
+    key: "",
+    ...(event.repeat !== undefined && { repeat: event.repeat }),
+    metaKey: event.metaKey,
+    ctrlKey: event.ctrlKey,
+    shiftKey: event.shiftKey,
+    altKey: event.altKey,
+    ...(event.target !== undefined && { target: event.target }),
+    ...(event.composedPath && { composedPath: event.composedPath.bind(event) }),
+    ...(event.getModifierState && { getModifierState: event.getModifierState.bind(event) }),
+  };
+}
+
+/** Whether the screen can take the action now, or the keys stay off. */
+function allowed(action: GrowKeyAction, state: GrowKeyState): GrowKeyAction | null {
+  switch (action.type) {
+    case "step":
+    case "undo":
+    case "back":
+    case "manager":
+    case "search":
+      return action;
+    case "zone":
+      if (action.zone === "threads") return action;
+      break;
+  }
+  if (action.type === "toggleProjects" || (action.type === "zone" && action.zone === "chat")) {
+    return action;
   }
   // The manager is not an item: only the keys above, which take the screen back to one.
   if (state.managerOpen) return null;
-  switch (code) {
-    case "Digit4":
-      return { type: "zone", zone: "chat" };
-    case "KeyG":
-      return { type: "toggleProjects" };
-  }
   const { item } = state;
   if (item === null) return null;
   const open = item.kind === "return" || item.kind === "urgent";
-  switch (code) {
-    case "KeyA":
-      return { type: "page", direction: -1 };
-    case "KeyD":
-      return { type: "page", direction: 1 };
-    case "Digit2":
-      return { type: "zone", zone: "presentation" };
-    case "Digit3":
-      return item.playUrl === null ? null : { type: "zone", zone: "live" };
-    case "KeyR":
-      return item.playUrl === null ? null : { type: "reload" };
-    case "KeyE":
-      return item.kind === "return" ? { type: "main" } : null;
-    case "KeyX":
-      if (shift) return item.kind === "working" ? null : { type: "supersede" };
-      return open ? { type: "settle" } : null;
+  switch (action.type) {
+    case "page":
+      return action;
+    case "zone":
+      return action.zone === "live" && item.playUrl === null ? null : action;
+    case "reload":
+      return item.playUrl === null ? null : action;
+    case "main":
+      return item.kind === "return" ? action : null;
+    case "settle":
+      return open ? action : null;
+    case "supersede":
+      return item.kind === "working" ? null : action;
   }
   return null;
 }
 
-/** The codes `growKeyAction` reads, for a host that must catch them before a page does. */
-export const GROW_KEY_CODES: ReadonlySet<string> = new Set([
-  "KeyW",
-  "KeyS",
-  "KeyA",
-  "KeyD",
-  "KeyQ",
-  "KeyE",
-  "KeyX",
-  "KeyZ",
-  "KeyR",
-  "KeyF",
-  "KeyG",
-  "KeyT",
-  "KeyV",
-  "Digit1",
-  "Digit2",
-  "Digit3",
-  "Digit4",
-]);
+/** The Grow command a replayed key press stands for, for hosts that must forward it. */
+export function growCommandOfKey(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindingsConfig,
+  platform: string = navigator.platform,
+): GrowKeybindingCommand | null {
+  const command = resolveShortcutCommand(physicalKey(event), keybindings, {
+    platform,
+    context: { growOpen: true },
+  });
+  return isGrowCommand(command) ? command : null;
+}
+
+/** What each Grow command is called in Settings and the shortcut sheet. */
+export const GROW_COMMAND_LABELS: Readonly<Record<GrowKeybindingCommand, string>> = {
+  "grow.step.previous": "Previous thread",
+  "grow.step.next": "Next thread",
+  "grow.page.previous": "Previous page",
+  "grow.page.next": "Next page",
+  "grow.zone.threads": "Go to threads",
+  "grow.zone.presentation": "Go to the presentation",
+  "grow.zone.live": "Go to the live app",
+  "grow.zone.chat": "Go to the chat",
+  "grow.back": "Back to where you were",
+  "grow.manager": "Manager",
+  "grow.main": "Ship, or done",
+  "grow.settle": "Settle",
+  "grow.supersede": "Settle, superseded by...",
+  "grow.undo": "Undo",
+  "grow.reload": "Reload the live app",
+  "grow.search": "Find a thread",
+  "grow.toggleProjects": "Expand every project",
+};
 
 /**
- * Grow's keys as the shortcut sheet lists them, grouped as it shows them. `grow.keys.test.ts`
- * feeds every key here to `growKeyAction` and requires the action named, so a key that is
- * rebound or removed above fails there until this list follows: the sheet cannot drift.
- * `Shift+X` stands for the shifted key.
+ * Grow's keys as the shortcut sheet lists them, grouped as it shows them. The keys themselves
+ * come from the live keybindings, so the sheet shows what a rebound key really is.
+ * `grow.keys.test.ts` requires every Grow command to be listed once.
  */
 export interface GrowKeyHelp {
-  readonly keys: ReadonlyArray<string>;
+  readonly commands: ReadonlyArray<KeybindingCommand>;
   readonly label: string;
-  readonly action: GrowKeyAction["type"];
 }
 
 export const GROW_KEY_HELP: ReadonlyArray<{
@@ -144,34 +219,40 @@ export const GROW_KEY_HELP: ReadonlyArray<{
   readonly entries: ReadonlyArray<GrowKeyHelp>;
 }> = [
   {
-    group: "Move (hold Alt with every key here; it works even while typing or playing)",
+    group: "Move",
     entries: [
-      { keys: ["W", "S"], label: "Previous / next thread", action: "step" },
-      { keys: ["A", "D"], label: "Previous / next page", action: "page" },
-      { keys: ["F"], label: "Find a thread", action: "search" },
-      { keys: ["G"], label: "Expand every project", action: "toggleProjects" },
+      {
+        commands: ["grow.step.previous", "grow.step.next"],
+        label: "Previous / next thread",
+      },
+      { commands: ["grow.page.previous", "grow.page.next"], label: "Previous / next page" },
+      { commands: ["grow.search"], label: GROW_COMMAND_LABELS["grow.search"] },
+      { commands: ["grow.toggleProjects"], label: GROW_COMMAND_LABELS["grow.toggleProjects"] },
     ],
   },
   {
     group: "Jump to",
     entries: [
-      { keys: ["1"], label: "Threads", action: "zone" },
-      { keys: ["2"], label: "Presentation", action: "zone" },
-      { keys: ["3"], label: "Live", action: "zone" },
-      { keys: ["4"], label: "Chat", action: "zone" },
-      { keys: ["Q"], label: "Back to where you were", action: "back" },
-      { keys: ["T"], label: "Manager", action: "manager" },
+      { commands: ["grow.zone.threads"], label: "Threads" },
+      { commands: ["grow.zone.presentation"], label: "Presentation" },
+      { commands: ["grow.zone.live"], label: "Live" },
+      { commands: ["grow.zone.chat"], label: "Chat" },
+      { commands: ["grow.back"], label: GROW_COMMAND_LABELS["grow.back"] },
+      { commands: ["grow.manager"], label: GROW_COMMAND_LABELS["grow.manager"] },
     ],
   },
   {
     group: "Act",
     entries: [
-      { keys: ["E"], label: "Ship, or done", action: "main" },
-      { keys: ["X"], label: "Settle", action: "settle" },
-      { keys: ["Shift+X"], label: "Settle, superseded by...", action: "supersede" },
-      { keys: ["Z"], label: "Undo", action: "undo" },
-      { keys: ["R"], label: "Reload the live app", action: "reload" },
-      { keys: ["V", "Shift+V"], label: "Next / previous profile", action: "profile" },
+      { commands: ["grow.main"], label: GROW_COMMAND_LABELS["grow.main"] },
+      { commands: ["grow.settle"], label: GROW_COMMAND_LABELS["grow.settle"] },
+      { commands: ["grow.supersede"], label: GROW_COMMAND_LABELS["grow.supersede"] },
+      { commands: ["grow.undo"], label: GROW_COMMAND_LABELS["grow.undo"] },
+      { commands: ["grow.reload"], label: GROW_COMMAND_LABELS["grow.reload"] },
+      {
+        commands: ["profile.next", "profile.previous"],
+        label: "Next / previous profile",
+      },
     ],
   },
 ];

@@ -132,6 +132,17 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
     alongside: { key: "ctrl+alt+space", command: "manager.toggle" },
     rule: { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
   },
+  // Grow's modifier is Control on a Mac, and the profile keys follow it.
+  {
+    id: "profile.next:mac-ctrl+v",
+    alongside: { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
+    rule: { key: "ctrl+v", command: "profile.next", when: "!terminalFocus && isMac" },
+  },
+  {
+    id: "profile.previous:mac-ctrl+shift+v",
+    alongside: { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
+    rule: { key: "ctrl+shift+v", command: "profile.previous", when: "!terminalFocus && isMac" },
+  },
 ];
 
 function keybindingShortcutContext(rule: KeybindingRule): string | null {

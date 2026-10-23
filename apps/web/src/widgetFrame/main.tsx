@@ -174,14 +174,29 @@ if (container) {
     root.render(<Page page={page} />);
     void addWidgetClasses(Object.values(page.modules));
   });
-  // Grow's Alt keys keep working while focus is inside the page (see withGrowKeys).
+  // Grow's keys keep working while focus is inside the page (see withGrowKeys): Alt, or Control
+  // on a Mac, minus a Mac text field's own Control+letter editing keys.
+  const mac = /mac/i.test(navigator.platform);
   window.addEventListener(
     "keydown",
     (event) => {
-      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.metaKey) return;
+      if (
+        mac
+          ? !event.ctrlKey || event.altKey || /^Key[ABDEFHKNOPTY]$/.test(event.code)
+          : !event.altKey || event.ctrlKey
+      ) {
+        return;
+      }
       event.preventDefault();
       window.parent.postMessage(
-        { type: "t3-grow-key", code: event.code, shift: event.shiftKey },
+        {
+          type: "t3-grow-key",
+          code: event.code,
+          shift: event.shiftKey,
+          alt: event.altKey,
+          ctrl: event.ctrlKey,
+        },
         "*",
       );
     },

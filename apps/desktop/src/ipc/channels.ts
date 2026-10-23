@@ -9,6 +9,7 @@ export const OPEN_SYSTEM_SETTINGS_CHANNEL = "desktop:open-system-settings";
 export const PROBE_REMOTE_EDITORS_CHANNEL = "desktop:probe-remote-editors";
 export const MENU_ACTION_CHANNEL = "desktop:menu-action";
 export const SET_MANAGER_SHORTCUT_CHANNEL = "desktop:set-manager-shortcut";
+export const SET_SHELL_CHORDS_CHANNEL = "desktop:set-shell-chords";
 export const REPORT_WINDOW_PROFILE_CHANNEL = "desktop:report-window-profile";
 export const OPEN_PROFILE_WINDOW_CHANNEL = "desktop:open-profile-window";
 export const PASTE_AS_TEXT_CHANNEL = "desktop:paste-as-text";

@@ -56,7 +56,50 @@ const MODEL_PICKER_KEYBINDING_COMMANDS = [
 ] as const;
 export type ModelPickerKeybindingCommand = (typeof MODEL_PICKER_KEYBINDING_COMMANDS)[number];
 
+/** Grow's keys: the FPS-style left hand on the Grow screen (see grow.keys.ts). */
+export const GROW_KEYBINDING_COMMANDS = [
+  "grow.step.previous",
+  "grow.step.next",
+  "grow.page.previous",
+  "grow.page.next",
+  "grow.zone.threads",
+  "grow.zone.presentation",
+  "grow.zone.live",
+  "grow.zone.chat",
+  "grow.back",
+  "grow.manager",
+  "grow.main",
+  "grow.settle",
+  "grow.supersede",
+  "grow.undo",
+  "grow.reload",
+  "grow.search",
+  "grow.toggleProjects",
+] as const;
+export type GrowKeybindingCommand = (typeof GROW_KEYBINDING_COMMANDS)[number];
+
+/** One profile window each, opened or focused by the desktop app. */
+export const PROFILE_WINDOW_KEYBINDING_COMMANDS = [
+  "window.profile.1",
+  "window.profile.2",
+  "window.profile.3",
+  "window.profile.4",
+  "window.profile.5",
+  "window.profile.6",
+  "window.profile.7",
+  "window.profile.8",
+  "window.profile.9",
+] as const;
+export type ProfileWindowKeybindingCommand = (typeof PROFILE_WINDOW_KEYBINDING_COMMANDS)[number];
+
 export const STATIC_KEYBINDING_COMMANDS = [
+  "shortcuts.toggle",
+  "settings.open",
+  "zoom.in",
+  "zoom.out",
+  "zoom.reset",
+  ...GROW_KEYBINDING_COMMANDS,
+  ...PROFILE_WINDOW_KEYBINDING_COMMANDS,
   "sidebar.toggle",
   "navigation.back",
   "navigation.forward",
@@ -90,6 +133,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "pane.sidebar",
   "pane.left",
   "pane.right",
+  "pane.rowPrevious",
+  "pane.rowNext",
   "mode.grow",
   "mode.normal",
   "mode.cycle",

@@ -26,19 +26,26 @@ const NAMED_KEYS: Readonly<Record<string, string>> = {
   arrowdown: "Down",
   arrowleft: "Left",
   arrowright: "Right",
+  "+": "Plus",
 };
+
+/** The Electron accelerator's name for a key, or null for one it cannot take. */
+export function acceleratorKeyName(rawKey: string): string | null {
+  const key = rawKey.toLowerCase();
+  return (
+    NAMED_KEYS[key] ??
+    (/^[a-z0-9]$/.test(key) ? key.toUpperCase() : null) ??
+    (/^f([1-9]|1[0-9]|2[0-4])$/.test(key) ? key.toUpperCase() : null) ??
+    (/^[`\-=[\];',./\\]$/.test(key) ? key : null)
+  );
+}
 
 /** The Electron accelerator for a chord, or null for a key a global shortcut cannot take. */
 export function managerChordAccelerator(
   chord: ManagerChord,
   platform: NodeJS.Platform,
 ): string | null {
-  const key = chord.key.toLowerCase();
-  const name =
-    NAMED_KEYS[key] ??
-    (/^[a-z0-9]$/.test(key) ? key.toUpperCase() : null) ??
-    (/^f([1-9]|1[0-9]|2[0-4])$/.test(key) ? key.toUpperCase() : null) ??
-    (/^[`\-=[\];',./\\]$/.test(key) ? key : null);
+  const name = acceleratorKeyName(chord.key);
   // A global chord with no modifier would take a plain key away from every app.
   if (name === null || !(chord.control || chord.alt || chord.meta)) return null;
   const modifiers = [
@@ -80,52 +87,6 @@ export const isManagerShortcut = (
   input.meta === chord.meta &&
   input.shift === chord.shift &&
   inputKey(input) === chord.key;
-
-// Grow's keys (apps/web/src/components/grow/grow.keys.ts, GROW_KEY_CODES). Held with Alt they
-// work from anywhere, so they are taken from a preview page that has focus.
-const GROW_KEY_CODES = new Set([
-  "KeyW",
-  "KeyS",
-  "KeyA",
-  "KeyD",
-  "KeyQ",
-  "KeyE",
-  "KeyX",
-  "KeyZ",
-  "KeyR",
-  "KeyF",
-  "KeyG",
-  "KeyT",
-  "KeyV",
-  "Digit1",
-  "Digit2",
-  "Digit3",
-  "Digit4",
-]);
-
-/**
- * The menu action for a Grow key held with Alt below the page (`grow-key:<code>:<shift>`),
- * or null for any other press. The renderer replays it as the same key press.
- */
-export function growKeyAction(
-  input: Pick<
-    Electron.Input,
-    "type" | "code" | "meta" | "control" | "alt" | "shift" | "isAutoRepeat"
-  >,
-): string | null {
-  if (input.type !== "keyDown" || !input.alt || input.control || input.meta) return null;
-  if (input.isAutoRepeat || !GROW_KEY_CODES.has(input.code)) return null;
-  return `grow-key:${input.code}:${input.shift ? 1 : 0}`;
-}
-
-/** The Grow keys that take focus out of the page (to a place, search, the manager). */
-export const growKeyLeavesPage = (code: string): boolean =>
-  code === "Digit1" ||
-  code === "Digit2" ||
-  code === "Digit4" ||
-  code === "KeyQ" ||
-  code === "KeyF" ||
-  code === "KeyT";
 
 /** Asks a window's renderer to show or hide the manager, bringing the window forward first. */
 export const sendManagerAction = (

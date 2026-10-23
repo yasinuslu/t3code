@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/keybindings";
 
 import { shortcutKeyFromEvent } from "../../keybindings";
+import { GROW_COMMAND_LABELS, isGrowCommand } from "../grow/grow.keys";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 
@@ -67,6 +68,8 @@ const CORE_WHEN_VARIABLES = [
   "terminalOpen",
   "isWeb",
   "isDesktop",
+  "isMac",
+  "growOpen",
   "true",
   "false",
 ] as const;
@@ -201,27 +204,48 @@ export function keybindingConflictLabels(
   return [...new Set(conflicts)].toSorted();
 }
 
+/**
+ * Whether a rule's `when` can never hold on this platform (`isMac` on a PC, `!isMac` on a
+ * Mac). The defaults carry a rule per platform, so the list shows only the ones that act here.
+ */
+export function whenExcludesPlatform(node: KeybindingWhenNode | undefined, mac: boolean): boolean {
+  if (!node) return false;
+  switch (node.type) {
+    case "identifier":
+      return node.name === "isMac" && !mac;
+    case "not":
+      return node.node.type === "identifier" && node.node.name === "isMac" && mac;
+    case "and":
+      return whenExcludesPlatform(node.left, mac) || whenExcludesPlatform(node.right, mac);
+    case "or":
+      return whenExcludesPlatform(node.left, mac) && whenExcludesPlatform(node.right, mac);
+  }
+}
+
 export function buildKeybindingRows(
   keybindings: ResolvedKeybindingsConfig,
   query: string,
+  mac: boolean = typeof navigator !== "undefined" && isMacPlatform(navigator.platform),
 ): ReadonlyArray<KeybindingRow> {
   const normalizedQuery = query.trim().toLowerCase();
-  const rows = keybindings.map((binding, index) => {
-    const defaultBinding = defaultBindingForBinding(binding);
-    const key = shortcutToKeybindingInput(binding.shortcut);
-    const when = whenAstToExpression(binding.whenAst);
-    return {
-      id: `${keybindingRowId(binding.command, key, when)}\u0000${index}`,
-      command: binding.command,
-      key,
-      when,
-      source: sourceForBinding(binding),
-      defaultKey: defaultBinding ? shortcutToKeybindingInput(defaultBinding.shortcut) : null,
-      defaultWhen: whenAstToExpression(defaultBinding?.whenAst),
-      binding,
-      conflicts: [],
-    } satisfies KeybindingRow;
-  });
+  const rows = keybindings
+    .filter((binding) => !whenExcludesPlatform(binding.whenAst, mac))
+    .map((binding, index) => {
+      const defaultBinding = defaultBindingForBinding(binding);
+      const key = shortcutToKeybindingInput(binding.shortcut);
+      const when = whenAstToExpression(binding.whenAst);
+      return {
+        id: `${keybindingRowId(binding.command, key, when)}\u0000${index}`,
+        command: binding.command,
+        key,
+        when,
+        source: sourceForBinding(binding),
+        defaultKey: defaultBinding ? shortcutToKeybindingInput(defaultBinding.shortcut) : null,
+        defaultWhen: whenAstToExpression(defaultBinding?.whenAst),
+        binding,
+        conflicts: [],
+      } satisfies KeybindingRow;
+    });
 
   const rowsWithConflicts = rows.map((row) => {
     const conflicts = keybindingConflictLabels(rows, {
@@ -312,6 +336,16 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
+  if (isGrowCommand(command)) return `Grow: ${GROW_COMMAND_LABELS[command]}`;
+  if (command === "shortcuts.toggle") return "Keyboard Shortcuts: Show or Hide";
+  if (command === "settings.open") return "Desktop: Open Settings";
+  if (command.startsWith("zoom."))
+    return `Desktop: Zoom ${titleCaseCommandSegment(command.slice(5))}`;
+  if (command.startsWith("window.profile.")) {
+    return `Desktop: Open Profile Window ${command.slice("window.profile.".length)}`;
+  }
+  if (command === "pane.rowPrevious") return "Pane: Previous Row in the Sidebar";
+  if (command === "pane.rowNext") return "Pane: Next Row in the Sidebar";
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";

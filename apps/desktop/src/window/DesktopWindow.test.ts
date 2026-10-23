@@ -1634,28 +1634,3 @@ describe("DesktopWindow", () => {
     }),
   );
 });
-
-describe("profileWindowShortcutIndex", () => {
-  const key = (
-    code: string,
-    modifiers: Partial<Record<"alt" | "control" | "meta" | "shift", boolean>>,
-  ) =>
-    DesktopWindow.profileWindowShortcutIndex({
-      type: "keyDown",
-      code,
-      alt: false,
-      control: false,
-      meta: false,
-      shift: false,
-      ...modifiers,
-    });
-
-  it("maps Alt+1..Alt+9 by physical key, whatever character Option types", () => {
-    assert.equal(key("Digit1", { alt: true }), 0);
-    assert.equal(key("Digit9", { alt: true }), 8);
-    assert.isNull(key("Digit0", { alt: true }));
-    assert.isNull(key("Digit1", {}));
-    assert.isNull(key("Digit1", { alt: true, shift: true }));
-    assert.isNull(key("Digit1", { alt: true, control: true }));
-  });
-});

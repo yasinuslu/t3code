@@ -6,7 +6,7 @@ import { primaryServerConfigAtom } from "../../state/server";
 
 /**
  * Desktop only. Tells the shell which profile this window is locked to and
- * which code profiles the server knows, so the Window menu (Alt+1, Alt+2, ...)
+ * which code profiles the server knows, so the Window menu (Alt+Shift+1, Alt+Shift+2, ...)
  * can open one window per profile and focus the window already showing one.
  */
 export function ProfileWindowReporter() {

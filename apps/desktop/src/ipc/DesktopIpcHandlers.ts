@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { receiveProviderAuthCallback, cancelProviderAuthCallback } from "./methods/providerAuth.ts";
 import * as DesktopIpc from "./DesktopIpc.ts";
 import { installNotificationBadge } from "./methods/notificationBadge.ts";
-import { installManagerShortcut } from "./methods/managerShortcut.ts";
+import { installManagerShortcut, installShellChords } from "./methods/managerShortcut.ts";
 import { openProfileWindow, reportWindowProfile } from "./methods/profileWindows.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import {
@@ -78,6 +78,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   const ipc = yield* DesktopIpc.DesktopIpc;
   yield* installNotificationBadge();
   yield* installManagerShortcut();
+  yield* installShellChords();
   yield* PreviewIpc.installPreviewEventForwarding();
 
   yield* ipc.handle(reportWindowProfile);
