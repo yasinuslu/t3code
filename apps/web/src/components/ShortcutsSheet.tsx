@@ -1,6 +1,6 @@
 /**
- * The keyboard cheat sheet: `?` anywhere outside a text box, or the keyboard button beside the
- * notifications bell, opens it; `?` again or Esc closes it. It lists Grow's keys and the
+ * The keyboard cheat sheet: Mod+/ or Mod+? anywhere, or the keyboard button beside the
+ * notifications bell, opens it; the chord again or Esc closes it. It lists Grow's keys and the
  * app-wide ones from the real keymaps (see ShortcutsSheet.logic), Grow's first while Grow is
  * showing.
  */
@@ -62,14 +62,16 @@ export function ShortcutsSheet() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.isComposing) return;
-      // A bare key would collide with inline components and typing; the chord is Mod+/ by default.
+      // A bare key would collide with inline components and typing; the chord is Mod+/ (or Mod+?) by default.
       if (resolveShortcutCommand(event, keybindings) !== "shortcuts.toggle") return;
       event.preventDefault();
+      event.stopPropagation();
       const { open: isOpen, setOpen } = useShortcutsSheetStore.getState();
       setOpen(!isOpen);
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // Capture, so the composer, an editor or a terminal with focus cannot swallow the chord.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [keybindings]);
 
   if (!open) return null;

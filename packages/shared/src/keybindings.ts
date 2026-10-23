@@ -74,7 +74,11 @@ const PROFILE_WINDOW_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> =
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // The desktop menu's own accelerators. The preview's zoom keeps its chord while a preview
   // has focus, so these step aside for it.
+  // The shortcut sheet. Shift is accepted too, so Ctrl+? opens it, and so does a layout that
+  // types / or ? with Shift (Turkish: Shift+7 and Shift+the key right of 0).
   { key: "mod+/", command: "shortcuts.toggle" },
+  { key: "mod+shift+/", command: "shortcuts.toggle" },
+  { key: "mod+shift+?", command: "shortcuts.toggle" },
   { key: "mod+,", command: "settings.open", when: "isDesktop" },
   { key: "mod+=", command: "zoom.in", when: "isDesktop && !previewFocus" },
   { key: "mod++", command: "zoom.in", when: "isDesktop && !previewFocus" },
@@ -143,7 +147,10 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // a terminal alike, so focus never gets stuck in one pane. Ctrl+H is Backspace and Ctrl+L
   // clears a terminal, which these override inside T3 only; Ctrl+L stays "focus the URL" in
   // the browser panel, which is the right-most pane and has nothing to move to.
-  { key: "ctrl+s", command: "pane.sidebar" },
+  // On a Mac Ctrl+S is Grow's "next thread" and Cmd+B already hides the sidebar, so the sidebar
+  // is Ctrl+B there. On Windows and Linux Ctrl+B is that hide chord and Grow holds Alt.
+  { key: "ctrl+s", command: "pane.sidebar", when: "!isMac" },
+  { key: "ctrl+b", command: "pane.sidebar", when: "isMac" },
   { key: "ctrl+h", command: "pane.left" },
   { key: "ctrl+l", command: "pane.right", when: "!previewFocus" },
   // Rows of the sidebar once it has focus, vim-style (the arrow keys work as well). Control
@@ -152,8 +159,6 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "alt+j", command: "pane.rowNext", when: "!isMac" },
   { key: "ctrl+k", command: "pane.rowPrevious", when: "isMac && !editableFocus" },
   { key: "ctrl+j", command: "pane.rowNext", when: "isMac && !editableFocus" },
-  // Grow's keys come after the pane chords: on a Mac Ctrl+S is "next thread" while Grow is
-  // open, and the last matching rule wins.
   ...GROW_DEFAULT_KEYBINDINGS,
   ...PROFILE_WINDOW_DEFAULT_KEYBINDINGS,
   // The two screens. `ctrl` rather than `mod`, like the panel chords above, so the
@@ -161,7 +166,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+alt+1", command: "mode.grow" },
   { key: "ctrl+alt+3", command: "mode.normal" },
   { key: "ctrl+alt+0", command: "mode.cycle" },
-  { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
+  // Not Ctrl+Alt+A on Windows and Linux, which is the thread panel.
+  { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus && isMac" },
+  { key: "ctrl+alt+y", command: "theme.select", when: "!terminalFocus && !isMac" },
   { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },
   { key: "mod+alt+s", command: "composer.stash", when: "!terminalFocus" },
