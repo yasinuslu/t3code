@@ -27,13 +27,13 @@ export const DECK_WINDOW_MS = 14 * DAY_MS;
 export const SHIPPED_WINDOW_MS = 7 * DAY_MS;
 
 export type ReturnKind =
-  /** Blocked on the user: an approval, a question, a failure. */
+  /** Waiting on the user: an approval, a question, a failure, or a report that says so. */
   | "urgent"
   /** Finished, with something to open or a report, and undecided. */
   | "return"
   /** Merged, or the user said ship and it is on its way. */
   | "shipped"
-  /** The user let it go; findable, and the pile sparks come from. */
+  /** Settled: the user let it go, or its result landed and it settled itself. Findable, and the pile sparks come from. */
   | "letGo"
   /** An agent is on it right now, after a What if or anything else. */
   | "working"
@@ -45,8 +45,11 @@ export interface GrowReturn {
   readonly kind: ReturnKind;
   readonly thread: EnvironmentThreadShell;
   readonly card: GrowCard | undefined;
-  /** Why it needs the user; "blocked" when an agent could not do what Grow asked. */
-  readonly reason: WorkReason | "blocked" | null;
+  /**
+   * Why it needs the user; "blocked" when an agent could not do what Grow asked, "asks" when
+   * its report says the user owes a move.
+   */
+  readonly reason: WorkReason | "blocked" | "asks" | null;
   readonly lastActivityAt: string;
   /** When the user last wrote to it (their own words, not another agent's); else its last activity. */
   readonly touchedAt: string;
@@ -157,6 +160,28 @@ const isSettled = (thread: EnvironmentThreadShell) =>
   (thread.settledAt !== null && thread.settledOverride !== "active");
 
 /**
+ * Its agent's report says the user owes a move, and nothing has answered it since: no message
+ * from the user, no later run, no pull request that merged or closed after it (the merge OK it
+ * waited for). Mirrors the server, which holds such a thread out of auto-settle.
+ */
+function reportAsksUser(thread: EnvironmentThreadShell): boolean {
+  if (thread.statusOutcome !== "needs-you") return false;
+  const reportAt = epochMs(thread.statusUpdatedAt);
+  const userWords =
+    thread.latestUserAuthoredMessageAt === undefined
+      ? thread.latestUserMessageAt
+      : thread.latestUserAuthoredMessageAt;
+  if (reportAt < epochMs(userWords) || reportAt < epochMs(thread.latestRun?.startedAt)) {
+    return false;
+  }
+  return !thread.pullRequests.some((link) => {
+    const snapshot = link.snapshot;
+    if (!snapshot || snapshot.state === "open") return false;
+    return epochMs(snapshot.state === "merged" ? snapshot.mergedAt : snapshot.closedAt) >= reportAt;
+  });
+}
+
+/**
  * A decision holds until the user writes to the thread again: Grow records it
  * after its own message, so only a later word from the user reopens it. The
  * agent finishing the work it was sent off with does not.
@@ -221,7 +246,7 @@ export function buildGrowDeck(
     const entry = (kind: ReturnKind) => growEntry(thread, card, kind, placement?.reason ?? null);
     // A pinned thread is listed under Pinned whatever state it is in, including the ones the
     // deck would otherwise drop (settled, idle for weeks, never started). Running ones and
-    // the ones that need the user stay in Working and Needs you now, which lead the list.
+    // the ones that need the user stay in Working and Waiting on you, which lead the list.
     const pin = thread.pinnedAt != null;
     const place = (list: GrowReturn[], kind: ReturnKind) => (pin ? pinned : list).push(entry(kind));
     const dropped = () => {
@@ -249,6 +274,10 @@ export function buildGrowDeck(
       urgent.push({ ...entry("urgent"), reason: "blocked" });
       continue;
     }
+    if (!isSettled(thread) && reportAsksUser(thread) && age <= DECK_WINDOW_MS) {
+      urgent.push({ ...entry("urgent"), reason: "asks" });
+      continue;
+    }
     if (merged || decision === "adopt") {
       if (age <= SHIPPED_WINDOW_MS) place(shipped, "shipped");
       else dropped();
@@ -263,13 +292,10 @@ export function buildGrowDeck(
       dropped();
       continue;
     }
-    // A settled thread returns only with something to open (a closed pull
-    // request ended it); an unsettled one finished and is waiting either way.
-    const openable =
-      Boolean(thread.previewLinks?.length) ||
-      (pullRequest !== null && pullRequest.state !== "closed");
-    if (isSettled(thread) && !openable) {
-      dropped();
+    // A settled thread is finished: it waits on the Settled shelf, one tap from coming back,
+    // instead of in the list of things to decide on.
+    if (isSettled(thread)) {
+      place(letGo, "letGo");
       continue;
     }
     place(age <= FRESH_WINDOW_MS ? fresh : older, "return");
@@ -478,16 +504,21 @@ export function growQueue(deck: GrowDeck): ReadonlyArray<GrowReturn> {
   return [...deck.urgent, ...deck.returns, ...deck.older];
 }
 
-/** Every item the deck can show, the queue first. */
+/** The deck's sections in the order the list shows them. */
+const listOrder = (deck: GrowDeck) => [
+  deck.urgent,
+  deck.pinned,
+  deck.working,
+  deck.returns,
+  deck.older,
+  deck.snoozed,
+  deck.shipped,
+  deck.letGo,
+];
+
+/** Every item the deck can show, in list order, so stepping walks the list as drawn. */
 export function growDeckItems(deck: GrowDeck): ReadonlyArray<GrowReturn> {
-  return [
-    ...deck.pinned,
-    ...deck.working,
-    ...growQueue(deck),
-    ...deck.shipped,
-    ...deck.letGo,
-    ...deck.snoozed,
-  ];
+  return listOrder(deck).flat();
 }
 
 /**
@@ -547,16 +578,7 @@ export function growStep(deck: GrowDeck, current: string | null, direction: 1 | 
 /** The project the shown item belongs to, wherever the deck lists it. */
 export function growFocusedProject(deck: GrowDeck, key: string | null): string | null {
   if (key === null) return null;
-  for (const section of [
-    deck.pinned,
-    deck.working,
-    deck.urgent,
-    deck.returns,
-    deck.older,
-    deck.shipped,
-    deck.letGo,
-    deck.snoozed,
-  ]) {
+  for (const section of listOrder(deck)) {
     const item = section.find((candidate) => candidate.key === key);
     if (item) return growProjectKey(item.thread);
   }

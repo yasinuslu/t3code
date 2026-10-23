@@ -3,6 +3,7 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
   CommandId,
+  type ThreadStatusOutcome,
   type ThreadId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadShell,
@@ -182,6 +183,29 @@ function pullRequestSettles(
   );
 }
 
+/**
+ * The outcome the agent's latest report passed (`thread_status_update`) while it still speaks
+ * for the thread: a later message from the user answers a `needs-you` and reopens a `done`, and
+ * a later run (a watch, background work or another agent woke it) made news the report does not
+ * cover. Only an explicit outcome counts here; one read off an older report's text is for display.
+ */
+export function reportedOutcome(
+  thread: Pick<
+    ProjectionStore.ProjectionSettlementCandidate,
+    "statusReport" | "latestUserAuthoredMessageAt" | "latestRunStartedAt"
+  >,
+): ThreadStatusOutcome | null {
+  const report = thread.statusReport;
+  if (report === undefined) return null;
+  const reportAtMs = Date.parse(report.updatedAt);
+  const laterAtMs = latestMillis([
+    toMillis(thread.latestUserAuthoredMessageAt),
+    toMillis(thread.latestRunStartedAt),
+  ]);
+  if (Number.isNaN(reportAtMs) || (laterAtMs !== null && reportAtMs < laterAtMs)) return null;
+  return report.outcome ?? null;
+}
+
 /** Cheap checks that run before any source control lookup. */
 export function isAutoSettlementCandidate(
   thread: Omit<ProjectionStore.ProjectionSettlementCandidate, "latestUserAuthoredMessageAt">,
@@ -215,10 +239,59 @@ export function resolveAutoSettlementAt(input: {
   readonly nowMs: number;
   readonly autoSettleAfterDays: number | null;
   readonly autoSettleOnMerge: boolean;
+  /**
+   * Whether `pullRequest` is the answer of a branch lookup. False on the projection-only
+   * pass, where a branch thread's pull request is not known yet.
+   */
+  readonly branchChecked?: boolean;
 }): DateTime.Utc | null {
   const { thread, defaultBranch } = input;
   let pullRequest = input.pullRequest;
   const links = visibleThreadPullRequests(thread.pullRequests ?? []);
+  // The agent's own word comes first: work that waits on the user never settles until a
+  // pull request merges or closes after it said so (the merge OK it waited for), and a
+  // result it says has landed settles even when its pull request merged into an
+  // integration branch such as `dev`. An open or unknown pull request still holds it.
+  const outcome = reportedOutcome(thread);
+  const reportAtMs = Date.parse(thread.statusReport?.updatedAt ?? "");
+  const endedAfterReport = (
+    candidate:
+      | {
+          readonly state: SettlementPullRequest["state"];
+          readonly mergedAt?: string | null | undefined;
+          readonly closedAt?: string | null | undefined;
+        }
+      | null
+      | undefined,
+  ) => {
+    if (candidate == null || candidate.state === "open") return false;
+    const endedAt = Date.parse(
+      (candidate.state === "merged" ? candidate.mergedAt : candidate.closedAt) ?? "",
+    );
+    return !Number.isNaN(endedAt) && endedAt >= reportAtMs;
+  };
+  if (
+    outcome === "needs-you" &&
+    !endedAfterReport(pullRequest) &&
+    !links.some((link) => endedAfterReport(link.snapshot))
+  ) {
+    return null;
+  }
+  const pullRequestKnown =
+    links.length > 0 || thread.branch === null || input.branchChecked === true;
+  if (
+    outcome === "done" &&
+    pullRequestKnown &&
+    pullRequest?.state !== "open" &&
+    !links.some((link) => link.snapshot === null || link.snapshot.state === "open") &&
+    isAutoSettlementCandidate(thread, input.nowMs)
+  ) {
+    const landedAtMs = latestMillis([
+      Number.isNaN(reportAtMs) ? null : reportAtMs,
+      toMillis(thread.latestRunCompletedAt),
+    ]);
+    return landedAtMs === null ? thread.updatedAt : DateTime.makeUnsafe(landedAtMs);
+  }
   if (
     links.some(
       (link) => link.snapshot === null || !pullRequestIsTerminal(link.snapshot, defaultBranch),
@@ -398,7 +471,11 @@ export const make = Effect.gen(function* () {
     });
 
     const settleThread = Effect.fn("ThreadSettlementServiceV2.settleThread")(
-      function* (thread: (typeof candidates)[number], pullRequest: SettlementPullRequest | null) {
+      function* (
+        thread: (typeof candidates)[number],
+        pullRequest: SettlementPullRequest | null,
+        branchChecked: boolean,
+      ) {
         const currentSettings = resolveProjectSettings(
           yield* settingsService.getSettings,
           thread.projectId,
@@ -412,6 +489,7 @@ export const make = Effect.gen(function* () {
           nowMs: DateTime.toEpochMillis(decisionNow),
           autoSettleAfterDays: currentSettings.sidebarAutoSettleAfterDays,
           autoSettleOnMerge: currentSettings.sidebarAutoSettleOnMerge,
+          branchChecked,
         });
         if (settledAt === null) return thread;
         const uuid = yield* crypto.randomUUIDv4;
@@ -441,7 +519,7 @@ export const make = Effect.gen(function* () {
     // a source-control lookup can delay or fail an otherwise eligible thread.
     const lookupCandidates = (yield* Effect.forEach(
       candidates,
-      (thread) => settleThread(thread, null),
+      (thread) => settleThread(thread, null, false),
       { concurrency: 8 },
     ))
       .filter((thread) => thread !== null)
@@ -503,6 +581,7 @@ export const make = Effect.gen(function* () {
             nowMs: DateTime.toEpochMillis(decisionNow),
             autoSettleAfterDays: settings.sidebarAutoSettleAfterDays,
             autoSettleOnMerge: settings.sidebarAutoSettleOnMerge,
+            branchChecked: true,
           }) !== null
         );
       });
@@ -583,7 +662,7 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const pullRequest = yield* pullRequestFor(group);
           if (pullRequest === undefined) return;
-          yield* Effect.forEach(group, (thread) => settleThread(thread, pullRequest), {
+          yield* Effect.forEach(group, (thread) => settleThread(thread, pullRequest, true), {
             discard: true,
           });
         }).pipe(

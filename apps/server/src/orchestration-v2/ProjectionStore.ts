@@ -56,6 +56,8 @@ import {
   CheckpointScopeId,
   ThreadId,
   threadStatusReportHasProof,
+  threadStatusReportOutcome,
+  type ThreadStatusOutcome,
   TurnItemId,
   NodeId,
 } from "@t3tools/contracts";
@@ -195,7 +197,11 @@ export type ProjectionSettlementCandidate = Pick<
   | "activityRunStatus"
   | "pendingRuntimeRequest"
   | "pendingBackgroundTasks"
-> & { readonly latestUserAuthoredMessageAt: DateTime.Utc | null };
+> & {
+  readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
+  /** The agent's latest report; its outcome can settle or hold the thread. */
+  readonly statusReport?: ThreadStatusReport | undefined;
+};
 
 const ProjectionCheckpointContext = Schema.Struct({
   runs: Schema.Array(
@@ -499,11 +505,15 @@ export class ProjectionStoreV2 extends Context.Service<ProjectionStoreV2, Projec
 
 export const ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION = 2;
 
+const withStatusOutcome = (outcome: ThreadStatusOutcome | null) =>
+  outcome === null ? {} : { statusOutcome: outcome };
+
 /** Shell fields for a status report: the text stays server-side, the proof flag travels. */
 function statusShellFields(report: ThreadStatusReport) {
   return {
     statusUpdatedAt: report.updatedAt,
     ...(threadStatusReportHasProof(report.text) ? { statusProof: true as const } : {}),
+    ...withStatusOutcome(threadStatusReportOutcome(report)),
   };
 }
 

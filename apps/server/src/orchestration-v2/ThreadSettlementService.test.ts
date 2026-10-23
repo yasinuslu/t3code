@@ -47,7 +47,10 @@ function at(offsetMs: number): DateTime.Utc {
 }
 
 type SettlementShell = OrchestrationV2ThreadShell &
-  Pick<ProjectionStore.ProjectionSettlementCandidate, "latestUserAuthoredMessageAt">;
+  Pick<
+    ProjectionStore.ProjectionSettlementCandidate,
+    "latestUserAuthoredMessageAt" | "statusReport"
+  >;
 
 // A fixture's user message is one the user wrote unless the test sets
 // latestUserAuthoredMessageAt on its own.
@@ -497,6 +500,99 @@ describe("resolveAutoSettlementAt", () => {
         autoSettleAfterDays: 2,
       }),
     ).toEqual(at(-30 * DAY_MS));
+  });
+
+  it("follows the agent's stated outcome: done settles past a dev merge, needs-you holds", () => {
+    const report = (outcome: "done" | "needs-you", offsetMs = -60 * 60 * 1_000) => ({
+      text: "Shipped.",
+      updatedAt: DateTime.formatIso(at(offsetMs)),
+      outcome,
+    });
+    const mergedAt = DateTime.formatIso(at(-2 * 60 * 60 * 1_000));
+    const input = {
+      thread: shell({
+        latestUserMessageAt: at(-3 * 60 * 60 * 1_000),
+        latestRunCompletedAt: at(-50 * 60 * 1_000),
+        statusReport: report("done"),
+      }),
+      pullRequest: { state: "merged" as const, mergedAt, baseBranch: "dev" },
+      defaultBranch: "main",
+      nowMs: NOW_MS,
+      autoSettleAfterDays: 3,
+      autoSettleOnMerge: true,
+    };
+    // Done and merged into the integration branch: settles when the turn ended.
+    expect(ThreadSettlementService.resolveAutoSettlementAt(input)).toEqual(at(-50 * 60 * 1_000));
+    // Still running: waits for the turn to end.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...input.thread, activityRunStatus: "running" },
+      }),
+    ).toBeNull();
+    // An open pull request still holds a done thread.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        pullRequest: { state: "open", baseBranch: "dev" },
+      }),
+    ).toBeNull();
+    // The user wrote after the report: it no longer speaks for the thread.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...input.thread, latestUserAuthoredMessageAt: at(-30 * 60 * 1_000) },
+      }),
+    ).toBeNull();
+    // Waiting on the user: never settles, not even after the inactivity window.
+    const waiting = shell({
+      latestUserMessageAt: at(-30 * DAY_MS),
+      statusReport: report("needs-you", -29 * DAY_MS),
+    });
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: waiting,
+        pullRequest: null,
+      }),
+    ).toBeNull();
+    // The merge it waited for: a pull request that merged after the report releases it.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...input.thread, statusReport: report("needs-you", -3 * 60 * 60 * 1_000) },
+        defaultBranch: null,
+      }),
+    ).toEqual(at(-50 * 60 * 1_000));
+    // A run that started after the report (a watch woke it) made news the report does not cover.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...input.thread, latestRunStartedAt: at(-55 * 60 * 1_000) },
+      }),
+    ).toBeNull();
+    // A branch thread waits for its branch lookup before a done settles it.
+    const onBranch = {
+      ...input,
+      thread: { ...input.thread, branch: "feature" },
+      pullRequest: null,
+    };
+    expect(ThreadSettlementService.resolveAutoSettlementAt(onBranch)).toBeNull();
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({ ...onBranch, branchChecked: true }),
+    ).toEqual(at(-50 * 60 * 1_000));
+    // Once the user answers, the inactivity rule applies again.
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: {
+          ...waiting,
+          latestUserAuthoredMessageAt: at(-28 * DAY_MS),
+          latestUserMessageAt: at(-28 * DAY_MS),
+        },
+        pullRequest: null,
+      }),
+    ).toEqual(at(-28 * DAY_MS));
   });
 });
 

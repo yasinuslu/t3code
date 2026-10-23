@@ -42,9 +42,10 @@ middle, and beside it what it is, where it came from (the thread that launched o
 what you sent it from Grow), where it stands, and what happened. Then one decision. Every return carries a proof image you can read at a glance: agents are told to add one, and when a thread finishes work without one, T3 asks it for one by itself. The list marks which returns have proof, and **Ask again** asks once more. **Ship** tells the agent to land it the way its repository lands work,
 **Reply** answers its question, **Done** clears something with nothing to merge (a report),
 **What if...** asks for a change in the same thread, and **Settle** takes it off the list (the same settle as the thread list, nothing is sent to the agent). Each
-decision waits five seconds with **Undo**. Anything an agent is still working on, like a What
-if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
-what you settled stay findable below, and a settled item can be brought back. **Snooze** (the clock on a row, the button under an item, or `c`) parks an item until a time you pick; it waits under **Snoozed**, which shows when each one wakes, and comes back on its own then or at once with **Wake now**. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
+decision waits five seconds with **Undo**. What waits on you (a question, an approval, a failure, or an agent saying it needs your
+decision) leads the list under **Waiting on you**. Anything an agent is still working on, like a What
+if you just sent, waits under **Working**. Older returns fold under **Earlier**; what is done and
+every settled thread (settled by you or by the auto-settle rules) stay folded at the bottom, and **Bring back** returns a settled one to the list. **Snooze** (the clock on a row, the button under an item, or `c`) parks an item until a time you pick; it waits under **Snoozed**, which shows when each one wakes, and comes back on its own then or at once with **Wake now**. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
 previous and next item (the arrows and `j`/`k` do too). `s` ship, `d` done, `w` what if (or
 reply), `x` settle, `a` asks again for proof, `z` undo. `c` opens the conversation on a narrow window (wide ones show it beside the proof), `b`/`Shift+b` or the left and right arrows
 step through the screenshots, `PgDn`/`PgUp` scroll the story, `v` shows the live preview, `f` finds (`/` too), `g` opens every project in the list, and
@@ -53,7 +54,10 @@ step through the screenshots, `PgDn`/`PgUp` scroll the story, `v` shows the live
 
 Agents keep a status card at the top of their thread current with
 the `thread_status_update` tool; its screenshots are stored with the thread, so they survive a
-deleted worktree.
+deleted worktree. With their final report agents say whether you owe a move, which keeps the thread
+under **Waiting on you** and out of auto-settle, or whether the result has landed (merged and
+deployed, a report delivered), which settles the thread when its turn ends. Writing to the thread
+undoes either.
 
 ## One manager per profile
 

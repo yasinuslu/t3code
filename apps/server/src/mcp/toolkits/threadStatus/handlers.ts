@@ -30,6 +30,7 @@ export const ThreadStatusHandlersLive = ThreadStatusToolkit.toLayer({
           commandId: yield* newCommandId(),
           threadId,
           text: linkStoredImages(input.report, stored).trim(),
+          ...(input.outcome === undefined ? {} : { outcome: input.outcome }),
         })
         .pipe(Effect.mapError(unavailable));
       return stored.size > 0

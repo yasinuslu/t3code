@@ -15,6 +15,7 @@ import type {
   ProviderInstanceId,
   RunId,
   ThreadId,
+  ThreadStatusOutcome,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
@@ -144,6 +145,8 @@ export interface EnvironmentThreadShell {
   readonly statusUpdatedAt?: string;
   /** True when that report embeds a proof image. */
   readonly statusProof?: boolean;
+  /** What that report says about the user: they owe a move, or the work landed. */
+  readonly statusOutcome?: ThreadStatusOutcome;
   /** When the agent last set the thread's presentation; absent until one does. */
   readonly presentationUpdatedAt?: string;
   /** How many pages that presentation has. */
@@ -266,6 +269,7 @@ export function presentThreadShell(
     previewLinks: thread.previewLinks ?? NO_PREVIEW_LINKS,
     ...(thread.statusUpdatedAt === undefined ? {} : { statusUpdatedAt: thread.statusUpdatedAt }),
     ...(thread.statusProof ? { statusProof: true } : {}),
+    ...(thread.statusOutcome === undefined ? {} : { statusOutcome: thread.statusOutcome }),
     ...(thread.presentationUpdatedAt === undefined
       ? {}
       : {

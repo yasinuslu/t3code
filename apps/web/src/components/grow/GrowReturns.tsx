@@ -1162,6 +1162,15 @@ function ReturnsList(props: {
           {row(props.outside)}
         </ListSection>
       ) : null}
+      {deck.urgent.length > 0 ? (
+        <ListSection
+          title={`Waiting on you (${deck.urgent.length})`}
+          tone="warning"
+          {...holding(deck.urgent)}
+        >
+          {deck.urgent.map((item) => row(item))}
+        </ListSection>
+      ) : null}
       {deck.pinned.length > 0 ? (
         <ListSection title={`Pinned (${deck.pinned.length})`} {...holding(deck.pinned)}>
           {deck.pinned.map((item) => row(item))}
@@ -1170,11 +1179,6 @@ function ReturnsList(props: {
       {deck.working.length > 0 ? (
         <ListSection title="Working" {...holding(deck.working)}>
           {deck.working.map((item) => row(item))}
-        </ListSection>
-      ) : null}
-      {deck.urgent.length > 0 ? (
-        <ListSection title="Needs you now" tone="warning" {...holding(deck.urgent)}>
-          {deck.urgent.map((item) => row(item))}
         </ListSection>
       ) : null}
       {listMode === "recent" ? (
@@ -1793,10 +1797,14 @@ function HeroWithProof(props: Parameters<typeof Hero>[0]) {
   );
 }
 
-/** Why an urgent item needs the user: the thread's own reasons, plus a Grow request an agent could not do. */
+/**
+ * Why an urgent item needs the user: the thread's own reasons, a Grow request an agent could
+ * not do, or a report that says the user owes a move.
+ */
 const REASON_LOOK = {
   ...WORK_REASON_LOOK,
   blocked: { label: "Blocked, needs you", dot: "bg-warning" },
+  asks: { label: "Waiting on you", dot: "bg-warning" },
 } as const;
 
 const STATUS_LOOK = {

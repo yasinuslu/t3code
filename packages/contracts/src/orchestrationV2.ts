@@ -55,7 +55,7 @@ import {
   ThreadPreviewEnvironmentStatus,
 } from "./threadPreviewEnvironment.ts";
 import { GrowRequestOutcome, ThreadGrowRequest } from "./threadGrowRequest.ts";
-import { ThreadStatusReport } from "./threadStatusReport.ts";
+import { ThreadStatusOutcome, ThreadStatusReport } from "./threadStatusReport.ts";
 import { ThreadSupersededBy } from "./threadSupersede.ts";
 import {
   ProviderApprovalDecision,
@@ -1815,6 +1815,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   supersededBy: Schema.optional(Schema.NullOr(ThreadSupersededBy)),
   /** Whether that report embeds a proof image; absent when it does not. */
   statusProof: Schema.optional(Schema.Boolean),
+  /** What that report says about the user (`threadStatusReportOutcome`); absent when nothing. */
+  statusOutcome: Schema.optional(ThreadStatusOutcome),
   /** When the agent last set the thread's presentation; the pages stay server-side. */
   presentationUpdatedAt: Schema.optional(IsoDateTime),
   /** How many pages that presentation has; absent when there is none. */
@@ -2742,6 +2744,7 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     /** Replaces the previous report; its screenshots must already be stored attachments. */
     text: TrimmedNonEmptyString,
+    outcome: Schema.optional(ThreadStatusOutcome),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.presentation.set"),
