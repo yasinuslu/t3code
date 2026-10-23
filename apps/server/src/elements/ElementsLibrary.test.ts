@@ -83,5 +83,6 @@ it("tells the agent when to reach for a component and when to stay plain", () =>
     expect(text).toContain('Never ask the user to "reply with a number"');
     expect(text).toContain("Stay plain for a short conversational reply");
     expect(text).toContain("never attributes");
+    expect(text).toContain(`<t3-decision>\n{"question":"Which?"}\n</t3-decision>`);
   });
 });

@@ -173,6 +173,16 @@ export function describeElements(tags: ReadonlyArray<string>): {
   };
 }
 
+const CORE_EXAMPLE_TAGS = ["t3-headline", "t3-decision", "t3-checks"];
+
+/** The manifest example of each core component, written the way the agent must write it. */
+function coreExamples(components: ReadonlyArray<ElementManifest>): string {
+  return CORE_EXAMPLE_TAGS.flatMap((tag) => {
+    const example = components.find((component) => component.tag === tag)?.example;
+    return example === undefined ? [] : [`<${tag}>\n${JSON.stringify(example)}\n</${tag}>`];
+  }).join("\n\n");
+}
+
 /**
  * The library as the agent reads it in its instructions. Empty when no library is set, so a
  * provider without one sees no change.
@@ -200,11 +210,9 @@ Stay plain for a short conversational reply, a one-line answer, a clarification 
 
 How to write one: put the tag on its own line with a blank line before and after it, and no blank lines inside it. Components with a JSON body (every one without a [text body] mark below, interactive ones included) take one JSON object of props as the only content between an opening and a closing tag, never attributes; a self-closing tag renders an error. Components with a text body take plain text, and short scalar props as attributes (kebab-case). Images are absolute file paths or URLs. Prose around components stays normal markdown. Never wrap a component in a code fence unless you want to show its source.
 
-Example:
+Examples of the three you will use most (the body is the JSON, nothing else):
 
-<t3-decision>
-{"question":"Which layout should the card use?","options":[{"label":"Stacked","answer":"Use the stacked layout.","recommended":true},{"label":"Side by side","answer":"Use the side-by-side layout."}]}
-</t3-decision>
+${coreExamples(components)}
 
 If no component fits and one would really help, add it to the library at ${dir} (read its README: one folder per component, element.ts plus manifest.json, then bun run build); it is live at once for new replies.
 
