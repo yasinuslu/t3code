@@ -74,3 +74,17 @@ it("describes full entries, reports unknown tags with close names, lists the cat
     expect(describeElements([]).catalog).toContain("<t3-note>");
   });
 });
+
+it("tells the agent when to reach for a component and when to stay plain", () => {
+  withLibrary(() => {
+    const text = elementsInstructions();
+    expect(text).toContain("## When to reach for one");
+    expect(text).toContain("opens with t3-headline");
+    expect(text).toContain('Never ask the user to "reply with a number"');
+    expect(text).toContain("Stay plain for a short conversational reply");
+    expect(text).toContain("never attributes");
+    expect(text).toContain("There are no child tags");
+    expect(text).toContain("Before the first time you use a component in a thread");
+    expect(text).toContain(`<t3-decision>\n{"question":"Which?"}\n</t3-decision>`);
+  });
+});

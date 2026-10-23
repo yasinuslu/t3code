@@ -10,7 +10,7 @@ When the t3-code MCP server exposes preview_environment_up and the project defin
 </preview_linking>`;
 
 const STATUS_UPDATE_INSTRUCTIONS = `<thread_status>
-When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, the proof image, and what the user owes, if anything. Each call replaces the last. With the final report pass outcome "needs-you" when the user owes a move, or "done" when the result has landed (merged and deployed, report delivered, card written) and nothing is needed, so the thread settles itself. The final report must carry at least one proof image by absolute path: something the user understands at a glance without reading. For a visible change, a screenshot of the result with the change marked (before and after when it helps); for motion or a flow, a short looping GIF; for work with nothing on screen, an image of the evidence (the report page, the passing check, the output). Without a presentation, Grow shows that image first, and an item without either reads as unproven. When it exposes grow_update and your thread has something the user can open, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons". Every thread ends in something the owner can open and play with: for an app it is the running preview, for work without an interface it is an HTML page that demonstrates it (a report, demo or pitch, with video or screenshots when useful), linked as the thread's preview like any other. A standalone prototype (not a branch of an existing app) is a small clean Bun project, server plus client, that starts with "bun install" and "bun dev"; a feature of an existing app uses that app's own stack and preview.
+When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, the proof image, and what the user owes, if anything. Each call replaces the last. The status text is plain markdown (web components render in chat replies, not on the status card). With the final report pass outcome "needs-you" when the user owes a move, or "done" when the result has landed (merged and deployed, report delivered, card written) and nothing is needed, so the thread settles itself. The final report must carry at least one proof image by absolute path: something the user understands at a glance without reading. For a visible change, a screenshot of the result with the change marked (before and after when it helps); for motion or a flow, a short looping GIF; for work with nothing on screen, an image of the evidence (the report page, the passing check, the output). Without a presentation, Grow shows that image first, and an item without either reads as unproven. When it exposes grow_update and your thread has something the user can open, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons". Every thread ends in something the owner can open and play with: for an app it is the running preview, for work without an interface it is an HTML page that demonstrates it (a report, demo or pitch, with video or screenshots when useful), linked as the thread's preview like any other. A standalone prototype (not a branch of an existing app) is a small clean Bun project, server plus client, that starts with "bun install" and "bun dev"; a feature of an existing app uses that app's own stack and preview.
 </thread_status>`;
 
 const PRESENTATION_INSTRUCTIONS = `<presentation>
@@ -26,6 +26,8 @@ export function buildRuntimeInstructions(runtime: {
   readonly model?: string | undefined;
   readonly modelName?: string | undefined;
   readonly reasoningEffort?: string | undefined;
+  /** False when the caller sends the web-component catalog as its own entry. */
+  readonly includeElements?: boolean | undefined;
 }): string {
   const harness = toSingleLine(runtime.harness);
   const model = toSingleLine(runtime.model ?? "");
@@ -35,7 +37,7 @@ export function buildRuntimeInstructions(runtime: {
     modelName && modelName !== model ? `${modelName} (model slug: ${model})` : model;
   const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${modelLabel}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
-  return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}\n\n${PREVIEW_LINKING_INSTRUCTIONS}\n\n${STATUS_UPDATE_INSTRUCTIONS}${withElements()}`;
+  return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}\n\n${PREVIEW_LINKING_INSTRUCTIONS}\n\n${STATUS_UPDATE_INSTRUCTIONS}${withElements(runtime.includeElements !== false)}`;
 }
 
 function toSingleLine(value: string): string {
@@ -53,7 +55,7 @@ export function setPresentationInstructionsEnabled(enabled: boolean): void {
 }
 
 /** The presentation ask while it is switched on, then the web-component catalog when a library is set. */
-function withElements(): string {
-  const elements = elementsInstructions();
+function withElements(includeElements: boolean): string {
+  const elements = includeElements ? elementsInstructions() : "";
   return `${presentationEnabled ? `\n\n${PRESENTATION_INSTRUCTIONS}` : ""}${elements === "" ? "" : `\n\n${elements}`}`;
 }

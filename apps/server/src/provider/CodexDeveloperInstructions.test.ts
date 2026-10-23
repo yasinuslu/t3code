@@ -1,4 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeAssert from "node:assert/strict";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import { describe, it } from "vite-plus/test";
 
@@ -101,6 +105,32 @@ describe("T3 browser developer instructions", () => {
   it("tracks the turn's MCP configuration rather than defaulting to on", () => {
     NodeAssert.match(toolInstructions(runtime, true), /preview_open/);
     NodeAssert.doesNotMatch(toolInstructions(runtime, false), /preview_open/);
+  });
+});
+
+describe("web components in Codex context", () => {
+  it("sends the catalog as its own entry, not inside the runtime entry", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codex-elements-"));
+    NodeFS.mkdirSync(NodePath.join(dir, "dist"));
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "dist", "manifest.json"),
+      JSON.stringify({
+        hash: "h",
+        components: [{ tag: "t3-note", description: "A note.", props: {} }],
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(dir, "dist", "t3-elements.js"), "");
+    const previous = process.env.T3CODE_ELEMENTS_LIBRARY;
+    process.env.T3CODE_ELEMENTS_LIBRARY = dir;
+    try {
+      const context = buildCodexAdditionalContext({ model: "gpt" });
+      NodeAssert.match(context.t3_code_web_components?.value ?? "", /<web_components>/);
+      NodeAssert.doesNotMatch(context.t3_code_runtime?.value ?? "", /<web_components>/);
+    } finally {
+      if (previous === undefined) delete process.env.T3CODE_ELEMENTS_LIBRARY;
+      else process.env.T3CODE_ELEMENTS_LIBRARY = previous;
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

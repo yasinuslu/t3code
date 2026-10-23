@@ -173,6 +173,16 @@ export function describeElements(tags: ReadonlyArray<string>): {
   };
 }
 
+const CORE_EXAMPLE_TAGS = ["t3-headline", "t3-decision", "t3-checks"];
+
+/** The manifest example of each core component, written the way the agent must write it. */
+function coreExamples(components: ReadonlyArray<ElementManifest>): string {
+  return CORE_EXAMPLE_TAGS.flatMap((tag) => {
+    const example = components.find((component) => component.tag === tag)?.example;
+    return example === undefined ? [] : [`<${tag}>\n${JSON.stringify(example)}\n</${tag}>`];
+  }).join("\n\n");
+}
+
 /**
  * The library as the agent reads it in its instructions. Empty when no library is set, so a
  * provider without one sees no change.
@@ -184,21 +194,31 @@ export function elementsInstructions(): string {
   if (components.length === 0) return "";
   const catalog = components.map(compactLine).join("\n");
   return `<web_components>
-T3 Code renders a library of web components inline in your replies. Use them: they are your richer language with the user, not decoration. Reach for one whenever it says something better than prose: a decision you need from the user, a checklist, metrics, a chart, a diff, a screenshot with boxes on what changed, a quick set of replies the user can tap, a small form. Interactive components send the user's choice back to you as their next message, so you can talk with the user through them instead of asking them to type.
+T3 Code renders a library of web components inline in your replies. Use them: they are your richer language with the user, not decoration. Reach for one whenever it says something better than prose. Interactive components send the user's choice back to you as their next message, so you can talk with the user through them instead of asking them to type.
 
-How to write one: put the tag on its own line with a blank line before and after it, and no blank lines inside it. Components with a JSON body take one JSON object of props as their only content; components with a text body take plain text, and short scalar props as attributes (kebab-case). Images are absolute file paths or URLs. Prose around components stays normal markdown. Never wrap a component in a code fence unless you want to show its source.
+## When to reach for one
+Make a component the default for these shapes, and keep plain prose for everything else. One or two per reply is normal; a reply made only of components is not.
+- A final report or "done" message opens with t3-headline (the outcome, a status, the user's next move), then the details.
+- CI or check state is t3-checks, never a bullet list of ticks.
+- Files you changed are t3-file-tree. A PR is t3-pr, another thread is t3-thread, a running preview is t3-preview.
+- Every question you need answered is t3-decision (2 to 4 options), t3-quick-replies (short answers), t3-poll (pick several), t3-form (several fields) or t3-rating. Never ask the user to "reply with a number" or type a letter.
+- A list of options to choose from is t3-poll, or a selectable t3-datatable when each option has several columns.
+- Before and after is t3-compare; a screenshot with the change boxed is t3-screenshot.
+- Numbers that matter (three or more, or a delta) are t3-metrics; a series is t3-chart or t3-plot; compared options are t3-versus or t3-table.
+- Progress and acceptance criteria are t3-steps or t3-checklist; a diff or snippet is t3-diff-card; a command and its output is t3-terminal.
+Stay plain for a short conversational reply, a one-line answer, a clarification that needs no choice, and anything that is prose by nature. Never say the same thing in a component and again in prose. Components render only in chat replies and Grow document pages: thread_status_update text, commit messages, PR descriptions and files stay plain markdown.
 
-Example:
+How to write one: put the tag on its own line with a blank line before and after it, and no blank lines inside it. Components with a JSON body (every one without a [text body] mark below, interactive ones included) take one JSON object of props as the only content between an opening and a closing tag, never attributes; a self-closing tag renders an error. There are no child tags: never write <t3-option>, <t3-check> or the like; options, items and rows are arrays inside that JSON. Components with a text body take plain text, and short scalar props as attributes (kebab-case). Images are absolute file paths or URLs. Prose around components stays normal markdown. Never wrap a component in a code fence unless you want to show its source.
 
-<t3-decision>
-{"question":"Which layout should the card use?","options":[{"label":"Stacked","answer":"Use the stacked layout.","recommended":true},{"label":"Side by side","answer":"Use the side-by-side layout."}]}
-</t3-decision>
+Examples of the three you will use most (the body is the JSON, nothing else):
+
+${coreExamples(components)}
 
 If no component fits and one would really help, add it to the library at ${dir} (read its README: one folder per component, element.ts plus manifest.json, then bun run build); it is live at once for new replies.
 
 ## Components
 One line each: tag, summary, prop names (* = required). Props are JSON keys in the body (or attributes for text-body components).
-Before using a component you have not used in this thread, or when unsure about its props, call the \`elements_describe\` tool with its tags (cheap; returns description, body kind, full props schema and an example), then write it. A mistaken prop renders a visible error card, so describe before guessing on complex ones (t3-whatif, t3-explain, t3-datatable, t3-sankey, t3-form, t3-flow).
+Before the first time you use a component in a thread, call the \`elements_describe\` tool with its tags (one cheap call; returns description, body kind, full props schema and an example), then write it exactly like the example. The one-line props below are not enough to write from: a guessed prop or tag renders a visible error card.
 ${catalog}
 </web_components>`;
 }
