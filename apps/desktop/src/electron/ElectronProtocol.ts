@@ -84,6 +84,8 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
     "'self'",
     "'unsafe-inline'",
     "'wasm-unsafe-eval'",
+    // The inline web-component library arrives over the socket and is imported from a blob URL.
+    "blob:",
     ...(clerkOrigin ? [clerkOrigin] : []),
     "https://challenges.cloudflare.com",
   ];
