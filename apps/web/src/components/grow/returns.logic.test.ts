@@ -485,3 +485,65 @@ describe("last interaction order", () => {
     expect(keys(deck.returns)).toEqual(["y", "x"]);
   });
 });
+
+describe("snoozed threads", () => {
+  const until = (hours: number) => new Date(NOW + hours * 3_600_000).toISOString();
+  const snoozedAt = hoursAgo(2);
+
+  it("leaves every other section for the Snoozed one, soonest wake first", () => {
+    const deck = buildGrowDeck(
+      [
+        shell("later", { snoozedAt, snoozedUntil: until(20), previewLinks: preview() }),
+        shell("soon", { snoozedAt, snoozedUntil: until(1) }),
+        shell("pinned", { snoozedAt, snoozedUntil: until(5), pinnedAt: hoursAgo(5) }),
+        shell("awake", { previewLinks: preview() }),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.snoozed)).toEqual(["soon", "pinned", "later"]);
+    expect(deck.snoozed.every((item) => item.kind === "snoozed")).toBe(true);
+    expect(keys(deck.returns)).toEqual(["awake"]);
+    expect(deck.pinned).toEqual([]);
+    // Still reachable: the deck can show it, and stepping walks to it, but it is no decision.
+    expect(keys(growDeckItems(deck))).toEqual(["awake", "soon", "pinned", "later"]);
+    expect(keys(growQueue(deck))).toEqual(["awake"]);
+  });
+
+  it("brings a thread back as fresh news when its wake time passes", () => {
+    const thread = shell("woke", {
+      snoozedAt: hoursAgo(72),
+      snoozedUntil: hoursAgo(1),
+      previewLinks: preview(),
+      // Idle for days: without the wake it would sit in "earlier".
+      latestRun: { runId: "run", completedAt: hoursAgo(100) },
+      updatedAt: hoursAgo(100),
+    });
+    const deck = buildGrowDeck([thread], new Map(), NOW);
+    expect(deck.snoozed).toEqual([]);
+    expect(keys(deck.returns)).toEqual(["woke"]);
+    // A minute before the wake it was still parked.
+    const before = buildGrowDeck([thread], new Map(), NOW - 2 * 3_600_000);
+    expect(keys(before.snoozed)).toEqual(["woke"]);
+  });
+
+  it("wakes early when the agent needs the user", () => {
+    const deck = buildGrowDeck(
+      [shell("blocked", { snoozedAt, snoozedUntil: until(20), hasPendingApprovals: true })],
+      new Map(),
+      NOW,
+    );
+    expect(deck.snoozed).toEqual([]);
+  });
+
+  it("finds a snoozed thread by search and by its project", () => {
+    const deck = buildGrowDeck(
+      [shell("quiet", { snoozedAt, snoozedUntil: until(3) })],
+      new Map(),
+      NOW,
+    );
+    expect(keys(filterGrowDeck(deck, "quie").snoozed)).toEqual(["quiet"]);
+    expect(keys(filterGrowDeck(deck, "nope").snoozed)).toEqual([]);
+    expect(growFocusedProject(deck, "env:quiet")).toBe("env:p1");
+  });
+});

@@ -74,7 +74,7 @@ On the Grow screen the left hand sits on WASD, with Alt on Windows and Linux and
 (where Option types special characters): `alt+w` / `alt+s` (Mac: `ctrl+w` / `ctrl+s`) step to the
 previous and next thread, `a` / `d` turn pages, `1`-`4` jump to the threads, presentation, live app
 and chat, `q` goes back, `e` ships or clears the card (Mac: `ctrl+shift+e`, since `ctrl+e` is the
-manager), `x` settles, `z` undoes, `r` reloads, `f` finds, `g` opens every project and `t` talks to the
+manager), `x` settles, `c` snoozes (or wakes a snoozed thread), `z` undoes, `r` reloads, `f` finds, `g` opens every project and `t` talks to the
 manager. On a Mac, `ctrl+a`, `ctrl+d`, `ctrl+f` and `ctrl+t` stay with the text while the caret is in a
 text box, and `ctrl+s` moves to the next thread instead of focusing the sidebar while Grow shows.
 Each one is a `grow.*` command, scoped by the `growOpen` condition, with one rule for `!isMac` and

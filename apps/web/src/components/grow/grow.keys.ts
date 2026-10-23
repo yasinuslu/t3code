@@ -23,6 +23,7 @@ export type GrowKeyAction =
   | { readonly type: "back" }
   | { readonly type: "main" }
   | { readonly type: "settle" }
+  | { readonly type: "snooze" }
   | { readonly type: "supersede" }
   | { readonly type: "undo" }
   | { readonly type: "reload" }
@@ -53,6 +54,7 @@ const ACTIONS: Readonly<Record<GrowKeybindingCommand, GrowKeyAction>> = {
   "grow.manager": { type: "manager" },
   "grow.main": { type: "main" },
   "grow.settle": { type: "settle" },
+  "grow.snooze": { type: "snooze" },
   "grow.supersede": { type: "supersede" },
   "grow.undo": { type: "undo" },
   "grow.reload": { type: "reload" },
@@ -76,7 +78,8 @@ export const isGrowCommand = (command: string | null): command is GrowKeybinding
  *   W / S   previous / next thread (the place you are in stays: live stays live)
  *   A / D   previous / next page of the presentation
  *   1 threads   2 presentation   3 live   4 chat        Q back to where you just were
- *   E the card's main move (ship, or done)   X settle   Shift+X superseded by...   Z undo
+ *   E the card's main move (ship, or done)   X settle   C snooze (wakes a snoozed one)
+ *   Shift+X superseded by...   Z undo
  *   R reload the live app   F find   G expand every project   T manager
  *   V / Shift+V next / previous profile (the global `profile.*` keys)
  *
@@ -161,6 +164,8 @@ function allowed(action: GrowKeyAction, state: GrowKeyState): GrowKeyAction | nu
       return item.kind === "return" ? action : null;
     case "settle":
       return open ? action : null;
+    case "snooze":
+      return open || item.kind === "snoozed" ? action : null;
     case "supersede":
       return item.kind === "working" ? null : action;
   }
@@ -199,6 +204,7 @@ export const GROW_COMMAND_LABELS: Readonly<Record<GrowKeybindingCommand, string>
   "grow.manager": "Manager",
   "grow.main": "Ship, or done",
   "grow.settle": "Settle",
+  "grow.snooze": "Snooze, or wake a snoozed thread",
   "grow.supersede": "Settle, superseded by...",
   "grow.undo": "Undo",
   "grow.reload": "Reload the live app",
@@ -248,6 +254,7 @@ export const GROW_KEY_HELP: ReadonlyArray<{
     entries: [
       { commands: ["grow.main"], label: GROW_COMMAND_LABELS["grow.main"] },
       { commands: ["grow.settle"], label: GROW_COMMAND_LABELS["grow.settle"] },
+      { commands: ["grow.snooze"], label: GROW_COMMAND_LABELS["grow.snooze"] },
       { commands: ["grow.supersede"], label: GROW_COMMAND_LABELS["grow.supersede"] },
       { commands: ["grow.undo"], label: GROW_COMMAND_LABELS["grow.undo"] },
       { commands: ["grow.reload"], label: GROW_COMMAND_LABELS["grow.reload"] },

@@ -70,6 +70,7 @@ export const GROW_KEYBINDING_COMMANDS = [
   "grow.manager",
   "grow.main",
   "grow.settle",
+  "grow.snooze",
   "grow.supersede",
   "grow.undo",
   "grow.reload",

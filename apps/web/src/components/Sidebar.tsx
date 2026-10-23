@@ -1804,6 +1804,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     )
   ) : null;
 
+  // Snooze sits beside Settle on a row that offers both: the settle row of Grow, where a
+  // thread is never parked in a shelf of its own the way the card rows above are.
+  const settleWithSnooze = showSnoozeButton && variantAction === "settle";
+
   // The row tail, shared by the slim and grow rows: the time at rest; the settle,
   // un-settle or wake action in its place on hover and keyboard focus.
   const timeAndActionSlot = sortable?.isDragging ? (
@@ -1818,7 +1822,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <span
         className={cn(
           "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-          !isWoke && "group-any-hover/sidebar-row:opacity-0",
+          // Two actions need the room the time takes at rest, so the time steps aside.
+          !isWoke &&
+            (settleWithSnooze
+              ? "group-any-hover/sidebar-row:hidden"
+              : "group-any-hover/sidebar-row:opacity-0"),
+          snoozeMenuOpen && "hidden",
         )}
       >
         {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
@@ -1888,18 +1897,31 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           <TooltipPopup side="top">Un-settle thread</TooltipPopup>
         </Tooltip>
       ) : (
-        <button
-          type="button"
-          aria-label="Settle thread"
-          onClick={handleSettleClick}
-          onPointerDown={handleActionPointerDown}
+        <span
           className={cn(
-            "touch-target pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-            isWoke && "group-any-hover/sidebar-row:static",
+            "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+            (isWoke || settleWithSnooze) && "group-any-hover/sidebar-row:static",
+            snoozeMenuOpen && "pointer-events-auto static opacity-100",
           )}
         >
-          <CheckIcon className="size-3" />
-        </button>
+          {showSnoozeButton ? (
+            <SnoozeMenuButton
+              open={snoozeMenuOpen}
+              onOpenChange={setSnoozeMenuOpen}
+              onSnooze={handleSnoozePreset}
+              timestampFormat={props.timestampFormat}
+            />
+          ) : null}
+          <button
+            type="button"
+            aria-label="Settle thread"
+            onClick={handleSettleClick}
+            onPointerDown={handleActionPointerDown}
+            className="touch-target inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <CheckIcon className="size-3" />
+          </button>
+        </span>
       )}
     </span>
   );

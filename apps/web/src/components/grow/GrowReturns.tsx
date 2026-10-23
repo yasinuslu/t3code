@@ -32,6 +32,8 @@ import {
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  AlarmClockIcon,
+  AlarmClockOffIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckIcon,
@@ -44,6 +46,7 @@ import {
   ImageIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  ClockIcon,
   ImageOffIcon,
   LayersIcon,
   ListIcon,
@@ -72,6 +75,11 @@ import { create } from "zustand";
 
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import {
   useEveryManagerThreadKey,
   useManagerProfile,
   useManagerThreadKeys,
@@ -84,8 +92,10 @@ import { Badge } from "../ui/badge";
 import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
 import { openFullView, setGrowOnScreen, useGrowFocusStore } from "../../growFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useSnoozeMenu } from "../../hooks/useSnoozeMenu";
+import { useThreadActions } from "../../hooks/useThreadActions";
 import { useStackedLayout } from "../../hooks/useStackedLayout";
-import { useGrowPresentation } from "../../hooks/useSettings";
+import { useClientSettings, useGrowPresentation } from "../../hooks/useSettings";
 import { isInlineComponentEvent } from "../../lib/editableFocus";
 import { cn, newMessageId, randomUUID } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
@@ -95,6 +105,7 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { snoozeWakeDescription } from "../Sidebar.snooze";
 import ChatView from "../ChatView";
 import { type GrowZone, growKeyAction } from "./grow.keys";
 import { activeZone, focusZone, installZoneMemory, reloadLive, zoneOf } from "./grow.zones";
@@ -122,7 +133,10 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
 import { SidebarChromeFooter } from "../sidebar/SidebarChrome";
-import { readEnvironmentSupportsSettlement } from "../../state/entities";
+import {
+  readEnvironmentSupportsSettlement,
+  readEnvironmentSupportsSnooze,
+} from "../../state/entities";
 import { decide, undo, usePendingDecisions } from "./grow.decide";
 import { GrowDetails } from "./GrowDetails";
 import { GrowPreview } from "./GrowPreview";
@@ -149,6 +163,7 @@ import {
   growReturnKey,
   growSpark,
   growStep,
+  wakesAt,
 } from "./returns.logic";
 
 /** Where the deck is, kept while Home is closed: the shown item, the phone's view, the search. */
@@ -255,6 +270,8 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
   const update = useAtomCommand(growEnvironment.update);
   const settleThread = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
   const unsettleThread = useAtomCommand(threadEnvironment.unsettle, { reportFailure: false });
+  const { snoozeThread, unsnoozeThread } = useThreadActions();
+  const pickSnooze = useSnoozeMenu();
   const setSupersededBy = useAtomCommand(threadEnvironment.setSupersededBy, {
     reportFailure: false,
   });
@@ -302,7 +319,34 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
     return true;
   };
 
+  const refOf = (item: GrowReturn) => scopeThreadRef(item.thread.environmentId, item.thread.id);
+  const failedToast = (title: string, result: Awaited<ReturnType<typeof snoozeThread>>) => {
+    if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
+    const error = squashAtomCommandFailure(result);
+    toastManager.add({
+      type: "error",
+      title,
+      description: error instanceof Error ? error.message : "An error occurred.",
+    });
+  };
+  /** Parks the item until it wakes; the deck moves on once the server has it. Undo is the thread list's own notice. */
+  const snooze = async (item: GrowReturn, snoozedUntil: string) => {
+    const result = await snoozeThread(refOf(item), snoozedUntil);
+    if (result._tag === "Success") moveOn(item);
+    else failedToast(`Could not snooze ${item.headline}`, result);
+  };
+  const wake = async (item: GrowReturn) =>
+    failedToast(`Could not wake ${item.headline}`, await unsnoozeThread(refOf(item)));
+
   return {
+    snooze,
+    wake,
+    /** Wakes a snoozed item at once; for any other, the snooze choices open at `position`. */
+    snoozeOrWake: async (item: GrowReturn, position: { x: number; y: number }) => {
+      if (item.kind === "snoozed") return wake(item);
+      const snoozedUntil = await pickSnooze(position);
+      if (snoozedUntil !== null) await snooze(item, snoozedUntil);
+    },
     ship: (item: GrowReturn) => {
       moveOn(item);
       decide({
@@ -448,6 +492,15 @@ function useProjectTitle() {
 /** A presentation's page asks for focus back (Esc inside its frame). */
 const GROW_PRESENTATION_ESCAPE_EVENT = "t3-grow-presentation-escape";
 
+/** Where a menu for the item opens: under its row in the list, else near the top of the screen. */
+function menuAnchor(key: string): { x: number; y: number } {
+  const rect = document
+    .querySelector<HTMLElement>(`[data-thread-item="${CSS.escape(key)}"]`)
+    ?.getBoundingClientRect();
+  if (rect !== undefined && rect.height > 0) return { x: rect.left + 24, y: rect.bottom };
+  return { x: window.innerWidth / 2, y: window.innerHeight / 4 };
+}
+
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.isContentEditable || target.closest("input, textarea, select, [role=dialog]") !== null);
@@ -468,15 +521,27 @@ export function GrowReturns(props: {
   const [supersedeOpen, setSupersedeOpen] = useState(false);
   useEffect(() => setGrowManagerToggle(toggleManagerPane), []);
 
+  // A snooze wakes to the second, not on the next clock tick: the earliest wake sets this.
+  const [wokenAt, setWokenAt] = useState(0);
+  const now = Math.max(props.now, wokenAt);
   const deck = useMemo(
     () =>
-      buildGrowDeck(props.threads, cards, props.now, {
+      buildGrowDeck(props.threads, cards, now, {
         excluded: managers.keys,
         pending,
         grouping: listMode,
       }),
-    [cards, listMode, managers.keys, pending, props.now, props.threads],
+    [cards, listMode, managers.keys, now, pending, props.threads],
   );
+  const nextWake = deck.snoozed[0] ? wakesAt(deck.snoozed[0]) : null;
+  useEffect(() => {
+    if (nextWake === null) return;
+    const timer = window.setTimeout(
+      () => setWokenAt(Date.now()),
+      Math.min(Math.max(0, nextWake - Date.now()) + 50, 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [nextWake]);
   const shown = useMemo(() => filterGrowDeck(deck, query), [deck, query]);
   const relations = useMemo(() => buildGrowRelations(props.threads, cards), [cards, props.threads]);
   const actions = useReturnActions((item) => select(growNextAfter(shown, item.key)));
@@ -687,6 +752,9 @@ export function GrowReturns(props: {
           break;
         case "settle":
           if (item !== null) actions.settle(item);
+          break;
+        case "snooze":
+          if (item !== null) void actions.snoozeOrWake(item, menuAnchor(item.key));
           break;
         case "supersede":
           setWhatIfOpen(false);
@@ -1133,6 +1201,15 @@ function ReturnsList(props: {
           {deck.older.map((item) => row(item))}
         </ListSection>
       ) : null}
+      {deck.snoozed.length > 0 ? (
+        <ListSection
+          title={`Snoozed (${deck.snoozed.length})`}
+          folded
+          {...holding(deck.snoozed, true)}
+        >
+          {deck.snoozed.map((item) => row(item))}
+        </ListSection>
+      ) : null}
       {deck.shipped.length > 0 ? (
         <ListSection
           title={`Done this week (${deck.shipped.length})`}
@@ -1204,27 +1281,41 @@ function ReturnRow(props: {
   const { item } = props;
   const sidebarRow = useSidebarThreadRowSlot((state) => state.render);
   const projectTitle = useProjectTitle();
+  const wake = useWakeLabel(item);
   if (sidebarRow) {
     return sidebarRow(item.thread, {
       isActive: props.current,
       onSelect: () => select(item.key),
       // One mark at rest: the state. The proof mark waits for hover; the item shows the proof itself.
       mark: <RowMark item={item} />,
-      subtitle: rowMeta(item, props.showProject, props.current, projectTitle),
+      subtitle: rowMeta(item, props.showProject, props.current, projectTitle, wake),
       details: <ProofMark item={item} />,
     });
   }
   return <OwnReturnRow {...props} />;
 }
 
-/** The quiet line under a title: the project when the list is not grouped by it, the branch when shown. */
+/** "Wakes Fri 9:00" for a snoozed item, else null. */
+function useWakeLabel(item: GrowReturn): string | null {
+  const timestampFormat = useClientSettings((s) => s.timestampFormat);
+  const { snoozedUntil } = item.thread;
+  if (item.kind !== "snoozed" || snoozedUntil == null) return null;
+  return `Wakes ${snoozeWakeDescription(snoozedUntil, new Date(), timestampFormat)}`;
+}
+
+/** The quiet line under a title: when a snoozed item wakes, the project when the list is not grouped by it, the branch when shown. */
 function rowMeta(
   item: GrowReturn,
   showProject: boolean,
   current: boolean,
   projectTitle: (thread: EnvironmentThreadShell) => string,
+  wake: string | null,
 ): string | null {
-  const meta = [showProject ? projectTitle(item.thread) : null, current ? item.thread.branch : null]
+  const meta = [
+    wake,
+    showProject ? projectTitle(item.thread) : null,
+    current ? item.thread.branch : null,
+  ]
     .filter(Boolean)
     .join(" · ");
   return meta.length > 0 ? meta : null;
@@ -1254,7 +1345,7 @@ function OwnReturnRow(props: {
       row.focus();
     }
   }, [props.current]);
-  const meta = rowMeta(item, props.showProject, props.current, projectTitle);
+  const meta = rowMeta(item, props.showProject, props.current, projectTitle, useWakeLabel(item));
   return (
     <li>
       <button
@@ -1300,6 +1391,9 @@ function RowMark(props: { readonly item: GrowReturn }) {
   }
   if (item.kind === "working") {
     return <CircleDotIcon aria-label="Working" className="size-3.5 shrink-0 text-info" />;
+  }
+  if (item.kind === "snoozed") {
+    return <AlarmClockIcon aria-label="Snoozed" className="size-3.5 shrink-0 text-info" />;
   }
   if (item.kind === "urgent") {
     const look = item.reason ? REASON_LOOK[item.reason] : null;
@@ -1467,6 +1561,15 @@ function ThreadPane(props: {
   readonly outside: string | null;
 }) {
   const { thread } = props;
+  const item = useMemo(
+    () =>
+      growEntry(
+        thread,
+        undefined,
+        effectiveSnoozed(thread, { now: new Date().toISOString() }) ? "snoozed" : "return",
+      ),
+    [thread],
+  );
   return (
     <section
       aria-label={`Thread: ${props.title}`}
@@ -1489,6 +1592,20 @@ function ThreadPane(props: {
           <span className="shrink-0 text-muted-foreground text-xs" data-grow-outside="">
             {props.outside}
           </span>
+        ) : null}
+        {item.kind === "snoozed" || snoozable(thread) ? (
+          <Button
+            variant="ghost"
+            size={props.wide ? "sm" : "icon-sm"}
+            aria-label={item.kind === "snoozed" ? "Wake now" : "Snooze"}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              void props.actions.snoozeOrWake(item, { x: rect.left, y: rect.bottom });
+            }}
+          >
+            {item.kind === "snoozed" ? <AlarmClockOffIcon /> : <ClockIcon />}
+            {props.wide ? (item.kind === "snoozed" ? "Wake now" : "Snooze") : null}
+          </Button>
         ) : null}
         <Button
           variant="ghost"
@@ -1691,6 +1808,7 @@ const STATUS_LOOK = {
   shipping: { label: "Shipping", dot: "bg-info" },
   done: { label: "Done", dot: "bg-success" },
   letGo: { label: "Settled", dot: "bg-muted-foreground" },
+  snoozed: { label: "Snoozed", dot: "bg-info" },
 } as const;
 
 function statusOf(item: GrowReturn, question: boolean): keyof typeof STATUS_LOOK {
@@ -1701,6 +1819,8 @@ function statusOf(item: GrowReturn, question: boolean): keyof typeof STATUS_LOOK
       return "working";
     case "letGo":
       return "letGo";
+    case "snoozed":
+      return "snoozed";
     case "shipped":
       return item.merged ? "merged" : item.shippable ? "shipping" : "done";
     case "return":
@@ -2423,6 +2543,14 @@ function Choices(props: {
       onClick={() => props.setSupersedeOpen(true)}
     />
   );
+  if (item.kind === "snoozed") return <SnoozedChoices item={item} actions={actions} wide={wide} />;
+  const snoozeLink = <SnoozeLink item={item} actions={actions} wide={wide} />;
+  const links = (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {snoozeLink}
+      {supersedeLink}
+    </div>
+  );
   if (item.kind === "working") {
     return (
       <p className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -2548,7 +2676,7 @@ function Choices(props: {
           />
           {settle}
         </div>
-        {supersedeLink}
+        {links}
       </div>
     );
   }
@@ -2584,8 +2712,64 @@ function Choices(props: {
         )}
         {settle}
       </div>
-      {supersedeLink}
+      {links}
     </div>
+  );
+}
+
+/** A snoozed item: when it wakes, and the way to wake it now. */
+function SnoozedChoices(props: {
+  readonly item: GrowReturn;
+  readonly actions: ReturnActions;
+  readonly wide: boolean;
+}) {
+  const { item, actions } = props;
+  const wakes = useWakeLabel(item);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1.5 font-medium text-sm">
+        <AlarmClockIcon className="size-4 text-info" />
+        {wakes}
+      </span>
+      <Button onClick={() => void actions.wake(item)}>
+        <AlarmClockOffIcon />
+        Wake now
+        {props.wide ? <GrowKbd command="grow.snooze" /> : null}
+      </Button>
+    </div>
+  );
+}
+
+/** Whether the item can be snoozed now: the server takes it, and no agent is waiting on the user. */
+function snoozable(thread: EnvironmentThreadShell) {
+  return (
+    readEnvironmentSupportsSnooze(thread.environmentId) &&
+    canSnooze(thread, { now: new Date().toISOString() })
+  );
+}
+
+/** The quiet way to park an item: opens the snooze choices under the button. */
+function SnoozeLink(props: {
+  readonly item: GrowReturn;
+  readonly actions: ReturnActions;
+  readonly wide: boolean;
+}) {
+  const { item } = props;
+  if (!snoozable(item.thread)) return null;
+  return (
+    <Button
+      variant="ghost-muted"
+      size="compact"
+      data-snooze-link=""
+      onClick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        void props.actions.snoozeOrWake(item, { x: rect.left, y: rect.bottom });
+      }}
+    >
+      <ClockIcon />
+      Snooze
+      {props.wide ? <GrowKbd command="grow.snooze" /> : null}
+    </Button>
   );
 }
 

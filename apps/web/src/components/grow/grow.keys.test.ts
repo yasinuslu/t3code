@@ -119,6 +119,15 @@ describe("growKeyAction on Windows and Linux (Alt)", () => {
     expect(act("KeyX", { item: settled }, { shiftKey: true })).toEqual({ type: "supersede" });
   });
 
+  it("snoozes an open card and wakes a snoozed one, and nothing else", () => {
+    expect(act("KeyC")).toEqual({ type: "snooze" });
+    expect(act("KeyC", { item: returnItem({ kind: "snoozed" }) })).toEqual({ type: "snooze" });
+    expect(act("KeyC", { item: returnItem({ kind: "working" }) })).toBeNull();
+    expect(act("KeyC", { item: returnItem({ kind: "letGo" }) })).toBeNull();
+    expect(act("KeyC", { item: returnItem({ kind: "shipped" }) })).toBeNull();
+    expect(act("KeyC", {}, {}, true)).toEqual({ type: "snooze" });
+  });
+
   it("keeps the item's keys off while the manager shows; moving takes the screen back", () => {
     const manager = { managerOpen: true };
     for (const code of ["KeyA", "KeyD", "KeyE", "KeyX", "KeyR", "Digit2", "Digit3"]) {
@@ -255,6 +264,7 @@ describe("the defaults", () => {
       "grow.manager": "t",
       "grow.main": "e",
       "grow.settle": "x",
+      "grow.snooze": "c",
       "grow.undo": "z",
       "grow.reload": "r",
       "grow.search": "f",
