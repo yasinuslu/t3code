@@ -255,7 +255,14 @@ export function resolveAutoSettlementAt(input: {
   const outcome = reportedOutcome(thread);
   const reportAtMs = Date.parse(thread.statusReport?.updatedAt ?? "");
   const endedAfterReport = (
-    candidate: Pick<SettlementPullRequest, "state" | "mergedAt" | "closedAt"> | null | undefined,
+    candidate:
+      | {
+          readonly state: SettlementPullRequest["state"];
+          readonly mergedAt?: string | null | undefined;
+          readonly closedAt?: string | null | undefined;
+        }
+      | null
+      | undefined,
   ) => {
     if (candidate == null || candidate.state === "open") return false;
     const endedAt = Date.parse(
