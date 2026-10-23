@@ -82,6 +82,9 @@ import { toHtml } from "hast-util-to-html";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
 import { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import { ElementSlot } from "../elements/ElementSlot";
+import { trimPartialElementTag } from "../elements/elementProps";
+import { ELEMENT_SLOT_PROPERTIES, rehypeElements } from "../elements/rehypeElements";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
@@ -484,6 +487,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     blockquote: [...(defaultSchema.attributes?.blockquote ?? []), "dataAlert"],
     div: [...(defaultSchema.attributes?.div ?? []), ...CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES],
     a: [...(defaultSchema.attributes?.a ?? []), "dataPullRequestAutolink"],
+    span: [...(defaultSchema.attributes?.span ?? []), ...ELEMENT_SLOT_PROPERTIES],
     img: [
       ...(defaultSchema.attributes?.img ?? []),
       "dataLocalSrc",
@@ -504,6 +508,16 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
+
+function parseElementAttributes(value: unknown): Record<string, string> {
+  if (typeof value !== "string") return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
 
 const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGfm,
@@ -530,6 +544,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
 
 const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypeRaw,
+  rehypeElements,
   rehypePreserveImageSourceMeta,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
@@ -2978,6 +2993,23 @@ const CHAT_MARKDOWN_COMPONENTS = {
     }
     return <div {...props}>{children}</div>;
   },
+  span: function MarkdownSpan({ node, children, ...props }) {
+    const { environmentId, threadRef, isStreaming } = use(ChatMarkdownRendererContext);
+    const tag = node?.properties?.dataT3Element;
+    if (typeof tag === "string") {
+      return (
+        <ElementSlot
+          tag={tag}
+          attributes={parseElementAttributes(node?.properties?.dataT3Attributes)}
+          body={String(node?.properties?.dataT3Body ?? "")}
+          environmentId={environmentId ?? threadRef?.environmentId ?? null}
+          threadRef={threadRef}
+          streaming={isStreaming === true}
+        />
+      );
+    }
+    return <span {...props}>{children}</span>;
+  },
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
     const { skills } = use(ChatMarkdownRendererContext);
     return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
@@ -3584,7 +3616,7 @@ function ChatMarkdown({
           components={CHAT_MARKDOWN_COMPONENTS}
           urlTransform={markdownUrlTransform}
         >
-          {text}
+          {props.isStreaming === true ? trimPartialElementTag(text) : text}
         </ReactMarkdown>
       </ChatMarkdownRendererContext>
       {localMediaPreview ? (

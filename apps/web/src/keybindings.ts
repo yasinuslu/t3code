@@ -9,6 +9,7 @@ import {
   type ThreadJumpKeybindingCommand,
 } from "@t3tools/contracts";
 import { isElectron } from "./env";
+import { isInlineComponentEvent } from "./lib/editableFocus";
 import { isMacPlatform } from "./lib/utils";
 
 export interface ShortcutEventLike {
@@ -21,6 +22,8 @@ export interface ShortcutEventLike {
   ctrlKey: boolean;
   shiftKey: boolean;
   altKey: boolean;
+  target?: EventTarget | null;
+  composedPath?: () => ReadonlyArray<unknown>;
 }
 
 export interface ShortcutModifierStateLike {
@@ -241,6 +244,11 @@ export function resolveShortcutCommand(
   keybindings: ResolvedKeybindingsConfig,
   options?: ShortcutMatchOptions,
 ): KeybindingCommand | null {
+  // Inline components and shadow-DOM inputs own the bare keys (and Shift+key); only a
+  // chord with Ctrl, Meta or Alt can leave them for the app.
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && isInlineComponentEvent(event)) {
+    return null;
+  }
   const platform = resolvePlatform(options);
   const context = resolveContext(options);
 

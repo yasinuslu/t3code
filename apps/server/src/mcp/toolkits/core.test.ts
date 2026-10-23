@@ -32,6 +32,7 @@ import { PullRequestsToolkit } from "./pullRequests/tools.ts";
 import { PreviewLinksToolkit } from "./previewLinks/tools.ts";
 import { ThreadStatusToolkit } from "./threadStatus/tools.ts";
 import { PresentationToolkit } from "./presentation/tools.ts";
+import { ElementsToolkit } from "./elements/tools.ts";
 import { PreviewEnvironmentToolkit } from "./previewEnvironment/tools.ts";
 import {
   resolveT3McpToolDefinition,
@@ -57,6 +58,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     PreviewLinksToolkit,
     ThreadStatusToolkit,
     PresentationToolkit,
+    ElementsToolkit,
     PreviewEnvironmentToolkit,
   ]) {
     for (const tool of Object.values(toolkit.tools)) {

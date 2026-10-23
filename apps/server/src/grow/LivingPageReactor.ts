@@ -45,6 +45,7 @@ import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as GrowWidgetPool from "./GrowWidgetPool.ts";
+import { elementsLibraryDir } from "../elements/ElementsLibrary.ts";
 
 const decodeProps = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
@@ -239,6 +240,8 @@ const make = Effect.gen(function* () {
   } = { compose: () => Effect.void, smith: () => Effect.void };
 
   const compose = Effect.fn("LivingPageReactor.compose")(function* ({ threadId, runId }: Job) {
+    // exp/web-components: the conversation itself carries the components; no living page.
+    if (elementsLibraryDir() !== "") return;
     const snapshot = yield* pool.read;
     if (snapshot.widgets.length === 0) return;
     const { thread, runs } = yield* projections.getThreadRecords(threadId, ["runs"]);

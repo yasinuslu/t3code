@@ -199,6 +199,7 @@ import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as GrowService from "./grow/GrowService.ts";
 import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
 import * as GrowWidgetPool from "./grow/GrowWidgetPool.ts";
+import { readElementsLibrary } from "./elements/ElementsLibrary.ts";
 import * as UserNotifications from "./notifications/UserNotifications.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
@@ -3490,6 +3491,12 @@ const makeWsRpcLayer = (
                 (error) => new ThreadPreviewEnvironmentError({ message: error.message }),
               ),
             ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [WS_METHODS.elementsLibrary]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.elementsLibrary,
+            Effect.sync(() => readElementsLibrary(input.knownHash)),
             { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.growWidgetPool]: () =>

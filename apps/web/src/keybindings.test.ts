@@ -1584,16 +1584,16 @@ describe("composer and pull request shortcuts", () => {
 });
 
 describe("Usage shortcuts", () => {
-  it("scopes letter shortcuts to Usage", () => {
+  it("scopes Alt+letter shortcuts to Usage", () => {
     assert.strictEqual(
-      resolveShortcutCommand(event({ key: "t" }), DEFAULT_RESOLVED_KEYBINDINGS, {
+      resolveShortcutCommand(event({ key: "t", altKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
         platform: "Linux",
         context: { usagePageOpen: true },
       }),
       "usage.tokens",
     );
     assert.isNull(
-      resolveShortcutCommand(event({ key: "t" }), DEFAULT_RESOLVED_KEYBINDINGS, {
+      resolveShortcutCommand(event({ key: "t", altKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
         platform: "Linux",
       }),
     );

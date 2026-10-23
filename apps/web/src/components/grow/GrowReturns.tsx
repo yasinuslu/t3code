@@ -83,6 +83,7 @@ import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
 import { openFullView, setGrowOnScreen, useGrowFocusStore } from "../../growFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useStackedLayout } from "../../hooks/useStackedLayout";
+import { isInlineComponentEvent } from "../../lib/editableFocus";
 import { cn, newMessageId, randomUUID } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
 import { readThreadShell, useProjects, useThreadShell } from "../../state/entities";
@@ -728,7 +729,7 @@ export function GrowReturns(props: {
   useEffect(() => {
     if (!manager) return;
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || event.isComposing || isInlineComponentEvent(event)) return;
       if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -740,7 +741,7 @@ export function GrowReturns(props: {
   useEffect(() => {
     if (!conversationOpen) return;
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || event.isComposing || isInlineComponentEvent(event)) return;
       if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -1467,7 +1468,11 @@ function ThreadPane(props: {
  * The item's conversation beside its proof. One chat view stays mounted while j and k
  * step through the items, the way the thread route reuses it, so stepping stays instant.
  */
-function Conversation(props: { readonly thread: EnvironmentThreadShell }) {
+function Conversation(props: {
+  readonly thread: EnvironmentThreadShell;
+  /** The full stock thread view (header, diff, terminal), not Grow's embedded one. */
+  readonly stock?: boolean;
+}) {
   const { thread } = props;
   return (
     <section
@@ -1482,7 +1487,7 @@ function Conversation(props: { readonly thread: EnvironmentThreadShell }) {
         routeKind="server"
         reserveTitleBarControlInset={false}
         autoFocusComposer={false}
-        embedded
+        embedded={props.stock !== true}
         statusReport={false}
         typeToFocusComposer={false}
       />
@@ -1511,6 +1516,15 @@ function Hero(props: {
   readonly position: { readonly index: number; readonly total: number } | null;
   readonly step: (direction: 1 | -1) => void;
 }) {
+  // exp/web-components: the item is its stock T3 conversation; components live inside it.
+  if (EXP_STOCK_CONVERSATION) return <Conversation thread={props.item.thread} stock />;
+  return <HeroWithProof {...props} />;
+}
+
+/** On exp/web-components the presentation pane is dormant; the conversation stands alone. */
+const EXP_STOCK_CONVERSATION = true;
+
+function HeroWithProof(props: Parameters<typeof Hero>[0]) {
   const { item, actions, wide } = props;
   const stackedLayout = useStackedLayout();
   const { digest, presentation, growRequests } = useThreadReport(item.thread);

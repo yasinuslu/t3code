@@ -7,7 +7,8 @@ import {
 } from "../../pendingUserInput";
 import { CheckIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
-import { cn } from "~/lib/utils";
+import { isInlineComponentEvent } from "~/lib/editableFocus";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { ComposerBanner } from "./ComposerBanner";
 
 interface PendingUserInputPanelProps {
@@ -137,14 +138,15 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     [activeQuestion, onToggleOption],
   );
 
-  // Keyboard shortcut: number keys 1-9 select corresponding options when focus is
-  // outside editable fields. Multi-select prompts toggle options in place; single-
+  // Keyboard shortcut: Alt+1-9 selects the corresponding option when focus is
+  // outside editable fields and inline components. Multi-select prompts toggle options in place; single-
   // select prompts keep the existing auto-advance behavior. Collapsed prompts opt
   // out, since the numbers they refer to are not on screen.
   useEffect(() => {
     if (!activeQuestion || responseDisabled || isCollapsed) return;
     const handler = (event: globalThis.KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || !event.altKey) return;
+      if (isInlineComponentEvent(event)) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         return;
@@ -155,7 +157,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       ) {
         return;
       }
-      const digit = Number.parseInt(event.key, 10);
+      // Alt rewrites the typed character on macOS, so read the physical digit key.
+      const digit = Number.parseInt(event.code.replace(/^Digit/, ""), 10);
       if (Number.isNaN(digit) || digit < 1 || digit > 9) return;
       const optionIndex = digit - 1;
       if (optionIndex >= activeQuestion.options.length) return;
@@ -268,9 +271,10 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     ) : shortcutKey !== null ? (
                       <kbd
                         className={cn(
-                          "flex size-5 shrink-0 items-center justify-center text-3xs font-medium text-muted-foreground tabular-nums",
+                          "flex h-5 min-w-5 shrink-0 items-center justify-center text-3xs font-medium text-muted-foreground tabular-nums",
                         )}
                       >
+                        {isMacPlatform(navigator.platform) ? "⌥" : "Alt+"}
                         {shortcutKey}
                       </kbd>
                     ) : null}
