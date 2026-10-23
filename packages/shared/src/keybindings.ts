@@ -46,6 +46,7 @@ const GROW_KEYS: ReadonlyArray<{
   // Ctrl+E is the manager everywhere on a Mac (and the emacs end-of-line).
   { command: "grow.main", key: "e", mac: "ctrl+shift+e" },
   { command: "grow.settle", key: "x" },
+  { command: "grow.snooze", key: "c" },
   { command: "grow.supersede", key: "shift+x" },
   { command: "grow.undo", key: "z" },
   { command: "grow.reload", key: "r" },

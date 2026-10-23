@@ -5,6 +5,7 @@ import {
   threadLastActivityAt,
 } from "@t3tools/client-runtime/state/work-overview";
 import { sortPinnedThreadsByOrderKey } from "@t3tools/client-runtime/state/thread-sort";
+import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import type { GrowCard } from "@t3tools/contracts";
 
 /**
@@ -35,7 +36,9 @@ export type ReturnKind =
   /** The user let it go; findable, and the pile sparks come from. */
   | "letGo"
   /** An agent is on it right now, after a What if or anything else. */
-  | "working";
+  | "working"
+  /** Parked until its wake time (or until something outranks the snooze). */
+  | "snoozed";
 
 export interface GrowReturn {
   readonly key: string;
@@ -73,6 +76,8 @@ export interface GrowDeck {
   readonly older: ReadonlyArray<GrowReturn>;
   readonly shipped: ReadonlyArray<GrowReturn>;
   readonly letGo: ReadonlyArray<GrowReturn>;
+  /** Snoozed, soonest wake first; they leave every other section until they wake. */
+  readonly snoozed: ReadonlyArray<GrowReturn>;
   /** Running now, so a What if stays findable while its answer is made. */
   readonly working: ReadonlyArray<GrowReturn>;
 }
@@ -185,6 +190,7 @@ export function buildGrowDeck(
   const older: GrowReturn[] = [];
   const shipped: GrowReturn[] = [];
   const letGo: GrowReturn[] = [];
+  const snoozed: GrowReturn[] = [];
   const working: GrowReturn[] = [];
   const pinned: GrowReturn[] = [];
   for (const thread of threads) {
@@ -199,12 +205,19 @@ export function buildGrowDeck(
     ) {
       continue;
     }
-    const placement = classifyWorkThread(thread, now);
     const card = cards.get(key);
+    // Snoozed beats every other state, a pin included: the thread is parked until it wakes.
+    if (effectiveSnoozed(thread, { now: new Date(now).toISOString() })) {
+      snoozed.push(growEntry(thread, card, "snoozed"));
+      continue;
+    }
+    const placement = classifyWorkThread(thread, now);
     const pullRequest = pullRequestOf(thread);
     const merged = pullRequest?.state === "merged";
     const lastActivityAt = threadLastActivityAt(thread);
-    const age = now - epochMs(lastActivityAt);
+    // A thread that just woke comes back as fresh as when it last had news, whatever its age.
+    const wokeAt = threadWokeAt(thread, { now: new Date(now).toISOString() });
+    const age = now - Math.max(epochMs(lastActivityAt), epochMs(wokeAt));
     const entry = (kind: ReturnKind) => growEntry(thread, card, kind, placement?.reason ?? null);
     // A pinned thread is listed under Pinned whatever state it is in, including the ones the
     // deck would otherwise drop (settled, idle for weeks, never started). Running ones and
@@ -276,9 +289,13 @@ export function buildGrowDeck(
     older: older.sort(lastTouchedFirst),
     shipped: shipped.sort(newestFirst),
     letGo: letGo.sort(newestFirst),
+    snoozed: snoozed.sort((left, right) => wakesAt(left) - wakesAt(right)),
     working: working.sort(newestFirst),
   };
 }
+
+/** When a snoozed item wakes, in epoch milliseconds. */
+export const wakesAt = (item: GrowReturn) => epochMs(item.thread.snoozedUntil);
 
 /** One thread as a list item, whichever section holds it. */
 export function growEntry(
@@ -463,7 +480,14 @@ export function growQueue(deck: GrowDeck): ReadonlyArray<GrowReturn> {
 
 /** Every item the deck can show, the queue first. */
 export function growDeckItems(deck: GrowDeck): ReadonlyArray<GrowReturn> {
-  return [...deck.pinned, ...deck.working, ...growQueue(deck), ...deck.shipped, ...deck.letGo];
+  return [
+    ...deck.pinned,
+    ...deck.working,
+    ...growQueue(deck),
+    ...deck.shipped,
+    ...deck.letGo,
+    ...deck.snoozed,
+  ];
 }
 
 /**
@@ -492,6 +516,7 @@ export function filterGrowDeck(deck: GrowDeck, query: string): GrowDeck {
     older: keep(deck.older),
     shipped: keep(deck.shipped),
     letGo: keep(deck.letGo),
+    snoozed: keep(deck.snoozed),
     working: keep(deck.working),
   };
 }
@@ -530,6 +555,7 @@ export function growFocusedProject(deck: GrowDeck, key: string | null): string |
     deck.older,
     deck.shipped,
     deck.letGo,
+    deck.snoozed,
   ]) {
     const item = section.find((candidate) => candidate.key === key);
     if (item) return growProjectKey(item.thread);

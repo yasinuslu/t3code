@@ -44,7 +44,7 @@ what you sent it from Grow), where it stands, and what happened. Then one decisi
 **What if...** asks for a change in the same thread, and **Settle** takes it off the list (the same settle as the thread list, nothing is sent to the agent). Each
 decision waits five seconds with **Undo**. Anything an agent is still working on, like a What
 if you just sent, waits under **Working** at the top of the list. Older returns fold under **Earlier**; what is done and
-what you settled stay findable below, and a settled item can be brought back. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
+what you settled stay findable below, and a settled item can be brought back. **Snooze** (the clock on a row, the button under an item, or `c`) parks an item until a time you pick; it waits under **Snoozed**, which shows when each one wakes, and comes back on its own then or at once with **Wake now**. Every key sits under the left hand, so the right one can stay on the mouse. `q`/`e` move to the
 previous and next item (the arrows and `j`/`k` do too). `s` ship, `d` done, `w` what if (or
 reply), `x` settle, `a` asks again for proof, `z` undo. `c` opens the conversation on a narrow window (wide ones show it beside the proof), `b`/`Shift+b` or the left and right arrows
 step through the screenshots, `PgDn`/`PgUp` scroll the story, `v` shows the live preview, `f` finds (`/` too), `g` opens every project in the list, and
