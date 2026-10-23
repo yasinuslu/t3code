@@ -11,7 +11,6 @@ import { create } from "zustand";
 
 import { useForkFeatures } from "../hooks/useSettings";
 import { useHomeOverlayStore } from "../homeOverlayStore";
-import { isEditableFocused } from "../lib/editableFocus";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { buildShortcutSections, type ShortcutSection } from "./ShortcutsSheet.logic";
@@ -60,9 +59,9 @@ export function ShortcutsSheet() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "?" || event.defaultPrevented || event.repeat || event.isComposing) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (isEditableFocused(event.target)) return;
+      if (event.key !== "/" || event.defaultPrevented || event.repeat || event.isComposing) return;
+      // A bare key would collide with inline components and typing; the chord is Mod+/.
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
       event.preventDefault();
       const { open: isOpen, setOpen } = useShortcutsSheetStore.getState();
       setOpen(!isOpen);
@@ -129,7 +128,9 @@ export function ShortcutsButton() {
       >
         <KeyboardIcon />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">Keyboard shortcuts (?)</TooltipPopup>
+      <TooltipPopup side="bottom">
+        Keyboard shortcuts ({isMacPlatform(navigator.platform) ? "⌘/" : "Ctrl+/"})
+      </TooltipPopup>
     </Tooltip>
   );
 }

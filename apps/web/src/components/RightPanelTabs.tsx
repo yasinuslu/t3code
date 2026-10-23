@@ -40,7 +40,8 @@ import {
 import { isElectron } from "~/env";
 import type { DesktopPreviewOverlay } from "~/previewStateStore";
 import type { RightPanelSurface } from "~/rightPanelStore";
-import { cn } from "~/lib/utils";
+import { isInlineComponentEvent } from "~/lib/editableFocus";
+import { cn, isMacPlatform } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { Button } from "~/components/ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -245,16 +246,24 @@ function tabAudioState(overlay: DesktopPreviewOverlay | null): TabAudioState {
 type SurfaceShortcutEvent = Pick<
   KeyboardEvent,
   "altKey" | "ctrlKey" | "defaultPrevented" | "isComposing" | "key" | "metaKey"
->;
+> &
+  Partial<Pick<KeyboardEvent, "code">>;
+
+/** The launcher letters need Alt, so they never compete with typing or inline components. */
+function surfaceShortcutLabel(shortcut: string): string {
+  return `${isMacPlatform(navigator.platform) ? "⌥" : "Alt+"}${shortcut}`;
+}
 
 export function surfaceShortcutActionForKey<
   const Action extends { available: boolean; shortcut: string },
 >(actions: readonly Action[], event: SurfaceShortcutEvent): Action | null {
   if (event.defaultPrevented || event.isComposing) return null;
-  if (event.metaKey || event.ctrlKey || event.altKey) return null;
+  if (!event.altKey || event.metaKey || event.ctrlKey) return null;
+  // Alt changes the typed character on macOS, so the physical key is matched first.
+  const letter = event.code?.startsWith("Key") ? event.code.slice(3) : event.key;
   return (
     actions.find(
-      (action) => action.available && action.shortcut.toLowerCase() === event.key.toLowerCase(),
+      (action) => action.available && action.shortcut.toLowerCase() === letter.toLowerCase(),
     ) ?? null
   );
 }
@@ -297,10 +306,10 @@ function SurfaceMenuItem(props: {
       className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
       onClick={props.onClick}
       disabled={!props.available}
-      aria-keyshortcuts={props.shortcut}
+      aria-keyshortcuts={`Alt+${props.shortcut}`}
     >
       {props.children}
-      <MenuShortcut>{props.shortcut}</MenuShortcut>
+      <MenuShortcut>{surfaceShortcutLabel(props.shortcut)}</MenuShortcut>
     </MenuItem>
   );
   if (props.available || !props.disabledReason) return item;
@@ -414,6 +423,7 @@ function RightPanelEmptyState(props: {
       const action = surfaceShortcutActionForKey(shortcutActionsRef.current, event);
       if (!action) return;
       if (document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
+      if (isInlineComponentEvent(event)) return;
       const target = event.target;
       if (target instanceof Element && surfaceShortcutTargetsTypingContext(target)) return;
       event.preventDefault();
@@ -519,7 +529,7 @@ function RightPanelEmptyState(props: {
                   >
                     {action.label}
                   </span>
-                  <Kbd>{action.shortcut}</Kbd>
+                  <Kbd>{surfaceShortcutLabel(action.shortcut)}</Kbd>
                 </button>
                 {/*
                   Same choice the tab bar's "+" menu offers: the row opens the
@@ -565,7 +575,7 @@ function RightPanelEmptyState(props: {
                   >
                     {actionIcon(action, "size-4")}
                     <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                    <Kbd>{action.shortcut}</Kbd>
+                    <Kbd>{surfaceShortcutLabel(action.shortcut)}</Kbd>
                   </div>
                 }
               />
@@ -1252,7 +1262,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                         <MenuSub key={action.label}>
                           <MenuSubTrigger
                             className="[&>svg:last-child]:ms-0"
-                            aria-keyshortcuts={action.shortcut}
+                            aria-keyshortcuts={`Alt+${action.shortcut}`}
                             onClick={(event) => {
                               const pointerType =
                                 "pointerType" in event.nativeEvent &&
@@ -1271,7 +1281,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                           >
                             <Icon />
                             {action.label}
-                            <MenuShortcut>{action.shortcut}</MenuShortcut>
+                            <MenuShortcut>{surfaceShortcutLabel(action.shortcut)}</MenuShortcut>
                           </MenuSubTrigger>
                           {/*
                             Capped and truncated: profile names are user-supplied

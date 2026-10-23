@@ -2403,3 +2403,43 @@ html[data-pane-ring] [data-pane][data-pane-active] {
 [data-grow-zone]:focus-within:not(:has([data-grow-zone]:focus-within)) {
   box-shadow: inset 0 2px 0 var(--primary);
 }
+
+/* exp/web-components: the library's theme tokens, mapped to T3's so a component looks native. */
+.t3-element-host {
+  --t3-bg: var(--background);
+  --t3-fg: var(--foreground);
+  --t3-card: var(--card);
+  --t3-muted: var(--muted);
+  --t3-muted-fg: var(--muted-foreground);
+  --t3-border: var(--border);
+  --t3-primary: var(--primary);
+  --t3-primary-fg: var(--primary-foreground);
+  --t3-accent: var(--success);
+  --t3-success: var(--success);
+  --t3-warning: var(--warning);
+  --t3-danger: var(--destructive);
+  --t3-info: var(--info);
+  --t3-radius: 12px;
+  --t3-mono: var(--font-mono, ui-monospace, monospace);
+}
+
+/* exp/web-components: the full screen portal fades in once; nothing loops. */
+@keyframes t3-portal-in {
+  from {
+    opacity: 0;
+  }
+}
+.t3-portal {
+  animation: t3-portal-in 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .t3-portal {
+    animation: none;
+  }
+}
+.t3-portal-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+.t3-portal-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}

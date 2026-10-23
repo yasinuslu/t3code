@@ -84,6 +84,7 @@ import {
   ThreadPreviewEnvironmentInput,
 } from "./threadPreviewEnvironment.ts";
 import { GrowWidgetPoolState } from "./growWidget.ts";
+import { ElementsLibraryInput, ElementsLibraryState } from "./elements.ts";
 import {
   UserNotificationError,
   UserNotificationMarkReadInput,
@@ -399,6 +400,7 @@ export const WS_METHODS = {
   growUpdate: "grow.update",
   threadPreviewEnvironment: "thread.previewEnvironment",
   growWidgetPool: "grow.widgetPool",
+  elementsLibrary: "elements.library",
   subscribeGrow: "subscribeGrow",
   subscribeNotifications: "subscribeNotifications",
   notificationsNotify: "notifications.notify",
@@ -1299,6 +1301,12 @@ const WsGrowWidgetPoolRpc = Rpc.make(WS_METHODS.growWidgetPool, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsElementsLibraryRpc = Rpc.make(WS_METHODS.elementsLibrary, {
+  payload: ElementsLibraryInput,
+  success: ElementsLibraryState,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsSubscribeGrowRpc = Rpc.make(WS_METHODS.subscribeGrow, {
   payload: Schema.Struct({}),
   success: GrowState,
@@ -2017,6 +2025,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGrowUpdateRpc,
   WsThreadPreviewEnvironmentRpc,
   WsGrowWidgetPoolRpc,
+  WsElementsLibraryRpc,
   WsSubscribeGrowRpc,
   WsSubscribeNotificationsRpc,
   WsNotificationsNotifyRpc,

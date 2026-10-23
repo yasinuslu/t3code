@@ -165,22 +165,32 @@ describe("surface shortcuts", () => {
     { shortcut: "D", available: false, label: "Diff" },
   ] as const;
 
-  it("matches available surface shortcuts case-insensitively", () => {
-    expect(surfaceShortcutActionForKey(actions, shortcutEvent("b"))).toBe(actions[0]);
-    expect(surfaceShortcutActionForKey(actions, shortcutEvent("B"))).toBe(actions[0]);
+  it("matches available surface shortcuts only with Alt", () => {
+    expect(surfaceShortcutActionForKey(actions, shortcutEvent("b", { altKey: true }))).toBe(
+      actions[0],
+    );
+    expect(surfaceShortcutActionForKey(actions, shortcutEvent("B", { altKey: true }))).toBe(
+      actions[0],
+    );
+    expect(surfaceShortcutActionForKey(actions, shortcutEvent("b"))).toBeNull();
   });
 
   it("does not activate unavailable surfaces", () => {
-    expect(surfaceShortcutActionForKey(actions, shortcutEvent("d"))).toBeNull();
+    expect(surfaceShortcutActionForKey(actions, shortcutEvent("d", { altKey: true }))).toBeNull();
   });
 
   it("leaves modified, composing, and already-handled key events alone", () => {
-    expect(surfaceShortcutActionForKey(actions, shortcutEvent("b", { metaKey: true }))).toBeNull();
     expect(
-      surfaceShortcutActionForKey(actions, shortcutEvent("b", { isComposing: true })),
+      surfaceShortcutActionForKey(actions, shortcutEvent("b", { altKey: true, metaKey: true })),
     ).toBeNull();
     expect(
-      surfaceShortcutActionForKey(actions, shortcutEvent("b", { defaultPrevented: true })),
+      surfaceShortcutActionForKey(actions, shortcutEvent("b", { altKey: true, isComposing: true })),
+    ).toBeNull();
+    expect(
+      surfaceShortcutActionForKey(
+        actions,
+        shortcutEvent("b", { altKey: true, defaultPrevented: true }),
+      ),
     ).toBeNull();
   });
 });

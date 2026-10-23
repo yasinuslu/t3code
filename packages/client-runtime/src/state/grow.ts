@@ -25,6 +25,11 @@ export function createGrowEnvironmentAtoms<R, E>(
       label: "grow:preview-environment",
       tag: WS_METHODS.threadPreviewEnvironment,
     }),
+    /** The web-component library assistant markdown renders inline (exp/web-components). */
+    elementsLibrary: createEnvironmentRpcCommand(runtime, {
+      label: "elements:library",
+      tag: WS_METHODS.elementsLibrary,
+    }),
     /** The workspace's widget pool, compiled for the living page's frame. */
     widgetPool: createEnvironmentRpcCommand(runtime, {
       label: "grow:widget-pool",

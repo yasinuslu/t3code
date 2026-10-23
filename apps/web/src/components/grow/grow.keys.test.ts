@@ -13,7 +13,7 @@ const press = (code: string, modifiers: Record<string, boolean> = {}) => ({
   shiftKey: false,
   metaKey: false,
   ctrlKey: false,
-  altKey: false,
+  altKey: true,
   isComposing: false,
   ...modifiers,
 });
@@ -64,9 +64,10 @@ describe("growKeyAction", () => {
     });
   });
 
-  it("leaves plain keys to a text field and to the live app, and takes them with Alt", () => {
-    expect(act("KeyS", { typing: true })).toBeNull();
-    expect(act("KeyS", { inLive: true })).toBeNull();
+  it("never takes a plain key, so inline components keep them, and takes Alt+key everywhere", () => {
+    expect(act("KeyS", {}, { altKey: false })).toBeNull();
+    expect(act("KeyS", { typing: true }, { altKey: false })).toBeNull();
+    expect(act("KeyS", { inLive: true }, { altKey: false })).toBeNull();
     expect(act("KeyS", { typing: true }, { altKey: true })).toEqual({ type: "step", direction: 1 });
     expect(act("Digit1", { inLive: true }, { altKey: true })).toEqual({
       type: "zone",
