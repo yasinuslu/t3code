@@ -3,6 +3,7 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
   CommandId,
+  type ThreadStatusOutcome,
   type ThreadId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadShell,
@@ -182,6 +183,24 @@ function pullRequestSettles(
   );
 }
 
+/**
+ * The outcome the agent's latest report passed (`thread_status_update`), unless the user
+ * wrote after it: their reply answers a `needs-you` and reopens a `done`. Only an explicit
+ * outcome counts here; one read off an older report's text is for display.
+ */
+export function reportedOutcome(
+  thread: Pick<
+    ProjectionStore.ProjectionSettlementCandidate,
+    "statusReport" | "latestUserAuthoredMessageAt"
+  >,
+): ThreadStatusOutcome | null {
+  const report = thread.statusReport;
+  if (report === undefined) return null;
+  const userAtMs = toMillis(thread.latestUserAuthoredMessageAt);
+  if (userAtMs !== null && Date.parse(report.updatedAt) < userAtMs) return null;
+  return report.outcome ?? null;
+}
+
 /** Cheap checks that run before any source control lookup. */
 export function isAutoSettlementCandidate(
   thread: Omit<ProjectionStore.ProjectionSettlementCandidate, "latestUserAuthoredMessageAt">,
@@ -219,6 +238,24 @@ export function resolveAutoSettlementAt(input: {
   const { thread, defaultBranch } = input;
   let pullRequest = input.pullRequest;
   const links = visibleThreadPullRequests(thread.pullRequests ?? []);
+  // The agent's own word comes first: work that waits on the user never settles,
+  // and a result it says has landed settles even when its pull request merged into
+  // an integration branch such as `dev`. An open pull request still holds it.
+  const outcome = reportedOutcome(thread);
+  if (outcome === "needs-you") return null;
+  if (
+    outcome === "done" &&
+    pullRequest?.state !== "open" &&
+    !links.some((link) => link.snapshot?.state === "open") &&
+    isAutoSettlementCandidate(thread, input.nowMs)
+  ) {
+    const reportAtMs = Date.parse(thread.statusReport?.updatedAt ?? "");
+    const landedAtMs = latestMillis([
+      Number.isNaN(reportAtMs) ? null : reportAtMs,
+      toMillis(thread.latestRunCompletedAt),
+    ]);
+    return landedAtMs === null ? thread.updatedAt : DateTime.makeUnsafe(landedAtMs);
+  }
   if (
     links.some(
       (link) => link.snapshot === null || !pullRequestIsTerminal(link.snapshot, defaultBranch),

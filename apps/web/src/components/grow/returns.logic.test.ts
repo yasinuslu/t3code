@@ -113,17 +113,18 @@ describe("pinned threads", () => {
 
 describe("growEntry", () => {
   it("makes a list item for a thread the deck leaves out", () => {
-    const thread = shell("settled-chat", { settledOverride: "settled" });
+    // Never started: nothing came back, so the deck leaves it out.
+    const thread = shell("empty-chat", { latestRun: null });
     const deck = buildGrowDeck([thread], new Map(), NOW);
     expect(growDeckItems(deck)).toEqual([]);
     const entry = growEntry(thread, undefined, "return");
-    expect(entry.key).toBe("env:settled-chat");
-    expect(entry.headline).toBe("settled-chat");
+    expect(entry.key).toBe("env:empty-chat");
+    expect(entry.headline).toBe("empty-chat");
   });
 });
 
 describe("buildGrowDeck", () => {
-  it("sorts threads into what needs the user, returns, shipped and working", () => {
+  it("sorts threads into what needs the user, returns, shipped, settled and working", () => {
     const deck = buildGrowDeck(
       [
         shell("asks", { hasPendingUserInput: true }),
@@ -137,9 +138,35 @@ describe("buildGrowDeck", () => {
       NOW,
     );
     expect(keys(deck.urgent)).toEqual(["asks"]);
-    expect(keys(deck.returns).toSorted()).toEqual(["finished", "made"]);
+    expect(keys(deck.returns)).toEqual(["finished"]);
     expect(keys(deck.shipped)).toEqual(["merged"]);
+    // Settled threads wait on the shelf, a preview or not, instead of in the list to decide on.
+    expect(keys(deck.letGo).toSorted()).toEqual(["chat", "made"]);
     expect(deck.working).toHaveLength(1);
+  });
+
+  it("puts a report that asks the user first, until they write back or it settles", () => {
+    const asks = {
+      statusOutcome: "needs-you",
+      statusUpdatedAt: hoursAgo(1),
+      latestUserMessageAt: hoursAgo(2),
+    };
+    const deck = buildGrowDeck(
+      [
+        shell("waiting", asks),
+        shell("answered", { ...asks, latestUserMessageAt: hoursAgo(0.5) }),
+        shell("settled", { ...asks, settledOverride: "settled" }),
+        shell("pinned", { pinnedAt: hoursAgo(5), pinOrderKey: "a" }),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(keys(deck.urgent)).toEqual(["waiting"]);
+    expect(deck.urgent[0]?.reason).toBe("asks");
+    expect(keys(deck.returns)).toEqual(["answered"]);
+    expect(keys(deck.letGo)).toEqual(["settled"]);
+    // The list leads with what waits on the user, and stepping follows the list.
+    expect(keys(growDeckItems(deck)).slice(0, 2)).toEqual(["waiting", "pinned"]);
   });
 
   it("keeps a decision until the user writes to the thread again", () => {

@@ -3012,6 +3012,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             statusReport: {
               text: command.text.slice(0, THREAD_STATUS_REPORT_MAX_CHARS),
               updatedAt: DateTime.formatIso(now),
+              ...(command.outcome === undefined ? {} : { outcome: command.outcome }),
             },
           };
         case "thread.presentation.set": {
