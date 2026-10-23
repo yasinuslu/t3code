@@ -350,6 +350,38 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
+  it.effect("moves a saved sidebar, sheet and theme chord off their Mac and Linux clashes", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "ctrl+s", command: "pane.sidebar" },
+        { key: "mod+/", command: "shortcuts.toggle" },
+        { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
+        { key: "ctrl+alt+a", command: "threadPanel.toggle" },
+      ]);
+
+      const keybindings = yield* Keybindings.Keybindings;
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      const rulesOf = (command: string) =>
+        persisted
+          .filter((entry) => entry.command === command)
+          .map((entry) => `${entry.key} ${entry.when ?? ""}`.trim());
+      assert.deepEqual(rulesOf("pane.sidebar"), [
+        "ctrl+s !isMac",
+        "ctrl+b isMac && !terminalFocus && !editableFocus",
+      ]);
+      assert.deepEqual(rulesOf("shortcuts.toggle"), ["mod+/", "mod+shift+/", "mod+shift+?"]);
+      assert.deepEqual(rulesOf("theme.select"), [
+        "mod+alt+a !terminalFocus && isMac",
+        "ctrl+alt+y !terminalFocus && !isMac",
+      ]);
+      assert.deepEqual(rulesOf("threadPanel.toggle"), ["ctrl+alt+a"]);
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
   it.effect("adds the Mac profile keys next to an untouched Alt+V pair, once", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;

@@ -56,14 +56,13 @@ describe("buildShortcutSections", () => {
     ).toEqual(["⌃V", "⌃⇧V"]);
   });
 
-  it("shows the sidebar chord outside Grow only, where a Mac's Ctrl+S steps threads", () => {
+  it("shows the sidebar chord in Grow too: Ctrl+B on a Mac, free of Grow's Ctrl+S", () => {
     const mac = { ...options, platform: "MacIntel" };
-    expect(rowKeys(buildShortcutSections({ ...mac, inGrow: false }), "Focus the sidebar")).toEqual([
-      "⌃S",
-    ]);
-    expect(
-      rowKeys(buildShortcutSections({ ...mac, inGrow: true }), "Focus the sidebar"),
-    ).toBeUndefined();
+    for (const inGrow of [false, true]) {
+      expect(rowKeys(buildShortcutSections({ ...mac, inGrow }), "Focus the sidebar")).toEqual([
+        "⌃B",
+      ]);
+    }
     expect(
       rowKeys(buildShortcutSections({ ...options, inGrow: true }), "Focus the sidebar"),
     ).toEqual(["Ctrl+S"]);

@@ -52,14 +52,16 @@ the new chord system-wide too.
 
 ## Shortcut sheet
 
-Press `?` (outside a text box) or click the keyboard button beside the notifications bell to see
-the shortcuts that work where you are: Grow's keys first in Grow, the app-wide ones first
-elsewhere. The sheet reads your current keybindings, so remapped keys show as you set them. `?`
-or `Esc` closes it.
+Press `mod+/` or `mod+?` (from a text box too) or click the keyboard button beside the notifications
+bell to see the shortcuts that work where you are: Grow's keys first in Grow, the app-wide ones
+first elsewhere. Layouts that type `/` or `?` with Shift, such as Turkish, work as typed. The sheet
+reads your current keybindings, so remapped keys show as you set them. The same chord or `Esc`
+closes it.
 
 ## Moving between panes
 
-`ctrl+s` always focuses the sidebar (Grow's list in Grow, the thread list elsewhere), on the item
+`ctrl+s` (`ctrl+b` on a Mac outside text boxes and the terminal, where `ctrl+s` is Grow's next thread and `cmd+b` hides the sidebar)
+focuses the sidebar (Grow's list in Grow, the thread list elsewhere), on the item
 you are on, so `j`/`k` or the arrows move at once. `ctrl+h` and `ctrl+l` move focus one pane to the left
 or right in screen order (sidebar, chat, right panel), from inside a text box too; each pane
 remembers what you had focused in it, and the focused pane gets a thin ring. Focus never enters a
@@ -76,7 +78,7 @@ previous and next thread, `a` / `d` turn pages, `1`-`4` jump to the threads, pre
 and chat, `q` goes back, `e` ships or clears the card (Mac: `ctrl+shift+e`, since `ctrl+e` is the
 manager), `x` settles, `c` snoozes (or wakes a snoozed thread), `z` undoes, `r` reloads, `f` finds, `g` opens every project and `t` talks to the
 manager. On a Mac, `ctrl+a`, `ctrl+d`, `ctrl+f` and `ctrl+t` stay with the text while the caret is in a
-text box, and `ctrl+s` moves to the next thread instead of focusing the sidebar while Grow shows.
+text box.
 Each one is a `grow.*` command, scoped by the `growOpen` condition, with one rule for `!isMac` and
 one for `isMac`. Rebind any of them in Settings and the cheat sheet follows.
 

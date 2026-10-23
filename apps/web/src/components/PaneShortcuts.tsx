@@ -13,8 +13,8 @@ import { useSidebar } from "./ui/sidebar";
 const OPEN_DIALOG = '[data-slot="dialog-popup"], [data-slot="alert-dialog-popup"]';
 
 /**
- * Keyboard-only movement around the screen. Ctrl+S jumps to the sidebar (Grow's list in
- * Grow), Ctrl+H and Ctrl+L step one pane left and right in screen order, and Alt+J / Alt+K (or the arrow
+ * Keyboard-only movement around the screen. Ctrl+S (Ctrl+B on a Mac) jumps to the sidebar (Grow's
+ * list in Grow), Ctrl+H and Ctrl+L step one pane left and right in screen order, and Alt+J / Alt+K (or the arrow
  * keys) step the rows of the sidebar once it has focus. Caught in the capture phase so an editor, the
  * composer or a terminal cannot swallow the chord; a closed sidebar is opened first. Panes
  * are marked in the layouts with `data-pane` (see lib/paneFocus).
@@ -22,8 +22,7 @@ const OPEN_DIALOG = '[data-slot="dialog-popup"], [data-slot="alert-dialog-popup"
 export function PaneShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { isMobile, state, setOpen } = useSidebar();
-  // Grow's keys outrank these where they share a chord (Ctrl+S on a Mac), so the chord is
-  // resolved the way Grow sees it.
+  // Resolved the way Grow sees it, so a Grow key rebound onto a pane chord wins in Grow.
   const growOpen = useHomeOverlayStore((store) => store.open);
 
   useEffect(() => installPaneFocus(), []);

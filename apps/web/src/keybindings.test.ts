@@ -238,6 +238,67 @@ describe("settle thread shortcut", () => {
   });
 });
 
+describe("shortcut sheet chord", () => {
+  const resolve = (overrides: Partial<ShortcutEventLike>, platform = "Linux") =>
+    resolveShortcutCommand(event(overrides), DEFAULT_RESOLVED_KEYBINDINGS, { platform });
+
+  it("opens with Ctrl+/ and Ctrl+? on a US layout", () => {
+    assert.strictEqual(resolve({ key: "/", code: "Slash", ctrlKey: true }), "shortcuts.toggle");
+    assert.strictEqual(
+      resolve({ key: "?", code: "Slash", ctrlKey: true, shiftKey: true }),
+      "shortcuts.toggle",
+    );
+    assert.strictEqual(
+      resolve({ key: "?", code: "Slash", metaKey: true, shiftKey: true }, "MacIntel"),
+      "shortcuts.toggle",
+    );
+  });
+
+  it("opens with the layout's own / and ? on a Turkish Q keyboard, both typed with Shift", () => {
+    // Shift+7 types /, and Shift on the key right of 0 types ?.
+    assert.strictEqual(
+      resolve({ key: "/", code: "Digit7", ctrlKey: true, shiftKey: true }),
+      "shortcuts.toggle",
+    );
+    assert.strictEqual(
+      resolve({ key: "?", code: "Minus", ctrlKey: true, shiftKey: true }),
+      "shortcuts.toggle",
+    );
+  });
+});
+
+describe("sidebar focus chord", () => {
+  const ctrl = (key: string) => event({ key, code: `Key${key.toUpperCase()}`, ctrlKey: true });
+
+  it("is Ctrl+B on a Mac, leaving Ctrl+S to Grow's next thread", () => {
+    const mac = { platform: "MacIntel" };
+    assert.strictEqual(
+      resolveShortcutCommand(ctrl("b"), DEFAULT_RESOLVED_KEYBINDINGS, mac),
+      "pane.sidebar",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(ctrl("s"), DEFAULT_RESOLVED_KEYBINDINGS, {
+        ...mac,
+        context: { growOpen: true },
+      }),
+      "grow.step.next",
+    );
+    assert.isNull(resolveShortcutCommand(ctrl("s"), DEFAULT_RESOLVED_KEYBINDINGS, mac));
+  });
+
+  it("stays Ctrl+S on Windows and Linux, where Ctrl+B hides the sidebar", () => {
+    const linux = { platform: "Linux", context: { growOpen: true } };
+    assert.strictEqual(
+      resolveShortcutCommand(ctrl("s"), DEFAULT_RESOLVED_KEYBINDINGS, linux),
+      "pane.sidebar",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(ctrl("b"), DEFAULT_RESOLVED_KEYBINDINGS, linux),
+      "sidebar.toggle",
+    );
+  });
+});
+
 describe("manager shortcut", () => {
   const ctrlAltSpace = (overrides: Record<string, unknown> = {}) =>
     // Option+Space types a no-break space on macOS; the physical key still matches.

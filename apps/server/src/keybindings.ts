@@ -151,6 +151,32 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
       when: "!terminalFocus && !editableFocus && isMac",
     },
   },
+  // On a Mac the sidebar moved off Ctrl+S, which is Grow's "next thread" there.
+  {
+    id: "pane.sidebar:mac-ctrl+b",
+    alongside: { key: "ctrl+s", command: "pane.sidebar", when: "!isMac" },
+    rule: {
+      key: "ctrl+b",
+      command: "pane.sidebar",
+      when: "isMac && !terminalFocus && !editableFocus",
+    },
+  },
+  {
+    id: "theme.select:ctrl+alt+y",
+    alongside: { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus && isMac" },
+    rule: { key: "ctrl+alt+y", command: "theme.select", when: "!terminalFocus && !isMac" },
+  },
+  // The shortcut sheet also takes Shift, for Ctrl+? and layouts that type / with Shift.
+  {
+    id: "shortcuts.toggle:mod+shift+/",
+    alongside: { key: "mod+/", command: "shortcuts.toggle" },
+    rule: { key: "mod+shift+/", command: "shortcuts.toggle" },
+  },
+  {
+    id: "shortcuts.toggle:mod+shift+?",
+    alongside: { key: "mod+/", command: "shortcuts.toggle" },
+    rule: { key: "mod+shift+?", command: "shortcuts.toggle" },
+  },
 ];
 
 function keybindingShortcutContext(rule: KeybindingRule): string | null {
@@ -215,6 +241,16 @@ const RETIRED_DEFAULT_SHORTCUTS: ReadonlyArray<{
   {
     from: { key: "alt+shift+r", command: "profile.previous", when: "!terminalFocus" },
     to: { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
+  },
+  // On Windows and Linux `mod+alt+a` is Ctrl+Alt+A, the thread panel, which won it.
+  {
+    from: { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
+    to: { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus && isMac" },
+  },
+  // Ctrl+S stays the sidebar on Windows and Linux only; a Mac's is Ctrl+B (a late default).
+  {
+    from: { key: "ctrl+s", command: "pane.sidebar" },
+    to: { key: "ctrl+s", command: "pane.sidebar", when: "!isMac" },
   },
 ];
 
