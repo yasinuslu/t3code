@@ -390,6 +390,14 @@ export function useForkFeatures(): boolean {
 }
 
 /**
+ * Whether the experimental Grow presentation is on (`growPresentation`, Settings > Experimental):
+ * Grow shows a thread's presentation and Live preview instead of its plain conversation.
+ */
+export function useGrowPresentation(): boolean {
+  return useAtomValue(primaryServerSettingsAtom).growPresentation;
+}
+
+/**
  * Whether Grow is the app's one main view: the fork features are on and the deprecated
  * classic threads view (Grow and Threads behind a switch) is off.
  */

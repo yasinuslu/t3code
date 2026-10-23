@@ -132,6 +132,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import * as ElementsDemoSeeder from "./elements/ElementsDemoSeeder.ts";
+import * as GrowPresentationSetting from "./grow/GrowPresentationSetting.ts";
 import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -574,6 +575,8 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ProviderInstallationRefreshLive,
   // Experimental: demo threads from T3CODE_ELEMENTS_DEMO (no-op when unset).
   ElementsDemoSeeder.layer.pipe(Layer.provide(OrchestrationV2EventSinkLayerLive)),
+  // Experimental: the presentation ask follows Settings > Experimental.
+  GrowPresentationSetting.layer,
   ReplayMarkers.layer,
 ).pipe(
   // Core Services

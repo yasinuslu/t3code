@@ -498,6 +498,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "grow-presentation",
+    title: "Presentation and Live",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["experimental grow presentation live preview stage proof slides living page"],
+  },
+  {
     id: "grow-widget-pool",
     title: "Grow widget pool",
     to: "/settings/general",
