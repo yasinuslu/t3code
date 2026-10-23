@@ -183,7 +183,9 @@ if (container) {
       if (event.metaKey) return;
       if (
         mac
-          ? !event.ctrlKey || event.altKey || /^Key[ABDEFHKNOPTY]$/.test(event.code)
+          ? !event.ctrlKey ||
+            event.altKey ||
+            (!event.shiftKey && /^Key[ABDEFHKNOPTY]$/.test(event.code))
           : !event.altKey || event.ctrlKey
       ) {
         return;

@@ -9,6 +9,8 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 /** The commands the desktop shell acts on itself, below the page. */
 const isShellCommand = (command: string) =>
   command.startsWith("grow.") ||
+  command === "profile.next" ||
+  command === "profile.previous" ||
   command.startsWith("window.profile.") ||
   command === "settings.open" ||
   command.startsWith("zoom.");
@@ -30,14 +32,17 @@ export function ShellShortcuts() {
     const mac = isMacPlatform(navigator.platform);
     const chords = effectiveShortcutsForCommands(keybindings, isShellCommand, {
       context: { growOpen },
-    }).map(({ command, shortcut }) => ({
-      command,
-      key: shortcut.key,
-      control: shortcut.ctrlKey || (shortcut.modKey && !mac),
-      alt: shortcut.altKey,
-      meta: shortcut.metaKey || (shortcut.modKey && mac),
-      shift: shortcut.shiftKey,
-    }));
+    })
+      // The profile step is global, but it is only taken from a preview page while Grow shows.
+      .filter(({ command }) => growOpen || !command.startsWith("profile."))
+      .map(({ command, shortcut }) => ({
+        command,
+        key: shortcut.key,
+        control: shortcut.ctrlKey || (shortcut.modKey && !mac),
+        alt: shortcut.altKey,
+        meta: shortcut.metaKey || (shortcut.modKey && mac),
+        shift: shortcut.shiftKey,
+      }));
     void setShellChords(chords).catch(() => undefined);
   }, [growOpen, keybindings]);
 

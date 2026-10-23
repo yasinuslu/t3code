@@ -136,12 +136,20 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
   {
     id: "profile.next:mac-ctrl+v",
     alongside: { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
-    rule: { key: "ctrl+v", command: "profile.next", when: "!terminalFocus && isMac" },
+    rule: {
+      key: "ctrl+v",
+      command: "profile.next",
+      when: "!terminalFocus && !editableFocus && isMac",
+    },
   },
   {
     id: "profile.previous:mac-ctrl+shift+v",
     alongside: { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
-    rule: { key: "ctrl+shift+v", command: "profile.previous", when: "!terminalFocus && isMac" },
+    rule: {
+      key: "ctrl+shift+v",
+      command: "profile.previous",
+      when: "!terminalFocus && !editableFocus && isMac",
+    },
   },
 ];
 

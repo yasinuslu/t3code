@@ -757,11 +757,13 @@ export function GrowReturns(props: {
       if (!("code" in data) || typeof data.code !== "string") return;
       const flag = (name: string) =>
         name in data && (data as Record<string, unknown>)[name] === true;
+      // A page stored before the modifier was reported posts only code and shift: it meant Alt.
+      const legacy = !("alt" in data) && !("ctrl" in data);
       window.dispatchEvent(
         new KeyboardEvent("keydown", {
           code: data.code,
           shiftKey: flag("shift"),
-          altKey: flag("alt"),
+          altKey: legacy || flag("alt"),
           ctrlKey: flag("ctrl"),
         }),
       );

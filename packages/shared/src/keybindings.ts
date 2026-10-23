@@ -131,8 +131,12 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
   { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
   // On a Mac the profile keys follow Grow's: Control, not Option.
-  { key: "ctrl+v", command: "profile.next", when: "!terminalFocus && isMac" },
-  { key: "ctrl+shift+v", command: "profile.previous", when: "!terminalFocus && isMac" },
+  { key: "ctrl+v", command: "profile.next", when: "!terminalFocus && !editableFocus && isMac" },
+  {
+    key: "ctrl+shift+v",
+    command: "profile.previous",
+    when: "!terminalFocus && !editableFocus && isMac",
+  },
   // Keyboard-only movement between the panes on screen, vim-style. `ctrl` rather than `mod`
   // so it is the Control key on a Mac too. They work from inside inputs, the composer and
   // a terminal alike, so focus never gets stuck in one pane. Ctrl+H is Backspace and Ctrl+L
@@ -145,8 +149,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // on a Mac, where Option types special characters.
   { key: "alt+k", command: "pane.rowPrevious", when: "!isMac" },
   { key: "alt+j", command: "pane.rowNext", when: "!isMac" },
-  { key: "ctrl+k", command: "pane.rowPrevious", when: "isMac" },
-  { key: "ctrl+j", command: "pane.rowNext", when: "isMac" },
+  { key: "ctrl+k", command: "pane.rowPrevious", when: "isMac && !editableFocus" },
+  { key: "ctrl+j", command: "pane.rowNext", when: "isMac && !editableFocus" },
   // Grow's keys come after the pane chords: on a Mac Ctrl+S is "next thread" while Grow is
   // open, and the last matching rule wins.
   ...GROW_DEFAULT_KEYBINDINGS,

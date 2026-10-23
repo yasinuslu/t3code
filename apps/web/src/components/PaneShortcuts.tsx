@@ -3,7 +3,7 @@ import { useEffect } from "react";
 
 import { useHomeOverlayStore } from "../homeOverlayStore";
 import { resolveShortcutCommand } from "../keybindings";
-import { isInlineComponentEvent } from "../lib/editableFocus";
+import { isEditableFocused, isInlineComponentEvent } from "../lib/editableFocus";
 import { installPaneFocus, focusPaneNamed, movePane, stepPaneRow } from "../lib/paneFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -48,6 +48,7 @@ export function PaneShortcuts() {
           terminalFocus: isTerminalFocused(),
           previewFocus: isPreviewFocused(),
           growOpen,
+          editableFocus: isEditableFocused(event.target),
         },
       });
 

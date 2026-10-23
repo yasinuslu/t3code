@@ -15,7 +15,14 @@ export interface ShellChord extends ManagerChord {
 }
 
 const PROFILE_WINDOW_PREFIX = "window.profile.";
-const GROW_PREFIX = "grow.";
+
+/**
+ * The commands handed to the renderer from a preview page that swallows every key: Grow's keys
+ * and the profile step, which also works from Grow. They depend on the window's screen (Grow
+ * open or not), so each window reports its own.
+ */
+const isForwardedCommand = (command: string): boolean =>
+  command.startsWith("grow.") || command === "profile.next" || command === "profile.previous";
 
 /** The 1-based profile window a command opens, or null for any other command. */
 export function profileWindowIndexOfCommand(command: string): number | null {
@@ -53,22 +60,42 @@ export function defaultShellChords(platform: NodeJS.Platform): ReadonlyArray<She
   ];
 }
 
+/** The chords every window shares (menu, profile windows), as the renderer last reported them. */
 let reported: ReadonlyArray<ShellChord> | null = null;
+/** The forwarded chords of each window (by webContents id), which follow its screen. */
+const forwardedByWindow = new Map<number, ReadonlyArray<ShellChord>>();
 const listeners = new Set<() => void>();
 
-/** What the menu shows of a list: Grow's keys come and go with the screen and are not in it. */
-const menuSignature = (chords: ReadonlyArray<ShellChord>) =>
-  JSON.stringify(chords.filter((candidate) => !candidate.command.startsWith(GROW_PREFIX)));
-
-/** Replaces the chords with the ones the renderer resolved; every window shares one list. */
-export function setShellChords(next: ReadonlyArray<ShellChord>): void {
-  const menuChanged = menuSignature(next) !== menuSignature(reported ?? []);
-  reported = next;
+/**
+ * Takes the chords a renderer resolved. The shared ones replace the last report (every window
+ * resolves the same keybindings); the forwarded ones are kept per window, so one window's Grow
+ * does not decide another window's keys.
+ */
+export function setShellChords(next: ReadonlyArray<ShellChord>, windowId?: number): void {
+  const shared = next.filter((candidate) => !isForwardedCommand(candidate.command));
+  const menuChanged = JSON.stringify(shared) !== JSON.stringify(reported ?? []);
+  reported = shared;
+  if (windowId !== undefined) {
+    forwardedByWindow.set(
+      windowId,
+      next.filter((candidate) => isForwardedCommand(candidate.command)),
+    );
+  }
   if (menuChanged) for (const listener of listeners) listener();
 }
 
-export function shellChords(platform: NodeJS.Platform): ReadonlyArray<ShellChord> {
-  return reported ?? defaultShellChords(platform);
+/** Drops what a closed window reported. */
+export function forgetShellChordsOf(windowId: number): void {
+  forwardedByWindow.delete(windowId);
+}
+
+export function shellChords(
+  platform: NodeJS.Platform,
+  windowId?: number,
+): ReadonlyArray<ShellChord> {
+  const shared = reported ?? defaultShellChords(platform);
+  const forwarded = windowId === undefined ? undefined : forwardedByWindow.get(windowId);
+  return forwarded ? [...shared, ...forwarded] : shared;
 }
 
 /** Runs `listener` after the chords change, so the menu can show the new ones. */
@@ -98,10 +125,11 @@ export function shellCommandsOfInput(
     "type" | "key" | "code" | "meta" | "control" | "alt" | "shift" | "isAutoRepeat"
   >,
   platform: NodeJS.Platform,
+  windowId?: number,
 ): ReadonlyArray<string> {
   if (input.type !== "keyDown" || input.isAutoRepeat) return [];
   const key = inputKey(input);
-  return shellChords(platform)
+  return shellChords(platform, windowId)
     .filter(
       (candidate) =>
         candidate.key === key &&
@@ -126,13 +154,14 @@ export function profileWindowShortcutIndex(
 }
 
 /**
- * The Grow command a key press below the page is, when it must be taken from the page and
- * handed to Grow. A Mac Control+letter a text field uses for editing (Ctrl+A, ...) stays with
- * the page: a form in a preview would lose it.
+ * The command a key press below the page is, when it must be taken from the page and handed to
+ * the renderer of `windowId` (a Grow key, or the profile step). A Mac Control+letter a text
+ * field uses for editing (Ctrl+A, ...) stays with the page: a form in a preview would lose it.
  */
 export function growCommandOfInput(
   input: Parameters<typeof shellCommandsOfInput>[0],
   platform: NodeJS.Platform,
+  windowId: number,
 ): string | null {
   if (
     platform === "darwin" &&
@@ -146,7 +175,7 @@ export function growCommandOfInput(
   ) {
     return null;
   }
-  return shellCommandsOfInput(input, platform).find((c) => c.startsWith(GROW_PREFIX)) ?? null;
+  return shellCommandsOfInput(input, platform, windowId).find(isForwardedCommand) ?? null;
 }
 
 /** The Grow commands that take focus out of the page (to a place, search, the manager). */

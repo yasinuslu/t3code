@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   defaultShellChords,
+  forgetShellChordsOf,
   growCommandOfInput,
   menuAccelerator,
   profileWindowShortcutIndex,
@@ -26,7 +27,11 @@ const press = (
 });
 
 // A list nothing has reported yet falls back to the defaults, so reset it between tests.
-afterEach(() => setShellChords(defaultShellChords("linux")));
+afterEach(() => {
+  setShellChords(defaultShellChords("linux"));
+  forgetShellChordsOf(1);
+  forgetShellChordsOf(2);
+});
 
 describe("profile window keys", () => {
   it("open window N with Alt+Shift+N on Linux and Windows, by physical key", () => {
@@ -94,28 +99,47 @@ describe("growCommandOfInput", () => {
   });
 
   it("names the Grow command a reported chord stands for, and nothing before one is reported", () => {
-    expect(growCommandOfInput(press("KeyS", { alt: true }), "linux")).toBeNull();
-    setShellChords([grow("s", { alt: true })]);
-    expect(growCommandOfInput(press("KeyS", { alt: true }), "linux")).toBe("grow.step.next");
-    expect(growCommandOfInput(press("KeyS"), "linux")).toBeNull();
-    expect(growCommandOfInput(press("KeyD", { alt: true }), "linux")).toBeNull();
+    expect(growCommandOfInput(press("KeyS", { alt: true }), "linux", 1)).toBeNull();
+    setShellChords([grow("s", { alt: true })], 1);
+    expect(growCommandOfInput(press("KeyS", { alt: true }), "linux", 1)).toBe("grow.step.next");
+    expect(growCommandOfInput(press("KeyS"), "linux", 1)).toBeNull();
+    expect(growCommandOfInput(press("KeyD", { alt: true }), "linux", 1)).toBeNull();
   });
 
   it("keeps a Mac text field's Control+letter editing keys with the page", () => {
-    setShellChords([
-      { ...grow("s", { control: true }) },
-      { ...grow("a", { control: true }), command: "grow.page.previous" },
-    ]);
-    expect(growCommandOfInput(press("KeyS", { control: true }), "darwin")).toBe("grow.step.next");
-    expect(growCommandOfInput(press("KeyA", { control: true }), "darwin")).toBeNull();
-    expect(growCommandOfInput(press("KeyA", { control: true }), "linux")).toBe(
+    setShellChords(
+      [
+        { ...grow("s", { control: true }) },
+        { ...grow("a", { control: true }), command: "grow.page.previous" },
+      ],
+      1,
+    );
+    expect(growCommandOfInput(press("KeyS", { control: true }), "darwin", 1)).toBe(
+      "grow.step.next",
+    );
+    expect(growCommandOfInput(press("KeyA", { control: true }), "darwin", 1)).toBeNull();
+    expect(growCommandOfInput(press("KeyA", { control: true }), "linux", 1)).toBe(
       "grow.page.previous",
     );
   });
 
+  it("hands the profile step over from a preview page too", () => {
+    setShellChords([{ ...grow("v", { alt: true }), command: "profile.next" }], 1);
+    expect(growCommandOfInput(press("KeyV", { alt: true }), "linux", 1)).toBe("profile.next");
+  });
+
+  it("keeps each window's Grow keys to itself", () => {
+    setShellChords([grow("s", { alt: true })], 1);
+    setShellChords([], 2);
+    expect(growCommandOfInput(press("KeyS", { alt: true }), "linux", 1)).toBe("grow.step.next");
+    expect(growCommandOfInput(press("KeyS", { alt: true }), "linux", 2)).toBeNull();
+    forgetShellChordsOf(1);
+    expect(growCommandOfInput(press("KeyS", { alt: true }), "linux", 1)).toBeNull();
+  });
+
   it("reads the digits by place", () => {
-    setShellChords([{ ...grow("1", { alt: true }), command: "grow.zone.threads" }]);
-    expect(shellCommandsOfInput(press("Digit1", { alt: true }), "linux")).toEqual([
+    setShellChords([{ ...grow("1", { alt: true }), command: "grow.zone.threads" }], 1);
+    expect(shellCommandsOfInput(press("Digit1", { alt: true }), "linux", 1)).toEqual([
       "grow.zone.threads",
     ]);
   });

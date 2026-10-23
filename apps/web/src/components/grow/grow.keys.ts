@@ -103,11 +103,8 @@ export function growKeyAction(
   ) {
     return null;
   }
-  const command = resolveShortcutCommand(physicalKey(event), keybindings, {
-    platform,
-    context: { growOpen: true },
-  });
-  return isGrowCommand(command) ? allowed(ACTIONS[command], state) : null;
+  const command = growCommandOfKey(event, keybindings, platform);
+  return command === null ? null : allowed(ACTIONS[command], state);
 }
 
 /**
@@ -176,11 +173,16 @@ export function growCommandOfKey(
   keybindings: ResolvedKeybindingsConfig,
   platform: string = navigator.platform,
 ): GrowKeybindingCommand | null {
-  const command = resolveShortcutCommand(physicalKey(event), keybindings, {
-    platform,
-    context: { growOpen: true },
-  });
-  return isGrowCommand(command) ? command : null;
+  // By place first, so WASD stays under the left hand on any layout; a chord recorded in
+  // Settings is the layout's letter, so it is tried as typed when the place has no Grow key.
+  for (const candidate of [physicalKey(event), event]) {
+    const command = resolveShortcutCommand(candidate, keybindings, {
+      platform,
+      context: { growOpen: true },
+    });
+    if (isGrowCommand(command)) return command;
+  }
+  return null;
 }
 
 /** What each Grow command is called in Settings and the shortcut sheet. */

@@ -18,7 +18,7 @@ const MAC = "MacIntel";
 
 const press = (code: string, modifiers: Record<string, boolean> = {}) => ({
   code,
-  key: /^(Key|Digit)/.test(code) ? "x" : code,
+  key: /^(Key|Digit)/.test(code) ? code.slice(-1).toLowerCase() : code,
   shiftKey: false,
   metaKey: false,
   ctrlKey: false,
@@ -138,6 +138,21 @@ describe("growKeyAction on Windows and Linux (Alt)", () => {
     for (const code of ["KeyJ", "KeyK", "KeyO", "KeyP", "ArrowDown", "Enter"]) {
       expect(act(code)).toBeNull();
     }
+  });
+});
+
+describe("growKeyAction on another layout", () => {
+  it("keeps WASD by place, and also takes a chord recorded as the layout's letter", () => {
+    // Dvorak: the key in the QWERTY S place types "o", the key in the N place types "l".
+    const dvorak = (code: string, key: string) =>
+      growKeyAction({ ...press(code), key }, state(), DEFAULT_RESOLVED_KEYBINDINGS, LINUX);
+    expect(dvorak("KeyS", "o")).toEqual({ type: "step", direction: 1 });
+    const custom = compileResolvedKeybindingsConfig([
+      { key: "alt+l", command: "grow.undo", when: "growOpen && !isMac" },
+    ]);
+    expect(growKeyAction({ ...press("KeyN"), key: "l" }, state(), custom, LINUX)).toEqual({
+      type: "undo",
+    });
   });
 });
 
