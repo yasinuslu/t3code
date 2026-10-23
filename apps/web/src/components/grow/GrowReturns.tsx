@@ -83,6 +83,7 @@ import { growIsHome, useHomeOverlayStore } from "../../homeOverlayStore";
 import { openFullView, setGrowOnScreen, useGrowFocusStore } from "../../growFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useStackedLayout } from "../../hooks/useStackedLayout";
+import { useGrowPresentation } from "../../hooks/useSettings";
 import { isInlineComponentEvent } from "../../lib/editableFocus";
 import { cn, newMessageId, randomUUID } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
@@ -455,6 +456,7 @@ export function GrowReturns(props: {
   const pending = usePendingDecisions((state) => state.keys);
   const { selected, phoneView, query, playing, thread, listMode, manager } = useReturnsStore();
   const wide = useMediaQuery("md");
+  const presentation = useGrowPresentation();
   const split = useMediaQuery("lg");
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [supersedeOpen, setSupersedeOpen] = useState(false);
@@ -586,6 +588,8 @@ export function GrowReturns(props: {
   useEffect(() => {
     const jump = (zone: GrowZone) => {
       const item = current;
+      // Both stages only exist with the experimental presentation on.
+      if (!presentation && (zone === "presentation" || zone === "live")) return;
       switch (zone) {
         case "threads":
           if (manager) hideManager();
@@ -690,7 +694,7 @@ export function GrowReturns(props: {
     // Capture, so a key held with Alt reaches Grow before the composer or a field takes it.
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [actions, current, manager, playing, query, sheetOpen, shown, split, wide]);
+  }, [actions, current, manager, playing, presentation, query, sheetOpen, shown, split, wide]);
 
   // The desktop catches Grow's Alt keys inside the live app, whose page swallows every key,
   // and hands them here as the same key press.
@@ -1516,13 +1520,12 @@ function Hero(props: {
   readonly position: { readonly index: number; readonly total: number } | null;
   readonly step: (direction: 1 | -1) => void;
 }) {
-  // exp/web-components: the item is its stock T3 conversation; components live inside it.
-  if (EXP_STOCK_CONVERSATION) return <Conversation thread={props.item.thread} stock />;
+  // Without the experimental presentation the item is its stock conversation; web components
+  // live inside it.
+  const presentation = useGrowPresentation();
+  if (!presentation) return <Conversation thread={props.item.thread} stock />;
   return <HeroWithProof {...props} />;
 }
-
-/** On exp/web-components the presentation pane is dormant; the conversation stands alone. */
-const EXP_STOCK_CONVERSATION = true;
 
 function HeroWithProof(props: Parameters<typeof Hero>[0]) {
   const { item, actions, wide } = props;

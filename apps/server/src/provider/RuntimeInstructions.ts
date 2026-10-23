@@ -42,8 +42,18 @@ function toSingleLine(value: string): string {
   return value.replaceAll(/\s+/g, " ").trim();
 }
 
-/** The web-component library replaces the presentation where one is set (exp/web-components). */
+let presentationEnabled = false;
+
+/**
+ * Mirrors the `growPresentation` server setting (GrowPresentationSetting.ts keeps it current), so
+ * the synchronous builders above can ask for a presentation only while Grow shows one.
+ */
+export function setPresentationInstructionsEnabled(enabled: boolean): void {
+  presentationEnabled = enabled;
+}
+
+/** The presentation ask while it is switched on, then the web-component catalog when a library is set. */
 function withElements(): string {
   const elements = elementsInstructions();
-  return `\n\n${elements === "" ? PRESENTATION_INSTRUCTIONS : elements}`;
+  return `${presentationEnabled ? `\n\n${PRESENTATION_INSTRUCTIONS}` : ""}${elements === "" ? "" : `\n\n${elements}`}`;
 }

@@ -653,6 +653,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.growWidgetPool !== DEFAULT_UNIFIED_SETTINGS.growWidgetPool
         ? ["Grow widget pool"]
         : []),
+      ...(settings.growPresentation !== DEFAULT_UNIFIED_SETTINGS.growPresentation
+        ? ["Presentation and Live"]
+        : []),
       ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
         ? ["Unpin confirmation"]
         : []),
@@ -695,6 +698,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.followUpBehavior,
       settings.addProjectBaseDirectory,
       settings.growWidgetPool,
+      settings.growPresentation,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffFilesCollapsed,
@@ -846,6 +850,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       growWidgetPool: DEFAULT_UNIFIED_SETTINGS.growWidgetPool,
+      growPresentation: DEFAULT_UNIFIED_SETTINGS.growPresentation,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -3297,6 +3302,33 @@ export function GeneralSettingsPanel() {
               placeholder={mixedAddProjectBaseDirectory ? "Mixed" : "~/"}
               spellCheck={false}
               aria-label="Add project base directory"
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection id="experimental" title="Experimental">
+        <SettingsRow
+          serverScoped
+          settingKeys={["growPresentation"]}
+          {...searchableSetting("grow-presentation")}
+          description="Grow shows each thread's presentation and Live preview instead of its conversation, and agents are asked to keep a presentation."
+          resetAction={
+            settings.growPresentation !== DEFAULT_UNIFIED_SETTINGS.growPresentation ? (
+              <SettingResetButton
+                label="Presentation and Live"
+                onClick={() =>
+                  updateSettings({ growPresentation: DEFAULT_UNIFIED_SETTINGS.growPresentation })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ScopedSwitch
+              settingKeys={["growPresentation"]}
+              checked={settings.growPresentation}
+              onCheckedChange={(checked) => updateSettings({ growPresentation: Boolean(checked) })}
+              aria-label="Show presentations and Live in Grow"
             />
           }
         />

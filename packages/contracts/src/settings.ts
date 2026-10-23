@@ -1438,6 +1438,12 @@ export const ServerSettings = Schema.Struct({
    * pool's README); empty turns the living page off.
    */
   growWidgetPool: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /**
+   * Experimental: Grow shows a thread's presentation and Live preview instead of its plain
+   * conversation, agents are asked to keep a presentation, and living pages are composed. The
+   * presentation data and `presentation_*` tools work either way.
+   */
+  growPresentation: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -1776,6 +1782,7 @@ export const ServerSettingsPatch = Schema.Struct({
   worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   growWidgetPool: Schema.optionalKey(TrimmedString),
+  growPresentation: Schema.optionalKey(Schema.Boolean),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   branchNamingMode: Schema.optionalKey(BranchNamingMode),
   branchNamePrefix: Schema.optionalKey(TrimmedString),
