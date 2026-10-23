@@ -28,12 +28,16 @@ export function getDesktopUrl(isDevelopment: boolean): string {
   return `${getDesktopOrigin(isDevelopment)}/`;
 }
 
-/** The in-app route of a thread, where a `t3code://threads/<env>/<thread>` deep link lands. */
+/**
+ * The in-app route of a thread, where a `t3code://threads/<env>/<thread>` deep link lands on a
+ * cold start. The desktop renderer routes by hash (web `main.tsx`): a path form loads the app but
+ * the router then restores the last-opened thread instead of this one.
+ */
 export function getDesktopThreadUrl(
   isDevelopment: boolean,
   target: { readonly environmentId: string; readonly threadId: string },
 ): string {
-  return `${getDesktopOrigin(isDevelopment)}/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
+  return `${getDesktopOrigin(isDevelopment)}/#/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
 }
 
 export class ElectronProtocolRegistrationError extends Schema.TaggedError<ElectronProtocolRegistrationError>()(

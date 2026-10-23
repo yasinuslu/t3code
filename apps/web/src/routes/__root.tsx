@@ -27,6 +27,7 @@ import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPrompt
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
 import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
+import { DesktopThreadLinkOpener } from "../components/desktop/DesktopThreadLinkOpener";
 import { ProfileWindowReporter } from "../components/desktop/ProfileWindowReporter";
 import { isWindowProfileLock } from "../profileLock";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
@@ -233,6 +234,7 @@ function RootRouteView() {
           {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
           {primaryEnvironmentAuthenticated ? <DesktopAppActivationCoordinator /> : null}
           {isElectron ? <RunningThreadKeepAlive /> : null}
+          {isElectron ? <DesktopThreadLinkOpener /> : null}
           {isElectron && primaryEnvironmentAuthenticated ? <ProfileWindowReporter /> : null}
           <RelayClientInstallDialog />
           <ConnectOnboardingDialog />

@@ -17,6 +17,7 @@ import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/rela
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopUserData from "./DesktopUserData.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
@@ -184,8 +185,9 @@ export const make = Effect.gen(function* () {
         return true;
       };
       // `t3code://threads/<env>/<thread>` clicked outside the app (or in a client that has no
-      // thread chips) arrives through the OS URL handler. A cold start has no window yet, so
-      // wait for the first one and let its initial load finish before navigating.
+      // thread chips) arrives through the OS URL handler. A running window navigates in place
+      // over IPC, so composer drafts survive and nothing flashes. A cold start has no window
+      // yet: wait for the first one, let its initial load finish, then load the thread route.
       const openThreadLink = (value: string | undefined) => {
         const target = value ? parseThreadLinkHref(value) : null;
         if (!target) return false;
@@ -204,8 +206,10 @@ export const make = Effect.gen(function* () {
               yield* Effect.callback<void>((resume) => {
                 window.webContents.once("did-stop-loading", () => resume(Effect.void));
               }).pipe(Effect.timeout("15 seconds"), Effect.ignore);
+              yield* Effect.promise(() => window.loadURL(destination));
+            } else {
+              window.webContents.send(IpcChannels.OPEN_THREAD_LINK_CHANNEL, value);
             }
-            yield* Effect.promise(() => window.loadURL(destination));
             yield* electronWindow.reveal(window);
           }).pipe(
             Effect.catchCause((cause) => Effect.logWarning("Could not open thread link", cause)),

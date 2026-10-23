@@ -11,6 +11,7 @@ export const MENU_ACTION_CHANNEL = "desktop:menu-action";
 export const SET_MANAGER_SHORTCUT_CHANNEL = "desktop:set-manager-shortcut";
 export const REPORT_WINDOW_PROFILE_CHANNEL = "desktop:report-window-profile";
 export const OPEN_PROFILE_WINDOW_CHANNEL = "desktop:open-profile-window";
+export const OPEN_THREAD_LINK_CHANNEL = "desktop:open-thread-link";
 export const PASTE_AS_TEXT_CHANNEL = "desktop:paste-as-text";
 export const SNAP_SHOT_EVENT_CHANNEL = "desktop:snap-shot-event";
 export const QUIT_SHORTCUT_CHANNEL = "desktop:quit-shortcut";

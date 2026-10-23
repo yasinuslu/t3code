@@ -1254,6 +1254,11 @@ export interface DesktopBridge {
   /** Present when the desktop shell can perform an ordered plain-text paste. */
   pasteAsText?: () => Promise<void>;
   onMenuAction: (listener: (action: string) => void) => () => void;
+  /**
+   * A `t3code://threads/<env>/<thread>` link the OS handed to the running app.
+   * The renderer navigates in place; older desktop builds reload the window instead.
+   */
+  onOpenThreadLink?: (listener: (href: string) => void) => () => void;
   onSnapShotEvent?: (listener: (event: DesktopSnapShotEvent) => void) => () => void;
   /**
    * Quit-confirmation hint pushes. Optional: older desktop builds never emit
