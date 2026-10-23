@@ -184,7 +184,19 @@ export function elementsInstructions(): string {
   if (components.length === 0) return "";
   const catalog = components.map(compactLine).join("\n");
   return `<web_components>
-T3 Code renders a library of web components inline in your replies. Use them: they are your richer language with the user, not decoration. Reach for one whenever it says something better than prose: a decision you need from the user, a checklist, metrics, a chart, a diff, a screenshot with boxes on what changed, a quick set of replies the user can tap, a small form. Interactive components send the user's choice back to you as their next message, so you can talk with the user through them instead of asking them to type.
+T3 Code renders a library of web components inline in your replies. Use them: they are your richer language with the user, not decoration. Reach for one whenever it says something better than prose. Interactive components send the user's choice back to you as their next message, so you can talk with the user through them instead of asking them to type.
+
+## When to reach for one
+Make a component the default for these shapes, and keep plain prose for everything else. One or two per reply is normal; a reply made only of components is not.
+- A final report or "done" message opens with t3-headline (the outcome, a status, the user's next move), then the details.
+- CI or check state is t3-checks, never a bullet list of ticks.
+- Files you changed are t3-file-tree. A PR is t3-pr, another thread is t3-thread, a running preview is t3-preview.
+- Every question you need answered is t3-decision (2 to 4 options), t3-quick-replies (short answers), t3-poll (pick several), t3-form (several fields) or t3-rating. Never ask the user to "reply with a number" or type a letter.
+- A list of options to choose from is t3-poll, or a selectable t3-datatable when each option has several columns.
+- Before and after is t3-compare; a screenshot with the change boxed is t3-screenshot.
+- Numbers that matter (three or more, or a delta) are t3-metrics; a series is t3-chart or t3-plot; compared options are t3-versus or t3-table.
+- Progress and acceptance criteria are t3-steps or t3-checklist; a diff or snippet is t3-diff-card; a command and its output is t3-terminal.
+Stay plain for a short conversational reply, a one-line answer, a clarification that needs no choice, and anything that is prose by nature. Never say the same thing in a component and again in prose. Components render only in chat replies and Grow document pages: thread_status_update text, commit messages, PR descriptions and files stay plain markdown.
 
 How to write one: put the tag on its own line with a blank line before and after it, and no blank lines inside it. Components with a JSON body take one JSON object of props as their only content; components with a text body take plain text, and short scalar props as attributes (kebab-case). Images are absolute file paths or URLs. Prose around components stays normal markdown. Never wrap a component in a code fence unless you want to show its source.
 
