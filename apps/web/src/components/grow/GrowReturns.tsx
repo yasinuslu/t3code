@@ -245,7 +245,7 @@ const GROW_REQUEST_LABEL: Record<GrowRequestKind, string> = {
 };
 
 /** The actions on a return, wired to the thread and its grow card. */
-function useReturnActions(moveOn: (item: GrowReturn) => void) {
+export function useReturnActions(moveOn: (item: GrowReturn) => void) {
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const update = useAtomCommand(growEnvironment.update);
   const settleThread = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
@@ -309,18 +309,15 @@ function useReturnActions(moveOn: (item: GrowReturn) => void) {
         },
       });
     },
-    whatIf: (item: GrowReturn, text: string, kind: "whatIf" | "reply") => {
-      moveOn(item);
-      decide({
-        key: item.key,
-        title: `Sending to ${item.headline}`,
-        run: async () => {
-          const request = kind === "whatIf" ? "change" : "reply";
-          if ((await send(item, request, text)) && item.card?.decision !== undefined) {
-            await record(item, null);
-          }
-        },
-      });
+    /**
+     * Sends a reply or a change request. It is a message, not a decision: it goes at once and
+     * in place, so the thread stays on screen (now working) and nothing moves on to the next.
+     */
+    whatIf: async (item: GrowReturn, text: string, kind: "whatIf" | "reply") => {
+      const request = kind === "whatIf" ? "change" : "reply";
+      if ((await send(item, request, text)) && item.card?.decision !== undefined) {
+        await record(item, null);
+      }
     },
     /**
      * Sends a form page's answers; the page's request id marks it answered. At once and in
