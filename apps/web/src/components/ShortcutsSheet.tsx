@@ -62,6 +62,9 @@ export function ShortcutsSheet() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.isComposing) return;
+      // Recording a shortcut in Settings gets every key, this chord included.
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("[data-keybinding-capture]")) return;
       // A bare key would collide with inline components and typing; the chord is Mod+/ (or Mod+?) by default.
       if (resolveShortcutCommand(event, keybindings) !== "shortcuts.toggle") return;
       event.preventDefault();

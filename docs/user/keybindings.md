@@ -60,7 +60,7 @@ closes it.
 
 ## Moving between panes
 
-`ctrl+s` (`ctrl+b` on a Mac, where `ctrl+s` is Grow's next thread and `cmd+b` hides the sidebar)
+`ctrl+s` (`ctrl+b` on a Mac outside text boxes and the terminal, where `ctrl+s` is Grow's next thread and `cmd+b` hides the sidebar)
 focuses the sidebar (Grow's list in Grow, the thread list elsewhere), on the item
 you are on, so `j`/`k` or the arrows move at once. `ctrl+h` and `ctrl+l` move focus one pane to the left
 or right in screen order (sidebar, chat, right panel), from inside a text box too; each pane

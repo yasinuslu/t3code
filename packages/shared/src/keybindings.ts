@@ -150,7 +150,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // On a Mac Ctrl+S is Grow's "next thread" and Cmd+B already hides the sidebar, so the sidebar
   // is Ctrl+B there. On Windows and Linux Ctrl+B is that hide chord and Grow holds Alt.
   { key: "ctrl+s", command: "pane.sidebar", when: "!isMac" },
-  { key: "ctrl+b", command: "pane.sidebar", when: "isMac" },
+  { key: "ctrl+b", command: "pane.sidebar", when: "isMac && !terminalFocus && !editableFocus" },
   { key: "ctrl+h", command: "pane.left" },
   { key: "ctrl+l", command: "pane.right", when: "!previewFocus" },
   // Rows of the sidebar once it has focus, vim-style (the arrow keys work as well). Control

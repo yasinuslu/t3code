@@ -155,7 +155,11 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
   {
     id: "pane.sidebar:mac-ctrl+b",
     alongside: { key: "ctrl+s", command: "pane.sidebar", when: "!isMac" },
-    rule: { key: "ctrl+b", command: "pane.sidebar", when: "isMac" },
+    rule: {
+      key: "ctrl+b",
+      command: "pane.sidebar",
+      when: "isMac && !terminalFocus && !editableFocus",
+    },
   },
   {
     id: "theme.select:ctrl+alt+y",

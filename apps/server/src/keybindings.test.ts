@@ -369,7 +369,10 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
         persisted
           .filter((entry) => entry.command === command)
           .map((entry) => `${entry.key} ${entry.when ?? ""}`.trim());
-      assert.deepEqual(rulesOf("pane.sidebar"), ["ctrl+s !isMac", "ctrl+b isMac"]);
+      assert.deepEqual(rulesOf("pane.sidebar"), [
+        "ctrl+s !isMac",
+        "ctrl+b isMac && !terminalFocus && !editableFocus",
+      ]);
       assert.deepEqual(rulesOf("shortcuts.toggle"), ["mod+/", "mod+shift+/", "mod+shift+?"]);
       assert.deepEqual(rulesOf("theme.select"), [
         "mod+alt+a !terminalFocus && isMac",
