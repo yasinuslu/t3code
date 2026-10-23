@@ -82,13 +82,15 @@ function FilterPanel(props: {
       return next;
     });
 
+  const draft = (): ColumnFilter => ({
+    ...(exclude.size > 0 ? { exclude } : {}),
+    ...(contains.trim() !== "" ? { contains: contains.trim() } : {}),
+    ...(kind === "number" && parseNumber(min) !== null ? { min: parseNumber(min)! } : {}),
+    ...(kind === "number" && parseNumber(max) !== null ? { max: parseNumber(max)! } : {}),
+  });
+
   const apply = () => {
-    const next: ColumnFilter = {
-      ...(exclude.size > 0 ? { exclude } : {}),
-      ...(contains.trim() !== "" ? { contains: contains.trim() } : {}),
-      ...(kind === "number" && parseNumber(min) !== null ? { min: parseNumber(min)! } : {}),
-      ...(kind === "number" && parseNumber(max) !== null ? { max: parseNumber(max)! } : {}),
-    };
+    const next = draft();
     props.onApply(filterIsActive(next) ? next : undefined);
   };
 
@@ -194,7 +196,7 @@ function FilterPanel(props: {
         <Button
           variant="ghost"
           size="compact"
-          disabled={!filterIsActive(current)}
+          disabled={!filterIsActive(current) && !filterIsActive(draft())}
           onClick={() => props.onApply(undefined)}
         >
           Clear

@@ -59,7 +59,7 @@ const HEADER_HEIGHT = 24;
 const GUTTER_WIDTH = 44;
 const ROW_OVERSCAN = 8;
 const COLUMN_OVERSCAN_PX = 240;
-const MIN_RESIZED_COLUMN_PX = 40;
+const MIN_RESIZED_COLUMN_PX = 72;
 const MAX_RESIZED_COLUMN_PX = 800;
 /** Horizontal scroll is bucketed, so a pixel of drag does not repaint the grid. */
 const SCROLL_LEFT_BUCKET = 64;
