@@ -20,6 +20,8 @@ export interface SheetData {
   merges: Range[];
   rowHeights: Array<{ hpx?: number; hpt?: number; hidden?: boolean } | undefined>;
   hasFormulas: boolean;
+  /** Counts row inserts, deletes and reorders, so a view knows when its row order is stale. */
+  layout: number;
   /** Edited since load; an untouched sheet is written back exactly as it was read. */
   dirty: boolean;
   /** The sheet as read, kept for its non-cell settings (columns, filters, protection). */
@@ -40,6 +42,7 @@ export interface SpreadsheetDocument {
 const MIN_COLUMN_PX = 56;
 const MAX_COLUMN_PX = 320;
 const SAMPLE_ROWS = 100;
+const HEADER_BUTTONS_PX = 48;
 
 export function cellText(cell: CellObject | undefined): string {
   if (!cell) return "";
@@ -61,10 +64,12 @@ function sheetWidths(
     if (declared?.wpx) return clamp(declared.wpx);
     if (declared?.wch) return clamp(declared.wch * 7 + 8);
     let longest = 0;
-    for (let row = 0; row < Math.min(rows.length, SAMPLE_ROWS); row++) {
+    for (let row = 1; row < Math.min(rows.length, SAMPLE_ROWS); row++) {
       longest = Math.max(longest, cellText(rows[row]?.[column]).length);
     }
-    return clamp(longest * 7 + 20);
+    // The header carries the sort and filter buttons, so its text needs room beside them.
+    const header = cellText(rows[0]?.[column]).length;
+    return clamp(Math.max(longest * 7 + 20, header * 7 + 20 + HEADER_BUTTONS_PX));
   });
 }
 
@@ -86,6 +91,7 @@ export function createCsvDocument(text: string, delimiter: "," | "\t"): Spreadsh
         merges: [],
         rowHeights: [],
         hasFormulas: false,
+        layout: 0,
         dirty: false,
         source: null,
       },
@@ -166,6 +172,7 @@ function sheetFromWorksheet(name: string, worksheet: WorkSheet, XLSX: typeof imp
     merges: worksheet["!merges"] ?? [],
     rowHeights: (worksheet["!rows"] as SheetData["rowHeights"] | undefined) ?? [],
     hasFormulas,
+    layout: 0,
     dirty: false,
     source: worksheet,
   } satisfies SheetData;
@@ -296,6 +303,7 @@ export function insertRow(
       rows: sheet.rows.toSpliced(index, 0, []),
       rowHeights: sheet.rowHeights.toSpliced(index, 0, undefined),
       merges: sheet.merges.flatMap((range) => shiftRange(range, index, 1) ?? []),
+      layout: sheet.layout + 1,
       dirty: true,
     };
   });
@@ -313,6 +321,40 @@ export function deleteRow(
     rows: current.rows.toSpliced(at, 1),
     rowHeights: current.rowHeights.toSpliced(at, 1),
     merges: current.merges.flatMap((range) => shiftRange(range, at, -1) ?? []),
+    layout: current.layout + 1,
+    dirty: true,
+  }));
+}
+
+/** Whether rows below the header can move: a merge across them has no meaning after a reorder. */
+export function canReorderRows(sheet: SheetData): boolean {
+  return sheet.merges.every((range) => range.e.r === 0);
+}
+
+/**
+ * Write a new row order into the sheet. `order` lists the source rows below the header in
+ * their new sequence and must name each of them exactly once; the header stays row 0.
+ */
+export function reorderRows(
+  doc: SpreadsheetDocument,
+  sheetIndex: number,
+  order: ReadonlyArray<number>,
+): SpreadsheetDocument {
+  const sheet = doc.sheets[sheetIndex];
+  if (!sheet || !canReorderRows(sheet) || order.length !== sheet.rows.length - 1) return doc;
+  const seen = new Set(order);
+  if (seen.size !== order.length || order.some((row) => row < 1 || row >= sheet.rows.length)) {
+    return doc;
+  }
+  if (order.every((row, index) => row === index + 1)) return doc;
+  return withSheet(doc, sheetIndex, (current) => ({
+    ...current,
+    rows: [current.rows[0]!, ...order.map((row) => current.rows[row]!)],
+    rowHeights:
+      current.rowHeights.length > 0
+        ? [current.rowHeights[0], ...order.map((row) => current.rowHeights[row])]
+        : current.rowHeights,
+    layout: current.layout + 1,
     dirty: true,
   }));
 }

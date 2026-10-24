@@ -249,6 +249,15 @@ cells and column widths; fonts, colors and borders on edited sheets are dropped,
 so before you save. Saving a legacy `.xls` writes a new `.xlsx` next to it. Workbooks over 12 MB
 do not open, and attached spreadsheets are view-only.
 
+The first row is the header. Its buttons sort a column (ascending, descending, off; numbers, dates
+and Turkish text sort by their own rules) and open an Excel-style filter with value checkboxes,
+text contains or a number range. The search box matches words across all columns, and the status
+bar shows "N of M rows" with a way to clear filters. Sorting and filtering only change what you
+see; **Apply to file** writes a sort into the file, and formulas are not adjusted when rows move.
+Edits land in the right cell whatever the view. You can drag column edges to resize, freeze the
+first column, select a block and copy it as tab-separated text, and read a count and sum for the
+selection in the status bar.
+
 On web and desktop, files open beside the conversation with the same controls as a workspace
 file: a header row with the view toggle, **Copy contents** and **Save file**. On mobile, documents
 open in the same file screen as workspace files; its menu holds **Copy contents**, **Save or
