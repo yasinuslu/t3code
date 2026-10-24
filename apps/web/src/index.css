@@ -2423,6 +2423,16 @@ html[data-pane-ring] [data-pane][data-pane-active] {
   --t3-mono: var(--font-mono, ui-monospace, monospace);
 }
 
+/* The component a reply points at, marked for a moment after "↳ question" is tapped. A
+   transition, not an animation, so nothing repaints once it settles. */
+.t3-element-host {
+  border-radius: 12px;
+  transition: box-shadow 400ms ease-out;
+}
+.t3-element-host[data-t3-flash] {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
 /* exp/web-components: the full screen portal fades in once; nothing loops. */
 @keyframes t3-portal-in {
   from {

@@ -29,6 +29,7 @@ import {
 
 import { useAssetUrls } from "../../assets/assetUrls";
 import { cn } from "../../lib/utils";
+import { ElementAnswerContext } from "../../elements/ElementSlot";
 import ChatMarkdown from "../ChatMarkdown";
 import type { ExpandedImageItem } from "../chat/ExpandedImagePreview";
 import { BrowserDocumentFrame } from "../files/BrowserDocumentFrame";
@@ -219,12 +220,19 @@ export function SlideView(props: {
     case "doc":
       return (
         <ScrollArea className={cn("min-h-0", props.fit ? "max-h-[42vh]" : "flex-1")}>
-          <ChatMarkdown
-            text={slide.markdown}
-            cwd={undefined}
-            environmentId={props.environmentId}
-            className="mx-auto max-w-3xl px-6 py-5"
-          />
+          {/* A component on the page answers like a form page does: its own request, in place. */}
+          <ElementAnswerContext
+            value={
+              props.readOnly ? null : (text) => props.onAnswer(`${slide.key}:${Date.now()}`, text)
+            }
+          >
+            <ChatMarkdown
+              text={slide.markdown}
+              cwd={undefined}
+              environmentId={props.environmentId}
+              className="mx-auto max-w-3xl px-6 py-5"
+            />
+          </ElementAnswerContext>
         </ScrollArea>
       );
     case "html":

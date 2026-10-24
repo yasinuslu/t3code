@@ -34,7 +34,10 @@ import {
 import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentThreadDetails } from "../../state/threads";
-import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
+import {
+  parseComponentAnswer,
+  resolveUserMessagePresentation,
+} from "@t3tools/client-runtime/user-message";
 import { repairMarkdownFileLinks } from "@t3tools/client-runtime/repair-markdown-file-links";
 import { Link } from "@tanstack/react-router";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -125,6 +128,7 @@ import {
   ChevronRightIcon,
   ChevronUpIcon,
   CircleAlertIcon,
+  CornerDownRightIcon,
   DownloadIcon,
   EyeIcon,
   GitForkIcon,
@@ -158,7 +162,9 @@ import type {
   ComposerContextRecord,
   KnownComposerContextRecord,
 } from "@t3tools/contracts";
+import { findComponentSourceRowId, flashComponent } from "../../elements/jumpToComponent";
 import { Button, InlineButton } from "../ui/button";
+import { toastManager } from "../ui/toast";
 import { MorphIcon } from "~/components/MorphIcon";
 import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -338,6 +344,8 @@ interface TimelineRowSharedState {
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;
+  /** Scrolls to the component a reply (the row with this id) answered. */
+  onJumpToComponent: (question: string, fromRowId: string) => void;
   onCancelWorktreeSetup: (() => void) | null;
   retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
   onRetryWorkspacePreparation: ((runId: RunId) => void) | null;
@@ -1167,6 +1175,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [timelineViewportElement, rows.length, reportContentOverflow, chatWidth]);
 
+  // The rows change with every stream event, so the jump reads them through a ref.
+  const rowsRef = useRef(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+  const jumpToComponent = useCallback(
+    (question: string, fromRowId: string) => {
+      const sourceRowId = findComponentSourceRowId(rowsRef.current, fromRowId, question);
+      const index = rowsRef.current.findIndex((row) => row.id === sourceRowId);
+      if (sourceRowId === null || index < 0) {
+        toastManager.add({ type: "info", title: "That question is no longer in this thread" });
+        return;
+      }
+      onManualNavigation();
+      void Promise.resolve(listRef.current?.scrollToIndex({ index, animated: true })).then(() =>
+        flashComponent(sourceRowId, question),
+      );
+    },
+    [listRef, onManualNavigation],
+  );
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       citationRequest: readyCitationRequest,
@@ -1198,6 +1226,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onToggleCompactedHistory,
       onToggleWorkGroup,
       onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
+      onJumpToComponent: jumpToComponent,
       onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
       retryableWorkspacePreparationRunIds,
       onRetryWorkspacePreparation: onRetryWorkspacePreparation ?? null,
@@ -1234,6 +1263,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onToggleCompactedHistory,
       onToggleWorkGroup,
       suspendEndScrollMaintenanceForDisclosure,
+      jumpToComponent,
       onCancelWorktreeSetup,
       retryableWorkspacePreparationRunIds,
       onRetryWorkspacePreparation,
@@ -2010,7 +2040,21 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
   );
   const userMessage = resolveUserMessagePresentation(row.message);
-  const resolvedContext = useMemo(() => resolveUserMessageContext(row.message), [row.message]);
+  // A reply from an interactive component carries its question; the bubble shows only the answer.
+  const componentAnswer = useMemo(
+    () =>
+      row.message.createdBy === "agent" || row.message.context
+        ? null
+        : parseComponentAnswer(row.message.text),
+    [row.message.context, row.message.createdBy, row.message.text],
+  );
+  const resolvedContext = useMemo(
+    () =>
+      resolveUserMessageContext(
+        componentAnswer ? { ...row.message, text: componentAnswer.answer } : row.message,
+      ),
+    [componentAnswer, row.message],
+  );
   const previewImages = useMemo(
     () => userImages.filter((image) => image.name.startsWith("preview-annotation-")),
     [userImages],
@@ -2172,6 +2216,21 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       ) : null}
       {row.message.inputIntent && row.message.inputIntent !== "turn_start" ? (
         <UserMessageIntentMarker intent={row.message.inputIntent} />
+      ) : null}
+      {componentAnswer ? (
+        <p
+          className="me-1 flex max-w-[80%] items-center gap-1 text-2xs text-muted-foreground/70 [&_button]:min-w-0"
+          data-user-message-answer-to
+        >
+          <CornerDownRightIcon className="size-3 shrink-0" aria-hidden />
+          <InlineButton
+            onClick={() => ctx.onJumpToComponent(componentAnswer.question, row.id)}
+            tone="muted"
+            aria-label={`Show the question: ${componentAnswer.question}`}
+          >
+            <span className="block truncate">{componentAnswer.question}</span>
+          </InlineButton>
+        </p>
       ) : null}
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
         <MessageAuthorHeading>You</MessageAuthorHeading>

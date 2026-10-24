@@ -1,7 +1,12 @@
 import { ScheduledTaskId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveUserMessagePresentation } from "./userMessage.ts";
+import {
+  formatComponentAnswer,
+  normalizeComponentQuestion,
+  parseComponentAnswer,
+  resolveUserMessagePresentation,
+} from "./userMessage.ts";
 
 describe("resolveUserMessagePresentation", () => {
   const legacyText = "[Triggered by schedule task: Daily audit]\n\nCheck for crashes.\n";
@@ -66,5 +71,33 @@ describe("resolveUserMessagePresentation", () => {
         scheduledTaskId: "task:daily-audit",
       });
     }
+  });
+});
+
+describe("component answers", () => {
+  it("round-trips a question and its answer", () => {
+    const text = formatComponentAnswer("Which game next?", "Both are boring.\nSkip them.");
+    expect(text).toBe('[Answer to: "Which game next?"] Both are boring.\nSkip them.');
+    expect(parseComponentAnswer(text)).toEqual({
+      question: "Which game next?",
+      answer: "Both are boring.\nSkip them.",
+    });
+  });
+
+  it("keeps the question on one line the parser can read back", () => {
+    const question = 'Ship "it"?\n  Now';
+    const parsed = parseComponentAnswer(formatComponentAnswer(question, "Yes"));
+    expect(parsed).toEqual({ question: "Ship 'it'? Now", answer: "Yes" });
+    expect(normalizeComponentQuestion(question)).toBe(parsed?.question);
+    expect(normalizeComponentQuestion("x".repeat(400))).toHaveLength(160);
+  });
+
+  it("sends a bare answer when the component has no question", () => {
+    expect(formatComponentAnswer("  ", "Yes")).toBe("Yes");
+  });
+
+  it("leaves ordinary messages alone", () => {
+    expect(parseComponentAnswer("Answer to: nothing")).toBeNull();
+    expect(parseComponentAnswer('[Answer to: "q"] ')).toBeNull();
   });
 });
