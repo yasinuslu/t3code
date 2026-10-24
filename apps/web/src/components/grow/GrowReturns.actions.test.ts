@@ -13,6 +13,10 @@ const commands = vi.hoisted(() => ({
   update: vi.fn(),
 }));
 vi.mock("../ChatView", () => ({ default: () => null }));
+vi.mock("../../hooks/useThreadActions", () => ({
+  useThreadActions: () => ({ snoozeThread: vi.fn(), unsnoozeThread: vi.fn() }),
+}));
+vi.mock("../../hooks/useSnoozeMenu", () => ({ useSnoozeMenu: () => vi.fn() }));
 vi.mock("react", async (original) => ({
   ...(await original<typeof import("react")>()),
   useCallback: (callback: unknown) => callback,
