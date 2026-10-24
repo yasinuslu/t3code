@@ -1102,12 +1102,19 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 function SidebarThreadEnvironmentChip({
   label,
   machine,
+  className,
 }: {
   label: string | null;
   machine: EnvironmentMachineKind;
+  className?: string;
 }) {
   return (
-    <span className="inline-flex max-w-24 shrink items-center gap-1 rounded-sm bg-sidebar-muted-foreground/8 px-1 py-px text-2xs leading-4 text-sidebar-muted-foreground/80">
+    <span
+      className={cn(
+        "inline-flex max-w-24 shrink items-center gap-1 rounded-sm bg-sidebar-muted-foreground/8 px-1 py-px text-2xs leading-4 text-sidebar-muted-foreground/80",
+        className,
+      )}
+    >
       <EnvironmentMachineIcon aria-hidden kind={machine} className="size-3 shrink-0" />
       {label ? <span className="min-w-0 truncate">{label}</span> : null}
     </span>
@@ -2012,6 +2019,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   <SidebarThreadEnvironmentChip
                     label={props.environmentLabel}
                     machine={props.environmentMachine}
+                    // The hover-only chips need the room, and the hover card names the machine.
+                    className="group-focus-within/sidebar-row:hidden group-any-hover/sidebar-row:hidden"
                   />
                 ) : null}
                 <span className="hidden items-center gap-1.5 group-focus-within/sidebar-row:inline-flex group-any-hover/sidebar-row:inline-flex">
