@@ -288,7 +288,7 @@ import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
 import { DeviceSetup } from "./device/DeviceSetup";
-import { Dialog } from "./ui/dialog";
+import { Dialog, DialogPopup } from "./ui/dialog";
 import { WizardPopup } from "./ui/wizard";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -432,7 +432,6 @@ import { createPageScrollController, type PageScrollKey } from "./chat/pageScrol
 import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
-import { ThreadStatusPanel } from "./home/ThreadReportCard";
 import { ThreadPresentationPanel } from "./presentation/ThreadPresentationPanel";
 import { usePresentationUnseen } from "../presentationSeenStore";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -837,8 +836,6 @@ type ChatViewProps =
       autoFocusComposer?: boolean;
       /** Embedded in another view (Grow): no right panel and none of its toggles. */
       embedded?: boolean;
-      /** False: leave out the status report above the timeline, for a view that shows it beside the chat. */
-      statusReport?: boolean;
       /** False: typed letters stay with the host view's own keys instead of landing in the composer. */
       typeToFocusComposer?: boolean;
       routeKind: "server";
@@ -852,7 +849,6 @@ type ChatViewProps =
       forceExpandedMobileComposer?: boolean;
       autoFocusComposer?: boolean;
       embedded?: boolean;
-      statusReport?: boolean;
       typeToFocusComposer?: boolean;
       routeKind: "draft";
       draftId: DraftId;
@@ -1595,7 +1591,6 @@ export default function ChatView(props: ChatViewProps) {
     forceExpandedMobileComposer = false,
     autoFocusComposer = true,
     embedded = false,
-    statusReport = true,
     typeToFocusComposer = true,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
@@ -5427,10 +5422,13 @@ export default function ChatView(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "files");
   }, [activeProject, activeThreadRef]);
   const presentationAvailable = isServerThread && activeThreadRef !== null;
+  // A chat embedded in Grow has no right panel, so its presentation opens in a dialog.
+  const [presentationDialogOpen, setPresentationDialogOpen] = useState(false);
   const addPresentationSurface = useCallback(() => {
     if (!activeThreadRef || !presentationAvailable) return;
-    useRightPanelStore.getState().open(activeThreadRef, "presentation");
-  }, [activeThreadRef, presentationAvailable]);
+    if (embedded) setPresentationDialogOpen(true);
+    else useRightPanelStore.getState().open(activeThreadRef, "presentation");
+  }, [activeThreadRef, embedded, presentationAvailable]);
   const presentationUnseen = usePresentationUnseen(
     isServerThread ? activeThreadRef : null,
     activeThreadShell?.presentationUpdatedAt,
@@ -7053,8 +7051,9 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeProject, activeThreadRef]);
   const togglePresentationSurface = useCallback(() => {
     if (!activeThreadRef || !presentationAvailable) return;
-    useRightPanelStore.getState().toggle(activeThreadRef, "presentation");
-  }, [activeThreadRef, presentationAvailable]);
+    if (embedded) setPresentationDialogOpen((open) => !open);
+    else useRightPanelStore.getState().toggle(activeThreadRef, "presentation");
+  }, [activeThreadRef, embedded, presentationAvailable]);
   const toggleTerminalSurface = useCallback(() => {
     if (!activeThreadRef) return;
     if (!useRightPanelStore.getState().revealOrHideSurfaceOfKind(activeThreadRef, "terminal")) {
@@ -11104,7 +11103,9 @@ export default function ChatView(props: ChatViewProps) {
     onToggleThreadPanel: toggleThreadPanel,
     onToggleRightPanel: toggleRightPanel,
     presentationAvailable,
-    presentationOpen: rightPanelOpen && activeRightPanelKind === "presentation",
+    presentationOpen: embedded
+      ? presentationDialogOpen
+      : rightPanelOpen && activeRightPanelKind === "presentation",
     presentationUnseen,
     presentationShortcutLabel: shortcutLabelForCommand(
       keybindings,
@@ -11271,13 +11272,17 @@ export default function ChatView(props: ChatViewProps) {
               showUpdateControl={false}
               showTerminalControl={false}
               showRightPanelControl={false}
+              showPresentationControl
             />
           ) : null}
+          {embedded && activeThreadRef ? (
+            <Dialog open={presentationDialogOpen} onOpenChange={setPresentationDialogOpen}>
+              <DialogPopup className="h-[80vh] max-w-3xl overflow-hidden">
+                <ThreadPresentationPanel threadRef={activeThreadRef} />
+              </DialogPopup>
+            </Dialog>
+          ) : null}
         </header>
-        {activeThreadShell && statusReport ? (
-          <ThreadStatusPanel thread={activeThreadShell} />
-        ) : null}
-
         {/* Main content area with optional plan sidebar */}
         <div className="relative flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}

@@ -17,7 +17,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadStatusUpdateTool = Tool.make("thread_status_update", {
   description: [
-    "Set the status card shown at the top of the thread and on Home. Each call replaces the last; the card prefers it over your final answer for the run it was set in.",
+    "Set the thread's short status for Home and Grow, and its first presentation page (`status`, shown in the thread's Presentation tab, where web components render). Each call replaces the last; it is preferred over your final answer for the run it was set in. The presentation_* tools keep the rest of the dashboard.",
     "Write it like a short final report in markdown: a first paragraph saying where things stand (working, needs the user, done, or blocked on what), a `## What changed` list of up to 3 items, the proof image (required in the final report: the result with the change marked, a short GIF for motion, or an image of the evidence for work with nothing on screen), and a `## Needs you` section with the decision or action the user owes, if any.",
     "Embed screenshots as markdown images with absolute paths on this machine, e.g. `![Stage, before and after](/abs/path/stage.png)` (png, jpg, gif, webp). They are copied into the app's storage, so they survive the worktree or /tmp being removed.",
     "Call it at milestones and once more with your final report.",
@@ -57,7 +57,7 @@ const ThreadStatusUpdateTool = Tool.make("thread_status_update", {
     Crypto.Crypto,
   ],
 })
-  .annotate(Tool.Title, "Update thread status card")
+  .annotate(Tool.Title, "Update thread status")
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)

@@ -1624,7 +1624,6 @@ function Conversation(props: {
         reserveTitleBarControlInset={false}
         autoFocusComposer={false}
         embedded={props.stock !== true}
-        statusReport={false}
         typeToFocusComposer={false}
       />
     </section>

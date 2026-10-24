@@ -29,6 +29,8 @@ export interface PanelLayoutControlsProps {
   rightPanelUnavailableLabel?: string;
   /** The thread's presentation, one tap from anywhere in the thread; omitted where there is none. */
   presentationAvailable?: boolean;
+  /** Shown whenever the right panel control is, unless set: a chat in Grow has no panel but a dialog. */
+  showPresentationControl?: boolean;
   presentationOpen?: boolean;
   /** The presentation changed since the user last looked at it. */
   presentationUnseen?: boolean;
@@ -56,6 +58,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   rightPanelShortcutLabel,
   rightPanelUnavailableLabel = "Right panel is unavailable",
   presentationAvailable = false,
+  showPresentationControl = showRightPanelControl,
   presentationOpen = false,
   presentationUnseen = false,
   presentationShortcutLabel = null,
@@ -130,7 +133,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
           </TooltipPopup>
         </Tooltip>
       ) : null}
-      {showRightPanelControl && presentationAvailable && onTogglePresentation ? (
+      {showPresentationControl && presentationAvailable && onTogglePresentation ? (
         <Tooltip>
           <TooltipTrigger render={<span className="flex shrink-0" />}>
             <Toggle
