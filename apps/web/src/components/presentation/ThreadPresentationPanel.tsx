@@ -106,14 +106,17 @@ function PresentationBody(props: {
       ) : slide.kind === "doc" ? (
         <ScrollArea className="min-h-0 flex-1">
           {/* Not inside SlideView: a component's answer is a message on this thread. */}
-          <ChatMarkdown
-            key={slide.key}
-            text={slide.markdown}
-            cwd={undefined}
-            environmentId={thread.environmentId}
-            threadRef={threadRef}
-            className="px-4 py-4"
-          />
+          {/* An earlier version is a record: its decisions are no longer open. */}
+          <div inert={versions.past} className={versions.past ? "opacity-70" : undefined}>
+            <ChatMarkdown
+              key={slide.key}
+              text={slide.markdown}
+              cwd={undefined}
+              environmentId={thread.environmentId}
+              threadRef={threadRef}
+              className="px-4 py-4"
+            />
+          </div>
         </ScrollArea>
       ) : (
         <SlideView
