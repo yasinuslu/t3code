@@ -57,4 +57,16 @@ describe("forgejoChecks", () => {
     );
     expect(checks.map((check) => check.status).toSorted()).toEqual(["skipped", "success"]);
   });
+
+  it("keeps the newer status when two land in the same second", () => {
+    const at = "2026-10-23T16:05:42Z";
+    const [check] = forgejoChecks(
+      [
+        { context: "ship", status: "skipped", description: null, target_url: null, updated_at: at },
+        { context: "ship", status: "pending", description: null, target_url: null, updated_at: at },
+      ],
+      PR_URL,
+    );
+    expect(check?.status).toBe("skipped");
+  });
 });

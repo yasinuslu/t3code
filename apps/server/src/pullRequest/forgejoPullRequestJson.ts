@@ -233,6 +233,8 @@ function forgejoCheckStatus(status: string): PullRequestCheck["status"] {
       return "failure";
     case "skipped":
       return "skipped";
+    case "cancelled":
+      return "cancelled";
     case "warning":
       return "neutral";
     default:
@@ -245,7 +247,9 @@ export function forgejoChecks(
   baseUrl: string,
 ): ReadonlyArray<PullRequestCheck> {
   return dedupeChecks(
-    statuses.map((status) => ({
+    // The API lists newest first and times are per second; a tie goes to the later entry, so
+    // walk oldest first and a same-second "pending" then "skipped" keeps "skipped".
+    statuses.toReversed().map((status) => ({
       workflowName: null,
       at: status.updated_at,
       check: {
