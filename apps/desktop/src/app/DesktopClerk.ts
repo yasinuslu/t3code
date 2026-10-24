@@ -184,19 +184,23 @@ export const make = Effect.gen(function* () {
         return true;
       };
       // `t3code://threads/<env>/<thread>` clicked outside the app (or in a client that has no
-      // thread chips) arrives through the OS URL handler. A cold start has no window yet, so
-      // wait for the first one and let its initial load finish before navigating.
+      // thread chips) arrives through the OS URL handler. The unlocked main window (never a
+      // profile window, which only shows its own profile's threads, and never the connecting
+      // splash) gets the thread's hash route once its first load is done. Setting the hash
+      // navigates in place, so composer drafts survive, and a window still on sign-in or
+      // first run keeps the hash for when its router mounts. A cold start has no window yet,
+      // so wait for it.
       const openThreadLink = (value: string | undefined) => {
         const target = value ? parseThreadLinkHref(value) : null;
         if (!target) return false;
-        const destination = ElectronProtocol.getDesktopThreadUrl(environment.isDevelopment, target);
+        const hash = ElectronProtocol.getDesktopThreadHash(target);
         void runPromise(
           Effect.gen(function* () {
             yield* electronApp.whenReady;
-            let mainWindow = yield* electronWindow.currentMainOrFirst;
+            let mainWindow = yield* electronWindow.main;
             for (let attempt = 0; Option.isNone(mainWindow) && attempt < 120; attempt += 1) {
               yield* Effect.sleep("250 millis");
-              mainWindow = yield* electronWindow.currentMainOrFirst;
+              mainWindow = yield* electronWindow.main;
             }
             if (Option.isNone(mainWindow)) return;
             const window = mainWindow.value;
@@ -205,7 +209,10 @@ export const make = Effect.gen(function* () {
                 window.webContents.once("did-stop-loading", () => resume(Effect.void));
               }).pipe(Effect.timeout("15 seconds"), Effect.ignore);
             }
-            yield* Effect.promise(() => window.loadURL(destination));
+            yield* Effect.promise(() =>
+              // encodeURIComponent output never contains a double quote or backslash.
+              window.webContents.executeJavaScript(`window.location.hash = "${hash}"`),
+            );
             yield* electronWindow.reveal(window);
           }).pipe(
             Effect.catchCause((cause) => Effect.logWarning("Could not open thread link", cause)),
