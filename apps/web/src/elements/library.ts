@@ -4,7 +4,7 @@
  * A tag the copy here lacks refetches it, so a component an agent just added shows up.
  */
 import type { ElementManifest, EnvironmentId } from "@t3tools/contracts";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { growEnvironment } from "../state/grow";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -20,6 +20,9 @@ const inFlight = new Set<string>();
 const loadedBundles = new Set<string>();
 const listeners = new Set<() => void>();
 const REFETCH_AFTER_MS = 10_000;
+// Right after a reload the socket may not be up yet; the fetch fails and would never be asked again.
+const RETRY_AFTER_MS = 1_500;
+const MAX_RETRIES = 10;
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
@@ -50,18 +53,25 @@ export function useElementsLibrary(
   const key = environmentId ?? "";
   const library = useSyncExternalStore(subscribe, () => libraries.get(key)?.library ?? null);
   const missing = library !== null && !library.components.has(wanted);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (environmentId === null) return;
     const cached = libraries.get(key);
     if (cached !== undefined && (!missing || Date.now() - cached.at < REFETCH_AFTER_MS)) return;
     if (inFlight.has(key)) return;
     inFlight.add(key);
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     void fetchLibrary({
       environmentId,
       input: cached === undefined ? {} : { knownHash: cached.library.hash },
     })
       .then(async (result) => {
-        if (result._tag !== "Success") return;
+        if (result._tag !== "Success") {
+          if (attempt < MAX_RETRIES) {
+            retryTimer = setTimeout(() => setAttempt(attempt + 1), RETRY_AFTER_MS);
+          }
+          return;
+        }
         const state = result.value;
         let error = state.error;
         if (state.bundle !== undefined) {
@@ -80,6 +90,7 @@ export function useElementsLibrary(
         for (const listener of listeners) listener();
       })
       .finally(() => inFlight.delete(key));
-  }, [environmentId, fetchLibrary, key, missing]);
+    return () => clearTimeout(retryTimer);
+  }, [attempt, environmentId, fetchLibrary, key, missing]);
   return library;
 }
