@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { forgejoChecks, resolveForgejoTargetUrl } from "./forgejoPullRequestJson.ts";
 
@@ -35,5 +35,26 @@ describe("forgejoChecks", () => {
       PR_URL,
     );
     expect(check?.url).toBe("https://git.nepjua.org/Selfmerce/Selfmerce/actions/runs/31/jobs/4");
+  });
+
+  it("reads a finished run with a skipped job as finished", () => {
+    // The statuses Forgejo returned for a green t3code PR whose ship job only runs on dev.
+    const status = (context: string, state: string, at: string) => ({
+      context: `Nix desktop build (linux) / ${context} (pull_request)`,
+      status: state,
+      description: null,
+      target_url: null,
+      updated_at: at,
+    });
+    const checks = forgejoChecks(
+      [
+        status("build", "success", "2026-10-23T16:05:42Z"),
+        status("ship", "skipped", "2026-10-23T16:05:42Z"),
+        status("build", "pending", "2026-10-23T15:57:38Z"),
+        status("ship", "pending", "2026-10-23T15:57:37Z"),
+      ],
+      PR_URL,
+    );
+    expect(checks.map((check) => check.status).toSorted()).toEqual(["skipped", "success"]);
   });
 });

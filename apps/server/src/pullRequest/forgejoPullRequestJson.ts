@@ -222,6 +222,24 @@ export function resolveForgejoTargetUrl(
   }
 }
 
+// Forgejo Actions also reports "skipped" (a job whose `if` was false) and "warning". Reading them
+// as pending would keep a finished run looking unfinished, so a watched PR never hears "passed".
+function forgejoCheckStatus(status: string): PullRequestCheck["status"] {
+  switch (status) {
+    case "success":
+      return "success";
+    case "failure":
+    case "error":
+      return "failure";
+    case "skipped":
+      return "skipped";
+    case "warning":
+      return "neutral";
+    default:
+      return "pending";
+  }
+}
+
 export function forgejoChecks(
   statuses: ReadonlyArray<typeof ForgejoStatus.Type>,
   baseUrl: string,
@@ -234,12 +252,7 @@ export function forgejoChecks(
         name: status.context || "check",
         description: status.description || null,
         url: resolveForgejoTargetUrl(status.target_url, baseUrl),
-        status:
-          status.status === "success"
-            ? "success"
-            : status.status === "failure" || status.status === "error"
-              ? "failure"
-              : "pending",
+        status: forgejoCheckStatus(status.status),
       },
     })),
   );
