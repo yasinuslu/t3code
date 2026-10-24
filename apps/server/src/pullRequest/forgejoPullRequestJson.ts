@@ -222,24 +222,41 @@ export function resolveForgejoTargetUrl(
   }
 }
 
+// Forgejo Actions also reports "skipped" (a job whose `if` was false) and "warning". Reading them
+// as pending would keep a finished run looking unfinished, so a watched PR never hears "passed".
+function forgejoCheckStatus(status: string): PullRequestCheck["status"] {
+  switch (status) {
+    case "success":
+      return "success";
+    case "failure":
+    case "error":
+      return "failure";
+    case "skipped":
+      return "skipped";
+    case "cancelled":
+      return "cancelled";
+    case "warning":
+      return "neutral";
+    default:
+      return "pending";
+  }
+}
+
 export function forgejoChecks(
   statuses: ReadonlyArray<typeof ForgejoStatus.Type>,
   baseUrl: string,
 ): ReadonlyArray<PullRequestCheck> {
   return dedupeChecks(
-    statuses.map((status) => ({
+    // The API lists newest first and times are per second; a tie goes to the later entry, so
+    // walk oldest first and a same-second "pending" then "skipped" keeps "skipped".
+    statuses.toReversed().map((status) => ({
       workflowName: null,
       at: status.updated_at,
       check: {
         name: status.context || "check",
         description: status.description || null,
         url: resolveForgejoTargetUrl(status.target_url, baseUrl),
-        status:
-          status.status === "success"
-            ? "success"
-            : status.status === "failure" || status.status === "error"
-              ? "failure"
-              : "pending",
+        status: forgejoCheckStatus(status.status),
       },
     })),
   );
