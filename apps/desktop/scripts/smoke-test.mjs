@@ -1,7 +1,9 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
-import { resolveElectronLaunchCommand } from "./electron-launcher.mjs";
+import { refuseAgentDesktopWindow, resolveElectronLaunchCommand } from "./electron-launcher.mjs";
+
+refuseAgentDesktopWindow();
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const desktopDir = NodePath.resolve(__dirname, "..");

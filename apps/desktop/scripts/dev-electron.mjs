@@ -7,8 +7,11 @@ import {
   desktopDir,
   resolveDevProtocolClient,
   resolveElectronLaunchCommand,
+  refuseAgentDesktopWindow,
 } from "./electron-launcher.mjs";
 import { waitForResources } from "./wait-for-resources.mjs";
+
+refuseAgentDesktopWindow();
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
 if (!devServerUrl) {

@@ -481,3 +481,23 @@ export function resolveDevProtocolClient() {
     appBundleId: APP_BUNDLE_ID,
   };
 }
+
+/**
+ * Agents test T3 in the browser. A coding agent (detected by its environment) that starts
+ * Electron would put a window on the developer's screen, so it must opt in, and should do so
+ * only on a virtual display: `xvfb-run -a env T3CODE_DESKTOP_ALLOW_WINDOW=1 vp run dev:desktop`.
+ */
+export function refuseAgentDesktopWindow() {
+  const agent =
+    process.env.T3CODE_THREAD_ID || process.env.CLAUDECODE || process.env.CODEX_THREAD_ID;
+  if (!agent || process.env.T3CODE_DESKTOP_ALLOW_WINDOW === "1") return;
+  console.error(
+    [
+      "[desktop] Refusing to open an Electron window from an agent session.",
+      "Test in the browser instead: `vp run dev` and the T3 preview browser.",
+      "If the desktop shell itself must be tested, use a virtual display and remote debugging:",
+      "  xvfb-run -a env T3CODE_DESKTOP_ALLOW_WINDOW=1 T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT=9333 vp run dev:desktop",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
