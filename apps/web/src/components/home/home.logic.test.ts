@@ -5,7 +5,7 @@ import {
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { digestThreadReport, plainInline } from "./home.logic";
+import { digestThreadReport, elementsToPlainText, plainInline } from "./home.logic";
 
 const REPORT = `Code profiles are built, tested and pushed, and running in a dev preview on **nika**.
 
@@ -86,5 +86,27 @@ describe("plainInline", () => {
     expect(plainInline("**Bold** and `code`, [link](http://x) and _soft_ text")).toBe(
       "Bold and code, link and soft text",
     );
+  });
+});
+
+describe("components in a report", () => {
+  const withHeadline = [
+    "<t3-headline>",
+    '{"outcome":"Every thread gets a presentation.","kicker":"T3","status":"Started","tone":"info","move":"Nothing yet"}',
+    "</t3-headline>",
+    "",
+    "- Where it lives: one tap away.",
+  ].join("\n");
+
+  it("reads a headline's outcome as the summary, never its JSON", () => {
+    const digest = digestThreadReport(withHeadline);
+    expect(digest.summary).toBe("Every thread gets a presentation.");
+    expect(digest.bullets).toEqual(["Where it lives: one tap away."]);
+  });
+
+  it("drops components with no words and half-written tags", () => {
+    expect(elementsToPlainText('<t3-chart>{"data":[1,2]}</t3-chart>Done.')).toBe("Done.");
+    expect(elementsToPlainText("Done. <t3-deci")).toBe("Done. <t3-deci");
+    expect(elementsToPlainText("Done.\n</t3-decision>")).toBe("Done.\n");
   });
 });

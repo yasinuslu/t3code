@@ -1,20 +1,15 @@
 /**
  * The status card of a thread: its latest report (or the status its agent set
  * with `thread_status_update`) digested into a summary, what changed,
- * screenshots and what needs the user. Home shows it per work card, and the
- * thread shows the same card pinned above its messages.
+ * screenshots and what needs the user. Home and Grow show it per work card.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { type WorkReason, classifyWorkThread } from "@t3tools/client-runtime/state/work-overview";
+import type { WorkReason } from "@t3tools/client-runtime/state/work-overview";
 import type { AssetResource, EnvironmentId, ThreadGrowRequest } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
-import { ChevronDownIcon, ExternalLinkIcon, PlayIcon } from "lucide-react";
+import { ExternalLinkIcon, PlayIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 
 import { useAssetUrls } from "../../assets/assetUrls";
-import { useLocalStorage } from "../../hooks/useLocalStorage";
-import { cn } from "../../lib/utils";
-import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { brainstormEnvironment } from "../../state/brainstorm";
 import { previewEnvironment } from "../../state/preview";
 import { useEnvironmentQuery } from "../../state/query";
@@ -239,72 +234,4 @@ export function useReportImages(
     [screenshots, urls],
   );
   return images;
-}
-
-const PANEL_OPEN_KEY = "t3code:thread-status-panel-open";
-
-/**
- * The thread's status card, pinned above its messages so the outcome, the
- * screenshots and what needs the user stay in view however long the thread
- * gets. Collapses to one line; the choice is remembered across threads.
- */
-export function ThreadStatusPanel(props: { readonly thread: EnvironmentThreadShell }) {
-  const { thread } = props;
-  const { digest, tryUrls, pullRequests } = useThreadReport(thread);
-  const [open, setOpen] = useLocalStorage(PANEL_OPEN_KEY, true, Schema.Boolean);
-  const work = classifyWorkThread(thread, Date.now());
-  const look = work ? WORK_REASON_LOOK[work.reason] : null;
-  const updatedAt = thread.statusUpdatedAt ?? thread.latestRun?.completedAt ?? null;
-  if (!digest.summary && digest.screenshots.length === 0 && digest.questions.length === 0) {
-    return null;
-  }
-  return (
-    <section
-      aria-label="Thread status"
-      className="shrink-0 border-b bg-card/60 text-card-foreground"
-      data-thread-status-panel={thread.id}
-    >
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 py-2">
-        <button
-          type="button"
-          className="flex min-w-0 items-center gap-2 text-start text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          {look ? (
-            <>
-              <span aria-hidden className={cn("size-2 shrink-0 rounded-full", look.dot)} />
-              <span className="shrink-0 font-medium">{look.label}</span>
-            </>
-          ) : null}
-          {open ? (
-            <span className="min-w-0 flex-1" />
-          ) : (
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {digest.questions[0] ?? digest.summary}
-            </span>
-          )}
-          {updatedAt ? (
-            <span className="shrink-0 text-muted-foreground tabular-nums">
-              {formatRelativeTimeLabel(updatedAt)}
-            </span>
-          ) : null}
-          <ChevronDownIcon
-            aria-hidden
-            className={cn("size-3.5 shrink-0 text-muted-foreground", open ? "rotate-180" : "")}
-          />
-        </button>
-        {open ? (
-          <div className="flex max-h-[40vh] min-w-0 flex-col gap-2 overflow-y-auto pb-1">
-            <ThreadReportBody
-              environmentId={thread.environmentId}
-              threadId={thread.id}
-              digest={digest}
-            />
-            <ThreadReportLinks tryUrls={tryUrls} pullRequests={pullRequests} />
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
 }

@@ -1,16 +1,9 @@
-import { afterEach, expect, it } from "@effect/vitest";
+import { expect, it } from "@effect/vitest";
 
-import {
-  buildRuntimeInstructions,
-  setPresentationInstructionsEnabled,
-} from "./RuntimeInstructions.ts";
+import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
-afterEach(() => setPresentationInstructionsEnabled(false));
-
-it("asks for a presentation only while the experimental presentation is on", () => {
-  expect(buildRuntimeInstructions({ harness: "Claude Code" })).not.toContain("<presentation>");
-  setPresentationInstructionsEnabled(true);
-  expect(buildRuntimeInstructions({ harness: "Claude Code" })).toContain("<presentation>");
-  setPresentationInstructionsEnabled(false);
-  expect(buildRuntimeInstructions({ harness: "Claude Code" })).not.toContain("<presentation>");
+it("always asks agents to keep the thread's presentation, with the status feeding it", () => {
+  const instructions = buildRuntimeInstructions({ harness: "Claude Code" });
+  expect(instructions).toContain("<presentation>");
+  expect(instructions).toContain("thread_status_update only feeds its first page");
 });

@@ -23,6 +23,7 @@ import type { ThreadPanelPresentation } from "./rightPanelLayout";
 const RIGHT_PANEL_KINDS = [
   "diff",
   "files",
+  "presentation",
   "file",
   "preview",
   "device",
@@ -53,6 +54,8 @@ export type RightPanelSurface =
     }
   | { id: "diff"; kind: "diff" }
   | { id: "files"; kind: "files" }
+  /** The thread's living presentation; one per thread, so a singleton like diff and files. */
+  | { id: "presentation"; kind: "presentation" }
   | {
       id: `file:${string}` | `attachment:${string}`;
       kind: "file";
@@ -212,6 +215,8 @@ const singletonSurface = (
       return { id: "diff", kind };
     case "files":
       return { id: "files", kind };
+    case "presentation":
+      return { id: "presentation", kind };
     case "pull-requests":
       return { id: "pull-requests", kind };
     case "device":

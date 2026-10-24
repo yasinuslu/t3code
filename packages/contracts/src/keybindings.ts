@@ -115,6 +115,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "rightPanel.close",
   "rightPanel.toggleTerminal",
   "rightPanel.toggleFiles",
+  "rightPanel.togglePresentation",
   "rightPanel.togglePullRequest",
   "pullRequest.copyNumber",
   "diff.toggle",

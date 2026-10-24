@@ -535,6 +535,21 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("keeps the presentation as a singleton surface and toggles it", () => {
+    const store = useRightPanelStore.getState();
+    store.toggle(refA, "presentation");
+    store.open(refA, "presentation");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "presentation",
+      surfaces: [{ id: "presentation", kind: "presentation" }],
+    });
+    useRightPanelStore.getState().toggle(refA, "presentation");
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).isOpen,
+    ).toBe(false);
+  });
+
   it("opens workspace-root links as the singleton files explorer", () => {
     const store = useRightPanelStore.getState();
     store.openFile(refA, "README.md");

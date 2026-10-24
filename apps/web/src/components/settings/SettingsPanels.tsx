@@ -3312,7 +3312,7 @@ export function GeneralSettingsPanel() {
           serverScoped
           settingKeys={["growPresentation"]}
           {...searchableSetting("grow-presentation")}
-          description="Grow shows each thread's presentation and Live preview instead of its conversation, and agents are asked to keep a presentation."
+          description="Grow shows each thread's presentation and Live preview instead of its conversation, and living pages are composed. Every thread's presentation is always in its right panel."
           resetAction={
             settings.growPresentation !== DEFAULT_UNIFIED_SETTINGS.growPresentation ? (
               <SettingResetButton

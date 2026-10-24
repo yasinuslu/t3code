@@ -117,9 +117,39 @@ function firstParagraph(lines: ReadonlyArray<string>): string | null {
   return text.length > 0 ? text : null;
 }
 
+/** The prop of a component's JSON that says what it is about, in the order worth showing. */
+const ELEMENT_TEXT_KEYS = ["outcome", "title", "question", "prompt", "text", "summary"] as const;
+
+/**
+ * A reply or report with its `<t3-*>` components reduced to plain text, for the places that show
+ * text and not components (cards, rows, one-line summaries): a component's headline or title
+ * stays as a line, and one with nothing to say as text (a chart, a table) is dropped, so raw
+ * component JSON never reaches a summary.
+ */
+export function elementsToPlainText(text: string): string {
+  return text
+    .replace(/<(t3-[a-z0-9-]+)\b[^>]*>([\s\S]*?)<\/\1>/g, (_whole, _tag: string, body: string) => {
+      const trimmed = body.trim();
+      if (!trimmed.startsWith("{")) return trimmed;
+      try {
+        const props: unknown = JSON.parse(trimmed);
+        if (typeof props !== "object" || props === null) return "";
+        for (const key of ELEMENT_TEXT_KEYS) {
+          const value = (props as Record<string, unknown>)[key];
+          if (typeof value === "string" && value.trim() !== "") return `\n\n${value.trim()}\n\n`;
+        }
+      } catch {
+        // A half-written body is not text worth showing.
+      }
+      return "";
+    })
+    .replace(/<\/?t3-[^>\n]*>/g, "");
+}
+
 /** Reads a final report the way the HTML reports agents make lay it out. */
-export function digestThreadReport(text: string | null | undefined): ThreadReportDigest {
-  if (!text) return { summary: null, bullets: [], tryUrls: [], screenshots: [], questions: [] };
+export function digestThreadReport(source: string | null | undefined): ThreadReportDigest {
+  if (!source) return { summary: null, bullets: [], tryUrls: [], screenshots: [], questions: [] };
+  const text = elementsToPlainText(source);
   const sections = sectionsOf(text);
   const allLines = sections.flatMap((section) => section.lines);
   // Links and images count only in prose, not in code blocks.

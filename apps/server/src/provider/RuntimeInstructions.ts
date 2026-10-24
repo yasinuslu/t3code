@@ -10,11 +10,13 @@ When the t3-code MCP server exposes preview_environment_up and the project defin
 </preview_linking>`;
 
 const STATUS_UPDATE_INSTRUCTIONS = `<thread_status>
-When the t3-code MCP server exposes thread_status_update, use it to keep the thread's status card current: at milestones and with your final report, pass where things stand, what changed, the proof image, and what the user owes, if anything. Each call replaces the last. The status text is plain markdown (web components render in chat replies, not on the status card). With the final report pass outcome "needs-you" when the user owes a move, or "done" when the result has landed (merged and deployed, report delivered, card written) and nothing is needed, so the thread settles itself. The final report must carry at least one proof image by absolute path: something the user understands at a glance without reading. For a visible change, a screenshot of the result with the change marked (before and after when it helps); for motion or a flow, a short looping GIF; for work with nothing on screen, an image of the evidence (the report page, the passing check, the output). Without a presentation, Grow shows that image first, and an item without either reads as unproven. When it exposes grow_update and your thread has something the user can open, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons". Every thread ends in something the owner can open and play with: for an app it is the running preview, for work without an interface it is an HTML page that demonstrates it (a report, demo or pitch, with video or screenshots when useful), linked as the thread's preview like any other. A standalone prototype (not a branch of an existing app) is a small clean Bun project, server plus client, that starts with "bun install" and "bun dev"; a feature of an existing app uses that app's own stack and preview.
+When the t3-code MCP server exposes thread_status_update, use it for the thread's short status on Home and Grow: at milestones and with your final report, pass where things stand, what changed, the proof image, and what the user owes, if anything. Each call replaces the last, and lands as the first page of the thread's presentation (the single place status lives; web components render there), so keep the rest of the presentation current with the presentation tools. With the final report pass outcome "needs-you" when the user owes a move, or "done" when the result has landed (merged and deployed, report delivered, card written) and nothing is needed, so the thread settles itself. The final report must carry at least one proof image by absolute path: something the user understands at a glance without reading. For a visible change, a screenshot of the result with the change marked (before and after when it helps); for motion or a flow, a short looping GIF; for work with nothing on screen, an image of the evidence (the report page, the passing check, the output). An item without a proof image reads as unproven. When it exposes grow_update and your thread has something the user can open, also call it with stage "play" and a one-line "became", and record what the user says they learned with "addLessons". Every thread ends in something the owner can open and play with: for an app it is the running preview, for work without an interface it is an HTML page that demonstrates it (a report, demo or pitch, with video or screenshots when useful), linked as the thread's preview like any other. A standalone prototype (not a branch of an existing app) is a small clean Bun project, server plus client, that starts with "bun install" and "bun dev"; a feature of an existing app uses that app's own stack and preview.
 </thread_status>`;
 
 const PRESENTATION_INSTRUCTIONS = `<presentation>
-When the t3-code MCP server exposes presentation_edit, keep a presentation of your work: the idea in a form the user grasps at a glance, which Grow shows first, beside the conversation and the live preview. It is a living artifact, not a final report: create it early, as soon as there is an idea to show, and edit it as the work changes, the way you edit code. Read it with presentation_get, change pages by id with presentation_edit, and replace the whole list with presentation_set only when it is cleaner. Every message you answer gets its own version, and the user can step back through them. One to four pages: a screenshot of the result with marks boxing what changed, a short markdown page (the decision, a before and after table), a small self-contained interactive HTML page (a mock to click through, a chart), or a form page when you need the user to decide (a few questions; the answers come back as a message). Keep words few and let the pages show the idea.
+When the t3-code MCP server exposes presentation_edit, keep the thread's presentation: its live dashboard, one tap from anywhere in the thread (the Presentation tab of the right panel, Ctrl+Alt+R), which the user glances at instead of scrolling the conversation. It is a living artifact, not a final report: create it as soon as there is something to show, and update it at every milestone (the plan settled, a check went green, a screenshot exists, a decision is open), the way you edit code. Read it with presentation_get, change pages by id with presentation_edit, and replace the whole list with presentation_set only when that is cleaner. Every message you answer gets its own version, and the user can step back through them; the tab shows an "updated" dot when you changed it since they looked.
+The pages are markdown that renders the web components (t3-headline first: outcome, status and the user's next move; then t3-steps, t3-checks, t3-metrics, t3-screenshot or t3-compare for proof, t3-decision or t3-poll for an open question, whose answer comes back to you as the user's next message). A page can also be a marked screenshot, a small interactive HTML page or a form page. One to four pages; keep words few and let the components show where things stand.
+This replaces the scattered status: the presentation is the full picture, and thread_status_update only feeds its first page and the short line on Home, never a second, different account.
 </presentation>`;
 
 /**
@@ -44,18 +46,8 @@ function toSingleLine(value: string): string {
   return value.replaceAll(/\s+/g, " ").trim();
 }
 
-let presentationEnabled = false;
-
-/**
- * Mirrors the `growPresentation` server setting (GrowPresentationSetting.ts keeps it current), so
- * the synchronous builders above can ask for a presentation only while Grow shows one.
- */
-export function setPresentationInstructionsEnabled(enabled: boolean): void {
-  presentationEnabled = enabled;
-}
-
-/** The presentation ask while it is switched on, then the web-component catalog when a library is set. */
+/** The presentation ask, then the web-component catalog when a library is set. */
 function withElements(includeElements: boolean): string {
   const elements = includeElements ? elementsInstructions() : "";
-  return `${presentationEnabled ? `\n\n${PRESENTATION_INSTRUCTIONS}` : ""}${elements === "" ? "" : `\n\n${elements}`}`;
+  return `\n\n${PRESENTATION_INSTRUCTIONS}${elements === "" ? "" : `\n\n${elements}`}`;
 }

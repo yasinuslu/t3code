@@ -1,4 +1,4 @@
-import { PanelBottomIcon, PanelRightIcon, SquareMenuIcon } from "lucide-react";
+import { PanelBottomIcon, PanelRightIcon, PresentationIcon, SquareMenuIcon } from "lucide-react";
 import { Maximize2, Minimize2 } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { memo, type ReactElement } from "react";
@@ -27,6 +27,15 @@ export interface PanelLayoutControlsProps {
   rightPanelOpen: boolean;
   rightPanelShortcutLabel: string | null;
   rightPanelUnavailableLabel?: string;
+  /** The thread's presentation, one tap from anywhere in the thread; omitted where there is none. */
+  presentationAvailable?: boolean;
+  /** Shown whenever the right panel control is, unless set: a chat in Grow has no panel but a dialog. */
+  showPresentationControl?: boolean;
+  presentationOpen?: boolean;
+  /** The presentation changed since the user last looked at it. */
+  presentationUnseen?: boolean;
+  presentationShortcutLabel?: string | null;
+  onTogglePresentation?: () => void;
   onToggleTerminal: () => void;
   onToggleThreadPanel: () => void;
   onToggleRightPanel: () => void;
@@ -48,6 +57,12 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   rightPanelOpen,
   rightPanelShortcutLabel,
   rightPanelUnavailableLabel = "Right panel is unavailable",
+  presentationAvailable = false,
+  showPresentationControl = showRightPanelControl,
+  presentationOpen = false,
+  presentationUnseen = false,
+  presentationShortcutLabel = null,
+  onTogglePresentation,
   onToggleTerminal,
   onToggleThreadPanel,
   onToggleRightPanel,
@@ -115,6 +130,35 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
             {terminalAvailable
               ? `Toggle terminal drawer${terminalShortcutLabel ? ` (${terminalShortcutLabel})` : ""}`
               : "Terminal drawer is unavailable"}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
+      {showPresentationControl && presentationAvailable && onTogglePresentation ? (
+        <Tooltip>
+          <TooltipTrigger render={<span className="flex shrink-0" />}>
+            <Toggle
+              className="relative shrink-0 [-webkit-app-region:no-drag]"
+              pressed={presentationOpen}
+              onPressedChange={onTogglePresentation}
+              aria-label={
+                presentationUnseen ? "Toggle presentation, updated" : "Toggle presentation"
+              }
+              variant="ghost"
+              size="sm"
+            >
+              <PresentationIcon className="size-4" />
+              {presentationUnseen ? (
+                <span
+                  className="absolute right-1 top-1 size-1.5 rounded-full bg-info ring-2 ring-background"
+                  aria-hidden="true"
+                  data-presentation-updated
+                />
+              ) : null}
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            {presentationUnseen ? "Presentation, updated" : "Presentation"}
+            {presentationShortcutLabel ? ` (${presentationShortcutLabel})` : ""}
           </TooltipPopup>
         </Tooltip>
       ) : null}
