@@ -26,7 +26,9 @@ import { readThreadShell, useThreadProjection } from "../state/entities";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { toastManager } from "../components/ui/toast";
-import { elementPlainText, elementProps, elementQuestion } from "./elementProps";
+import { elementProps } from "@t3tools/shared/elementProps";
+
+import { elementPlainText, elementQuestion } from "./elementProps";
 import { useElementsLibrary } from "./library";
 import { PortalHost } from "./PortalHost";
 import { type PortalRequest, parsePortalRequest } from "./portalLogic";

@@ -222,3 +222,9 @@ Before the first time you use a component in a thread, call the \`elements_descr
 ${catalog}
 </web_components>`;
 }
+
+/** The library's components by tag, hidden ones included (the chat draws them too). */
+export function elementComponents(): ReadonlyMap<string, ElementManifest> {
+  const { state } = load(elementsLibraryDir());
+  return new Map(state.components.map((component) => [component.tag, component]));
+}
