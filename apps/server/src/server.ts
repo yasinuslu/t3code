@@ -7,6 +7,7 @@ import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReact
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
 import * as AccountFailoverReactor from "./orchestration-v2/AccountFailoverReactor.ts";
 import * as ProofRequestReactor from "./orchestration-v2/ProofRequestReactor.ts";
+import * as ComponentRepairReactor from "./orchestration-v2/ComponentRepairReactor.ts";
 import * as PromptRetryReactor from "./orchestration-v2/PromptRetryReactor.ts";
 import * as PreviewLinkReportReactor from "./orchestration-v2/PreviewLinkReportReactor.ts";
 // @effect-diagnostics nodeBuiltinImport:off
@@ -717,6 +718,13 @@ const makeRoutesLayer = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ProofRequestReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
+  // Tells an agent which components in its finished reply render as error cards.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* ComponentRepairReactor.ComponentRepairReactor;
+      yield* service.start();
+    }),
+  ).pipe(Layer.provide(ComponentRepairReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
   // Keeps each thread's living page current with a cheap writer model, apart from its agent.
   Layer.effectDiscard(
     Effect.gen(function* () {

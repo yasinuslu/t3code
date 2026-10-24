@@ -2209,6 +2209,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             >
               Sent by another agent
             </InlineButton>
+          ) : row.message.creationSource === "server" ? (
+            "Sent by T3 Code"
           ) : (
             "Sent by another agent"
           )}

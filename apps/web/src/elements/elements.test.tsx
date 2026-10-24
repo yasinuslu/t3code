@@ -5,7 +5,9 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { describe, expect, it } from "vite-plus/test";
 
-import { elementPlainText, elementProps, trimPartialElementTag } from "./elementProps";
+import { elementProps } from "@t3tools/shared/elementProps";
+
+import { elementPlainText, trimPartialElementTag } from "./elementProps";
 import { ELEMENT_SLOT_PROPERTIES, rehypeElements } from "./rehypeElements";
 
 const decision: ElementManifest = {
