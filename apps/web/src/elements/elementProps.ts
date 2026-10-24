@@ -3,6 +3,7 @@
  * model can get it wrong (bad JSON, a missing prop, a half-streamed body) is decided here and the
  * slot only draws the outcome.
  */
+import { normalizeComponentQuestion } from "@t3tools/client-runtime/user-message";
 import type { ElementManifest } from "@t3tools/contracts";
 
 export type ElementPropsResult =
@@ -142,4 +143,13 @@ export function elementPlainText(body: string): string {
   } catch {
     return trimmed;
   }
+}
+
+/** The question an interactive component asks, whatever that component calls the prop. */
+export function elementQuestion(props: Readonly<Record<string, unknown>>): string {
+  for (const name of ["question", "prompt", "title"]) {
+    const value = props[name];
+    if (typeof value === "string" && value.trim() !== "") return normalizeComponentQuestion(value);
+  }
+  return "";
 }

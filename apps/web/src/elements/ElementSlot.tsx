@@ -5,11 +5,14 @@
  * (the library's base class) or is caught here. Interactive components talk back through
  * `t3-send`, which becomes the user's next message on the thread.
  */
+import { formatComponentAnswer, parseComponentAnswer } from "@t3tools/client-runtime/user-message";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { BlocksIcon, TriangleAlertIcon } from "lucide-react";
+import { BlocksIcon, CheckIcon, TriangleAlertIcon } from "lucide-react";
 import {
   Component,
+  createContext,
   type ReactNode,
+  use,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -19,14 +22,20 @@ import {
 } from "react";
 
 import { cn, newMessageId } from "../lib/utils";
-import { readThreadShell } from "../state/entities";
+import { readThreadShell, useThreadProjection } from "../state/entities";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { toastManager } from "../components/ui/toast";
-import { elementPlainText, elementProps } from "./elementProps";
+import { elementPlainText, elementProps, elementQuestion } from "./elementProps";
 import { useElementsLibrary } from "./library";
 import { PortalHost } from "./PortalHost";
 import { type PortalRequest, parsePortalRequest } from "./portalLogic";
+
+/**
+ * Where a component answers when it is not inside a thread's messages (a Grow page). It gets the
+ * reply text, already carrying its question, and sends it the way that surface sends replies.
+ */
+export const ElementAnswerContext = createContext<((text: string) => void) | null>(null);
 
 interface ElementSlotProps {
   readonly tag: string;
@@ -83,6 +92,7 @@ function ElementSlotInner(props: ElementSlotProps) {
       props={result.props}
       threadRef={props.threadRef}
       plainText={elementPlainText(props.body)}
+      interactive={manifest.interactive === true}
     />
   );
 }
@@ -93,29 +103,46 @@ function LiveElement(props: {
   readonly props: Record<string, unknown>;
   readonly threadRef: ScopedThreadRef | undefined;
   readonly plainText: string;
+  readonly interactive: boolean;
 }) {
   const host = useRef<HTMLSpanElement>(null);
   const element = useRef<HTMLElement | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [portal, setPortal] = useState<PortalRequest | null>(null);
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const answerElsewhere = use(ElementAnswerContext);
+  // The question travels with the answer, so the agent and the transcript both know what it
+  // answers. The answer itself is remembered here to lock the component until the thread
+  // projection (which is what survives a reload) catches up.
+  const question = useMemo(() => elementQuestion(props.props), [props.props]);
+  const [sentAnswer, setSentAnswer] = useState<string | null>(null);
+  const threadAnswer = useThreadAnswer(props.interactive ? props.threadRef : undefined, question);
+  const answer = sentAnswer ?? threadAnswer;
   const send = useEffectEvent((text: string) => {
     const threadRef = props.threadRef;
+    const reply = formatComponentAnswer(question, text);
+    if (answerElsewhere !== null && !threadRef) {
+      setSentAnswer(text);
+      answerElsewhere(reply);
+      return;
+    }
     const shell = threadRef ? readThreadShell(threadRef) : undefined;
     if (!threadRef || !shell) {
       toastManager.add({ type: "error", title: "This message cannot answer its thread" });
       return;
     }
+    setSentAnswer(text);
     void startTurn({
       environmentId: threadRef.environmentId,
       input: {
         threadId: threadRef.threadId,
-        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+        message: { messageId: newMessageId(), role: "user", text: reply, attachments: [] },
         runtimeMode: shell.runtimeMode,
         interactionMode: shell.interactionMode,
       },
     }).then((result) => {
       if (result._tag === "Failure") {
+        setSentAnswer(null);
         toastManager.add({ type: "error", title: "Could not send the answer" });
       }
     });
@@ -179,6 +206,13 @@ function LiveElement(props: {
     }
   }, [props.props]);
 
+  // An answered component stays on screen but takes no second answer.
+  const answered = answer !== null;
+  useEffect(() => {
+    const current = element.current as (HTMLElement & Record<string, unknown>) | null;
+    if (current !== null) current.readOnly = answered;
+  }, [answered]);
+
   if (failure !== null) {
     return (
       <Fallback tag={props.tag} body={props.plainText} tone="error" errors={[failure]}>
@@ -187,8 +221,27 @@ function LiveElement(props: {
     );
   }
   return (
-    <span className="t3-element-host my-3 block" data-t3-live={props.tag}>
-      <span ref={host} className="block" />
+    <span
+      className="t3-element-host my-3 block"
+      data-t3-live={props.tag}
+      data-t3-question={question === "" ? undefined : question}
+    >
+      {/* Dimmed and inert once answered, so it no longer looks open. */}
+      <span
+        ref={host}
+        className={cn("block", answered && "pointer-events-none opacity-60")}
+        aria-disabled={answered || undefined}
+      />
+      {answer !== null ? (
+        <span
+          className="mt-1.5 flex min-w-0 items-center gap-1.5 px-1 text-foreground/80 text-xs"
+          data-t3-answered
+        >
+          <CheckIcon className="size-3.5 shrink-0 text-success" aria-hidden />
+          <span className="shrink-0">Answered</span>
+          <span className="min-w-0 truncate text-foreground">{answer}</span>
+        </span>
+      ) : null}
       {portal !== null ? (
         <PortalHost
           request={portal}
@@ -204,6 +257,25 @@ function LiveElement(props: {
       <span className="sr-only">{props.plainText}</span>
     </span>
   );
+}
+
+/**
+ * The answer this thread already holds for the component asking `question`, or null. Only
+ * interactive components ask (`threadRef` stays undefined for the rest), so a streaming thread
+ * does not re-render every component. Two components with the same question share an answer.
+ */
+function useThreadAnswer(threadRef: ScopedThreadRef | undefined, question: string): string | null {
+  const projection = useThreadProjection(threadRef ?? null)?.projection;
+  return useMemo(() => {
+    if (question === "" || !projection) return null;
+    for (let index = projection.messages.length - 1; index >= 0; index -= 1) {
+      const message = projection.messages[index];
+      if (message?.role !== "user") continue;
+      const parsed = parseComponentAnswer(message.text);
+      if (parsed?.question === question) return parsed.answer;
+    }
+    return null;
+  }, [projection, question]);
 }
 
 function Placeholder(props: { readonly tag: string }) {
