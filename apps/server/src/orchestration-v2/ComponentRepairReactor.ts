@@ -1,7 +1,6 @@
 import {
   CommandId,
   type ElementManifest,
-  isProviderNativeSubagentThread,
   MessageId,
   type OrchestrationV2AppThread,
   type OrchestrationV2Command,
@@ -11,6 +10,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
+import { latestExecutedRun } from "@t3tools/shared/orchestrationV2ThreadError";
 import { type ElementProblem, elementBlocks, elementProblems } from "@t3tools/shared/elementProps";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -93,13 +93,15 @@ export function componentRepairCommand(input: {
   readonly components: ReadonlyMap<string, ElementManifest>;
 }): OrchestrationV2Command | null {
   const { thread, runId } = input;
-  const run = input.runs.find((candidate) => candidate.id === runId);
+  const run = latestExecutedRun(input.runs);
   if (
-    run?.status !== "completed" ||
+    run?.id !== runId ||
+    run.status !== "completed" ||
     run.userMessageId.startsWith(COMPONENT_REPAIR_PREFIX) ||
     thread.archivedAt !== null ||
     thread.deletedAt !== null ||
-    isProviderNativeSubagentThread(thread)
+    // Subagents and delegated tasks report to their parent, which shows the user their result.
+    thread.lineage.relationshipToParent === "subagent"
   )
     return null;
   const problems = brokenComponents(

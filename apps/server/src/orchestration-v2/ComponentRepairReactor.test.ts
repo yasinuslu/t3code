@@ -124,7 +124,24 @@ describe("componentRepairCommand", () => {
     ).toBeNull();
   });
 
-  it("skips unfinished runs, archived threads and provider subagents", () => {
+  it("leaves an older run alone once a newer one ran", () => {
+    const newer = run({
+      id: RunId.make("run-2"),
+      ordinal: 2,
+      userMessageId: MessageId.make("message:2"),
+    });
+    expect(
+      componentRepairCommand({
+        thread: thread(),
+        runs: [run(), newer],
+        runId: RUN_ID,
+        messages: [reply(BROKEN)],
+        components,
+      }),
+    ).toBeNull();
+  });
+
+  it("skips unfinished runs, archived threads and subagents", () => {
     expect(check([reply(BROKEN)], { run: run({ status: "interrupted" }) })).toBeNull();
     expect(
       check([reply(BROKEN)], {
@@ -134,7 +151,7 @@ describe("componentRepairCommand", () => {
     expect(
       check([reply(BROKEN)], {
         thread: thread({
-          creationSource: "provider",
+          creationSource: "mcp",
           lineage: {
             parentThreadId: ThreadId.make("parent"),
             relationshipToParent: "subagent",

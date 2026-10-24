@@ -170,7 +170,13 @@ export function elementBlocks(markdown: string): ReadonlyArray<ElementBlock> {
     if (fenceMatch) {
       const marker = fenceMatch[1]!;
       if (fence === null) fence = marker;
-      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+      // A closing fence carries no info string.
+      else if (
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        line.slice(fenceMatch[0].length).trim() === ""
+      )
+        fence = null;
       continue;
     }
     if (fence !== null) continue;

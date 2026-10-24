@@ -68,6 +68,11 @@ describe("elementProblems", () => {
       "```html",
       "<t3-poll>\n{}\n</t3-poll>",
       "```",
+      "```md",
+      "```js",
+      "<t3-poll>\n{}\n</t3-poll>",
+      "```",
+      "```",
     ].join("\n");
     expect(elementProblems(text, library)).toEqual([]);
   });
