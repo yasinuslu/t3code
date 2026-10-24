@@ -1091,6 +1091,36 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   ),
 };
 
+/**
+ * Names the machine a thread runs on, at the end of the row's detail line:
+ * the environment's machine icon plus its short label (the server's
+ * hostname, e.g. "joyboy"), clipped so a long name never pushes the provider
+ * stack out. The row's hover card carries the full name; rows on this machine
+ * render nothing (see showEnvironmentChip). Decorative: the row's accessible
+ * name comes from resolveSidebarRowAccessibility.
+ */
+function SidebarThreadEnvironmentChip({
+  label,
+  machine,
+  className,
+}: {
+  label: string | null;
+  machine: EnvironmentMachineKind;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-24 shrink items-center gap-1 rounded-sm bg-sidebar-muted-foreground/8 px-1 py-px text-2xs leading-4 text-sidebar-muted-foreground/80",
+        className,
+      )}
+    >
+      <EnvironmentMachineIcon aria-hidden kind={machine} className="size-3 shrink-0" />
+      {label ? <span className="min-w-0 truncate">{label}</span> : null}
+    </span>
+  );
+}
+
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   thread: SidebarThreadSummary;
   // "grow" is the row lent to Grow: one calm shape for every thread, the title
@@ -1135,6 +1165,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
   currentEnvironmentId: string | null;
+  // True once the catalog spans more than one environment (see showProjectEnvironments).
+  showEnvironment: boolean;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
   project: EnvironmentProject | null;
@@ -1361,11 +1393,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     ? getTriggerDisplayModelLabel(selectedModel)
     : thread.modelSelection.model;
 
-  // The local environment is "this machine" and needs no marker; every other
-  // one gets its machine glyph. With no local environment (the hosted app)
-  // that is every thread, which is the point: the glyph is what tells rows on
-  // different machines apart.
-  const isRemote = thread.environmentId !== props.currentEnvironmentId;
+  // The local environment is "this machine" and needs no marker; once the
+  // catalog spans more than one environment, every row on another machine
+  // names it (icon plus short label). With no local environment (the hosted
+  // app) that is every thread, which is the point: the chip is what tells rows
+  // on different machines apart. A single-environment catalog stays quiet.
+  const showEnvironmentChip =
+    props.showEnvironment && thread.environmentId !== props.currentEnvironmentId;
 
   const detailsTooltip = (
     <SidebarThreadTooltip
@@ -1981,6 +2015,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 {pinIndicator}
                 {terminalStatusIcon}
                 {prBadge}
+                {showEnvironmentChip ? (
+                  <SidebarThreadEnvironmentChip
+                    label={props.environmentLabel}
+                    machine={props.environmentMachine}
+                    // The hover-only chips need the room, and the hover card names the machine.
+                    className="group-focus-within/sidebar-row:hidden group-any-hover/sidebar-row:hidden"
+                  />
+                ) : null}
                 <span className="hidden items-center gap-1.5 group-focus-within/sidebar-row:inline-flex group-any-hover/sidebar-row:inline-flex">
                   {previewLinksChip}
                   {sandboxIndicator}
@@ -2302,14 +2344,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 aria-hidden
                 className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
               >
-                {isRemote ? (
-                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-                    <EnvironmentMachineIcon
-                      aria-hidden
-                      kind={props.environmentMachine}
-                      className="size-3.5"
-                    />
-                  </span>
+                {showEnvironmentChip ? (
+                  <SidebarThreadEnvironmentChip
+                    label={props.environmentLabel}
+                    machine={props.environmentMachine}
+                  />
                 ) : null}
                 <SidebarProviderStack
                   thread={thread}
@@ -5127,6 +5166,7 @@ export default function Sidebar() {
         openPullRequestsInRightPanel={routeThreadRef !== null}
         jumpLabel={!external && showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null}
         currentEnvironmentId={primaryEnvironmentId}
+        showEnvironment={showProjectEnvironments}
         environmentLabel={environmentLabelById.get(thread.environmentId) ?? null}
         environmentMachine={environmentMachineById.get(thread.environmentId) ?? "server"}
         project={projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null}
