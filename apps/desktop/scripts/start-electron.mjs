@@ -1,7 +1,13 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 
-import { desktopDir, resolveElectronLaunchCommand } from "./electron-launcher.mjs";
+import {
+  desktopDir,
+  resolveElectronLaunchCommand,
+  refuseAgentDesktopWindow,
+} from "./electron-launcher.mjs";
+
+refuseAgentDesktopWindow();
 
 NodeChildProcess.execFileSync(
   process.execPath,
