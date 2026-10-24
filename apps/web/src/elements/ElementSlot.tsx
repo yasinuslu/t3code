@@ -7,7 +7,7 @@
  */
 import { formatComponentAnswer, parseComponentAnswer } from "@t3tools/client-runtime/user-message";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { BlocksIcon, CornerDownRightIcon, TriangleAlertIcon } from "lucide-react";
+import { BlocksIcon, CheckIcon, TriangleAlertIcon } from "lucide-react";
 import {
   Component,
   createContext,
@@ -226,13 +226,18 @@ function LiveElement(props: {
       data-t3-live={props.tag}
       data-t3-question={question === "" ? undefined : question}
     >
-      <span ref={host} className="block" />
+      {/* Dimmed and inert once answered, so it no longer looks open. */}
+      <span
+        ref={host}
+        className={cn("block", answered && "pointer-events-none opacity-60")}
+        aria-disabled={answered || undefined}
+      />
       {answer !== null ? (
         <span
-          className="mt-1.5 flex min-w-0 items-center gap-1.5 px-1 text-muted-foreground text-xs"
+          className="mt-1.5 flex min-w-0 items-center gap-1.5 px-1 text-foreground/80 text-xs"
           data-t3-answered
         >
-          <CornerDownRightIcon className="size-3 shrink-0" aria-hidden />
+          <CheckIcon className="size-3.5 shrink-0 text-success" aria-hidden />
           <span className="shrink-0">Answered</span>
           <span className="min-w-0 truncate text-foreground">{answer}</span>
         </span>
