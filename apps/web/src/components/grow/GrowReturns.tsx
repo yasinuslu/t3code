@@ -20,7 +20,6 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { WidgetThreadFacts } from "../../widgetFrame/protocol";
 import {
-  ComposerContextId,
   type EnvironmentId,
   type GrowDecision,
   type GrowKeybindingCommand,
@@ -29,7 +28,6 @@ import {
   type ThreadGrowRequest,
   type ThreadId,
 } from "@t3tools/contracts";
-import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlarmClockIcon,
@@ -97,7 +95,7 @@ import { useThreadActions } from "../../hooks/useThreadActions";
 import { useStackedLayout } from "../../hooks/useStackedLayout";
 import { useClientSettings, useGrowPresentation } from "../../hooks/useSettings";
 import { isInlineComponentEvent } from "../../lib/editableFocus";
-import { cn, newMessageId, randomUUID } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 import { useSidebarThreadRowSlot } from "../../sidebarThreadRowSlot";
 import { readThreadShell, useProjects, useThreadShell } from "../../state/entities";
 import { growEnvironment, useGrowCards, useGrowLoaded } from "../../state/grow";
@@ -123,6 +121,7 @@ import {
   VersionStepper,
 } from "./GrowPresentation";
 import type { Slide } from "./presentation.logic";
+import { useSendGrowRequest } from "./useSendGrowRequest";
 import { Button } from "../ui/button";
 import { StartPreviewButton, StopPreviewButton } from "./PreviewEnvironment";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -255,18 +254,8 @@ function hideManager() {
 
 const proofAsksInFlight = new Set<string>();
 
-/** The chip a Grow request shows as in the conversation. */
-const GROW_REQUEST_LABEL: Record<GrowRequestKind, string> = {
-  presentation: "Presentation",
-  ship: "Ship",
-  change: "What if",
-  reply: "Reply",
-  form: "Answers",
-};
-
 /** The actions on a return, wired to the thread and its grow card. */
 export function useReturnActions(moveOn: (item: GrowReturn) => void) {
-  const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const update = useAtomCommand(growEnvironment.update);
   const settleThread = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
   const unsettleThread = useAtomCommand(threadEnvironment.unsettle, { reportFailure: false });
@@ -282,6 +271,7 @@ export function useReturnActions(moveOn: (item: GrowReturn) => void) {
       input: { threadId: item.thread.id, decision },
     });
 
+  const sendRequest = useSendGrowRequest();
   /** Sends a typed request: the agent reads what it asks, the thread keeps it until answered. */
   const send = async (
     item: GrowReturn,
@@ -290,33 +280,12 @@ export function useReturnActions(moveOn: (item: GrowReturn) => void) {
     dispatchMode?: "queue",
     id?: string,
   ) => {
-    const contextId = ComposerContextId.make(id ?? `grow-${randomUUID()}`);
-    const label = GROW_REQUEST_LABEL[request];
-    const reference = formatComposerContextReference({ kind: "grow-request", contextId, label });
-    const result = await startTurn({
-      environmentId: item.thread.environmentId,
-      input: {
-        threadId: item.thread.id,
-        ...(dispatchMode === undefined ? {} : { dispatchMode }),
-        message: {
-          messageId: newMessageId(),
-          role: "user",
-          text: words === "" ? reference : `${reference} ${words}`,
-          context: {
-            version: 1,
-            records: [{ version: 1, contextId, kind: "grow-request", label, request }],
-          },
-          attachments: [],
-        },
-        runtimeMode: item.thread.runtimeMode,
-        interactionMode: item.thread.interactionMode,
-      },
+    const sent = await sendRequest(item.thread, request, words, {
+      ...(dispatchMode === undefined ? {} : { dispatchMode }),
+      ...(id === undefined ? {} : { id }),
     });
-    if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: `Could not reach ${item.headline}` });
-      return false;
-    }
-    return true;
+    if (!sent) toastManager.add({ type: "error", title: `Could not reach ${item.headline}` });
+    return sent;
   };
 
   const refOf = (item: GrowReturn) => scopeThreadRef(item.thread.environmentId, item.thread.id);

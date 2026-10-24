@@ -1440,8 +1440,8 @@ export const ServerSettings = Schema.Struct({
   growWidgetPool: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
    * Experimental: Grow shows a thread's presentation and Live preview instead of its plain
-   * conversation, agents are asked to keep a presentation, and living pages are composed. The
-   * presentation data and `presentation_*` tools work either way.
+   * conversation, and living pages are composed. The presentation tab in a thread's right panel,
+   * the `presentation_*` tools and the agents' ask to keep one work either way.
    */
   growPresentation: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   textGenerationModelSelection: ModelSelection.pipe(

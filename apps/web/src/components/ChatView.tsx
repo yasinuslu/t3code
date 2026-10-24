@@ -433,6 +433,8 @@ import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { ThreadStatusPanel } from "./home/ThreadReportCard";
+import { ThreadPresentationPanel } from "./presentation/ThreadPresentationPanel";
+import { usePresentationUnseen } from "../presentationSeenStore";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
@@ -5424,6 +5426,15 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
   }, [activeProject, activeThreadRef]);
+  const presentationAvailable = isServerThread && activeThreadRef !== null;
+  const addPresentationSurface = useCallback(() => {
+    if (!activeThreadRef || !presentationAvailable) return;
+    useRightPanelStore.getState().open(activeThreadRef, "presentation");
+  }, [activeThreadRef, presentationAvailable]);
+  const presentationUnseen = usePresentationUnseen(
+    isServerThread ? activeThreadRef : null,
+    activeThreadShell?.presentationUpdatedAt,
+  );
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequests = visibleThreadPullRequests(
@@ -7040,6 +7051,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().toggle(activeThreadRef, "files");
   }, [activeProject, activeThreadRef]);
+  const togglePresentationSurface = useCallback(() => {
+    if (!activeThreadRef || !presentationAvailable) return;
+    useRightPanelStore.getState().toggle(activeThreadRef, "presentation");
+  }, [activeThreadRef, presentationAvailable]);
   const toggleTerminalSurface = useCallback(() => {
     if (!activeThreadRef) return;
     if (!useRightPanelStore.getState().revealOrHideSurfaceOfKind(activeThreadRef, "terminal")) {
@@ -7944,6 +7959,13 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "rightPanel.togglePresentation") {
+        event.preventDefault();
+        event.stopPropagation();
+        togglePresentationSurface();
+        return;
+      }
+
       if (command === "rightPanel.toggleFiles") {
         event.preventDefault();
         event.stopPropagation();
@@ -8144,6 +8166,7 @@ export default function ChatView(props: ChatViewProps) {
     toggleTerminalVisibility,
     toggleTerminalSurface,
     toggleFilesSurface,
+    togglePresentationSurface,
     togglePullRequestSurface,
     composerRef,
     draftId,
@@ -10931,6 +10954,11 @@ export default function ChatView(props: ChatViewProps) {
             : undefined
         }
       />
+    ) : renderedRightPanelSurface?.kind === "presentation" && activeThreadRef ? (
+      <ThreadPresentationPanel
+        key={`${activeThread.environmentId}:${activeThread.id}`}
+        threadRef={activeThreadRef}
+      />
     ) : renderedRightPanelSurface?.kind === "pull-requests" && activeThreadRef ? (
       <ThreadPullRequestsPanel threadRef={activeThreadRef} />
     ) : renderedRightPanelSurface?.kind === "device" ? (
@@ -11075,6 +11103,14 @@ export default function ChatView(props: ChatViewProps) {
     onToggleTerminal: toggleTerminalVisibility,
     onToggleThreadPanel: toggleThreadPanel,
     onToggleRightPanel: toggleRightPanel,
+    presentationAvailable,
+    presentationOpen: rightPanelOpen && activeRightPanelKind === "presentation",
+    presentationUnseen,
+    presentationShortcutLabel: shortcutLabelForCommand(
+      keybindings,
+      "rightPanel.togglePresentation",
+    ),
+    onTogglePresentation: togglePresentationSurface,
   } satisfies PanelLayoutControlsProps;
   const panelToggleControls = (
     <PanelLayoutControls
@@ -11867,6 +11903,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddTerminal={addTerminalSurface}
           onAddDiff={addDiffSurface}
           onAddFiles={addFilesSurface}
+          onAddPresentation={addPresentationSurface}
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
           onAddDevice={addDeviceSurface}
@@ -11874,6 +11911,7 @@ export default function ChatView(props: ChatViewProps) {
           terminalAvailable={activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
+          presentationAvailable={presentationAvailable}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           deviceAvailable={activeThreadRef !== null}
@@ -11922,6 +11960,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
+            onAddPresentation={addPresentationSurface}
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
             onAddDevice={addDeviceSurface}
@@ -11929,6 +11968,7 @@ export default function ChatView(props: ChatViewProps) {
             terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}
+            presentationAvailable={presentationAvailable}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             deviceAvailable={activeThreadRef !== null}

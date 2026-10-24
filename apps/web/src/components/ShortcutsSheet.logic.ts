@@ -57,6 +57,7 @@ const GLOBAL_ROWS: ReadonlyArray<{
     rows: [
       { label: "Terminal", commands: ["terminal.toggle"] },
       { label: "Diff", commands: ["diff.toggle"] },
+      { label: "Presentation", commands: ["rightPanel.togglePresentation"] },
       { label: "Preview", commands: ["preview.toggle"] },
       { label: "Usage", commands: ["usage.open"] },
     ],
