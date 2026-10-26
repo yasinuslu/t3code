@@ -68,18 +68,20 @@ describe("AssetAccess", () => {
       expect(authorizations).toEqual([undefined, "Bearer signed-in", "Bearer signed-in"]);
     }).pipe(
       Effect.provide(
-        Layer.mock(GitHubCli.GitHubCli)({
-          execute: () =>
-            Effect.sync(() => ({
-              exitCode: ChildProcessSpawner.ExitCode(0),
-              stdout: ++lookups === 1 ? "" : "signed-in",
-              stderr: "",
-              stdoutTruncated: false,
-              stderrTruncated: false,
-            })),
-        }),
+        Layer.merge(
+          Layer.mock(GitHubCli.GitHubCli)({
+            execute: () =>
+              Effect.sync(() => ({
+                exitCode: ChildProcessSpawner.ExitCode(0),
+                stdout: ++lookups === 1 ? "" : "signed-in",
+                stderr: "",
+                stdoutTruncated: false,
+                stderrTruncated: false,
+              })),
+          }),
+          Layer.mock(ForgejoCli.ForgejoCli)({}),
+        ),
       ),
-      Effect.provide(Layer.mock(ForgejoCli.ForgejoCli)({})),
       Effect.provideService(
         HttpClient.HttpClient,
         HttpClient.make((request) => {

@@ -123,7 +123,7 @@ describe("web components in Codex context", () => {
     const previous = process.env.T3CODE_ELEMENTS_LIBRARY;
     process.env.T3CODE_ELEMENTS_LIBRARY = dir;
     try {
-      const context = buildCodexAdditionalContext({ model: "gpt" });
+      const context = buildCodexAdditionalContext({ model: "gpt", reasoningEffort: "medium" });
       NodeAssert.match(context.t3_code_web_components?.value ?? "", /<web_components>/);
       NodeAssert.doesNotMatch(context.t3_code_runtime?.value ?? "", /<web_components>/);
     } finally {

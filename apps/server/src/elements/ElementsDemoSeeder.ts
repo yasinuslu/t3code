@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics globalDate:off
 /**
  * Experimental: seeds hand-written demo conversations as real, active threads
  * from `T3CODE_ELEMENTS_DEMO` (a directory of `*.json` files), without starting
