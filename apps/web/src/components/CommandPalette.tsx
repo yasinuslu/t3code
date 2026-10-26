@@ -108,7 +108,7 @@ import {
 } from "./promptLinks/copyPromptLink";
 import {
   useClientSettings,
-  useForkFeatures,
+  useGrowEnabled,
   useGrowIsHome,
   updateClientSettings,
 } from "../hooks/useSettings";
@@ -521,7 +521,7 @@ function OpenCommandPaletteDialog(props: {
   }
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
   const windowLayout = useClientSettings((settings) => settings.windowLayout);
-  const forkFeatures = useForkFeatures();
+  const growEnabled = useGrowEnabled();
   const growIsHome = useGrowIsHome();
   const appMode = useAppMode();
   const paletteRouteThread = useParams({
@@ -1675,89 +1675,87 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (forkFeatures) {
+  actionItems.push({
+    kind: "action",
+    value: "action:manager",
+    searchTerms: ["manager", "chat", "overlay", "goals", "tasks", "status", "plan"],
+    title: "Show or hide the manager",
+    icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "manager.toggle",
+    run: async () => toggleManager(),
+  });
+
+  for (const [direction, command, title] of severalProfiles
+    ? ([
+        [1, "profile.next", "Switch to the next profile"],
+        [-1, "profile.previous", "Switch to the previous profile"],
+      ] as const)
+    : []) {
     actionItems.push({
       kind: "action",
-      value: "action:manager",
-      searchTerms: ["manager", "chat", "overlay", "goals", "tasks", "status", "plan"],
-      title: "Show or hide the manager",
+      value: `action:${command}`,
+      searchTerms: ["profile", "switch", "space", "yu", "sn", "code profile", "manager"],
+      title,
       icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-      shortcutCommand: "manager.toggle",
-      run: async () => toggleManager(),
+      shortcutCommand: command,
+      run: async () => stepProfile(direction),
     });
+  }
 
-    for (const [direction, command, title] of severalProfiles
-      ? ([
-          [1, "profile.next", "Switch to the next profile"],
-          [-1, "profile.previous", "Switch to the previous profile"],
-        ] as const)
-      : []) {
+  if (growIsHome) {
+    const onScreen = growOnScreenThread();
+    if (appMode !== "grow") {
       actionItems.push({
         kind: "action",
-        value: `action:${command}`,
-        searchTerms: ["profile", "switch", "space", "yu", "sn", "code profile", "manager"],
-        title,
+        value: "action:mode-grow",
+        searchTerms: ["grow", "home", "back", "main", "deck", "mode", "view"],
+        title: "Back to Grow",
         icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: command,
-        run: async () => stepProfile(direction),
+        shortcutCommand: "mode.grow",
+        run: async () => backToGrow(paletteRouteThread),
       });
-    }
-
-    if (growIsHome) {
-      const onScreen = growOnScreenThread();
-      if (appMode !== "grow") {
-        actionItems.push({
-          kind: "action",
-          value: "action:mode-grow",
-          searchTerms: ["grow", "home", "back", "main", "deck", "mode", "view"],
-          title: "Back to Grow",
-          icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-          shortcutCommand: "mode.grow",
-          run: async () => backToGrow(paletteRouteThread),
-        });
-      } else if (onScreen !== null) {
-        actionItems.push({
-          kind: "action",
-          value: "action:full-view",
-          searchTerms: [
-            "full view",
-            "diff",
-            "changes",
-            "terminal",
-            "files",
-            "panel",
-            "threads",
-            "classic",
-          ],
-          title: "Open this thread in full view (diff, terminal, files)",
-          icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-          shortcutCommand: "mode.normal",
-          run: async () => void openFullView(onScreen),
-        });
-      }
+    } else if (onScreen !== null) {
       actionItems.push({
         kind: "action",
-        value: "action:archived-threads",
-        searchTerms: ["archived", "archive", "threads", "unarchive", "old"],
-        title: "Show archived threads",
+        value: "action:full-view",
+        searchTerms: [
+          "full view",
+          "diff",
+          "changes",
+          "terminal",
+          "files",
+          "panel",
+          "threads",
+          "classic",
+        ],
+        title: "Open this thread in full view (diff, terminal, files)",
         icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-        run: async () => {
-          await navigate({ to: "/settings/archived" });
-        },
+        shortcutCommand: "mode.normal",
+        run: async () => void openFullView(onScreen),
       });
     }
+    actionItems.push({
+      kind: "action",
+      value: "action:archived-threads",
+      searchTerms: ["archived", "archive", "threads", "unarchive", "old"],
+      title: "Show archived threads",
+      icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({ to: "/settings/archived" });
+      },
+    });
+  }
 
-    for (const entry of growIsHome ? [] : APP_MODES) {
-      actionItems.push({
-        kind: "action",
-        value: `action:mode-${entry.mode}`,
-        searchTerms: ["mode", "switch", "view", "grow", "home", "normal", "threads", "t3"],
-        title: `Switch to ${entry.label} mode`,
-        icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: entry.command,
-        run: async () => setAppMode(entry.mode),
-      });
-    }
+  for (const entry of growEnabled && !growIsHome ? APP_MODES : []) {
+    actionItems.push({
+      kind: "action",
+      value: `action:mode-${entry.mode}`,
+      searchTerms: ["mode", "switch", "view", "grow", "home", "normal", "threads", "t3"],
+      title: `Switch to ${entry.label} mode`,
+      icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: entry.command,
+      run: async () => setAppMode(entry.mode),
+    });
   }
 
   actionItems.push({

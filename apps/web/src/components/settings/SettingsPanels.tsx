@@ -460,7 +460,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.snoozeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads
       ? ["Snooze until limits reset"]
       : []),
-    ...(settings.forkFeatures !== DEFAULT_UNIFIED_SETTINGS.forkFeatures ? ["Fork features"] : []),
+    ...(settings.growEnabled !== DEFAULT_UNIFIED_SETTINGS.growEnabled
+      ? ["Grow (experimental)"]
+      : []),
     ...(settings.hostsManager !== DEFAULT_UNIFIED_SETTINGS.hostsManager
       ? ["Host the manager"]
       : []),
@@ -629,7 +631,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
-      forkFeatures: DEFAULT_UNIFIED_SETTINGS.forkFeatures,
+      growEnabled: DEFAULT_UNIFIED_SETTINGS.growEnabled,
       hostsManager: DEFAULT_UNIFIED_SETTINGS.hostsManager,
       managerProfiles: DEFAULT_UNIFIED_SETTINGS.managerProfiles,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -1079,20 +1081,6 @@ export function GeneralSettingsPanel() {
                 updateSettings({ snoozeLimitedThreads: Boolean(checked) })
               }
               aria-label="Snooze until limits reset"
-            />
-          }
-        />
-        <SettingsRow
-          serverScoped
-          {...searchableSetting("fork-features")}
-          description="Home with Grow and the Manager, the mode switch and its shortcuts. Turn off to use the app as upstream T3 Code ships it."
-          settingKeys={["forkFeatures"]}
-          control={
-            <ScopedSwitch
-              settingKeys={["forkFeatures"]}
-              checked={settings.forkFeatures}
-              onCheckedChange={(checked) => updateSettings({ forkFeatures: Boolean(checked) })}
-              aria-label="Fork features"
             />
           }
         />
@@ -1813,6 +1801,20 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="experimental" title="Experimental">
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("grow")}
+          description="Grow as the main view over the sidebar, with the Grow / Threads switch. Off, the standard sidebar and thread view; the manager works either way."
+          settingKeys={["growEnabled"]}
+          control={
+            <ScopedSwitch
+              settingKeys={["growEnabled"]}
+              checked={settings.growEnabled}
+              onCheckedChange={(checked) => updateSettings({ growEnabled: Boolean(checked) })}
+              aria-label="Grow (experimental)"
+            />
+          }
+        />
         <SettingsRow
           serverScoped
           settingKeys={["growPresentation"]}

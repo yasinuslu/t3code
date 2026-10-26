@@ -13,7 +13,7 @@ import {
   useAppMode,
 } from "../appMode";
 import { openFullView } from "../growFocus";
-import { useGrowIsHome } from "../hooks/useSettings";
+import { useGrowEnabled, useGrowIsHome } from "../hooks/useSettings";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { useManagerThreadKeys, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { useIsMobile } from "../hooks/useMediaQuery";
@@ -32,13 +32,14 @@ import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /**
- * One shortcut per mode, one that cycles them, and the Manager shortcut that
- * shows the manager from any screen and goes back. App-global, like the right-panel chords.
+ * One shortcut per mode, one that cycles them (only with Grow on), and the Manager shortcut
+ * that shows the manager from any screen and goes back. App-global, like the right-panel chords.
  */
 export function ModeShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const route = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
   const growIsHome = useGrowIsHome();
+  const growEnabled = useGrowEnabled();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -59,6 +60,7 @@ export function ModeShortcuts() {
         toggleManager();
         return;
       }
+      if (!growEnabled) return;
       if (command === "mode.cycle") {
         event.preventDefault();
         event.stopPropagation();
@@ -79,7 +81,7 @@ export function ModeShortcuts() {
     // Capture, so a focused editor or the chat cannot swallow the chord.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [growIsHome, keybindings, route]);
+  }, [growEnabled, growIsHome, keybindings, route]);
 
   // The desktop app takes the manager chord system-wide, so it works with
   // another app in front; it follows rebinding in keybindings.json.
@@ -99,7 +101,6 @@ export function ModeShortcuts() {
             shift: shortcut.shiftKey,
           },
     ).catch(() => undefined);
-    // Turning the fork features off unmounts this and frees the chord.
     return () => void setManagerShortcut(null).catch(() => undefined);
   }, [keybindings]);
 

@@ -51,7 +51,7 @@ export const useHomeOverlayStore = create<HomeOverlayStore>()((set) => ({
   toggle: () => set((state) => ({ open: !state.open && homeEnabled })),
 }));
 
-/** Called by the app shell with the `forkFeatures` setting; turning it off closes Home. */
+/** Called by the app shell with the `growEnabled` setting; turning it off closes Home. */
 export function setHomeOverlayEnabled(enabled: boolean) {
   homeEnabled = enabled;
   if (!enabled) useHomeOverlayStore.setState({ open: false });

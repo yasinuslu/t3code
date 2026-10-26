@@ -116,7 +116,7 @@ import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings, useForkFeatures } from "../hooks/useSettings";
+import { useClientSettings, useGrowEnabled } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -987,7 +987,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     projectScopeKey: persistedProjectScopeKey,
     setProjectScopeKey,
   });
-  const forkFeatures = useForkFeatures();
+  const growEnabled = useGrowEnabled();
   const activeSpace = spaces.find((space) => space.id === activeSpaceId) ?? null;
   const handleSpaceSwipe = useSpaceSwipe(switchSpace);
   useSpaceMouseButtons(switchSpace);
@@ -2863,7 +2863,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       <SpaceMembershipPopoverLayer />
       <SidebarChromeHeader isElectron={isElectron} />
       {/* With the fork's app bar in the titlebar row, spaces sit right below it, as on Grow. */}
-      {forkFeatures ? (
+      {growEnabled ? (
         <div className="px-2 pb-1" data-sidebar-spaces-top="">
           <SpaceSwitcher onSwitch={switchSpace} />
         </div>
@@ -3438,7 +3438,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       </SidebarContent>
       <SidebarChromeFooter
         showUndoNotice={isSearchingThreads || sidebarListItemsFresh.length === 0}
-        spaces={forkFeatures ? null : <SpaceSwitcher onSwitch={switchSpace} />}
+        spaces={growEnabled ? null : <SpaceSwitcher onSwitch={switchSpace} />}
       />
     </SpaceRowProjectContext.Provider>
   );

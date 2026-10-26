@@ -33,7 +33,7 @@ import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import {
   useEnvironmentIdentificationMode,
-  useForkFeatures,
+  useGrowEnabled,
   useGrowIsHome,
   useLegacySidebarEnabled,
 } from "../hooks/useSettings";
@@ -400,13 +400,13 @@ function SidebarControl() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const legacySidebarEnabled = useLegacySidebarEnabled();
-  const forkFeatures = useForkFeatures();
+  const growEnabled = useGrowEnabled();
   // Before first paint, so a reloaded Home never flashes while the flag is off.
-  useLayoutEffect(() => setHomeOverlayEnabled(forkFeatures), [forkFeatures]);
+  useLayoutEffect(() => setHomeOverlayEnabled(growEnabled), [growEnabled]);
   const growIsHome = useGrowIsHome();
   useLayoutEffect(
-    () => setClassicThreadsView(forkFeatures && !growIsHome),
-    [forkFeatures, growIsHome],
+    () => setClassicThreadsView(growEnabled && !growIsHome),
+    [growEnabled, growIsHome],
   );
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
@@ -484,18 +484,18 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         </Sidebar>
         {children}
         <BackgroundThreadAnnouncer />
-        {forkFeatures ? <HomeOverlay /> : null}
-        {forkFeatures ? <ManagerRoute /> : null}
-        {forkFeatures ? <GrowRouting /> : null}
+        {growEnabled ? <HomeOverlay /> : null}
+        <ManagerRoute />
+        {growEnabled ? <GrowRouting /> : null}
         <SidebarControl />
-        {forkFeatures ? (
+        {growEnabled ? (
           <>
             <ModeSwitch />
             <PhoneTabBar />
-            <ModeShortcuts />
-            <ProfileShortcuts />
           </>
         ) : null}
+        <ModeShortcuts />
+        <ProfileShortcuts />
         <PaneShortcuts />
         <ShellShortcuts />
         <ShortcutsSheet />

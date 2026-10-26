@@ -73,7 +73,7 @@ export function buildShortcutSections(options: {
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly platform: string;
   readonly inGrow: boolean;
-  /** Grow ships with the fork features; without them its keys are not listed. */
+  /** Whether Grow is on; without it its keys are not listed. */
   readonly growAvailable: boolean;
 }): ReadonlyArray<ShortcutSection> {
   const grow: ShortcutSection[] = options.growAvailable
@@ -99,6 +99,7 @@ export function buildShortcutSections(options: {
     scope: "app" as const,
     title,
     rows: rows.flatMap(({ label, commands }) => {
+      if (!options.growAvailable && commands.includes("mode.cycle")) return [];
       const keys = commands.flatMap((command) => {
         const shortcut = shortcutLabelForCommand(options.keybindings, command, {
           platform: options.platform,

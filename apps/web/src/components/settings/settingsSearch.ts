@@ -348,10 +348,10 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["usage quota rate limit reset wake recover continue"],
   },
   {
-    id: "fork-features",
-    title: "Fork features",
+    id: "grow",
+    title: "Grow (experimental)",
     to: "/settings/general",
-    searchTerms: ["grow manager home mode upstream fork flag switch"],
+    searchTerms: ["experimental grow home mode switch sidebar fork"],
   },
   {
     id: "host-manager",

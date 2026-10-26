@@ -10,7 +10,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { create } from "zustand";
 
-import { useForkFeatures } from "../hooks/useSettings";
+import { useGrowEnabled } from "../hooks/useSettings";
 import { useHomeOverlayStore } from "../homeOverlayStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
@@ -56,7 +56,7 @@ function Section({ section }: { readonly section: ShortcutSection }) {
 export function ShortcutsSheet() {
   const open = useShortcutsSheetStore((state) => state.open);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const forkFeatures = useForkFeatures();
+  const growEnabled = useGrowEnabled();
   const homeOpen = useHomeOverlayStore((state) => state.open);
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export function ShortcutsSheet() {
     keybindings,
     platform,
     inGrow: homeOpen,
-    growAvailable: forkFeatures,
+    growAvailable: growEnabled,
   });
   // One column per scope, in the order the sections come: Grow's on the left while Grow shows.
   const columns = [...new Set(sections.map((section) => section.scope))].map((scope) => ({

@@ -522,13 +522,9 @@ export function useEnvironmentModelPreferences(environmentId: EnvironmentId | nu
   return resolveModelPreferences(settings ?? DEFAULT_SERVER_SETTINGS, legacy);
 }
 
-/**
- * Whether the fork's additions are on (`forkFeatures`), read from the primary
- * environment. Chrome that only exists in this fork asks this; it is on while
- * the settings are still loading and in the hosted app, which has no primary.
- */
-export function useForkFeatures(): boolean {
-  return useAtomValue(primaryServerSettingsAtom).forkFeatures;
+/** Whether experimental Grow is on (`growEnabled`), read from the primary environment. */
+export function useGrowEnabled(): boolean {
+  return useAtomValue(primaryServerSettingsAtom).growEnabled;
 }
 
 /**
@@ -540,14 +536,14 @@ export function useGrowPresentation(): boolean {
 }
 
 /**
- * Whether Grow is the app's one main view: the fork features are on and the deprecated
+ * Whether Grow is the app's one main view: Grow is on and the deprecated
  * classic threads view (Grow and Threads behind a switch) is off.
  */
 export function useGrowIsHome(): boolean {
-  const forkFeatures = useForkFeatures();
+  const growEnabled = useGrowEnabled();
   const settingsHydrated = useClientSettingsHydrated();
   const classic = useClientSettings((settings) => settings.classicThreadsViewEnabled);
-  return forkFeatures && !(settingsHydrated && classic);
+  return growEnabled && !(settingsHydrated && classic);
 }
 
 /** Read current settings for one environment, merged with client-local preferences. */
