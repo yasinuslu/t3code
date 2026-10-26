@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 import { ForwardCompatibleArray, TrimmedString } from "./baseSchemas.ts";
 
-export const MAX_KEYBINDING_VALUE_LENGTH = 64;
+const MAX_KEYBINDING_VALUE_LENGTH = 64;
 const MAX_KEYBINDING_WHEN_LENGTH = 256;
 export const MAX_WHEN_EXPRESSION_DEPTH = 64;
 export const MAX_SCRIPT_ID_LENGTH = 24;
@@ -110,6 +110,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "terminal.new",
   "terminal.close",
   "rightPanel.toggle",
+  "rightPanel.new",
   "threadPanel.toggle",
   "rightPanel.toggleMaximized",
   "rightPanel.close",
@@ -117,6 +118,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "rightPanel.toggleFiles",
   "rightPanel.togglePresentation",
   "rightPanel.togglePullRequest",
+  "view.reopenClosed",
   "pullRequest.copyNumber",
   "diff.toggle",
   "preview.toggle",
@@ -150,6 +152,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.host",
   "composer.cycleHost",
   "composer.effort",
+  "composer.increaseEffort",
+  "composer.decreaseEffort",
   "composer.mode",
   "composer.workspace",
   "composer.previousWorktree",
@@ -157,6 +161,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "chat.new",
   "chat.newLocal",
   "chat.newWithoutProject",
+  "chat.find",
   "editor.openFavorite",
   "usage.cost",
   "usage.tokens",
@@ -215,6 +220,12 @@ export const KeybindingShortcut = Schema.Struct({
 });
 export type KeybindingShortcut = typeof KeybindingShortcut.Type;
 
+export const PreviewForwardedShortcut = Schema.Struct({
+  command: KeybindingCommand,
+  shortcut: KeybindingShortcut,
+});
+export type PreviewForwardedShortcut = typeof PreviewForwardedShortcut.Type;
+
 const KeybindingWhenNodeRef = Schema.suspend(
   (): Schema.Codec<KeybindingWhenNode> => KeybindingWhenNode,
 );
@@ -251,13 +262,7 @@ export const ResolvedKeybindingRule = Schema.Struct({
 }).annotate({ parseOptions: { onExcessProperty: "ignore" } });
 export type ResolvedKeybindingRule = typeof ResolvedKeybindingRule.Type;
 
-/**
- * The command set grows over time, so a client may receive rules it cannot
- * represent (a command or `when` node added after that client shipped).
- * Decoding drops those rules instead of failing the whole payload —
- * rejecting the config would take down the connection over a shortcut the
- * client couldn't dispatch anyway.
- */
+/** Drops undecodable rules without failing the connection. */
 export const ResolvedKeybindingsConfig = ForwardCompatibleArray(ResolvedKeybindingRule).check(
   Schema.isMaxLength(MAX_KEYBINDINGS_COUNT),
 );

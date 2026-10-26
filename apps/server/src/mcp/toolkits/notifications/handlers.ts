@@ -3,10 +3,11 @@ import * as Effect from "effect/Effect";
 
 import * as UserNotifications from "../../../notifications/UserNotifications.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { NotificationsToolkit } from "./tools.ts";
 
-export const NotificationsToolkitHandlersLive = NotificationsToolkit.toLayer({
-  notify_user: (input) =>
+export const layer = McpToolAccess.toLayer(NotificationsToolkit, {
+  notify_user: McpToolAccess.writesWithCapability((input) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       if (!scope.capabilities.has("orchestration")) {
@@ -25,4 +26,5 @@ export const NotificationsToolkitHandlersLive = NotificationsToolkit.toLayer({
           ),
         );
     }),
+  ),
 });

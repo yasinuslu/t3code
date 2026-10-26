@@ -2,10 +2,9 @@ import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ChevronDownIcon } from "lucide-react";
 import * as Duration from "effect/Duration";
 import * as Option from "effect/Option";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   BackgroundActivitySettings,
-  SourceControlProviderKind,
   SourceControlDiscoveryResult,
   SourceControlProviderAuth,
   SourceControlProviderDiscoveryItem,
@@ -46,18 +45,10 @@ import {
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-import {
-  AzureDevOpsIcon,
-  BitbucketIcon,
-  GitCodeIcon,
-  GitHubIcon,
-  GitIcon,
-  GitLabIcon,
-  ForgejoIcon,
-  JujutsuIcon,
-  type Icon,
-} from "../Icons";
-import { BitbucketCredentialsSettings } from "./BitbucketCredentialsSettings";
+import { GitIcon, JujutsuIcon, type Icon } from "../Icons";
+import { SourceControlHostSettings } from "./SourceControlHostSettings";
+import { SourceControlAccountSettings } from "./SourceControlAccountSettings";
+import { SourceControlTokenSettings } from "./SourceControlTokenSettings";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SourceControlWritingSettingsSection } from "./SourceControlWritingSettings";
 import {
@@ -68,21 +59,14 @@ import {
   SettingsSection,
   useSettingsSearchTargetId,
 } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { searchableSetting, sourceControlHostSettingsSearchId } from "./settingsSearch";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import { sourceControlIcon } from "~/sourceControlPresentation";
 
 const EMPTY_DISCOVERY_RESULT: SourceControlDiscoveryResult = {
   versionControlSystems: [],
   sourceControlProviders: [],
-};
-
-const SOURCE_CONTROL_PROVIDER_ICONS: Partial<Record<SourceControlProviderKind, Icon>> = {
-  github: GitHubIcon,
-  gitlab: GitLabIcon,
-  forgejo: ForgejoIcon,
-  "azure-devops": AzureDevOpsIcon,
-  bitbucket: BitbucketIcon,
-  gitcode: GitCodeIcon,
 };
 
 const VCS_ICONS: Partial<Record<VcsDriverKind, Icon>> = {
@@ -177,23 +161,31 @@ function itemStatusDot(item: VcsDiscoveryItem | SourceControlProviderDiscoveryIt
   return "bg-success";
 }
 
+function sourceControlItemIcon(
+  item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem,
+): ReactNode {
+  const host = isProviderDiscoveryItem(item) ? sourceControlClients.find(item.kind) : undefined;
+  const Icon = isProviderDiscoveryItem(item)
+    ? host && sourceControlIcon(host)
+    : VCS_ICONS[item.kind];
+  return Icon ? <Icon className="size-4.5 text-foreground/80" aria-hidden /> : null;
+}
+
 function SourceControlItemMark({
   item,
 }: {
   readonly item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem;
 }) {
   const dotClassName = itemStatusDot(item);
-  const Icon = isProviderDiscoveryItem(item)
-    ? SOURCE_CONTROL_PROVIDER_ICONS[item.kind]
-    : VCS_ICONS[item.kind];
+  const icon = sourceControlItemIcon(item);
 
-  if (!Icon) {
+  if (!icon) {
     return <span className={cn("size-2 shrink-0 rounded-full", dotClassName)} aria-hidden />;
   }
 
   return (
     <span className="relative inline-flex size-5 shrink-0 items-center justify-center">
-      <Icon className="size-4.5 text-foreground/80" aria-hidden />
+      {icon}
       <span
         className={cn(
           "pointer-events-none absolute -left-0.5 -top-0.5 size-2 rounded-full ring-2 ring-background",
@@ -224,6 +216,7 @@ function itemSummary({
 
   if (auth) {
     if (auth.status === "authenticated") {
+      const authDetail = optionLabel(auth.detail);
       return (
         <>
           <span>Authenticated</span>
@@ -233,14 +226,17 @@ function itemSummary({
               <RedactedAccount account={authAccount} />
             </>
           ) : null}
+          {authDetail ? <span>· {authDetail}</span> : null}
         </>
       );
     }
 
-    // API integrations have no CLI to sign in with; an unverified saved credential falls
-    // through to the "could not verify" detail instead of repeating the setup hint.
     if (!item.executable && auth.status === "unauthenticated") {
       return <span>Available. {item.installHint}</span>;
+    }
+
+    if (auth.status === "unauthenticated" && auth.accounts?.some((entry) => entry.authenticated)) {
+      return <span>{optionLabel(auth.detail) ?? `Every ${item.label} host is turned off.`}</span>;
     }
 
     if (auth.status === "unauthenticated") {
@@ -280,16 +276,14 @@ function DiscoveryItemRow({
   const [isExpanded, setIsExpanded] = useState(false);
   const hasDetails = children !== undefined;
   const searchTargetId = useSettingsSearchTargetId();
-
-  useEffect(() => {
-    if (
-      (item.kind === "git" && searchTargetId === searchableSetting("git-fetch-interval").id) ||
-      (item.kind === "bitbucket" &&
-        searchTargetId === searchableSetting("bitbucket-credentials").id)
-    ) {
-      setIsExpanded(true);
-    }
-  }, [item.kind, searchTargetId]);
+  const [seenSearchTargetId, setSeenSearchTargetId] = useState<string | null>(null);
+  const targetsThisRow =
+    (item.kind === "git" && searchTargetId === searchableSetting("git-fetch-interval").id) ||
+    searchTargetId === sourceControlHostSettingsSearchId(item.kind);
+  if (targetsThisRow && !isExpanded && seenSearchTargetId !== searchTargetId) {
+    setIsExpanded(true);
+  }
+  if (seenSearchTargetId !== searchTargetId) setSeenSearchTargetId(searchTargetId);
 
   return (
     <div
@@ -510,9 +504,7 @@ function EmptySourceControlDiscovery({
 
 export function SourceControlSettingsPanel() {
   const { scope, environment, connectedEnvironments } = useSettingsScope();
-  // Discovery scans one machine's tools, so it shows the representative
-  // environment (named in the section title when several are selected);
-  // the settings rows above it fan out like everywhere else.
+
   const environmentId =
     environment?.connection.phase === "connected" ? environment.environmentId : null;
   const aggregate = scope.environmentIds.length !== 1 && connectedEnvironments.length > 1;
@@ -531,6 +523,46 @@ export function SourceControlSettingsPanel() {
   const isInitialScanPending = discovery.isPending && discovery.data === null;
   const handleScan = () => {
     discovery.refresh();
+  };
+  const hostSettingsPanel = (item: SourceControlProviderDiscoveryItem) => {
+    const definition = sourceControlClients.find(item.kind);
+    if (!definition?.settings || environmentId === null) return undefined;
+    const { credentials } = definition;
+    if (credentials) {
+      return (
+        <SettingsSearchTarget id={sourceControlHostSettingsSearchId(item.kind)}>
+          <div className="grid gap-6">
+            <SourceControlTokenSettings
+              key={`token-${environmentId}`}
+              environmentId={environmentId}
+              definition={definition}
+              credentials={credentials}
+              onSaved={handleScan}
+            />
+            {item.status === "available" ? (
+              <SourceControlAccountSettings
+                key={environmentId}
+                environmentId={environmentId}
+                definition={definition}
+                credentials={credentials}
+                auth={item.auth}
+                onSaved={handleScan}
+              />
+            ) : null}
+          </div>
+        </SettingsSearchTarget>
+      );
+    }
+    return (
+      <SettingsSearchTarget id={sourceControlHostSettingsSearchId(item.kind)}>
+        <SourceControlHostSettings
+          key={environmentId}
+          environmentId={environmentId}
+          definition={{ ...definition, settings: definition.settings }}
+          onSaved={handleScan}
+        />
+      </SettingsSearchTarget>
+    );
   };
   const scanButton = (
     <Tooltip>
@@ -566,7 +598,7 @@ export function SourceControlSettingsPanel() {
             title={`Version Control${environmentSuffix}`}
             headerAction={scanButton}
           />
-          <SourceControlSectionSkeleton title="Source Control Providers" />
+          <SourceControlSectionSkeleton title="Source control providers" />
         </>
       ) : hasDiscoveryItems ? (
         <>
@@ -589,23 +621,14 @@ export function SourceControlSettingsPanel() {
               id={hasVersionControlSystems ? undefined : searchableSetting("source-control").id}
               title={
                 hasVersionControlSystems
-                  ? "Source Control Providers"
-                  : `Source Control Providers${environmentSuffix}`
+                  ? "Source control providers"
+                  : `Source control providers${environmentSuffix}`
               }
               headerAction={hasVersionControlSystems ? null : scanButton}
             >
               {result.sourceControlProviders.map((item) => (
                 <DiscoveryItemRow key={`provider:${item.kind}`} item={item}>
-                  {item.kind === "bitbucket" ? (
-                    <SettingsSearchTarget id={searchableSetting("bitbucket-credentials").id}>
-                      <BitbucketCredentialsSettings
-                        // Drafts belong to one environment; switching must not carry them over.
-                        key={environmentId}
-                        environmentId={environmentId}
-                        onSaved={handleScan}
-                      />
-                    </SettingsSearchTarget>
-                  ) : undefined}
+                  {hostSettingsPanel(item)}
                 </DiscoveryItemRow>
               ))}
             </SettingsSection>

@@ -1,6 +1,7 @@
-"use client";
-
 import { FILL_PREVIEW_VIEWPORT, type ScopedThreadRef } from "@t3tools/contracts";
+import { previewPdfAssetUrl } from "@t3tools/shared/preview";
+import { useAtomValue } from "@effect/atom-react";
+import { useEnvironmentHttpBaseUrl } from "~/state/environments";
 import {
   ExternalLinkIcon,
   Maximize2Icon,
@@ -13,6 +14,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   useCallback,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -28,6 +30,16 @@ import {
 import { useBrowserSurfaceStore } from "~/browser/browserSurfaceStore";
 import type { BrowserViewportResizeDirection } from "~/browser/browserViewportLayout";
 import { previewRuntimeTabId } from "~/browser/previewRuntimeTabId";
+import { useRendersServerTabNatively } from "~/browser/previewRuntime";
+import { type ServerBrowserHandle, ServerBrowserSurface } from "~/browser/ServerBrowserSurface";
+import {
+  closeServerPictureInPicture,
+  openServerPictureInPicture,
+  serverPictureInPictureKey,
+  supportsServerPictureInPicture,
+  useServerPictureInPictureKey,
+} from "~/browser/serverPictureInPicture";
+import { useBrowserLayoutZoomFactor } from "~/browser/useBrowserLayoutZoomFactor";
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -44,8 +56,10 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { useDeviceState } from "~/state/device";
 
 import { DeviceStreamView } from "../device/DeviceStreamView";
-import type { DeviceScreenSize } from "@t3tools/client-runtime/device/stream";
+import { deviceStreamScreenAtom } from "../device/deviceStreamSession";
+import type { PreviewStreamViewport } from "@t3tools/client-runtime/preview/server-browser-stream";
 import { previewBridge } from "./previewBridge";
+import { showPreviewPopup } from "./showPreviewPopup";
 import { openPreviewLinkExternally } from "./useOpenThreadPreviewLink";
 import {
   clampPreviewMiniPlayerPosition,
@@ -66,12 +80,15 @@ interface PointerGesture {
   readonly pointerY: number;
   readonly frame: PreviewMiniPlayerFrame;
   readonly direction: BrowserViewportResizeDirection | null;
+  moved: boolean;
 }
+
+const HANDLE_TAP_SLOP_PX = 6;
 
 interface Props {
   readonly threadRef: ScopedThreadRef;
   /** Names the thread that owns the preview, since an agent may open it unasked. */
-  readonly threadTitle: string | null;
+  readonly threadTitle?: string | null | undefined;
   readonly miniPlayer: PreviewMiniPlayerState;
 }
 
@@ -92,8 +109,7 @@ const RESIZE_HANDLES: ReadonlyArray<{
   { direction: "southeast", className: "-bottom-1.5 -right-1.5 size-6 cursor-nwse-resize" },
 ];
 
-/** Floats the thread's browser tab or device stream over chat. */
-export function ThreadPreviewMiniPlayer({ threadRef, threadTitle, miniPlayer }: Props) {
+export function ThreadPreviewMiniPlayer({ threadRef, threadTitle = null, miniPlayer }: Props) {
   const { source } = miniPlayer;
   return source.kind === "browser" ? (
     <BrowserMiniPlayer
@@ -116,10 +132,11 @@ export function ThreadPreviewMiniPlayer({ threadRef, threadTitle, miniPlayer }: 
 
 function BrowserMiniPlayer({
   threadRef,
-  threadTitle,
+  threadTitle = null,
   tabId,
   miniPlayer,
 }: Props & { readonly tabId: string }) {
+  const httpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
   const previewState = useThreadPreviewState(threadRef);
   const snapshot = previewState.sessions[tabId] ?? null;
   const runtimeTabId = previewRuntimeTabId(threadRef, previewState.serverEpoch, tabId);
@@ -128,38 +145,65 @@ function BrowserMiniPlayer({
     recordingTabIds.has(runtimeTabId) ||
     findActiveBrowserRecordingRuntimeTabId(threadRef, tabId) !== null;
   const desktopOverlay = previewState.desktopByTabId[tabId] ?? null;
+  const layoutZoomFactor = useBrowserLayoutZoomFactor(desktopOverlay?.zoomFactor ?? 1);
   const fittedSourceContent = useBrowserSurfaceStore(
     (state) => state.byTabId[runtimeTabId]?.fittedSourceContent ?? null,
   );
-  const sourceSize = resolvePreviewMiniPlayerSourceSize(
-    snapshot?.viewport ?? FILL_PREVIEW_VIEWPORT,
-    fittedSourceContent,
-    desktopOverlay?.zoomFactor ?? 1,
-  );
+  const nativeServerTab = useRendersServerTabNatively(threadRef.environmentId, snapshot);
+  const serverTab = snapshot?.runtime === "server" && !nativeServerTab;
+  const [streamViewport, setStreamViewport] = useState<PreviewStreamViewport | null>(null);
+  const serverSurfaceRef = useRef<ServerBrowserHandle | null>(null);
+  const serverPictureInPicture =
+    useServerPictureInPictureKey() === serverPictureInPictureKey(threadRef.threadId, tabId);
+  const sourceSize =
+    serverTab && streamViewport
+      ? streamViewport
+      : resolvePreviewMiniPlayerSourceSize(
+          snapshot?.viewport ?? FILL_PREVIEW_VIEWPORT,
+          fittedSourceContent,
+          layoutZoomFactor,
+        );
 
   const openInPanel = () => {
     usePreviewMiniPlayerStore.getState().close(threadRef);
     useRightPanelStore.getState().openBrowser(threadRef, tabId);
   };
 
-  const toggleNativePictureInPicture = () => {
-    if (!previewBridge) return;
-    const operation = desktopOverlay?.pictureInPicture
-      ? previewBridge.pictureInPicture.close
-      : previewBridge.pictureInPicture.open;
-    void operation(runtimeTabId).catch((error) => {
+  const toggleNativePictureInPicture = async () => {
+    try {
+      if (serverTab) {
+        if (serverPictureInPicture) closeServerPictureInPicture();
+        else
+          await openServerPictureInPicture({
+            ...threadRef,
+            tabId,
+            seed: serverSurfaceRef.current?.canvas() ?? null,
+          });
+      } else if (previewBridge) {
+        const operation = desktopOverlay?.pictureInPicture
+          ? previewBridge.pictureInPicture.close
+          : previewBridge.pictureInPicture.open;
+        await operation(runtimeTabId);
+      }
+    } catch (error) {
       toastManager.add({
         type: "error",
-        title: "Unable to update popped-out preview",
+        title: serverTab ? "Unable to pop out preview" : "Unable to update popped-out preview",
         description: error instanceof Error ? error.message : "An error occurred.",
       });
-    });
+    }
   };
 
   if (!snapshot) return null;
-
-  const navStatus = snapshot.navStatus;
-  const pageUrl = navStatus._tag === "Idle" ? null : navStatus.url;
+  const pdfUrl =
+    snapshot.navStatus._tag === "Success"
+      ? previewPdfAssetUrl(snapshot.navStatus.url, httpBaseUrl)
+      : null;
+  const poppedOut = serverTab ? serverPictureInPicture : Boolean(desktopOverlay?.pictureInPicture);
+  const pageUrl = snapshot.navStatus._tag === "Idle" ? null : snapshot.navStatus.url;
+  const canPopOut = serverTab
+    ? poppedOut || (pdfUrl === null && supportsServerPictureInPicture())
+    : true;
 
   return (
     <MiniPlayerShell
@@ -173,73 +217,91 @@ function BrowserMiniPlayer({
       onOpenInPanel={openInPanel}
       onOpenExternal={pageUrl ? () => openPreviewLinkExternally(pageUrl) : undefined}
       pillActions={
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={desktopOverlay?.pictureInPicture ? "secondary" : "ghost"}
-                size="icon-xs"
-                aria-label={
-                  desktopOverlay?.pictureInPicture
-                    ? "Close popped-out preview"
-                    : "Pop preview into separate window"
-                }
-                disabled={!desktopOverlay?.hasWebContents}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={toggleNativePictureInPicture}
-              />
-            }
-          >
-            <PictureInPicture2 />
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            {desktopOverlay?.pictureInPicture
-              ? "Close separate window"
-              : "Pop into separate window"}
-          </TooltipPopup>
-        </Tooltip>
+        canPopOut ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant={poppedOut ? "secondary" : "ghost"}
+                  size="icon-xs"
+                  aria-label={
+                    poppedOut ? "Close popped-out preview" : "Pop preview into separate window"
+                  }
+                  disabled={!serverTab && !desktopOverlay?.hasWebContents}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={toggleNativePictureInPicture}
+                />
+              }
+            >
+              <PictureInPicture2 />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {poppedOut ? "Close separate window" : "Pop into separate window"}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null
       }
     >
-      {(frame) => (
-        <>
-          <BrowserSurfaceSlot
-            tabId={runtimeTabId}
-            visible={Boolean(desktopOverlay?.hasWebContents)}
-            cornerRadius={PREVIEW_MINI_PLAYER_CORNER_RADIUS}
-            zIndex={PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX}
-            fitSourceContent
-            layoutVersion={`${frame.x}:${frame.y}`}
-            className="absolute inset-0"
-          />
-          {!desktopOverlay?.hasWebContents ? (
-            <div className="pointer-events-none absolute inset-0 z-[49] flex items-center justify-center rounded-[inherit] bg-muted text-xs text-muted-foreground">
-              Reconnecting preview…
-            </div>
-          ) : null}
-        </>
-      )}
+      {(frame) =>
+        serverTab ? (
+          <div
+            className="pointer-events-auto absolute inset-0 overflow-hidden rounded-[inherit]"
+            style={{ zIndex: PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX }}
+          >
+            <ServerBrowserSurface
+              ref={serverSurfaceRef}
+              environmentId={threadRef.environmentId}
+              threadId={threadRef.threadId}
+              tabId={tabId}
+              pdfUrl={pdfUrl}
+              visible
+              followSize={false}
+              controlPosition="bottom"
+              onViewport={setStreamViewport}
+              onPopup={(popupTabId) => showPreviewPopup(threadRef, popupTabId, "floating")}
+              className="size-full"
+            />
+          </div>
+        ) : (
+          <>
+            <BrowserSurfaceSlot
+              tabId={runtimeTabId}
+              visible={Boolean(desktopOverlay?.hasWebContents)}
+              cornerRadius={PREVIEW_MINI_PLAYER_CORNER_RADIUS}
+              zIndex={PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX}
+              fitSourceContent
+              layoutVersion={`${frame.x}:${frame.y}`}
+              className="absolute inset-0"
+            />
+            {!desktopOverlay?.hasWebContents ? (
+              <div className="pointer-events-none absolute inset-0 z-[49] flex items-center justify-center rounded-[inherit] bg-muted text-xs text-muted-foreground">
+                Reconnecting preview…
+              </div>
+            ) : null}
+          </>
+        )
+      }
     </MiniPlayerShell>
   );
 }
 
 function DeviceMiniPlayer({
   threadRef,
-  threadTitle,
+  threadTitle = null,
   source,
   miniPlayer,
 }: Props & { readonly source: Extract<PreviewMiniPlayerSource, { kind: "device" }> }) {
   const { state: deviceState } = useDeviceState(threadRef.environmentId);
-  const [screen, setScreen] = useState<DeviceScreenSize | null>(null);
+  const viewId = useId();
+  const screen = useAtomValue(deviceStreamScreenAtom(viewId));
   const sourceSize = resolveDeviceMiniPlayerSourceSize(source.platform, screen);
   const device = deviceState.devices.find(
     (entry) => entry.hostId === source.hostId && entry.id === source.deviceId,
   );
   const hostLabel =
     deviceState.hosts.find((host) => host.id === source.hostId)?.label ?? "Device host";
-  const cornerRadius = useCallback(
-    (player: PreviewMiniPlayerSize) => resolveDeviceMiniPlayerCornerRadius(source.platform, player),
-    [source.platform],
-  );
+  const cornerRadius = (player: PreviewMiniPlayerSize) =>
+    resolveDeviceMiniPlayerCornerRadius(source.platform, player);
 
   const openInPanel = () => {
     usePreviewMiniPlayerStore.getState().close(threadRef);
@@ -262,7 +324,6 @@ function DeviceMiniPlayer({
       cornerRadius={cornerRadius}
     >
       {() => (
-        // The stream is DOM, so it takes the band the browser's native webview would.
         <div
           className="pointer-events-auto absolute inset-0 overflow-hidden rounded-[inherit]"
           style={{ zIndex: PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX }}
@@ -275,7 +336,7 @@ function DeviceMiniPlayer({
             deviceName={device?.name ?? source.name}
             deviceDescription={`${hostLabel} · ${device?.version ?? source.platform}`}
             visible
-            onScreen={setScreen}
+            viewId={viewId}
           />
         </div>
       )}
@@ -283,11 +344,7 @@ function DeviceMiniPlayer({
   );
 }
 
-/**
- * The frame, drag/resize gestures, and hover pill shared by every floating
- * source. Native clipping and the DOM frame use the same radius so their
- * separately composited edges stay aligned.
- */
+/** Match native clipping and DOM radii to align their separately composited edges. */
 function MiniPlayerShell({
   threadRef,
   threadTitle,
@@ -314,7 +371,6 @@ function MiniPlayerShell({
   readonly placeholder?: string | null | undefined;
   readonly pillActions?: ReactNode;
   readonly recording?: boolean;
-  /** The clip radius for a given frame; the pill stays inside the curve. */
   readonly cornerRadius?: (frame: PreviewMiniPlayerSize) => number;
   readonly children: (frame: PreviewMiniPlayerFrame) => ReactNode;
 }) {
@@ -347,7 +403,6 @@ function MiniPlayerShell({
   useLayoutEffect(() => () => clearPreview?.(sourceKey), [clearPreview, sourceKey]);
 
   const radius = frame ? cornerRadius(frame) : PREVIEW_MINI_PLAYER_CORNER_RADIUS;
-  // Inside a wide curve the default 8px inset would land on the clipped-away corner.
   const pillInset = Math.max(8, Math.round(radius * 0.55));
 
   const close = () => {
@@ -418,6 +473,7 @@ function MiniPlayerShell({
       pointerY: event.clientY,
       frame,
       direction,
+      moved: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
@@ -428,6 +484,8 @@ function MiniPlayerShell({
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId || !container) return;
     const delta = { x: event.clientX - gesture.pointerX, y: event.clientY - gesture.pointerY };
+    if (!gesture.moved && Math.hypot(delta.x, delta.y) < HANDLE_TAP_SLOP_PX) return;
+    gesture.moved = true;
     const store = usePreviewMiniPlayerStore.getState();
     if (gesture.direction === null) {
       store.move(
@@ -454,7 +512,8 @@ function MiniPlayerShell({
   };
 
   const endGesture = (event: ReactPointerEvent<HTMLElement>) => {
-    if (gestureRef.current?.pointerId !== event.pointerId) return;
+    const gesture = gestureRef.current;
+    if (gesture?.pointerId !== event.pointerId) return;
     gestureRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);

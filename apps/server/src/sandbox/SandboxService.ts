@@ -14,7 +14,7 @@ import {
   type ServerProvider,
   type ServerSettings,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -28,13 +28,13 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { HttpServer } from "effect/unstable/http";
-import * as NetAddress from "effect/unstable/net/NetAddress";
+import { HttpServer } from "effect/http";
+import * as NetAddress from "effect/net/NetAddress";
 
-import { writeFileStringAtomically } from "../atomicWrite.ts";
+import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
-import { expandHomePath } from "../pathExpansion.ts";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProcessRunner from "../processRunner.ts";
 import type {
   SandboxBackend,
@@ -323,12 +323,9 @@ export const sandboxProviderHomes = (settings: ServerSettings): ReadonlyArray<st
   const homes: Array<string> = [];
   const add = (value: unknown) => {
     if (typeof value === "string" && value.trim().length > 0) {
-      homes.push(expandHomePath(value.trim()));
+      homes.push(expandHomePath(value.trim(), NodeOS.homedir()));
     }
   };
-  add(settings.providers.codex.homePath);
-  add(settings.providers.codex.shadowHomePath);
-  add(settings.providers.claudeAgent.homePath);
   // Code profiles pick Claude's folder per project, including the folders
   // account balancing switches a thread between.
   for (const profile of Object.values(settings.codeProfiles)) {
@@ -385,7 +382,7 @@ const idleMinutes = (env: NodeJS.ProcessEnv) => {
 };
 
 const make = Effect.gen(function* () {
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const processRunner = yield* ProcessRunner.ProcessRunner;
@@ -521,7 +518,7 @@ const make = Effect.gen(function* () {
     .split(":")
     .map((key) => key.trim())
     .filter((key) => key.length > 0)
-    .map(expandHomePath);
+    .map((value) => expandHomePath(value, NodeOS.homedir()));
   const sshAgent = yield* Effect.gen(function* () {
     if (sshKeys.length === 0) {
       const socket = hostEnv.SSH_AUTH_SOCK;
@@ -585,7 +582,7 @@ const make = Effect.gen(function* () {
       env.GIT_SSH_COMMAND = `ssh -o IdentityAgent=${GUEST_SSH_AGENT} -o IdentitiesOnly=no -o StrictHostKeyChecking=accept-new`;
     }
     if ((yield* gitConfig("commit.gpgsign")) === "true") {
-      const signingKey = expandHomePath(yield* gitConfig("user.signingkey"));
+      const signingKey = expandHomePath(yield* gitConfig("user.signingkey"), NodeOS.homedir());
       const format = yield* gitConfig("gpg.format");
       const publicKey =
         format === "ssh" && sshKeys.includes(signingKey)

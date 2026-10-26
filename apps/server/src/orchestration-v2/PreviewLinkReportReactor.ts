@@ -77,7 +77,7 @@ const make = Effect.gen(function* () {
           Effect.flatMap((state) =>
             state === "unknown" || state === "gone"
               ? Effect.void
-              : crypto.randomUUIDv4.pipe(
+              : crypto.randomUUIDv4().pipe(
                   Effect.flatMap((uuid) =>
                     engine.dispatch({
                       type: "thread.preview-link.link",

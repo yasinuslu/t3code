@@ -14,7 +14,7 @@ import * as Crypto from "effect/Crypto";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as ServerConfig from "../../../config.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";

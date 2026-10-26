@@ -12,7 +12,7 @@ import { resolveManagerProfile } from "./components/brainstorm/brainstorm.logic"
 import { resolveStorage } from "./lib/storage";
 import { profileLockNow } from "./profileLock";
 import { isInSpace, useProjectSpaceResolver, useSpaceStore } from "./spaceStore";
-import { useThreadShells } from "./state/entities";
+import { useQuietThreadShells, useThreadShells } from "./state/entities";
 
 /** What one manager-hosting environment reports. */
 export interface EnvironmentManagers {
@@ -266,6 +266,23 @@ export function useSidebarThreadShells(): ReadonlyArray<EnvironmentThreadShell> 
         ? threads
         : threads.filter((thread) => !managerKeys.has(`${thread.environmentId}:${thread.id}`)),
     [managerKeys, threads],
+  );
+}
+
+/** The sidebar list's threads from the quiet shells it arranges rows by. */
+export function useSidebarQuietThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
+  const threads = useQuietThreadShells();
+  const hidden = useBrainstormStore((state) => state.hiddenThreadKeys);
+  const managerKeys = useManagerThreadKeys();
+  return useMemo(
+    () =>
+      hidden.size === 0 && managerKeys.size === 0
+        ? threads
+        : threads.filter((thread) => {
+            const key = `${thread.environmentId}:${thread.id}`;
+            return !hidden.has(key) && !managerKeys.has(key);
+          }),
+    [hidden, managerKeys, threads],
   );
 }
 

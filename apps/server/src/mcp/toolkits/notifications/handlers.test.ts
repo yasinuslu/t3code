@@ -11,15 +11,21 @@ import * as Stream from "effect/Stream";
 
 import * as UserNotifications from "../../../notifications/UserNotifications.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import { NotificationsToolkitHandlersLive } from "./handlers.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
+import { liveThreadsLayer } from "../../McpToolAccess.testkit.ts";
+import * as NotificationsHandlers from "./handlers.ts";
 import { NotificationsToolkit } from "./tools.ts";
 
 const scopeWith = (capabilities: ReadonlyArray<"orchestration">) =>
   ({
     environmentId: EnvironmentId.make("notify-environment"),
-    threadId: ThreadId.make("notify-thread"),
-    providerSessionId: "notify-provider-session",
-    providerInstanceId: ProviderInstanceId.make("codex"),
+    requestNamespace: "provider:notify",
+    thread: {
+      threadId: ThreadId.make("notify-thread"),
+      providerSessionId: "notify-provider-session",
+      providerInstanceId: ProviderInstanceId.make("codex"),
+    },
+    client: undefined,
     capabilities: new Set(capabilities),
     issuedAt: 0,
   }) satisfies McpInvocationContext.McpInvocationScope;
@@ -29,6 +35,7 @@ const callNotifyUser = (capabilities: ReadonlyArray<"orchestration">) =>
     const received: UserNotificationInput[] = [];
     const dependencies = Layer.mergeAll(
       Layer.succeed(McpInvocationContext.McpInvocationContext, scopeWith(capabilities)),
+      liveThreadsLayer,
       Layer.mock(UserNotifications.UserNotifications)({
         notify: (input) =>
           Effect.sync(() => {
@@ -48,7 +55,11 @@ const callNotifyUser = (capabilities: ReadonlyArray<"orchestration">) =>
       }),
     );
     const toolkit = yield* NotificationsToolkit.pipe(
-      Effect.provide(NotificationsToolkitHandlersLive.pipe(Layer.provide(dependencies))),
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(NotificationsHandlers.layer).pipe(
+          Layer.provide(dependencies),
+        ),
+      ),
     );
     const emitted = yield* toolkit
       .handle("notify_user", { title: "🚩 Flag", body: "one line", priority: "urgent" })

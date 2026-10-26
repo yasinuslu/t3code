@@ -11,8 +11,8 @@ import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as Stdio from "effect/Stdio";
 import * as Stream from "effect/Stream";
-import { Argument, Command, Flag, GlobalFlag } from "effect/unstable/cli";
-import { FetchHttpClient } from "effect/unstable/http";
+import { Argument, Command, Flag, GlobalFlag } from "effect/cli";
+import { FetchHttpClient } from "effect/http";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";

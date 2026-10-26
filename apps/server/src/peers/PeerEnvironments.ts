@@ -27,7 +27,7 @@ import {
   ThreadId,
   WsRpcGroup,
 } from "@t3tools/contracts";
-import { formatThreadMarkdownLink } from "@t3tools/shared/threadLinks";
+import { formatThreadMarkdownLink } from "../mcp/threadMarkdownLink.ts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -37,9 +37,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-import { RpcClient, RpcSerialization } from "effect/unstable/rpc";
-import * as Socket from "effect/unstable/socket/Socket";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { RpcClient, RpcSerialization } from "effect/rpc";
+import * as Socket from "effect/socket/Socket";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { lastActivityOf, threadStatusOf } from "../mcp/toolkits/brainstorm/handlers.ts";
@@ -459,7 +459,7 @@ const make = Effect.gen(function* () {
     snapshot.threads.find((thread) => thread.id === threadId) ??
     snapshot.archivedThreads.find((thread) => thread.id === threadId);
 
-  const newId = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const newId = crypto.randomUUIDv4().pipe(Effect.orDie);
 
   const validated = (peer: PeerEnvironment) => {
     const url = normalizePeerUrl(peer.url);

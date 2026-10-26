@@ -7,7 +7,9 @@ import * as Stream from "effect/Stream";
 import * as PeerEnvironments from "../../../peers/PeerEnvironments.ts";
 import * as ManagerScope from "../../ManagerScope.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import { PeersToolkitHandlersLive } from "./handlers.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
+import { liveThreadsLayer } from "../../McpToolAccess.testkit.ts";
+import * as PeersHandlers from "./handlers.ts";
 import { PeersToolkit } from "./tools.ts";
 
 const MANAGER = ThreadId.make("thread-manager");
@@ -28,7 +30,9 @@ const callPeerList = (threadId: ThreadId) =>
       ]),
     });
     const toolkit = yield* PeersToolkit.pipe(
-      Effect.provide(PeersToolkitHandlersLive.pipe(Layer.provide(peers))),
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(PeersHandlers.layer).pipe(Layer.provide(peers)),
+      ),
     );
     return yield* toolkit.handle("t3_peer_list", {}).pipe(
       Stream.unwrap,
@@ -36,9 +40,13 @@ const callPeerList = (threadId: ThreadId) =>
       Effect.map((chunk) => chunk.at(-1)!.result),
       Effect.provideService(McpInvocationContext.McpInvocationContext, {
         environmentId: EnvironmentId.make("environment-1"),
-        threadId,
-        providerSessionId: "provider-session-1",
-        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        requestNamespace: "provider:peers",
+        thread: {
+          threadId,
+          providerSessionId: "provider-session-1",
+          providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        },
+        client: undefined,
         capabilities: new Set(["orchestration"] as const),
         issuedAt: 1,
       }),
@@ -47,6 +55,7 @@ const callPeerList = (threadId: ThreadId) =>
           Effect.succeed(candidate === MANAGER ? new Set() : null),
       }),
       Effect.provide(peers),
+      Effect.provide(liveThreadsLayer),
     );
   });
 

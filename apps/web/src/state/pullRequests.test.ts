@@ -1,11 +1,19 @@
+import { SourceControlProviderKind } from "@t3tools/contracts";
 import { ProjectId, type PullRequestSummary } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { newestPullRequestObservation, newestPullRequestSummary } from "./pullRequests";
+import {
+  newestPullRequestObservation,
+  observedPullRequestSummary,
+  observePullRequestChecks,
+  observePullRequestMetadata,
+  newestPullRequestSummary,
+  threadPullRequestLinkToSummary,
+} from "./pullRequests";
 
 function summary(overrides: Partial<PullRequestSummary> = {}): PullRequestSummary {
   return {
-    provider: "github",
+    provider: SourceControlProviderKind.make("github"),
     projectId: ProjectId.make("pull-request-cache-test"),
     repository: "acme/widget",
     number: 7,
@@ -40,9 +48,7 @@ describe("pull request summary cache", () => {
       checksState: "failing",
       observedAt: 300,
     });
-    // An older filtered or server-cached response finishing last must not roll status back.
     expect(newestPullRequestObservation(held, stale)).toBe(held);
-    // The same read seen again is not a new observation.
     expect(newestPullRequestObservation(held, { ...held, observedAt: 900 })).toBe(held);
   });
 
@@ -51,7 +57,6 @@ describe("pull request summary cache", () => {
     const later = observed(summary({ checksState: "failing" }), 200);
     expect(newestPullRequestObservation(first, later)).toMatchObject({ observedAt: 200 });
     expect(newestPullRequestObservation(later, first)).toBe(later);
-    // A stamped read beats an unstamped one regardless of which arrived last.
     const stamped = observed(summary({ observedAt: 50 }), 1);
     expect(newestPullRequestObservation(later, stamped)?.summary.observedAt).toBe(50);
     expect(newestPullRequestObservation(stamped, later)).toBe(stamped);
@@ -79,5 +84,106 @@ describe("pull request summary cache", () => {
     const older = summary({ updatedAt: "2026-09-11T00:00:00Z", observedAt: 999 });
     expect(newestPullRequestSummary(older, reopened)).toBe(reopened);
     expect(newestPullRequestSummary(reopened, older)).toBe(reopened);
+  });
+
+  it("reuses saved thread state while detail is stale and lets newer detail replace it", () => {
+    const stale = summary();
+    const link = {
+      host: "github.com",
+      repository: stale.repository,
+      number: stale.number,
+      url: stale.url,
+      source: "manual" as const,
+      linkedAt: stale.updatedAt,
+      stack: null,
+      snapshot: {
+        ...stale,
+        state: "closed" as const,
+        isDraft: false,
+        updatedAt: "2026-09-11T00:00:00Z",
+        syncedAt: "2026-09-12T00:00:00Z",
+      },
+    };
+    const saved = threadPullRequestLinkToSummary(link, stale.projectId);
+    expect(newestPullRequestSummary(stale, saved)?.state).toBe("closed");
+    const fresh = summary({ isDraft: true, updatedAt: "2026-09-13T00:00:00Z" });
+    expect(newestPullRequestSummary(fresh, saved)).toBe(fresh);
+    expect(threadPullRequestLinkToSummary({ ...link, snapshot: null }, stale.projectId)).toBeNull();
+    expect(
+      threadPullRequestLinkToSummary(
+        { ...link, snapshot: { ...link.snapshot, updatedAt: null } },
+        stale.projectId,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("pull request observations", () => {
+  const fromSummary = (value: PullRequestSummary, observedAt: number) =>
+    observePullRequestMetadata({ metadata: null, checks: null }, observed(value, observedAt));
+  const checksRead = (
+    checksState: "passing" | "failing" | "pending" | null,
+    readAt: number | undefined,
+    observedAt: number,
+  ) => ({ checksState, readAt, observedAt });
+
+  it("keeps a newer list's mergeability when a checks read lands after it", () => {
+    const detail = summary({
+      mergeability: "conflicting",
+      checksState: "pending",
+      observedAt: 100,
+    });
+    let state = fromSummary(detail, 1);
+    state = observePullRequestMetadata(
+      state,
+      observed(summary({ mergeability: "mergeable", checksState: "pending", observedAt: 200 }), 2),
+    );
+    state = observePullRequestChecks(state, checksRead("passing", 300, 3));
+    expect(observedPullRequestSummary(state)).toMatchObject({
+      mergeability: "mergeable",
+      checksState: "passing",
+    });
+  });
+
+  it("keeps a newer checks read when an older list read lands after it", () => {
+    let state = fromSummary(
+      summary({ mergeability: "conflicting", checksState: "pending", observedAt: 100 }),
+      1,
+    );
+    state = observePullRequestChecks(state, checksRead("passing", 300, 2));
+    state = observePullRequestMetadata(
+      state,
+      observed(summary({ mergeability: "mergeable", checksState: "pending", observedAt: 250 }), 3),
+    );
+    expect(observedPullRequestSummary(state)).toMatchObject({
+      mergeability: "mergeable",
+      checksState: "passing",
+    });
+  });
+
+  it("lets a newer read's checks replace an older checks read", () => {
+    let state = fromSummary(summary({ checksState: "pending", observedAt: 100 }), 1);
+    state = observePullRequestChecks(state, checksRead("passing", 300, 2));
+    state = observePullRequestMetadata(
+      state,
+      observed(summary({ checksState: "failing", observedAt: 400 }), 3),
+    );
+    expect(observedPullRequestSummary(state)?.checksState).toBe("failing");
+  });
+
+  it("orders checks by arrival when the server reports no read time", () => {
+    let state = fromSummary(summary({ checksState: "pending" }), 1);
+    state = observePullRequestChecks(state, checksRead("passing", undefined, 2));
+    expect(observedPullRequestSummary(state)?.checksState).toBe("passing");
+    state = observePullRequestChecks(state, checksRead("failing", undefined, 1));
+    expect(observedPullRequestSummary(state)?.checksState).toBe("passing");
+  });
+
+  it("shows nothing until some read has described the pull request", () => {
+    const state = observePullRequestChecks(
+      { metadata: null, checks: null },
+      checksRead("failing", 1, 1),
+    );
+    expect(observedPullRequestSummary(state)).toBeNull();
   });
 });

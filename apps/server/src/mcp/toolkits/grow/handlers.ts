@@ -6,6 +6,7 @@ import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import { invalid } from "../threadStatus/storeFile.ts";
 import { newCommandId, readCaller, readWritableThread, unavailable } from "../../threadAccess.ts";
 import { threadStatusOf } from "../brainstorm/handlers.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { GrowToolkit } from "./tools.ts";
 
 const entryOf = (card: GrowCard) => ({
@@ -17,8 +18,8 @@ const entryOf = (card: GrowCard) => ({
   parentThreadId: card.parentThreadId ?? null,
 });
 
-export const GrowToolkitHandlersLive = GrowToolkit.toLayer({
-  grow_update: (input) =>
+export const layer = McpToolAccess.toLayer(GrowToolkit, {
+  grow_update: McpToolAccess.writes((input) =>
     Effect.gen(function* () {
       const grow = yield* GrowService.GrowService;
       const { projection } = yield* readWritableThread(input.threadId);
@@ -32,8 +33,9 @@ export const GrowToolkitHandlersLive = GrowToolkit.toLayer({
       });
       return entryOf(card);
     }),
+  ),
 
-  grow_request_close: (input) =>
+  grow_request_close: McpToolAccess.actsAsCaller((input) =>
     Effect.gen(function* () {
       const { projection } = yield* readWritableThread();
       const open = (projection.thread.growRequests ?? []).filter(
@@ -63,8 +65,9 @@ export const GrowToolkitHandlersLive = GrowToolkit.toLayer({
         .pipe(Effect.mapError(unavailable));
       return { requestId: request.id, outcome: input.outcome };
     }),
+  ),
 
-  grow_board: () =>
+  grow_board: McpToolAccess.reads(() =>
     Effect.gen(function* () {
       const grow = yield* GrowService.GrowService;
       const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -100,4 +103,5 @@ export const GrowToolkitHandlersLive = GrowToolkit.toLayer({
           }),
       };
     }),
+  ),
 });

@@ -1,14 +1,97 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+
+export const THREAD_LINK_PROTOCOL = "t3-thread";
+const THREAD_LINK_HREF_PREFIX = `${THREAD_LINK_PROTOCOL}://v1/`;
+// Code comes first in the alternation so a link written inside a code span or fence is skipped.
+const THREAD_LINK_OUTSIDE_CODE =
+  /(?<fence>(`{3,}|~{3,})[\s\S]*?(?:\2|$))|(?<span>(`+)[^\n]*?\4)|\[[^\]\n]*\]\((?<href>t3-thread:\/\/v1\/[^\s)]+)\)/g;
+
+const decodeThreadId = Schema.decodeUnknownOption(ThreadId);
+
+/** The id as written. Thread ids can hold percent escapes of their own, so it is not decoded. */
+export function parseThreadLinkHref(href: string): ThreadId | null {
+  if (!href.startsWith(THREAD_LINK_HREF_PREFIX)) return parseThreadDeepLink(href)?.threadId ?? null;
+  return Option.getOrNull(decodeThreadId(href.slice(THREAD_LINK_HREF_PREFIX.length)));
+}
+
+export function percentDecodedThreadLinkId(threadId: ThreadId): ThreadId | null {
+  try {
+    const decoded = decodeURIComponent(threadId);
+    return decoded === threadId ? null : Option.getOrNull(decodeThreadId(decoded));
+  } catch {
+    return null;
+  }
+}
+
+export function resolveThreadLinkRef(
+  source: ScopedThreadRef,
+  refs: ReadonlyArray<ScopedThreadRef>,
+): ScopedThreadRef | null {
+  const decodedId = percentDecodedThreadLinkId(source.threadId);
+  const ids = decodedId === null ? [source.threadId] : [source.threadId, decodedId];
+  for (const threadId of ids) {
+    const local = refs.find(
+      (ref) => ref.environmentId === source.environmentId && ref.threadId === threadId,
+    );
+    if (local) return local;
+  }
+  for (const threadId of ids) {
+    let match: ScopedThreadRef | null = null;
+    for (const ref of refs) {
+      if (ref.threadId !== threadId) continue;
+      if (match !== null) return null;
+      match = ref;
+    }
+    if (match !== null) return match;
+  }
+  return null;
+}
+
+export function formatThreadLink(threadId: string, label: string): string {
+  const cleaned = label
+    .replace(/[[\]\\\r\n]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `[${cleaned || threadId}](${THREAD_LINK_HREF_PREFIX}${threadId})`;
+}
+
+export function hasThreadLinks(markdown: string): boolean {
+  return markdown.includes(`](${THREAD_LINK_HREF_PREFIX}`);
+}
+
+export function relabelThreadLinks(
+  markdown: string,
+  title: (threadId: ThreadId) => string | undefined,
+): string {
+  if (!hasThreadLinks(markdown)) return markdown;
+  return markdown.replace(THREAD_LINK_OUTSIDE_CODE, (source, ...args) => {
+    const href = (args.at(-1) as { href?: string }).href;
+    if (href === undefined) return source;
+    const written = parseThreadLinkHref(href);
+    if (written === null) return source;
+    const decoded = percentDecodedThreadLinkId(written);
+    const threadId =
+      title(written) === undefined && decoded !== null && title(decoded) !== undefined
+        ? decoded
+        : written;
+    const label = title(threadId)?.trim();
+    return label ? formatThreadLink(threadId, label) : source;
+  });
+}
 
 export interface ThreadLinkTarget {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }
 
-const THREAD_LINK_PREFIX = "t3code://threads/";
-// `t3code://threads/...` is the app's deep link (mobile routes it natively). The short
-// `t3://thread/...` form is what agents were first told to write, so it stays readable.
-const THREAD_LINK_PATTERN = /^(?:t3code:\/\/threads|t3:\/\/thread)\/([^/?#\s]+)\/([^/?#\s]+)\/?$/iu;
+// `t3code://threads/<env>/<thread>` is the app deep link the desktop and mobile apps open. The
+// short `t3://thread/...` form is what agents were first told to write, so it stays readable, and
+// chat history written with either still renders as thread chips.
+const THREAD_DEEP_LINK_PREFIX = "t3code://threads/";
+const THREAD_DEEP_LINK_PATTERN =
+  /^(?:t3code:\/\/threads|t3:\/\/thread)\/([^/?#\s]+)\/([^/?#\s]+)\/?$/iu;
 
 function encodePathPart(value: string): string {
   return encodeURIComponent(value).replace(
@@ -26,19 +109,12 @@ function decodePathPart(value: string): string | null {
   }
 }
 
-/** Origin-independent link to a thread, so every client and machine reads it the same way. */
-export function formatThreadLinkHref(target: ThreadLinkTarget): string {
-  return `${THREAD_LINK_PREFIX}${encodePathPart(target.environmentId)}/${encodePathPart(target.threadId)}`;
+export function formatThreadDeepLink(target: ThreadLinkTarget): string {
+  return `${THREAD_DEEP_LINK_PREFIX}${encodePathPart(target.environmentId)}/${encodePathPart(target.threadId)}`;
 }
 
-/** The markdown agents paste into chat; T3 renders it as a clickable thread chip. */
-export function formatThreadMarkdownLink(target: ThreadLinkTarget & { readonly title: string }) {
-  const title = target.title.replace(/\s+/g, " ").trim() || "Thread";
-  return `[${title.replace(/[\\[\]]/g, "\\$&")}](${formatThreadLinkHref(target)})`;
-}
-
-export function parseThreadLinkHref(href: string): ThreadLinkTarget | null {
-  const match = THREAD_LINK_PATTERN.exec(href.trim());
+export function parseThreadDeepLink(href: string): ThreadLinkTarget | null {
+  const match = THREAD_DEEP_LINK_PATTERN.exec(href.trim());
   if (!match) return null;
   const environmentId = decodePathPart(match[1]!);
   const threadId = decodePathPart(match[2]!);

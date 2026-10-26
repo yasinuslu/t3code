@@ -3,10 +3,10 @@ import {
   UserNotificationInput,
   UserNotificationNotifyResult,
 } from "@t3tools/contracts";
-import * as Tool from "effect/unstable/ai/Tool";
-import * as Toolkit from "effect/unstable/ai/Toolkit";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as UserNotifications from "../../../notifications/UserNotifications.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const NotifyUserTool = Tool.make("notify_user", {
@@ -25,7 +25,11 @@ const NotifyUserTool = Tool.make("notify_user", {
   success: UserNotificationNotifyResult,
   failure: OrchestratorMcpFailure,
   failureMode: "return",
-  dependencies: [McpInvocationContext.McpInvocationContext, UserNotifications.UserNotifications],
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    UserNotifications.UserNotifications,
+  ],
 })
   .annotate(Tool.Title, "Notify the user")
   .annotate(Tool.Readonly, false)

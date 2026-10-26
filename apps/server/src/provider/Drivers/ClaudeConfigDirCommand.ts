@@ -21,11 +21,11 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { expandHomePath } from "../../pathExpansion.ts";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import type { CodeProfiles } from "../CodeProfiles.ts";
-import { spawnAndCollect } from "../providerSnapshot.ts";
+import { spawnAndCollect } from "@t3tools/provider-core/server/snapshotProbe";
 
 const quote = Schema.encodeSync(Schema.fromJsonString(Schema.String));
 
@@ -80,7 +80,7 @@ export const runClaudeConfigDirCommand = Effect.fn("runClaudeConfigDirCommand")(
     return yield* fail(`exited with ${result.code}: ${result.stderr.trim().slice(0, 500)}`);
   }
   const lines = result.stdout.trim().split(/\r?\n/u);
-  const printed = lines.length === 1 ? expandHomePath(lines[0]!.trim()) : "";
+  const printed = lines.length === 1 ? expandHomePath(lines[0]!.trim(), NodeOS.homedir()) : "";
   if (printed.length === 0 || !path.isAbsolute(printed)) {
     return yield* fail(`expected one absolute path, got ${quote(result.stdout.trim())}`);
   }
@@ -207,7 +207,9 @@ export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolve
         : undefined;
       const label = profile ? { profile: profile.name } : {};
       if (homePath.length > 0) {
-        return profile ? { path: path.resolve(expandHomePath(homePath)), ...label } : undefined;
+        return profile
+          ? { path: path.resolve(expandHomePath(homePath, NodeOS.homedir())), ...label }
+          : undefined;
       }
       if (profile?.claudeConfigDir !== undefined) {
         return { path: profile.claudeConfigDir, ...label };

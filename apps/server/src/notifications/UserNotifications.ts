@@ -137,7 +137,7 @@ const make = Effect.gen(function* () {
   const saveItems = (items: ReadonlyArray<UserNotification>) =>
     Effect.gen(function* () {
       yield* fileSystem.makeDirectory(path.dirname(inboxPath), { recursive: true });
-      const temp = `${inboxPath}.${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}.tmp`;
+      const temp = `${inboxPath}.${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.tmp`;
       yield* fileSystem.writeFileString(temp, `${encodeInbox({ items })}\n`);
       yield* fileSystem.rename(temp, inboxPath);
     }).pipe(Effect.mapError(failure("Could not save the notification inbox.")));
@@ -180,7 +180,7 @@ const make = Effect.gen(function* () {
           const earlier =
             input.tag === undefined ? undefined : items.find((item) => item.tag === input.tag);
           const notification: UserNotification = {
-            id: earlier?.id ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie)),
+            id: earlier?.id ?? (yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
             title: input.title,
             body: input.body,
             priority,

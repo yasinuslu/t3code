@@ -1,7 +1,7 @@
 import * as Electron from "electron";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import { registerManagerShortcut } from "../../window/ManagerShortcut.ts";
 import { forgetShellChordsOf, setShellChords } from "../../window/ShellChords.ts";
@@ -65,7 +65,7 @@ export const installShellChords = Effect.fn("desktop.ipc.installShellChords")(fu
 /** The renderer reports its `manager.toggle` chord; the main process takes it system-wide. */
 export const installManagerShortcut = Effect.fn("desktop.ipc.installManagerShortcut")(function* () {
   const ipc = yield* DesktopIpc.DesktopIpc;
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   yield* ipc.handle(
     DesktopIpc.makeIpcMethod({
       channel: SET_MANAGER_SHORTCUT_CHANNEL,

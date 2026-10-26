@@ -1,43 +1,21 @@
-/**
- * ClaudeTextGeneration – Text generation layer using the Claude CLI.
- *
- * Implements the same TextGeneration service contract as CodexTextGeneration but
- * delegates to the `claude` CLI (`claude -p`) with structured JSON output
- * instead of the `codex exec` CLI.
- *
- * @module ClaudeTextGeneration
- */
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { type ClaudeSettings, type ModelSelection } from "@t3tools/contracts";
-import { formatGeneratedBranchName, sanitizeFeatureBranchName } from "@t3tools/shared/git";
+import { type ClaudeSettings, TextGenerationError } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
-import { TextGenerationError } from "@t3tools/contracts";
-import * as TextGeneration from "./TextGeneration.ts";
+import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import {
-  buildBranchNamePrompt,
-  buildCommitMessagePrompt,
-  buildPrContentPrompt,
-  buildLivingPagePrompt,
-  buildThreadTitlePrompt,
-  buildWidgetPrompt,
-} from "./TextGenerationPrompts.ts";
-import {
-  normalizeCliError,
-  sanitizeCommitSubject,
-  sanitizePrTitle,
   generationTimeoutMs,
-  sanitizeThreadTitle,
-  stripCodeFence,
+  normalizeCliError,
   toJsonSchemaObject,
-} from "./TextGenerationUtils.ts";
+} from "@t3tools/provider-core/server/textGenerationUtils";
 import {
+  getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
 } from "@t3tools/shared/model";
@@ -52,15 +30,27 @@ import {
   resolveClaudeModelSlug,
   scopeClaudeModelCatalog,
 } from "../provider/ClaudeModelCatalog.ts";
-import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
+import {
+  hasClaudeManagedMcpConfig,
+  makeClaudeEnvironment,
+} from "../provider/Drivers/ClaudeHome.ts";
 import type { ClaudeConfigDirResolver } from "../provider/Drivers/ClaudeConfigDirCommand.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
+/** `--tools` takes bare names; patterns go in the allow list. */
+const CLAUDE_INVESTIGATION_TOOLS = "Read,Grep,Glob,Bash";
+/** In dontAsk mode every call outside this list, Bash included, is refused. */
+const CLAUDE_INVESTIGATION_ALLOWED = [
+  "Read",
+  "Grep",
+  "Glob",
+  "Bash(git diff:*)",
+  "Bash(git log:*)",
+  "Bash(git show:*)",
+].join(",");
+// Denies override allows; block git --output/-o because allowed trailing args can otherwise write anywhere.
+const CLAUDE_INVESTIGATION_DENIED = ["Bash(git * --output*)", "Bash(git * -o *)"].join(",");
 
-/**
- * Schema for the wrapper JSON returned by `claude -p --output-format json`.
- * Verbose mode wraps the result in an array of conversation messages.
- */
 const ClaudeOutputEnvelope = Schema.Struct({
   structured_output: Schema.Unknown,
 });
@@ -74,6 +64,20 @@ const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknow
 const decodeClaudeOutput = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Union([ClaudeOutputEnvelope, Schema.Array(ClaudeOutputMessage)])),
 );
+
+const ClaudeErrorResult = Schema.Struct({ is_error: Schema.Literal(true), result: Schema.String });
+const isClaudeErrorResult = Schema.is(ClaudeErrorResult);
+const decodeJsonOption = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+
+// Claude reports JSON errors on stdout; stderr may contain only wrapper notices.
+function claudeErrorResult(stdout: string): string | undefined {
+  const output = Option.getOrUndefined(decodeJsonOption(stdout));
+  const messages: ReadonlyArray<unknown> = Array.isArray(output) ? output : [output];
+  return messages
+    .filter(isClaudeErrorResult)
+    .map((message) => message.result.trim())
+    .findLast((result) => result.length > 0);
+}
 
 export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(function* (
   claudeSettings: ClaudeSettings,
@@ -104,13 +108,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
   const encodeJsonForOperation = (
-    operation:
-      | "generateCommitMessage"
-      | "generatePrContent"
-      | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateLivingPage"
-      | "generateWidget",
+    operation: TextGenerationOperations.Operation,
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -125,29 +123,18 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       ),
     );
 
-  /**
-   * Spawn the Claude CLI with structured JSON output and return the parsed,
-   * schema-validated result.
-   */
   const runClaudeJson = Effect.fn("runClaudeJson")(function* <S extends Schema.Top>({
     operation,
     cwd,
     prompt,
-    outputSchemaJson,
+    outputSchema: outputSchemaJson,
     modelSelection,
-  }: {
-    operation:
-      | "generateCommitMessage"
-      | "generatePrContent"
-      | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateLivingPage"
-      | "generateWidget";
-    cwd: string;
-    prompt: string;
-    outputSchemaJson: S;
-    modelSelection: ModelSelection;
-  }): Effect.fn.Return<S["Type"], TextGenerationError, S["DecodingServices"]> {
+    investigate,
+  }: TextGenerationOperations.Request<S>): Effect.fn.Return<
+    S["Type"],
+    TextGenerationError,
+    S["DecodingServices"]
+  > {
     const catalog = yield* scopedModelCatalog;
     const resolvedModelSelection = {
       ...modelSelection,
@@ -178,8 +165,11 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     const ultracode = isClaudeCatalogUltracodeEffort(resolvedEffort);
     const thinkingDescriptor = findDescriptor("thinking");
     const fastModeDescriptor = findDescriptor("fastMode");
+    // Only a chosen value; otherwise Claude Code's own default applies, as in chat turns.
     const thinking =
-      thinkingDescriptor?.type === "boolean" ? thinkingDescriptor.currentValue : undefined;
+      thinkingDescriptor?.type === "boolean"
+        ? getModelSelectionBooleanOptionValue(resolvedModelSelection, "thinking")
+        : undefined;
     const fastMode =
       fastModeDescriptor?.type === "boolean" ? fastModeDescriptor.currentValue : undefined;
     const settings = {
@@ -213,6 +203,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 ),
               )
           : cwd;
+      const managedMcpConfig = yield* hasClaudeManagedMcpConfig();
       const spawnCommand = yield* resolveSpawnCommand(
         claudeSettings.binaryPath || "claude",
         [
@@ -226,11 +217,19 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           ...(cliEffort ? ["--effort", cliEffort] : []),
           "--settings",
           settingsJson,
-          // Metadata prompts need no executable capabilities, even when they contain a skill name.
-          "--tools",
-          "",
+          ...(investigate
+            ? [
+                "--tools",
+                CLAUDE_INVESTIGATION_TOOLS,
+                "--allowedTools",
+                CLAUDE_INVESTIGATION_ALLOWED,
+                "--disallowedTools",
+                CLAUDE_INVESTIGATION_DENIED,
+              ]
+            : ["--tools", ""]),
           "--disable-slash-commands",
-          "--strict-mcp-config",
+          // managed-mcp.json already isolates servers and makes Claude reject this flag.
+          ...(managedMcpConfig ? [] : ["--strict-mcp-config"]),
           "--permission-mode",
           "dontAsk",
         ],
@@ -243,6 +242,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         stdin: {
           stream: Stream.encodeText(Stream.make(prompt)),
         },
+        forceKillAfter: "1 second",
       });
 
       const child = yield* commandSpawner
@@ -269,7 +269,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       if (exitCode !== 0) {
         const stderrDetail = stderr.trim();
         const stdoutDetail = stdout.trim();
-        const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
+        const detail =
+          claudeErrorResult(stdoutDetail) ??
+          (stderrDetail.length > 0 ? stderrDetail : stdoutDetail);
         return yield* new TextGenerationError({
           operation,
           detail:
@@ -284,7 +286,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
 
     const rawStdout = yield* runClaudeCommand().pipe(
       Effect.scoped,
-      Effect.timeoutOption(generationTimeoutMs(operation, CLAUDE_TIMEOUT_MS)),
+      Effect.timeoutOption(
+        investigate?.timeoutMs ?? generationTimeoutMs(operation, CLAUDE_TIMEOUT_MS),
+      ),
       Effect.flatMap(
         Option.match({
           onNone: () =>
@@ -327,157 +331,5 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
   });
 
-  // ---------------------------------------------------------------------------
-  // TextGeneration service methods
-  // ---------------------------------------------------------------------------
-
-  const generateCommitMessage: TextGeneration.TextGeneration["Service"]["generateCommitMessage"] =
-    Effect.fn("ClaudeTextGeneration.generateCommitMessage")(function* (input) {
-      const { prompt, outputSchema } = buildCommitMessagePrompt({
-        branch: input.branch,
-        stagedSummary: input.stagedSummary,
-        stagedPatch: input.stagedPatch,
-        includeBranch: input.includeBranch === true,
-        policy: input.policy,
-      });
-
-      const generated = yield* runClaudeJson({
-        operation: "generateCommitMessage",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return {
-        subject: sanitizeCommitSubject(generated.subject),
-        body: generated.body.trim(),
-        ...("branch" in generated && typeof generated.branch === "string"
-          ? { branch: sanitizeFeatureBranchName(generated.branch) }
-          : {}),
-      };
-    });
-
-  const generatePrContent: TextGeneration.TextGeneration["Service"]["generatePrContent"] =
-    Effect.fn("ClaudeTextGeneration.generatePrContent")(function* (input) {
-      const { prompt, outputSchema } = buildPrContentPrompt({
-        baseBranch: input.baseBranch,
-        headBranch: input.headBranch,
-        commitSummary: input.commitSummary,
-        diffSummary: input.diffSummary,
-        diffPatch: input.diffPatch,
-        policy: input.policy,
-        changeRequestTemplate: input.changeRequestTemplate,
-      });
-
-      const generated = yield* runClaudeJson({
-        operation: "generatePrContent",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return {
-        title: sanitizePrTitle(generated.title),
-        body: generated.body.trim(),
-      };
-    });
-
-  const generateBranchName: TextGeneration.TextGeneration["Service"]["generateBranchName"] =
-    Effect.fn("ClaudeTextGeneration.generateBranchName")(function* (input) {
-      const { prompt, outputSchema } = buildBranchNamePrompt({
-        message: input.message,
-        attachments: input.attachments,
-        naming: input.naming,
-      });
-
-      const generated = yield* runClaudeJson({
-        operation: "generateBranchName",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return {
-        branch: formatGeneratedBranchName(generated.branch, input.naming),
-      };
-    });
-
-  const generateThreadTitle: TextGeneration.TextGeneration["Service"]["generateThreadTitle"] =
-    Effect.fn("ClaudeTextGeneration.generateThreadTitle")(function* (input) {
-      const { prompt, outputSchema } = buildThreadTitlePrompt({
-        message: input.message,
-        previousTitle: input.previousTitle,
-        linkedContext: input.linkedContext,
-        attachments: input.attachments,
-      });
-
-      const generated = yield* runClaudeJson({
-        operation: "generateThreadTitle",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return {
-        title: sanitizeThreadTitle(generated.title),
-        ...(generated.needsRefinement ? { needsRefinement: true } : {}),
-      };
-    });
-
-  const generateLivingPage: TextGeneration.TextGeneration["Service"]["generateLivingPage"] =
-    Effect.fn("ClaudeTextGeneration.generateLivingPage")(function* (input) {
-      const { prompt, outputSchema } = buildLivingPagePrompt({
-        context: input.context,
-        pool: input.pool,
-        previous: input.previous,
-      });
-      const generated = yield* runClaudeJson({
-        operation: "generateLivingPage",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-      return {
-        unchanged: generated.unchanged,
-        blocks: generated.blocks,
-        missing: generated.missing,
-      } satisfies TextGeneration.LivingPageGenerationResult;
-    });
-
-  const generateWidget: TextGeneration.TextGeneration["Service"]["generateWidget"] = Effect.fn(
-    "ClaudeTextGeneration.generateWidget",
-  )(function* (input) {
-    const { prompt, outputSchema } = buildWidgetPrompt({
-      name: input.name,
-      purpose: input.purpose,
-      readme: input.readme,
-      sample: input.sample,
-      existing: input.existing,
-    });
-    const generated = yield* runClaudeJson({
-      operation: "generateWidget",
-      cwd: input.cwd,
-      prompt,
-      outputSchemaJson: outputSchema,
-      modelSelection: input.modelSelection,
-    });
-    return {
-      name: generated.name.trim(),
-      code: stripCodeFence(generated.code),
-    } satisfies TextGeneration.WidgetGenerationResult;
-  });
-
-  return {
-    generateCommitMessage,
-    generatePrContent,
-    generateBranchName,
-    generateThreadTitle,
-    generateLivingPage,
-    generateWidget,
-  } satisfies TextGeneration.TextGeneration["Service"];
+  return TextGenerationOperations.fromRunner("ClaudeTextGeneration", runClaudeJson);
 });

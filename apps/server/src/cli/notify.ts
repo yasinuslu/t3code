@@ -1,5 +1,5 @@
 import {
-  AuthAdministrativeScopes,
+  AuthStandardClientScopes,
   EnvironmentHttpApi,
   UserNotificationPriority,
 } from "@t3tools/contracts";
@@ -9,9 +9,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
-import { Command, Flag, GlobalFlag } from "effect/unstable/cli";
-import { FetchHttpClient } from "effect/unstable/http";
-import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
+import { Command, Flag, GlobalFlag } from "effect/cli";
+import { FetchHttpClient } from "effect/http";
+import * as HttpApiClient from "effect/http-api/HttpApiClient";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
@@ -69,7 +69,7 @@ const notifyCommand = Command.make("notify", {
         const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
         const result = yield* Effect.acquireUseRelease(
           environmentAuth.issueSession({
-            scopes: AuthAdministrativeScopes,
+            scopes: AuthStandardClientScopes,
             label: "t3 notify cli",
           }),
           (issued) =>
@@ -98,7 +98,7 @@ const notifyCommand = Command.make("notify", {
         );
       }).pipe(
         Effect.provide(
-          EnvironmentAuth.runtimeLayer.pipe(
+          EnvironmentAuth.layerRuntime.pipe(
             Layer.provideMerge(FetchHttpClient.layer),
             Layer.provide(ServerConfig.layer(config)),
             Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),

@@ -17,6 +17,7 @@ import {
 import { newCommandId, readThread, readWritableThread, unavailable } from "../../threadAccess.ts";
 import { invalid, storeImageFile, storeThreadFile } from "../threadStatus/storeFile.ts";
 import { storePresentationPages, withGrowKeys } from "./pages.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { PresentationToolkit } from "./tools.ts";
 
 const PageList = Schema.Array(PresentationPage);
@@ -96,14 +97,15 @@ export const writePresentationPages = Effect.fn("mcp.presentation.write")(functi
   };
 });
 
-export const PresentationHandlersLive = PresentationToolkit.toLayer({
-  presentation_set: (input) =>
+export const layer = McpToolAccess.toLayer(PresentationToolkit, {
+  presentation_set: McpToolAccess.writes((input) =>
     Effect.gen(function* () {
       const context = yield* readWritableThread(input.threadId);
       const pages = yield* storePages(context.projection.thread.id, input.pages);
       return yield* writePresentationPages(context, pages);
     }),
-  presentation_edit: (input) =>
+  ),
+  presentation_edit: McpToolAccess.writes((input) =>
     Effect.gen(function* () {
       const context = yield* readWritableThread(input.threadId);
       const put = yield* storePages(context.projection.thread.id, input.put ?? []);
@@ -121,7 +123,8 @@ export const PresentationHandlersLive = PresentationToolkit.toLayer({
       }
       return yield* writePresentationPages(context, pages);
     }),
-  presentation_get: (input) =>
+  ),
+  presentation_get: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       const { projection } = yield* readThread(input.threadId);
       const threadId = projection.thread.id;
@@ -154,4 +157,5 @@ export const PresentationHandlersLive = PresentationToolkit.toLayer({
       );
       return { threadId, version: input.version, pages, versions };
     }),
+  ),
 });

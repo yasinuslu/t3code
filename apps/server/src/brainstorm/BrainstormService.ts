@@ -643,7 +643,7 @@ export const make = Effect.gen(function* () {
       );
     });
 
-  const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
   const failWith = (message: string) => () => new BrainstormError({ message });
 
   const modelSelectionFor = (

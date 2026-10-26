@@ -10,14 +10,15 @@ import { newCommandId, readWritableThread, unavailable } from "../../threadAcces
 import { writePresentationPages } from "../presentation/handlers.ts";
 import { linkStoredImages, localImagePaths } from "./reportImages.ts";
 import { invalid, storeImageFile } from "./storeFile.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { ThreadStatusToolkit } from "./tools.ts";
 
 const MAX_IMAGES = 12;
 /** The presentation page a status report lands on. */
 const STATUS_PAGE_ID = "status";
 
-export const ThreadStatusHandlersLive = ThreadStatusToolkit.toLayer({
-  thread_status_update: (input) =>
+export const layer = McpToolAccess.toLayer(ThreadStatusToolkit, {
+  thread_status_update: McpToolAccess.writes((input) =>
     Effect.gen(function* () {
       const context = yield* readWritableThread(input.threadId);
       const { projection } = context;
@@ -61,4 +62,5 @@ export const ThreadStatusHandlersLive = ThreadStatusToolkit.toLayer({
               "No proof image. Before the final report, add one (a marked screenshot of the result, a short GIF for motion, or an image of the evidence) as a markdown image with an absolute path.",
           };
     }),
+  ),
 });
