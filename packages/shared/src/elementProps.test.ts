@@ -35,6 +35,42 @@ describe("elementProblems", () => {
     ]);
   });
 
+  it("checks fields inside array items, where components would draw a placeholder", () => {
+    const steps: ElementManifest = {
+      tag: "t3-steps",
+      description: "A timeline.",
+      props: {
+        type: "object",
+        properties: {
+          steps: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                state: { type: "string", enum: ["done", "todo"] },
+              },
+              required: ["title"],
+            },
+          },
+        },
+        required: ["steps"],
+      },
+    };
+    const reply = (body: string) =>
+      elementProblems(`<t3-steps>\n${body}\n</t3-steps>`, new Map([[steps.tag, steps]]));
+
+    expect(reply('{"steps":[{"label":"Merge","status":"done"}]}')[0]?.errors).toEqual([
+      'Missing "steps[0].title".',
+      'Unknown "steps[0].label"; the fields are title, state.',
+      'Unknown "steps[0].status"; the fields are title, state.',
+    ]);
+    expect(reply('{"steps":[{"title":"Merge","state":"later"}]}')[0]?.errors).toEqual([
+      '"steps[0].state" should be one of "done", "todo".',
+    ]);
+    expect(reply('{"steps":[{"title":"Merge","state":"done"}]}')).toEqual([]);
+  });
+
   it("passes components the chat draws, including text bodies and entities", () => {
     const text = [
       '<t3-poll>\n{"question":"A &amp; B?","options":[]}\n</t3-poll>',

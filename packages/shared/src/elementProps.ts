@@ -17,7 +17,16 @@ const IGNORED_ATTRIBUTES = new Set(["class", "classname", "style", "id", "slot"]
 const camelCase = (name: string) =>
   name.replace(/-([a-z0-9])/g, (_, char: string) => char.toUpperCase());
 
-type PropSchema = { readonly type?: unknown };
+type PropSchema = {
+  readonly type?: unknown;
+  readonly enum?: unknown;
+  readonly properties?: unknown;
+  readonly required?: unknown;
+  readonly items?: unknown;
+};
+
+const asSchema = (value: unknown): PropSchema | undefined =>
+  typeof value === "object" && value !== null ? (value as PropSchema) : undefined;
 
 function schemaProps(manifest: ElementManifest): Record<string, PropSchema> {
   const properties = manifest.props.properties;
@@ -41,6 +50,39 @@ function matches(type: unknown, value: unknown): boolean {
   const actual = typeOf(value);
   if (type === "number") return actual === "number" || actual === "integer";
   return actual === type;
+}
+
+/**
+ * Errors for a value nested in a prop (an array item, an object field). Components fall back to
+ * a placeholder for a missing or misnamed field, so without this a `label` written for `title`
+ * draws a blank "Step" and nobody learns why.
+ */
+function nestedErrors(path: string, schema: PropSchema, value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!matches(schema.type, value)) {
+    return [`"${path}" should be ${String(schema.type)}, got ${typeOf(value)}.`];
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    return [`"${path}" should be one of ${schema.enum.map((v) => JSON.stringify(v)).join(", ")}.`];
+  }
+  if (Array.isArray(value)) {
+    const items = asSchema(schema.items);
+    return items ? value.flatMap((item, i) => nestedErrors(`${path}[${i}]`, items, item)) : [];
+  }
+  const properties = asSchema(schema.properties) as Record<string, unknown> | undefined;
+  if (typeof value !== "object" || value === null || !properties) return [];
+  const record = value as Record<string, unknown>;
+  const known = Object.keys(properties);
+  const errors: string[] = [];
+  for (const name of Array.isArray(schema.required) ? (schema.required as string[]) : []) {
+    if (record[name] === undefined) errors.push(`Missing "${path}.${name}".`);
+  }
+  for (const [name, field] of Object.entries(record)) {
+    const fieldSchema = asSchema(properties[name]);
+    if (fieldSchema) errors.push(...nestedErrors(`${path}.${name}`, fieldSchema, field));
+    else errors.push(`Unknown "${path}.${name}"; the fields are ${known.join(", ")}.`);
+  }
+  return errors;
 }
 
 /** An attribute's text as the prop type its schema names. */
@@ -111,10 +153,8 @@ export function elementProps(input: {
     }
   }
   for (const [name, value] of Object.entries(props)) {
-    const type = schema[name]?.type;
-    if (value !== undefined && !matches(type, value)) {
-      errors.push(`"${name}" should be ${String(type)}, got ${typeOf(value)}.`);
-    }
+    const propSchema = asSchema(schema[name]);
+    if (propSchema) errors.push(...nestedErrors(name, propSchema, value));
   }
   return errors.length > 0 ? { kind: "invalid", errors } : { kind: "ok", props };
 }
