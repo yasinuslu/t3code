@@ -54,8 +54,7 @@ const callPeerList = (threadId: ThreadId) =>
         reachableProjectIds: (candidate) =>
           Effect.succeed(candidate === MANAGER ? new Set() : null),
       }),
-      Effect.provide(peers),
-      Effect.provide(liveThreadsLayer),
+      Effect.provide(Layer.merge(peers, liveThreadsLayer)),
     );
   });
 

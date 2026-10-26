@@ -745,7 +745,7 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
   probe: (
     environment: NodeJS.ProcessEnv,
     cwd: string,
-  ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
+  ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined, ClaudeCapabilitiesProbeError>,
   environment: NodeJS.ProcessEnv = process.env,
 ): Effect.fn.Return<ReadonlyArray<ServerProviderCodeProfile>> {
   return yield* Effect.forEach(

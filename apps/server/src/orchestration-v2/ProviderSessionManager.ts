@@ -1788,12 +1788,12 @@ export const layerWithOptions = (
                 isProviderThreadLoaded({ providerSessionId, threadId, providerThreadKey }),
               ),
               Effect.flatMap((loaded) =>
-                loaded && runtime.needsResume !== undefined
-                  ? runtime.needsResume(input.providerThread).pipe(Effect.map((needs) => !needs))
-                  : Effect.succeed(loaded),
+                loaded
+                  ? (runtime.needsResume?.(input.providerThread) ?? Effect.succeed(false))
+                  : Effect.succeed(true),
               ),
-              Effect.flatMap((loaded) =>
-                loaded ? Effect.succeed(input.providerThread) : runtime.resumeThread(input),
+              Effect.flatMap((mustResume) =>
+                mustResume ? runtime.resumeThread(input) : Effect.succeed(input.providerThread),
               ),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({

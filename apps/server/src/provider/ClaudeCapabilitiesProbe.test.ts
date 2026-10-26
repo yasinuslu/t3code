@@ -79,6 +79,7 @@ it.effect("probes each code profile's account with that profile's config dir", (
                 email: account.email,
                 subscriptionType: account.subscriptionType,
                 tokenSource: account.tokenSource,
+                apiKeySource: undefined,
                 apiProvider: "firstParty",
                 slashCommands: [],
               }

@@ -1363,6 +1363,28 @@ export const layerWsRpc = (
                 ),
           ),
         );
+      // Thread rows (and per-project counts) a locked connection may see.
+      const filterThreadRows = <
+        S extends {
+          readonly threads: ReadonlyArray<{ readonly projectId: ProjectId }>;
+          readonly counts?: ReadonlyArray<{ readonly projectId: ProjectId }>;
+        },
+      >(
+        result: S,
+      ): Effect.Effect<S> =>
+        visibleProjectIdsNow.pipe(
+          Effect.map((visible) =>
+            visible === null
+              ? result
+              : {
+                  ...result,
+                  threads: result.threads.filter((thread) => visible.has(thread.projectId)),
+                  ...(result.counts === undefined
+                    ? {}
+                    : { counts: result.counts.filter((count) => visible.has(count.projectId)) }),
+                },
+          ),
+        );
       // A profile-locked connection only sees search matches from its own projects.
       const filterSearchMatches = <
         S extends { readonly matches: ReadonlyArray<{ readonly projectId: ProjectId }> },
@@ -2001,7 +2023,7 @@ export const layerWsRpc = (
               (cause) => new OrchestrationV2GetShellSnapshotError({ message, cause }),
             ),
           );
-          return { snapshotSequence, threads: threads.threads };
+          return yield* filterThreadRows({ snapshotSequence, threads: threads.threads });
         },
       );
 
@@ -2145,13 +2167,16 @@ export const layerWsRpc = (
             ),
           ),
         [ORCHESTRATION_V2_WS_METHODS.searchThread]: (input) =>
-          threadManagement
-            .searchThread(input)
-            .pipe(Effect.mapError((cause) => new OrchestrationV2SearchThreadError({ cause }))),
+          requireThreadVisible(input.threadId).pipe(
+            Effect.andThen(threadManagement.searchThread(input)),
+            Effect.mapError((cause) => new OrchestrationV2SearchThreadError({ cause })),
+          ),
         [ORCHESTRATION_V2_WS_METHODS.searchThreadStream]: (input) =>
-          threadManagement
-            .searchThreadStream(input)
-            .pipe(Stream.mapError((cause) => new OrchestrationV2SearchThreadError({ cause }))),
+          Stream.unwrap(
+            requireThreadVisible(input.threadId).pipe(
+              Effect.as(threadManagement.searchThreadStream(input)),
+            ),
+          ).pipe(Stream.mapError((cause) => new OrchestrationV2SearchThreadError({ cause }))),
         [ORCHESTRATION_V2_WS_METHODS.searchThreads]: (input) =>
           ThreadSearch.searchThreadsWithOlderSettledRows({
             request: input,
@@ -2183,6 +2208,7 @@ export const layerWsRpc = (
               threadManagement.readShellSnapshot({ location: "active", threadIds }),
             latestSequence: applicationEvents.latestApplicationSequence,
           }).pipe(
+            Effect.flatMap(filterThreadRows),
             Effect.mapError(
               (cause) =>
                 new OrchestrationV2GetShellSnapshotError({

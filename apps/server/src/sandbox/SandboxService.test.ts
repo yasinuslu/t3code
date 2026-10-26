@@ -11,11 +11,11 @@ describe("sandboxProviderHomes", () => {
   it("collects Claude and Codex homes from providers, instances, and their env", () => {
     const homes = sandboxProviderHomes({
       ...DEFAULT_SERVER_SETTINGS,
-      providers: {
-        ...DEFAULT_SERVER_SETTINGS.providers,
-        codex: { ...DEFAULT_SERVER_SETTINGS.providers.codex, homePath: "/homes/codex" },
-      },
       providerInstances: {
+        [ProviderInstanceId.make("codex")]: {
+          driver: ProviderDriverKind.make("codex"),
+          config: { homePath: "/homes/codex" },
+        },
         [ProviderInstanceId.make("codex-work")]: {
           driver: ProviderDriverKind.make("codex"),
           config: { homePath: "/homes/codex-work", shadowHomePath: "/homes/codex-work-shadow" },

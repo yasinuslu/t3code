@@ -106,7 +106,7 @@ export const resolveMainCheckoutRoot = Effect.fn("resolveMainCheckoutRoot")(func
     "git",
     ChildProcess.make("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd }),
   ).pipe(
-    Effect.timeoutOrElse({ duration: DEFAULT_TIMEOUT, orElse: () => Effect.succeed(undefined) }),
+    Effect.timeoutOrElse({ duration: DEFAULT_TIMEOUT, orElse: () => Effect.void }),
     Effect.orElseSucceed(() => undefined),
   );
   if (result === undefined || result.code !== 0) return undefined;

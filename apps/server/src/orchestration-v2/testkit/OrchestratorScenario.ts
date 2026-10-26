@@ -132,6 +132,8 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
   switch (command.type) {
     case "thread.create":
     case "thread.stop":
+    case "thread.status-report.set":
+    case "thread.superseded-by.set":
     case "thread.archive":
     case "thread.unarchive":
     case "thread.delete":

@@ -39,7 +39,6 @@ const writeRawKeybindingsConfig = (configPath: string, rules: ReadonlyArray<unkn
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     yield* fileSystem.makeDirectory(path.dirname(configPath), { recursive: true });
-    // @effect-diagnostics-next-line preferSchemaOverJson:off
     yield* fileSystem.writeFileString(configPath, JSON.stringify(rules));
   });
 
@@ -383,7 +382,6 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       yield* fileSystem.makeDirectory(path.dirname(keybindingsConfigPath), { recursive: true });
       yield* fileSystem.writeFileString(
         keybindingsConfigPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         JSON.stringify([
           { key: "ctrl+alt+space", command: "brainstorm.toggle" },
           { key: "mod+alt+u", command: "usage.open" },
@@ -494,7 +492,6 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
       yield* fs.writeFileString(
         keybindingsConfigPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         JSON.stringify([
           { key: "ctrl+alt+a", command: "rightPanel.toggleAgents" },
           { key: "mod+x", command: "invalid.command" },
@@ -536,7 +533,6 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
       yield* fs.writeFileString(
         keybindingsConfigPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         JSON.stringify([
           { key: "mod+shift+r", command: "script.run-tests.run" },
           { key: "ctrl+alt+a", command: "rightPanel.toggleAgents" },

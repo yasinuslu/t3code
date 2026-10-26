@@ -83,7 +83,7 @@ const make = Effect.gen(function* () {
     timeToLive: Duration.infinity,
     lookup: (folder: string) =>
       resolveMainCheckoutRoot(folder).pipe(
-        Effect.flatMap((root) => (root === undefined ? Effect.succeed(undefined) : physical(root))),
+        Effect.flatMap((root) => (root === undefined ? Effect.void : physical(root))),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(Path.Path, path),
       ),

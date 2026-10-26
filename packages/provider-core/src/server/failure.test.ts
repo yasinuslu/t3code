@@ -254,10 +254,9 @@ it.effect("keys terminal failure items by provider turn across retries and fallb
 // A sandbox that stops while the session opens never saw the prompt, so the
 // failure carries the code that makes the server send the message again.
 it("marks an open that failed before the prompt was handed over as not run", () => {
-  const stopped = new ProviderSessionOpenError({
-    instanceId: ProviderInstanceId.make("claudeAgent"),
-    providerSessionId: ProviderSessionId.make("session-1"),
-    cause: "The sandbox stopped while the session was opening. Send the message again.",
+  // The server's ProviderSessionOpenError carries the same flag; its shape is all that matters here.
+  const stopped = Object.assign(new Error("The sandbox stopped while the session was opening."), {
+    _tag: "ProviderSessionOpenError",
     promptNotRun: true,
   });
   assert.equal(makeProviderFailure({ cause: stopped }).code, PROMPT_NOT_RUN_FAILURE_CODE);
@@ -274,10 +273,7 @@ it("marks an open that failed before the prompt was handed over as not run", () 
   assert.equal(makeProviderFailure({ cause: signingIn }).code, PROMPT_NOT_RUN_FAILURE_CODE);
   assert.equal(
     makeProviderFailure({
-      cause: new ProviderSessionOpenError({
-        instanceId: ProviderInstanceId.make("claudeAgent"),
-        providerSessionId: ProviderSessionId.make("session-1"),
-      }),
+      cause: Object.assign(new Error("open failed"), { _tag: "ProviderSessionOpenError" }),
     }).code,
     null,
   );

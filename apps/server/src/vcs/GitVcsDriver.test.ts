@@ -525,7 +525,7 @@ it.effect("checkpoints include changes inside initialized submodules", () =>
     yield* driver.checkpoints.deleteCheckpointRefs({ cwd, checkpointRefs: [first, second] });
     const libRefs = yield* gitIn(lib, ["for-each-ref", "refs/t3/"]);
     assert.strictEqual(libRefs.stdout, "");
-  }).pipe(Effect.scoped, Effect.provide(GitContractLayer)),
+  }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
 );
 
 it.effect.each([

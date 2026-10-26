@@ -771,7 +771,10 @@ export const make = Effect.gen(function* () {
           createdBy: "user",
           creationSource: "server",
         })
-        .pipe(Effect.mapError(failWith("Could not create the brainstorm thread.")));
+        .pipe(
+          Effect.tapError((cause) => Effect.logWarning("brainstorm thread launch failed", cause)),
+          Effect.mapError(failWith("Could not create the brainstorm thread.")),
+        );
       // A brainstorm is long-lived; inactivity must not settle it away.
       yield* orchestrator
         .dispatch({

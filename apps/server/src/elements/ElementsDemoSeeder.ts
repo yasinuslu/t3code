@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off - experimental sync seeder over a local demo directory.
 /**
  * Experimental: seeds hand-written demo conversations as real, active threads
  * from `T3CODE_ELEMENTS_DEMO` (a directory of `*.json` files), without starting
@@ -207,19 +208,33 @@ function messageEvents(input: {
   ];
 }
 
+function listDemoFiles(
+  dir: string,
+): { readonly names: ReadonlyArray<string> } | { readonly cause: unknown } {
+  try {
+    return {
+      names: NodeFS.readdirSync(dir)
+        .filter((name) => name.endsWith(".json"))
+        .toSorted(),
+    };
+  } catch (cause) {
+    return { cause };
+  }
+}
+
 export const seedElementsDemo = Effect.gen(function* () {
   const dirValue = process.env.T3CODE_ELEMENTS_DEMO?.trim();
   if (!dirValue) return { seeded: 0, skipped: 0 };
   const dir = expandHome(dirValue);
-  let names: ReadonlyArray<string>;
-  try {
-    names = NodeFS.readdirSync(dir)
-      .filter((name) => name.endsWith(".json"))
-      .toSorted();
-  } catch (cause) {
-    yield* Effect.logWarning("Elements demo directory is not readable", { dir, cause });
+  const listed = listDemoFiles(dir);
+  if ("cause" in listed) {
+    yield* Effect.logWarning("Elements demo directory is not readable", {
+      dir,
+      cause: listed.cause,
+    });
     return { seeded: 0, skipped: 0 };
   }
+  const names = listed.names;
   const config = yield* ServerConfig;
   const projects = yield* ProjectService.ProjectService;
   const orchestrator = yield* Orchestrator.OrchestratorV2;

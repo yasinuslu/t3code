@@ -3318,7 +3318,7 @@ it.effect("ProviderSessionManagerV2 resumes a loaded thread again when the runti
     });
 
     yield* effect.pipe(
-      Effect.provide(makeTestLayer({ state, idleTimeoutMs: 1000, needsResume: Ref.get(lost) })),
+      Effect.provide(layerTest({ state, idleTimeoutMs: 1000, needsResume: Ref.get(lost) })),
     );
   }),
 );

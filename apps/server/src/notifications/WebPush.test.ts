@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - test keys via node crypto.
 import * as NodeCrypto from "node:crypto";
 
 import { assert, describe, it } from "@effect/vitest";

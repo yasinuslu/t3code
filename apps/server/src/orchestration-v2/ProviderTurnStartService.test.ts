@@ -307,7 +307,17 @@ const runWorktreeHuskStart = (branch: string | null) => {
         IdAllocator.layer,
         Layer.succeed(FileSystem.FileSystem, {
           exists: (path: string) => Effect.succeed(!path.endsWith("/.git")),
+          realPath: (target: string) =>
+            Effect.fail(
+              PlatformError.systemError({
+                _tag: "NotFound",
+                module: "FileSystem",
+                method: "realPath",
+                pathOrDescriptor: target,
+              }),
+            ),
         } as never),
+        layerWorktreeLocation(),
         Layer.mock(GitWorkflow.GitWorkflowService)({
           pruneWorktrees: () => Effect.void,
           // The merged branch was deleted, so git cannot check it out again.
@@ -315,9 +325,10 @@ const runWorktreeHuskStart = (branch: string | null) => {
         }),
         Layer.mock(ProjectService.ProjectService)({
           getById: () =>
-            Effect.succeed(Option.some({ workspaceRoot: "/tmp/worktree-gone-project" } as never)),
+            Effect.succeedSome({ workspaceRoot: "/tmp/worktree-gone-project" } as never),
         }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getThreadRecords: () => Effect.succeed(projection),
           getTurnStartContext: () => Effect.succeed({ ...projection, hasConversation: true }),
           getRuntimeRecoveryProjection: () =>
             Effect.succeed({ ...projection, runs: [], turnItems: [] } as never),
@@ -996,7 +1007,8 @@ effectIt.effect.each(["cleanup-first", "startup-first"])(
       const path = yield* Path.Path;
       const workspaceRoot = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-start-" });
       const worktreePath = path.join(workspaceRoot, "project", "worktree");
-      yield* fileSystem.makeDirectory(worktreePath, { recursive: true });
+      // A branch worktree without its .git link counts as removed.
+      yield* fileSystem.makeDirectory(path.join(worktreePath, ".git"), { recursive: true });
       const release = yield* Deferred.make<void>();
       const openEntered = yield* Deferred.make<void>();
       const harness = makeLocalCommandHarness({
@@ -1007,7 +1019,9 @@ effectIt.effect.each(["cleanup-first", "startup-first"])(
         failReadsAfterRunning: true,
       });
       harness.createWorktree.mockImplementation(() =>
-        fileSystem.makeDirectory(worktreePath).pipe(Effect.as({} as never), Effect.orDie),
+        fileSystem
+          .makeDirectory(path.join(worktreePath, ".git"), { recursive: true })
+          .pipe(Effect.as({} as never), Effect.orDie),
       );
       const open = harness.open.getMockImplementation()!;
       harness.open.mockImplementation(() =>

@@ -760,6 +760,7 @@ export const BranchToolbar = memo(function BranchToolbar({
             onUsePreviousWorktree={onUsePreviousWorktree}
             addTargets={addTargets}
             onAddToMachine={onAddToMachine}
+            sandboxChoice={undefined}
           />
         ) : null}
         {panelSection !== "branch" && sandboxChoice ? (

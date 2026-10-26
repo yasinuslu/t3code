@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - small sync store helper.
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";

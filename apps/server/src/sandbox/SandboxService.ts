@@ -1450,8 +1450,9 @@ const make = Effect.gen(function* () {
       if (record === undefined) {
         return yield* fail("start", "", "This thread has no sandbox.")();
       }
+      const runFork = Effect.runForkWith(yield* Effect.context<never>());
       const onOutput = (line: string) => {
-        if (input.onOutput) Effect.runFork(input.onOutput(line));
+        if (input.onOutput) runFork(input.onOutput(line));
       };
       yield* record.lock.withPermits(1)(startUnlocked(record, onOutput));
       return summarize(record);
