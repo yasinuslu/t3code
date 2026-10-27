@@ -992,12 +992,18 @@ export const make = Effect.gen(function* () {
       ...Object.values(state.managerThreadIdsByProfile ?? {}),
       state.threadIdsBySpaceId[ALL_SPACE_ID],
     ]);
+    // A deleted manager is left out so the client opens (and the server recreates) it.
+    const managerThreadIdsByProfile: Record<string, ThreadId> = {};
+    for (const [profile, id] of Object.entries(state.managerThreadIdsByProfile ?? {})) {
+      const thread = yield* orchestrator
+        .getThreadShell(ThreadId.make(id))
+        .pipe(Effect.orElseSucceed(() => null));
+      if (thread !== null && thread.deletedAt === null)
+        managerThreadIdsByProfile[profile] = thread.id;
+    }
     return {
       threadIdsBySpaceId: state.threadIdsBySpaceId as Record<string, ThreadId>,
-      managerThreadIdsByProfile: (state.managerThreadIdsByProfile ?? {}) as Record<
-        string,
-        ThreadId
-      >,
+      managerThreadIdsByProfile,
       // Managers are ordinary threads in the lists; other brainstorm chats stay hidden.
       hiddenThreadIds: [...allBrainstormThreadIds(state)].filter(
         (threadId) => !managerIds.has(threadId),

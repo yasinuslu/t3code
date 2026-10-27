@@ -38,6 +38,7 @@ import {
 } from "../panelAnimations";
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
 import { ManagerRoute } from "./brainstorm/ManagerRoute";
+import { ManagerShortcuts } from "./brainstorm/ManagerShortcuts";
 import { PaneShortcuts } from "./PaneShortcuts";
 import { ProfileShortcuts } from "./ProfileShortcuts";
 import { ShellShortcuts } from "./ShellShortcuts";
@@ -458,6 +459,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         {children}
         <BackgroundThreadAnnouncer />
         <ManagerRoute />
+        <ManagerShortcuts />
         <SidebarControl />
         <ProfileShortcuts />
         <PaneShortcuts />

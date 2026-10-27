@@ -263,6 +263,22 @@ describe("BrainstormService managers", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("a deleted manager is not reported, and opening starts a new one", () =>
+    Effect.gen(function* () {
+      const { projects } = twoProfiles();
+      const harness = yield* makeHarness({ projects, threads: [] });
+      const gone = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      yield* Ref.update(harness.threads, (current) =>
+        current.filter((candidate) => candidate.id !== gone.threadId),
+      );
+
+      const state = Option.getOrThrow(yield* Stream.runHead(harness.brainstorm.stateChanges));
+      expect(state.managerThreadIdsByProfile).toEqual({});
+      const fresh = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      expect(fresh.threadId).not.toBe(gone.threadId);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("the manager from before per-profile managers stays its brain profile's manager", () =>
     Effect.gen(function* () {
       const brain = NodePath.join(home, "code", "home", "home-brain");
