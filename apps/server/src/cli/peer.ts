@@ -27,25 +27,24 @@ class PeerCliInputError extends Schema.TaggedError<PeerCliInputError>()("PeerCli
   }
 }
 
-const runWithPeers = <A, E>(
+const runWithPeers = Effect.fn("peerCli.runWithPeers")(function* <A, E>(
   flags: CliAuthLocationFlags,
   run: (peers: PeerEnvironments.PeerEnvironments["Service"]) => Effect.Effect<A, E>,
-) =>
-  Effect.gen(function* () {
-    const config = yield* resolveCliAuthConfig(flags, yield* GlobalFlag.LogLevel);
-    return yield* Effect.gen(function* () {
-      return yield* run(yield* PeerEnvironments.PeerEnvironments);
-    }).pipe(
-      Effect.provide(
-        PeerEnvironments.layer.pipe(
-          Layer.provide(ServerSecretStore.layer),
-          Layer.provide(FetchHttpClient.layer),
-          Layer.provide(ServerConfig.layer(config)),
-          Layer.provide(Layer.succeed(References.MinimumLogLevel, "Error")),
-        ),
+) {
+  const config = yield* resolveCliAuthConfig(flags, yield* GlobalFlag.LogLevel);
+  return yield* Effect.gen(function* () {
+    return yield* run(yield* PeerEnvironments.PeerEnvironments);
+  }).pipe(
+    Effect.provide(
+      PeerEnvironments.layer.pipe(
+        Layer.provide(ServerSecretStore.layer),
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(ServerConfig.layer(config)),
+        Layer.provide(Layer.succeed(References.MinimumLogLevel, "Error")),
       ),
-    );
-  });
+    ),
+  );
+});
 
 const readTokenFromStdin = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio;

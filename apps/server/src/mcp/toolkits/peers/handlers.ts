@@ -19,19 +19,20 @@ const toFailure = (error: PeerEnvironments.PeerError) =>
   });
 
 /** Reaching other servers is a manager's job; every other thread stays on this server. */
-const managerOnly = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  Effect.gen(function* () {
-    const invocation = yield* McpInvocationContext.McpInvocationContext;
-    const scope = yield* ManagerScope.ManagerScope;
-    const caller = invocation.thread?.threadId;
-    if (caller === undefined || (yield* scope.reachableProjectIds(caller)) === null) {
-      return yield* new OrchestratorMcpFailure({
-        code: "capability_denied",
-        message: "Peer tools are for the manager thread.",
-      });
-    }
-    return yield* effect;
-  });
+const managerOnly = Effect.fn("PeersHandlers.managerOnly")(function* <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+) {
+  const invocation = yield* McpInvocationContext.McpInvocationContext;
+  const scope = yield* ManagerScope.ManagerScope;
+  const caller = invocation.thread?.threadId;
+  if (caller === undefined || (yield* scope.reachableProjectIds(caller)) === null) {
+    return yield* new OrchestratorMcpFailure({
+      code: "capability_denied",
+      message: "Peer tools are for the manager thread.",
+    });
+  }
+  return yield* effect;
+});
 
 const clamp = (value: number | undefined, fallback: number, max: number) =>
   Math.min(Math.max(1, value ?? fallback), max);

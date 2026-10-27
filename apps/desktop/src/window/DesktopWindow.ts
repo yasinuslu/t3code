@@ -167,7 +167,7 @@ export function profileWindowTitle(displayName: string, profile: string | null):
 }
 
 function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
-  return shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
+  return shouldUseDarkColors ? "#000000" : "#ffffff";
 }
 
 type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
@@ -1201,10 +1201,11 @@ export const make = Effect.gen(function* () {
       profileChoices = change.settings.profileWindowChoices;
       if (change.changed) for (const listener of profileChoicesListeners) listener();
     }),
-    onProfileChoicesChanged: (listener) =>
+    onProfileChoicesChanged: Effect.fn("DesktopWindow.onProfileChoicesChanged")((listener) =>
       Effect.sync(() => {
         profileChoicesListeners.add(listener);
       }),
+    ),
   });
 });
 

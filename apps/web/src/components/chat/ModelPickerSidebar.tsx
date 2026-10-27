@@ -104,10 +104,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
           {selectedIndicatorTop !== null ? (
             <div
               data-model-picker-selected-indicator="true"
-              className={cn(
-                SELECTED_INDICATOR_CLASS,
-                "right-0 translate-y-0 transition-[top] duration-200 ease-out",
-              )}
+              className="pointer-events-none absolute right-1 z-10 h-5 w-0.75 rounded-full bg-primary transition-[top] duration-200 ease-out"
               style={{ top: selectedIndicatorTop }}
             />
           ) : null}

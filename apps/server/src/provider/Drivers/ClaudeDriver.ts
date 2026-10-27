@@ -195,13 +195,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const scopedLimitNames = yield* makeClaudeScopedLimitNames;
     const workspaceCatalog = yield* makeClaudeWorkspaceCatalog;
     // `/reload-skills` or `/reload-plugins` in a session republishes that workspace's `/` menu.
-    const onCommandsChanged = (input: {
-      readonly cwd: string;
-      readonly commands: ReadonlyArray<ClaudeSlashCommand>;
-      readonly environment: NodeJS.ProcessEnv;
-      readonly projectConfigDir: ResolvedClaudeConfigDir | undefined;
-    }) =>
-      Effect.gen(function* () {
+    const onCommandsChanged = Effect.fn("ClaudeDriver.onCommandsChanged")(
+      function* (input: {
+        readonly cwd: string;
+        readonly commands: ReadonlyArray<ClaudeSlashCommand>;
+        readonly environment: NodeJS.ProcessEnv;
+        readonly projectConfigDir: ResolvedClaudeConfigDir | undefined;
+      }) {
         const [existing, skills, checkedAt] = yield* Effect.all([
           workspaceCatalog.get(input.cwd),
           discoverClaudeSkills(effectiveConfig, input.cwd, input.environment),
@@ -217,10 +217,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
           skills,
           ...(workspaceConfigDir ? { configDir: workspaceConfigDir } : {}),
         });
-      }).pipe(
-        Effect.provideService(FileSystem.FileSystem, fileSystem),
-        Effect.provideService(Path.Path, path),
-      );
+      },
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
     const orchestrationAdapter = yield* createClaudeAdapterV2(
       {
         instanceId,

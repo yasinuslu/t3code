@@ -826,13 +826,12 @@ export const make = Effect.gen(function* () {
     if (state.downloadedVersion === null || !(yield* tryStartUpdateAction("install"))) {
       return { accepted: false, completed: false, failed: false };
     }
-    const fail = (message: string) =>
-      Effect.gen(function* () {
-        yield* removeUpdateRestartMarker;
-        yield* updateState((current) => reduceDesktopUpdateStateOnInstallFailure(current, message));
-        yield* logUpdaterError(message);
-        yield* finishUpdateAction("install");
-      });
+    const fail = Effect.fn("DesktopUpdates.failStagedInstall")(function* (message: string) {
+      yield* removeUpdateRestartMarker;
+      yield* updateState((current) => reduceDesktopUpdateStateOnInstallFailure(current, message));
+      yield* logUpdaterError(message);
+      yield* finishUpdateAction("install");
+    });
     if (command === null) {
       yield* fail("No T3CODE_DESKTOP_STAGED_UPDATE_COMMAND is set to switch to the staged build.");
       return { accepted: true, completed: false, failed: true };
@@ -1238,7 +1237,9 @@ export const make = Effect.gen(function* () {
     install: installWithExpectedVersion().pipe(
       Effect.map(({ accepted, completed, state }) => ({ accepted, completed, state })),
     ),
-    installPrepared: (expectedVersion) => installWithExpectedVersion(expectedVersion),
+    installPrepared: Effect.fn("DesktopUpdates.installPrepared")(function (expectedVersion) {
+      return installWithExpectedVersion(expectedVersion);
+    }),
   });
 });
 

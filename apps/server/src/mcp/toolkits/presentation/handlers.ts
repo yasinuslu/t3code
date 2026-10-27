@@ -25,24 +25,25 @@ const encodePages = Schema.encodeSync(Schema.fromJsonString(PageList));
 const decodePages = Schema.decodeUnknownEffect(Schema.fromJsonString(PageList));
 
 /** Copies the files an agent's pages point at into T3 storage. */
-const storePages = (threadId: ThreadId, input: Parameters<typeof storePresentationPages>[0]) =>
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem.FileSystem;
-    return yield* storePresentationPages(input, {
-      image: (path) => storeImageFile(threadId, path),
-      html: (source) =>
-        Effect.gen(function* () {
-          const html =
-            "html" in source
-              ? source.html
-              : yield* fileSystem
-                  .readFileString(source.path)
-                  .pipe(Effect.mapError(() => invalid(`Could not read ${source.path}.`)));
-          const bytes = new TextEncoder().encode(html);
-          return yield* storeThreadFile({ threadId, bytes, extension: ".html", generic: true });
-        }),
-    });
+const storePages = Effect.fn("PresentationHandlers.storePages")(function* (
+  threadId: ThreadId,
+  input: Parameters<typeof storePresentationPages>[0],
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  return yield* storePresentationPages(input, {
+    image: (path) => storeImageFile(threadId, path),
+    html: Effect.fn("PresentationHandlers.html")(function* (source) {
+      const html =
+        "html" in source
+          ? source.html
+          : yield* fileSystem
+              .readFileString(source.path)
+              .pipe(Effect.mapError(() => invalid(`Could not read ${source.path}.`)));
+      const bytes = new TextEncoder().encode(html);
+      return yield* storeThreadFile({ threadId, bytes, extension: ".html", generic: true });
+    }),
   });
+});
 
 /**
  * Writes the thread's next pages as one version step: within the thread's latest run they amend

@@ -162,14 +162,16 @@ const make = Effect.gen(function* () {
   });
 
   /** Active and (optionally) archived thread shells, without subagent children. */
-  const allThreads = (includeArchived: boolean) =>
-    Effect.gen(function* () {
+  const allThreads = Effect.fn("BrainstormHandlers.allThreads")(
+    function* (includeArchived: boolean) {
       const active = yield* orchestrator.getShellSnapshot({ location: "active" });
       const archived = includeArchived
         ? (yield* orchestrator.getShellSnapshot({ location: "archive" })).archivedThreads
         : [];
       return [...active.threads, ...archived].filter(isTopLevel);
-    }).pipe(Effect.mapError(() => fail("Could not read the threads.")));
+    },
+    Effect.mapError(() => fail("Could not read the threads.")),
+  );
 
   const inScope = (context: BrainstormContext, space: BrainstormSpace, projectId: string) =>
     isProjectInSpace(context, projectId, space.id);
@@ -216,33 +218,31 @@ const make = Effect.gen(function* () {
     return Effect.succeed(space);
   };
 
-  const requireThread = (
+  const requireThread = Effect.fn("BrainstormHandlers.requireThread")(function* (
     context: BrainstormContext,
     space: BrainstormSpace,
     threadId: string,
     includeArchived = true,
-  ) =>
-    Effect.gen(function* () {
-      const threads = yield* allThreads(includeArchived);
-      const thread = threads.find((candidate) => candidate.id === threadId);
-      if (!thread || !inScope(context, space, thread.projectId)) {
-        return yield* fail(`Thread ${threadId} is not in ${space.name}.`);
-      }
-      if (context.brainstormThreadIds.has(thread.id)) {
-        return yield* fail("That is a brainstorm chat, not a work thread.");
-      }
-      return thread;
-    });
+  ) {
+    const threads = yield* allThreads(includeArchived);
+    const thread = threads.find((candidate) => candidate.id === threadId);
+    if (!thread || !inScope(context, space, thread.projectId)) {
+      return yield* fail(`Thread ${threadId} is not in ${space.name}.`);
+    }
+    if (context.brainstormThreadIds.has(thread.id)) {
+      return yield* fail("That is a brainstorm chat, not a work thread.");
+    }
+    return thread;
+  });
 
-  const refreshed = (threadId: string) =>
-    Effect.gen(function* () {
-      const { context, environmentId } = yield* scope;
-      const shell = yield* orchestrator
-        .getThreadShell(ThreadId.make(threadId))
-        .pipe(Effect.mapError(() => fail("Could not read the thread.")));
-      if (shell === null) return yield* fail(`Thread ${threadId} is gone.`);
-      return describeThread(context, shell, environmentId);
-    });
+  const refreshed = Effect.fn("BrainstormHandlers.refreshed")(function* (threadId: string) {
+    const { context, environmentId } = yield* scope;
+    const shell = yield* orchestrator
+      .getThreadShell(ThreadId.make(threadId))
+      .pipe(Effect.mapError(() => fail("Could not read the thread.")));
+    if (shell === null) return yield* fail(`Thread ${threadId} is gone.`);
+    return describeThread(context, shell, environmentId);
+  });
 
   const findProject = (
     context: BrainstormContext,
