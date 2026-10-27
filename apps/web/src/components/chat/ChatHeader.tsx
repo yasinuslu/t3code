@@ -34,10 +34,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { ProjectFavicon } from "../ProjectFavicon";
-import {
-  ProviderConfigDirIndicator,
-  type ThreadProviderConfigDir,
-} from "./ProviderConfigDirIndicator";
 import { ActiveSpaceLabel } from "../sidebar/SpaceSwitcher";
 import { ALL_SPACE_ID, useSpaceStore } from "~/spaceStore";
 import {
@@ -65,8 +61,6 @@ interface ChatHeaderProps {
   parentThreadLink: { threadId: ThreadId; title: string } | null;
   onOpenThread: (threadId: ThreadId) => void;
   rightPanelOpen: boolean;
-  /** The provider profile the thread runs on, for drivers that report one. */
-  providerConfigDir?: ThreadProviderConfigDir | null;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
 }
@@ -92,7 +86,6 @@ export const ChatHeader = memo(function ChatHeader({
   parentThreadLink,
   onOpenThread,
   rightPanelOpen,
-  providerConfigDir = null,
   onNewThreadInProject,
   onOpenProjectSettings,
 }: ChatHeaderProps) {
@@ -456,12 +449,6 @@ export const ChatHeader = memo(function ChatHeader({
       </WorkspaceBreadcrumb>
       {isServerThread ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      {/* A manager's title already names its profile; a narrow column keeps the room for the title. */}
-      {providerConfigDir && !isManager ? (
-        <div className="flex min-w-0 max-w-[min(20rem,40%)] shrink items-center @max-[28rem]:hidden">
-          <ProviderConfigDirIndicator value={providerConfigDir} compact={false} />
-        </div>
-      ) : null}
       <div className="flex shrink-0 items-center">
         <ShortcutsButton />
       </div>
