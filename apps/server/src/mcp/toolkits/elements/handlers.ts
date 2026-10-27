@@ -14,7 +14,7 @@ export const ElementsHandlersLive = ElementsToolkit.toLayer({
         ? Effect.succeed({
             shown: result.interactive
               ? `${result.tag} is shown. The user's answer arrives as their next message.`
-              : `${result.tag} is shown. Continue your reply as text below it.`,
+              : `${result.tag} is shown. Write what comes next as reply text, not in your thinking.`,
           })
         : Effect.fail(
             new OrchestratorMcpFailure({ code: "invalid_request", message: result.message }),
