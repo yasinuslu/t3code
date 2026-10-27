@@ -118,7 +118,6 @@ import { useLegacyPlanModeState } from "./use-legacy-plan-mode-enabled";
 import {
   resolveNewTaskBranchWorktreePath,
   resolveNewTaskLocalWorkspaceSelection,
-  resolveNewTaskSandbox,
   resolveNewTaskWorkspaceSelection,
 } from "./new-task-context-presentation";
 import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
@@ -167,13 +166,9 @@ type NewTaskFlowContextValue = {
   readonly selectedProjectKey: string | null;
   readonly selectedModelKey: string | null;
   readonly workspaceMode: WorkspaceMode;
-  /** The new thread runs in a sandbox of its folder. */
-  readonly sandbox: boolean;
   readonly isGitRepo: boolean;
   readonly isGitRepoKnown: boolean;
   readonly canChooseWorkspace: boolean;
-  /** True when the selected server can create sandboxes. */
-  readonly canUseSandbox: boolean;
   readonly selectedBranchName: string | null;
   readonly selectedWorktreePath: string | null;
   readonly startFromOrigin: boolean;
@@ -213,7 +208,6 @@ type NewTaskFlowContextValue = {
     options?: ReadonlyArray<ProviderOptionSelection>,
   ) => void;
   readonly setWorkspaceMode: (mode: WorkspaceMode) => void;
-  readonly setSandbox: (value: boolean) => void;
   readonly selectBranch: (branch: VcsRef) => void;
   readonly setStartFromOrigin: (value: boolean) => void;
   readonly beginEditingPendingTask: (messageId: string) => boolean;
@@ -535,11 +529,6 @@ export function NewTaskFlowProvider(
     isGitRepo,
   });
   const workspaceMode = workspaceSelection.mode;
-  const sandbox = resolveNewTaskSandbox({
-    draftSandbox: selectedProjectDraft.workspaceSelection?.sandbox,
-    serverConfig: selectedEnvironmentServerConfig,
-  });
-  const canUseSandbox = canChooseWorkspace && selectedEnvironmentServerConfig?.sandboxes === true;
   const selectedBranchName = workspaceSelection.branch;
   const selectedWorktreePath = workspaceSelection.worktreePath;
   // Keep the user's explicit choice separate from the resolved display value:
@@ -800,22 +789,6 @@ export function NewTaskFlowProvider(
         branch: mode === "local" ? localSelection.branch : selectedBranchName,
         worktreePath: mode === "local" ? localSelection.worktreePath : selectedWorktreePath,
         ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
-        ...(sandbox ? { sandbox: true } : {}),
-      },
-    });
-  };
-
-  const setSandbox = (value: boolean) => {
-    if (!selectedProjectDraftKey) {
-      return;
-    }
-    updateComposerDraftSettings(selectedProjectDraftKey, {
-      workspaceSelection: {
-        mode: workspaceMode,
-        branch: selectedBranchName,
-        worktreePath: selectedWorktreePath,
-        ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
-        ...(value ? { sandbox: true } : {}),
       },
     });
   };
@@ -844,13 +817,11 @@ export function NewTaskFlowProvider(
         branch: localSelection.branch,
         worktreePath: localSelection.worktreePath,
         ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
-        ...(sandbox ? { sandbox: true } : {}),
       },
     });
   }, [
     availableBranches,
     draftStartFromOrigin,
-    sandbox,
     selectedProject,
     selectedProjectDraftKey,
     workspaceMode,
@@ -871,7 +842,6 @@ export function NewTaskFlowProvider(
           branchWorktreePath: branch.worktreePath,
         }),
         ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
-        ...(sandbox ? { sandbox: true } : {}),
       },
     });
   };
@@ -886,7 +856,6 @@ export function NewTaskFlowProvider(
         branch: selectedBranchName,
         worktreePath: selectedWorktreePath,
         startFromOrigin: value,
-        ...(sandbox ? { sandbox: true } : {}),
       },
     });
   };
@@ -964,7 +933,6 @@ export function NewTaskFlowProvider(
           branch: message.creation.branch,
           worktreePath: message.creation.worktreePath,
           startFromOrigin: message.creation.startFromOrigin ?? false,
-          ...(message.creation.sandbox ? { sandbox: true } : {}),
           pullRequestReference: message.creation.pullRequestReference,
         },
       });
@@ -1060,16 +1028,11 @@ export function NewTaskFlowProvider(
         ...((workspaceSelection?.startFromOrigin ?? startFromOrigin)
           ? { startFromOrigin: true }
           : {}),
-        ...(resolveNewTaskSandbox({
-          draftSandbox: workspaceSelection?.sandbox,
-          serverConfig: selectedEnvironmentServerConfig,
-        })
-          ? { sandbox: true }
-          : {}),
       },
       createdAt: metadata.createdAt,
     };
   };
+
   const finishEditingPendingTask = () => {
     const editing = editingPendingTaskRef.current;
     editingPendingTaskRef.current = null;
@@ -1164,11 +1127,9 @@ export function NewTaskFlowProvider(
     selectedProjectKey,
     selectedModelKey,
     workspaceMode,
-    sandbox,
     isGitRepo,
     isGitRepoKnown: knownIsGitRepo !== null,
     canChooseWorkspace,
-    canUseSandbox,
     selectedBranchName,
     selectedWorktreePath,
     startFromOrigin,
@@ -1201,7 +1162,6 @@ export function NewTaskFlowProvider(
     switchingToEnvironmentId,
     setSelectedModelKey,
     setWorkspaceMode,
-    setSandbox,
     selectBranch,
     setStartFromOrigin,
     beginEditingPendingTask,

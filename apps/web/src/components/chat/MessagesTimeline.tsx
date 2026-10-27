@@ -378,7 +378,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [expandedAttemptIds, setExpandedAttemptIds] = useState<ReadonlySet<RunAttemptId>>(
     () => listState.rememberedPosition?.disclosures?.attempts ?? new Set(),
   );
-  const [compactedHistoryExpanded, setCompactedHistoryExpanded] = useState(false);
   const [positionedThreadKey, setPositionedThreadKey] = useState<string | null>(() =>
     listState.rememberedPosition?.atEnd === false ? null : listIdentityKey,
   );
@@ -406,12 +405,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
     setExpandedRunIds(paintedExpandedRunIds);
     setExpandedWorkGroupIds(paintedExpandedWorkGroupIds);
     setExpandedAttemptIds(paintedExpandedAttemptIds);
-    setCompactedHistoryExpanded(false);
   }
   const citationThreadRef = parseScopedThreadKey(routeThreadKey);
   const openPullRequest = useOpenPrLink(citationThreadRef ?? undefined);
   const expandCitedRun = (runId: RunId) => {
-    setCompactedHistoryExpanded(true);
     setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
   };
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
@@ -519,10 +516,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
       return next;
     });
   };
-  const onToggleCompactedHistory = (anchorKey: string) => {
-    suspendEndScrollMaintenanceForDisclosure(anchorKey);
-    setCompactedHistoryExpanded((expanded) => !expanded);
-  };
   const onToggleAttemptFold = (attemptId: RunAttemptId) => {
     suspendEndScrollMaintenanceForDisclosure(`attempt-fold:${attemptId}`);
     setExpandedAttemptIds((existing) => {
@@ -621,7 +614,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     threadStartCheckpointReady,
     availableRevertTurnCounts,
     worktreeSetup,
-    compactedHistoryExpanded,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
   // Run status/timestamps change per stream event; keep them out of shared row context.
@@ -963,7 +955,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onRollbackCheckpoint,
     onToggleTurnFold,
     onToggleAttemptFold,
-    onToggleCompactedHistory,
     onToggleWorkGroup,
     onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
     onJumpToComponent: jumpToComponent,
@@ -1030,16 +1021,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
         </div>
       </div>
     );
-  // Older pages load into the compacted history, so they wait until it is open.
-  const compactedHistoryCollapsed = rows.some(
-    (row) => row.kind === "compacted-history" && !row.expanded,
-  );
   const listHeader = (
     <>
       {parentThreadLink === null ? listHeaderLeadingContent : null}
-      {historyControls && !compactedHistoryCollapsed ? (
-        <TimelineHistoryControl {...historyControls} />
-      ) : null}
+      {historyControls ? <TimelineHistoryControl {...historyControls} /> : null}
       {parentThreadLink !== null ? listHeaderLeadingContent : null}
     </>
   );
@@ -1298,7 +1283,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       className={cn(
         isWorkLogRow || isSubagentGroup
           ? undefined
-          : row.kind === "turn-fold" || row.kind === "compacted-history" || row.kind === "working"
+          : row.kind === "turn-fold" || row.kind === "working"
             ? "pb-1.5"
             : (row.kind === "message" &&
                   row.message.role === "assistant" &&
@@ -1349,7 +1334,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
       {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
-      {row.kind === "compacted-history" ? <CompactedHistoryTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? <UserMessageRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -1452,35 +1436,6 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>
-        <MorphIcon className="size-3.5" icon={row.expanded ? ChevronDown : ChevronRight} />
-      </button>
-      <TimelineRowTimestamp
-        createdAt={row.createdAt}
-        timestampFormat={ctx.timestampFormat}
-        className="ms-auto"
-      />
-    </div>
-  );
-}
-
-function CompactedHistoryTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "compacted-history" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const count = `${row.hiddenMessageCount} earlier ${row.hiddenMessageCount === 1 ? "message" : "messages"}`;
-  return (
-    <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pb-2 pe-0.5 pt-1">
-      <button
-        type="button"
-        aria-expanded={row.expanded}
-        data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleCompactedHistory(row.id)}
-        className="flex cursor-pointer select-none items-center gap-1.5 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-      >
-        <Minimize2Icon aria-hidden="true" className="size-3" />
-        <span>{row.expanded ? `Hide ${count}` : `${count}, compacted`}</span>
         <MorphIcon className="size-3.5" icon={row.expanded ? ChevronDown : ChevronRight} />
       </button>
       <TimelineRowTimestamp

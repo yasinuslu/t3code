@@ -86,12 +86,8 @@ import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
-import * as GrowService from "./grow/GrowService.ts";
-import * as GrowWidgetPool from "./grow/GrowWidgetPool.ts";
-import * as UserNotifications from "./notifications/UserNotifications.ts";
 import * as PreviewLinkStatus from "./preview/PreviewLinkStatus.ts";
 import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
-import * as SandboxService from "./sandbox/SandboxService.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
@@ -457,20 +453,8 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
   Layer.mock(StorageCleanup.StorageCleanup)({}),
   Layer.mock(BrainstormService.BrainstormService)({}),
-  Layer.mock(GrowService.GrowService)({}),
-  Layer.mock(GrowWidgetPool.GrowWidgetPool)({}),
-  Layer.mock(UserNotifications.UserNotifications)({}),
   Layer.mock(PreviewLinkStatus.PreviewLinkStatus)({}),
   Layer.mock(PreviewEnvironmentService.PreviewEnvironmentService)({}),
-  Layer.mock(SandboxService.SandboxService)({
-    supported: false,
-    backend: "docker",
-    stream: Stream.empty,
-    turnEnded: () => undefined,
-    touch: () => undefined,
-    unretire: () => undefined,
-    forwardedPorts: () => [],
-  }),
   Layer.mock(DatabaseStorage.DatabaseStorage)({}),
   Layer.mock(TerminalManager.TerminalManager)({}),
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),

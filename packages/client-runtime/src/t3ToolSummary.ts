@@ -394,6 +394,19 @@ export function summarizeT3ToolCalls(
     case "link-preview":
       label = phrase("Linked", "link", quantity(selected.length, "preview"));
       break;
+    case "presentation-set":
+      label = phrase("Set", "set", `the presentation${selected.length === 1 ? "" : ` ${times}`}`);
+      break;
+    case "presentation-edit":
+      label = phrase(
+        "Edited",
+        "edit",
+        `the presentation${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
+    case "presentation-get":
+      label = phrase("Read", "read", "the presentation");
+      break;
     case "elements-describe":
       label = phrase("Described", "describe", "web components");
       break;

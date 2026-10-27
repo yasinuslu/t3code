@@ -258,38 +258,4 @@ describe("project query refresh", () => {
       atomHooks.registry = null;
     }
   });
-
-  it("reports a path that does not exist yet as missing", () => {
-    const readAtom = Atom.make<
-      AsyncResult.AsyncResult<ProjectReadFileResult, ProjectReadFileError>
-    >(
-      AsyncResult.failure(
-        Cause.fail(
-          new ProjectReadFileError({
-            cwd: "/repo",
-            relativePath: "reports/summary.html",
-            failure: "operation_failed",
-            operation: "realpath-target",
-          }),
-        ),
-      ),
-    );
-    const registry = AtomRegistry.make();
-    const unmount = registry.mount(readAtom);
-    projectMocks.readFile.mockReturnValue(readAtom);
-    projectMocks.optimisticFile.mockReturnValue(Atom.make(null));
-    atomHooks.registry = registry;
-
-    try {
-      reactHooks.beginRender();
-      const query = useProjectFileQuery(environmentId, "/repo", "reports/summary.html");
-      expect(query.isMissing).toBe(true);
-      expect(query.isNotFile).toBe(false);
-      expect(query.data).toBeNull();
-    } finally {
-      unmount();
-      registry.dispose();
-      atomHooks.registry = null;
-    }
-  });
 });

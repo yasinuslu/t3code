@@ -13,7 +13,6 @@ import {
 } from "@t3tools/shared/keybindings";
 
 import { shortcutKeyFromEvent } from "../../keybindings";
-import { GROW_COMMAND_LABELS, isGrowCommand } from "../grow/grow.keys";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 
@@ -63,7 +62,6 @@ const CORE_WHEN_VARIABLES = [
   "isWeb",
   "isDesktop",
   "isMac",
-  "growOpen",
   "true",
   "false",
 ] as const;
@@ -228,7 +226,7 @@ const KEYBINDING_GROUPS = [
     title: "Navigation",
     prefixes: ["sidebar", "rightPanel", "commandPalette", "filePicker", "projectSearch", "editor"],
   },
-  { id: "grow", title: "Grow & manager", prefixes: ["grow", "manager", "mode", "profile"] },
+  { id: "manager", title: "Manager & profiles", prefixes: ["manager", "profile"] },
   {
     id: "panes",
     title: "Panes & windows",
@@ -386,7 +384,6 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
-  if (isGrowCommand(command)) return `Grow: ${GROW_COMMAND_LABELS[command]}`;
   if (command === "shortcuts.toggle") return "Keyboard Shortcuts: Show or Hide";
   if (command === "settings.open") return "Desktop: Open Settings";
   if (command.startsWith("zoom."))

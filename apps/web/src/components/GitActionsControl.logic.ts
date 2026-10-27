@@ -1,15 +1,10 @@
-import {
-  SourceControlProviderError,
-  type GitRunStackedActionResult,
-  type GitStackedAction,
-  type VcsStatusResult,
+import type {
+  GitRunStackedActionResult,
+  GitStackedAction,
+  VcsStatusResult,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
-import * as Schema from "effect/Schema";
-import {
-  sourceControlClients,
-  type ChangeRequestTerminology,
-} from "@t3tools/client-runtime/source-control-clients";
+import type { ChangeRequestTerminology } from "@t3tools/client-runtime/source-control-clients";
 import {
   changeRequestTerminologyFor,
   type DefaultBranchActionDialogCopy,
@@ -17,19 +12,6 @@ import {
   type GitActionIconName,
   type GitDialogAction,
 } from "@t3tools/client-runtime/state/vcs";
-
-const isSourceControlProviderError = Schema.is(SourceControlProviderError);
-
-/**
- * A provider failure toasts as the provider name plus its detail ("GitCode: ... token is not set"),
- * not the error message, which leads with the internal operation name.
- */
-export function describeGitActionFailure(error: unknown): string {
-  if (isSourceControlProviderError(error)) {
-    return `${sourceControlClients.get(error.provider).label}: ${error.detail}`;
-  }
-  return error instanceof Error ? error.message : "An error occurred.";
-}
 
 export {
   requiresDefaultBranchConfirmation,

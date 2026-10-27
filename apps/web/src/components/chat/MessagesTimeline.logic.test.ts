@@ -609,10 +609,9 @@ describe("deriveMessagesTimelineRows", () => {
         ],
         false,
       );
-      // A completed compaction folds the history above it into one collapsed row.
-      const liveRows = completed
-        .slice(completed.findIndex((row) => row.id.includes("history-assistant")) + 1)
-        .filter((row) => row.kind !== "compacted-history");
+      const liveRows = completed.slice(
+        completed.findIndex((row) => row.id.includes("history-assistant")) + 1,
+      );
       expect(liveRows).toMatchObject([
         {
           kind: "context-compaction",
@@ -626,9 +625,9 @@ describe("deriveMessagesTimelineRows", () => {
         item: { ...compaction.item, status: "completed" as const, afterTokenCount: 19_000 },
       };
       const finishingRows = rowsFor([prompt, terminalCompaction]);
-      const finishingLiveRows = finishingRows
-        .slice(finishingRows.findIndex((row) => row.id.includes("history-assistant")) + 1)
-        .filter((row) => row.kind !== "compacted-history");
+      const finishingLiveRows = finishingRows.slice(
+        finishingRows.findIndex((row) => row.id.includes("history-assistant")) + 1,
+      );
       expect(finishingLiveRows).toEqual(liveRows);
       const continuingRows = rowsFor([
         prompt,

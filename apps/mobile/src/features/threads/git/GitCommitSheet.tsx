@@ -14,7 +14,7 @@ import { useEnvironmentQuery } from "../../../state/query";
 import { useThreadSelection } from "../../../state/use-thread-selection";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
-import { useSelectedThreadGitTargetRepository } from "../../../state/use-selected-thread-git-target";
+import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
 
 type GitCommitSheetProps = StaticScreenProps<{
@@ -27,9 +27,9 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const { selectedThread } = useThreadSelection();
-  const { targetCwd: selectedThreadCwd } = useSelectedThreadGitTargetRepository();
+  const { selectedThreadCwd } = useSelectedThreadWorktree();
   const gitState = useSelectedThreadGitState();
-  const gitActions = useSelectedThreadGitActions(selectedThreadCwd);
+  const gitActions = useSelectedThreadGitActions();
   const { canWriteSourceControl, canChangeThreadBranch } = gitActions;
 
   const gitStatus = useEnvironmentQuery(

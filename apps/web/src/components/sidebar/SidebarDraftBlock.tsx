@@ -86,7 +86,6 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         aria-label={accessibility.label}
         aria-current={accessibility.current}
         data-testid="sidebar-draft-row"
-        data-pane-row=""
         className={cn(
           "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           props.isActive ? "bg-sidebar-row-active" : draftSurfaceClassName,
@@ -113,7 +112,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                       type="button"
                       aria-label="Discard draft"
                       onClick={handleDiscard}
-                      className="touch-target pointer-events-none relative inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                      className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
                     >
                       <XIcon className="size-3" />
                     </button>

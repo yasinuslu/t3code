@@ -264,12 +264,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["wide full width column layout messages composer monitor"],
   },
   {
-    id: "window-layout",
-    title: "Window layout",
-    to: "/settings/appearance",
-    searchTerms: ["portrait landscape vertical rotated monitor stacked tall panel below"],
-  },
-  {
     id: "math-rendering",
     title: "Render math",
     to: "/settings/appearance",
@@ -346,12 +340,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Snooze until limits reset",
     to: "/settings/general",
     searchTerms: ["usage quota rate limit reset wake recover continue"],
-  },
-  {
-    id: "grow",
-    title: "Grow (experimental)",
-    to: "/settings/general",
-    searchTerms: ["experimental grow home mode switch sidebar fork"],
   },
   {
     id: "host-manager",
@@ -433,12 +421,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Thread notifications",
     to: "/settings/general",
     searchTerms: ["notification sound alert completion input approval desktop"],
-  },
-  {
-    id: "push-notifications",
-    title: "Bildirimler",
-    to: "/settings/general",
-    searchTerms: ["push bildirim telefon cihaz test inbox notify web push"],
   },
   {
     id: "in-app-notifications",
@@ -567,20 +549,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
-    id: "grow-presentation",
-    title: "Presentation and Live",
-    to: "/settings/general",
-    scope: "environment-defaults",
-    searchTerms: ["experimental grow presentation live preview stage proof slides living page"],
-  },
-  {
-    id: "grow-widget-pool",
-    title: "Grow widget pool",
-    to: "/settings/general",
-    scope: "environment-defaults",
-    searchTerms: ["living page widgets folder brain gallery storybook"],
-  },
-  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",
@@ -687,12 +655,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Sidebar (legacy)",
     to: "/settings/general",
     searchTerms: ["project thread tree old flat list"],
-  },
-  {
-    id: "legacy-classic-threads-view",
-    title: "Classic threads view (deprecated)",
-    to: "/settings/general",
-    searchTerms: ["grow threads mode switch toggle old full view links"],
   },
   {
     id: "keybindings",

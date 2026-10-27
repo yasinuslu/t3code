@@ -6,7 +6,7 @@ import { resolveExplicitDiffOpenOnActivate } from "../ChatView.logic";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { type ScopedThreadRef, type RunId } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { type Dispatch, type SetStateAction, useEffect } from "react";
+import { useEffect } from "react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -56,9 +56,6 @@ interface RightPanelActionsInput {
   readonly onDiffPanelOpen: (() => void) | undefined;
   readonly closeRightPanelSurface: (surface: RightPanelSurface) => void;
   readonly presentationAvailable: boolean;
-  /** Embedded (Grow) chats have no right panel; their presentation opens in a dialog. */
-  readonly embedded: boolean;
-  readonly setPresentationDialogOpen: Dispatch<SetStateAction<boolean>>;
 }
 
 /**
@@ -91,8 +88,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     explicitDiffOpenRef,
     onDiffPanelOpen,
     presentationAvailable,
-    embedded,
-    setPresentationDialogOpen,
   } = input;
 
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
@@ -147,8 +142,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const addFilesSurfaceStable = useStableCallback(addFilesSurface);
   const addPresentationSurface = () => {
     if (!activeThreadRef || !presentationAvailable) return;
-    if (embedded) setPresentationDialogOpen(true);
-    else useRightPanelStore.getState().open(activeThreadRef, "presentation");
+    useRightPanelStore.getState().open(activeThreadRef, "presentation");
   };
   const addPresentationSurfaceStable = useStableCallback(addPresentationSurface);
   // The launcher's surfaces as app-global toggles. Hiding only closes the panel:
@@ -159,8 +153,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   };
   const togglePresentationSurface = () => {
     if (!activeThreadRef || !presentationAvailable) return;
-    if (embedded) setPresentationDialogOpen((open) => !open);
-    else useRightPanelStore.getState().toggle(activeThreadRef, "presentation");
+    useRightPanelStore.getState().toggle(activeThreadRef, "presentation");
   };
   const togglePresentationSurfaceStable = useStableCallback(togglePresentationSurface);
   const addPullRequestsSurface = () => {

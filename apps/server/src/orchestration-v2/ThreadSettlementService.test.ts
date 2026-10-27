@@ -50,10 +50,7 @@ function at(offsetMs: number): DateTime.Utc {
 }
 
 type SettlementShell = OrchestrationV2ThreadShell &
-  Pick<
-    ProjectionStore.ProjectionSettlementCandidate,
-    "latestUserAuthoredMessageAt" | "statusReport"
-  >;
+  Pick<ProjectionStore.ProjectionSettlementCandidate, "latestUserAuthoredMessageAt">;
 
 function shell(overrides: Partial<SettlementShell> = {}): SettlementShell {
   return {
@@ -146,12 +143,6 @@ describe("isAutoSettlementCandidate", () => {
     ).toBe(true);
   });
 
-  it("never settles a thread whose latest run failed", () => {
-    expect(
-      ThreadSettlementService.isAutoSettlementCandidate(shell({ status: "failed" }), NOW_MS),
-    ).toBe(false);
-  });
-
   it("never settles, or keeps snoozed, a thread whose guest is waiting on the owner", () => {
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
@@ -178,7 +169,7 @@ describe("isAutoSettlementCandidate", () => {
         shell({ ...snoozed, status: "failed", latestRunCompletedAt: at(-30 * 60 * 1_000) }),
         NOW_MS,
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
         shell({ ...snoozed, status: "failed", latestRunCompletedAt: at(-2 * 60 * 60 * 1_000) }),
@@ -294,7 +285,6 @@ describe("resolveAutoSettlementAt", () => {
     const input = {
       thread: idle,
       pullRequest: null,
-      defaultBranch: null,
       nowMs: NOW_MS,
       autoSettleAfterDays: 2,
       autoSettleOnMerge: true,
@@ -362,7 +352,6 @@ describe("resolveAutoSettlementAt", () => {
         state: "merged" as const,
         mergedAt: DateTime.formatIso(at(-60 * 60 * 1_000)),
       },
-      defaultBranch: null,
       nowMs: NOW_MS,
       autoSettleAfterDays: null,
       autoSettleOnMerge: true,
@@ -371,27 +360,10 @@ describe("resolveAutoSettlementAt", () => {
     expect(
       ThreadSettlementService.resolveAutoSettlementAt({ ...input, autoSettleOnMerge: false }),
     ).toBeNull();
-    // The user wrote after the merge: held open while the thread is recent,
-    const resumed = {
-      ...input,
-      pullRequest: {
-        state: "merged" as const,
-        mergedAt: DateTime.formatIso(at(-3 * 60 * 60 * 1_000)),
-      },
-    };
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...resumed,
-        thread: { ...thread, latestRunCompletedAt: at(-10 * 60 * 1_000) },
-      }),
-    ).toBeNull();
-    // and settled at its last activity once it has been quiet for 30 minutes.
-    expect(ThreadSettlementService.resolveAutoSettlementAt(resumed)).toEqual(at(-90 * 60 * 1_000));
-    // A closed pull request keeps the stricter rule: later user activity wins.
     expect(
       ThreadSettlementService.resolveAutoSettlementAt({
         ...input,
-        pullRequest: { state: "closed", closedAt: DateTime.formatIso(at(-3 * 60 * 60 * 1_000)) },
+        pullRequest: { state: "merged", mergedAt: DateTime.formatIso(at(-3 * 60 * 60 * 1_000)) },
       }),
     ).toBeNull();
     expect(
@@ -414,7 +386,6 @@ describe("resolveAutoSettlementAt", () => {
     const input = {
       thread: woken,
       pullRequest: { state: "merged" as const, mergedAt: DateTime.formatIso(at(-60 * 60 * 1_000)) },
-      defaultBranch: null,
       nowMs: NOW_MS,
       autoSettleAfterDays: null,
       autoSettleOnMerge: true,
@@ -424,36 +395,6 @@ describe("resolveAutoSettlementAt", () => {
       ThreadSettlementService.resolveAutoSettlementAt({
         ...input,
         thread: { ...woken, latestUserAuthoredMessageAt: at(-30 * 60 * 1_000) },
-      }),
-    ).toBeNull();
-  });
-
-  it("settles a sub-agent created after its inherited pull request merged once it is idle", () => {
-    const subagent = shell({
-      createdAt: at(-60 * 60 * 1_000),
-      latestRunCompletedAt: at(-45 * 60 * 1_000),
-      lineage: {
-        rootThreadId: ThreadId.make("parent"),
-        parentThreadId: ThreadId.make("parent"),
-        relationshipToParent: "subagent",
-      },
-    });
-    const input = {
-      thread: subagent,
-      pullRequest: {
-        state: "merged" as const,
-        mergedAt: DateTime.formatIso(at(-2 * 60 * 60 * 1_000)),
-      },
-      defaultBranch: null,
-      nowMs: NOW_MS,
-      autoSettleAfterDays: null,
-      autoSettleOnMerge: true,
-    };
-    expect(ThreadSettlementService.resolveAutoSettlementAt(input)).toEqual(at(-45 * 60 * 1_000));
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: { ...subagent, latestRunCompletedAt: at(-5 * 60 * 1_000) },
       }),
     ).toBeNull();
   });
@@ -500,185 +441,6 @@ describe("resolveAutoSettlementAt", () => {
         },
       }),
     ).toEqual(at(-45 * 60 * 1_000));
-  });
-
-  it("settles a merge only into the repository's default branch", () => {
-    const thread = shell({
-      latestUserMessageAt: at(-2 * 60 * 60 * 1_000),
-      latestRunCompletedAt: at(-90 * 60 * 1_000),
-    });
-    const mergedAt = DateTime.formatIso(at(-60 * 60 * 1_000));
-    const input = {
-      thread,
-      pullRequest: { state: "merged" as const, mergedAt, baseBranch: "main" },
-      defaultBranch: "main",
-      nowMs: NOW_MS,
-      autoSettleAfterDays: null,
-      autoSettleOnMerge: true,
-    };
-    // Merged into the default branch: the work shipped.
-    expect(ThreadSettlementService.resolveAutoSettlementAt(input)).toEqual(at(-90 * 60 * 1_000));
-    // Merged into an integration branch: not terminal, like an open pull request.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        pullRequest: { state: "merged", mergedAt, baseBranch: "dev" },
-      }),
-    ).toBeNull();
-    // A closed pull request settles whatever its base was.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        pullRequest: { state: "closed", closedAt: mergedAt, baseBranch: "dev" },
-      }),
-    ).toEqual(at(-90 * 60 * 1_000));
-    // Unknown default branch or base: a merge settles, as before.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        pullRequest: { state: "merged", mergedAt, baseBranch: "dev" },
-        defaultBranch: null,
-      }),
-    ).toEqual(at(-90 * 60 * 1_000));
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        pullRequest: { state: "merged", mergedAt },
-      }),
-    ).toEqual(at(-90 * 60 * 1_000));
-    // A merge into the integration branch does not fall back to the inactivity
-    // rule either: the thread's work is still in flight.
-    const link = {
-      host: "example.test",
-      repository: "owner/repository",
-      number: 42,
-      url: "https://example.test/owner/repository/pull/42",
-      source: "manual" as const,
-      linkedAt: DateTime.formatIso(at(-DAY_MS)),
-      stack: null,
-    };
-    const snapshot = {
-      title: "Pull request",
-      headBranch: "feature",
-      isDraft: false,
-      updatedAt: mergedAt,
-      syncedAt: mergedAt,
-      mergedAt,
-    };
-    const linked = (baseBranch: string) =>
-      shell({
-        latestUserMessageAt: at(-30 * DAY_MS),
-        pullRequests: [{ ...link, snapshot: { ...snapshot, state: "merged", baseBranch } }],
-      });
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: linked("dev"),
-        pullRequest: null,
-        autoSettleAfterDays: 2,
-      }),
-    ).toBeNull();
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: linked("main"),
-        pullRequest: null,
-        autoSettleAfterDays: 2,
-      }),
-    ).toEqual(at(-30 * DAY_MS));
-  });
-
-  it("follows the agent's stated outcome: done settles past a dev merge, needs-you holds", () => {
-    const report = (outcome: "done" | "needs-you", offsetMs = -60 * 60 * 1_000) => ({
-      text: "Shipped.",
-      updatedAt: DateTime.formatIso(at(offsetMs)),
-      outcome,
-    });
-    const mergedAt = DateTime.formatIso(at(-2 * 60 * 60 * 1_000));
-    const input = {
-      thread: shell({
-        latestUserMessageAt: at(-3 * 60 * 60 * 1_000),
-        latestRunCompletedAt: at(-50 * 60 * 1_000),
-        statusReport: report("done"),
-      }),
-      pullRequest: { state: "merged" as const, mergedAt, baseBranch: "dev" },
-      defaultBranch: "main",
-      nowMs: NOW_MS,
-      autoSettleAfterDays: 3,
-      autoSettleOnMerge: true,
-    };
-    // Done and merged into the integration branch: settles when the turn ended.
-    expect(ThreadSettlementService.resolveAutoSettlementAt(input)).toEqual(at(-50 * 60 * 1_000));
-    // Still running: waits for the turn to end.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: { ...input.thread, activityRunStatus: "running" },
-      }),
-    ).toBeNull();
-    // An open pull request still holds a done thread.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        pullRequest: { state: "open", baseBranch: "dev" },
-      }),
-    ).toBeNull();
-    // The user wrote after the report: it no longer speaks for the thread.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: { ...input.thread, latestUserAuthoredMessageAt: at(-30 * 60 * 1_000) },
-      }),
-    ).toBeNull();
-    // Waiting on the user: never settles, not even after the inactivity window.
-    const waiting = shell({
-      latestUserMessageAt: at(-30 * DAY_MS),
-      statusReport: report("needs-you", -29 * DAY_MS),
-    });
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: waiting,
-        pullRequest: null,
-      }),
-    ).toBeNull();
-    // The merge it waited for: a pull request that merged after the report releases it.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: { ...input.thread, statusReport: report("needs-you", -3 * 60 * 60 * 1_000) },
-        defaultBranch: null,
-      }),
-    ).toEqual(at(-50 * 60 * 1_000));
-    // A run that started after the report (a watch woke it) made news the report does not cover.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: { ...input.thread, latestRunStartedAt: at(-55 * 60 * 1_000) },
-      }),
-    ).toBeNull();
-    // A branch thread waits for its branch lookup before a done settles it.
-    const onBranch = {
-      ...input,
-      thread: { ...input.thread, branch: "feature" },
-      pullRequest: null,
-    };
-    expect(ThreadSettlementService.resolveAutoSettlementAt(onBranch)).toBeNull();
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({ ...onBranch, branchChecked: true }),
-    ).toEqual(at(-50 * 60 * 1_000));
-    // Once the user answers, the inactivity rule applies again.
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        ...input,
-        thread: {
-          ...waiting,
-          latestUserAuthoredMessageAt: at(-28 * DAY_MS),
-          latestUserMessageAt: at(-28 * DAY_MS),
-        },
-        pullRequest: null,
-      }),
-    ).toEqual(at(-28 * DAY_MS));
   });
 });
 
@@ -792,8 +554,6 @@ interface HarnessOptions {
   readonly snapshot: SettlementSnapshot;
   readonly settings?: ContractServerSettings;
   readonly branchPullRequest?: GitManager.GitManager["Service"]["branchPullRequest"];
-  /** The repository's default branch; defaults to "main", null means unknown. */
-  readonly defaultBranch?: string | null;
   readonly pullRequestSummary?: PullRequestService.PullRequestService["Service"]["summary"];
   readonly existingWorktreePaths?: ReadonlyArray<string>;
   readonly onDispatch?: (command: AutoSettleCommand) => Effect.Effect<void>;
@@ -826,7 +586,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
   >([]);
   const summaryRecovery = yield* Ref.make<ReadonlyArray<boolean | undefined>>([]);
   const invalidatedCwds = yield* Ref.make<ReadonlyArray<string>>([]);
-  const defaultBranchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
   const domainEvents = yield* PubSub.unbounded<OrchestrationV2DomainEvent>();
   const closedIdle = yield* Queue.unbounded<{ readonly threadId: string }>();
   const scriptRuns =
@@ -931,10 +690,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     }),
     Layer.mock(GitManager.GitManager)({
       branchPullRequest,
-      defaultBranch: ({ cwd }) =>
-        Ref.update(defaultBranchCalls, (cwds) => [...cwds, cwd]).pipe(
-          Effect.as(options.defaultBranch === undefined ? "main" : options.defaultBranch),
-        ),
       invalidateStatus: (cwd) => Ref.update(invalidatedCwds, (cwds) => [...cwds, cwd]),
     }),
     Layer.mock(PullRequestService.PullRequestService)({
@@ -962,7 +717,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     summaryCalls,
     summaryRecovery,
     invalidatedCwds,
-    defaultBranchCalls,
     closedIdle,
     scriptRuns,
     publishEvent: (event: OrchestrationV2DomainEvent) => PubSub.publish(domainEvents, event),
@@ -972,16 +726,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
       repository: "owner/repository",
       number: 42,
       mergedAt: NOW,
-      baseBranch: "main",
     }),
-    publishMergeInto: (baseBranch: string) =>
-      PubSub.publish(mergedPullRequests, {
-        projectId: PROJECT_ID,
-        repository: "owner/repository",
-        number: 42,
-        mergedAt: NOW,
-        baseBranch,
-      }),
     layer: ThreadSettlementService.layer.pipe(Layer.provide(layerDependencies)),
   };
 });
@@ -1417,103 +1162,6 @@ describe("ThreadSettlementServiceV2 worker", () => {
           }).pipe(Effect.provide(fixture.layer));
         }),
       ),
-  );
-
-  it.effect("a merge into a non-default branch leaves the linked thread open", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* TestClock.setTime(Date.parse(NOW));
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([
-            makeThread("merged-into-dev", {
-              branch: "feature",
-              latestUserMessageAt: DateTime.makeUnsafe("2026-08-27T00:00:00.000Z"),
-              linkedPullRequest: {
-                projectId: PROJECT_ID,
-                repository: "owner/repository",
-                number: 42,
-                url: "https://example.test/owner/repository/pull/42",
-              },
-            }),
-          ]),
-          settings: {
-            ...DEFAULT_SERVER_SETTINGS,
-            sidebarAutoSettleAfterDays: null,
-            sidebarAutoSettleOnMerge: true,
-          },
-          defaultBranch: "main",
-          pullRequestSummary: (input) =>
-            Effect.succeed({
-              ...makePullRequestSummary({ ...input, state: "merged" }),
-              baseBranch: "dev",
-              mergedAt: NOW,
-            }),
-        });
-
-        yield* Effect.gen(function* () {
-          const reactor = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(reactor, fixture.activation, fixture.snapshotReads);
-          // The periodic lookup sees the merge into dev and keeps the thread.
-          assert.deepStrictEqual(yield* Ref.get(fixture.commands), []);
-          assert.deepStrictEqual(yield* Ref.get(fixture.defaultBranchCalls), [
-            "/workspace/project",
-          ]);
-          // The merge event carries the same base and keeps it too.
-          yield* fixture.publishMergeInto("dev");
-          yield* reactor.drain;
-          assert.deepStrictEqual(yield* Ref.get(fixture.commands), []);
-          // Only a merge into the default branch settles it.
-          yield* fixture.publishMergeInto("main");
-          yield* reactor.drain;
-          assert.deepStrictEqual(
-            (yield* Ref.get(fixture.commands)).map((command) => command.threadId),
-            [ThreadId.make("merged-into-dev")],
-          );
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
-  );
-
-  it.effect("a merge settles its thread when the default branch is unknown", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* TestClock.setTime(Date.parse(NOW));
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([
-            makeThread("merged-no-default", {
-              latestUserMessageAt: DateTime.makeUnsafe("2026-08-27T00:00:00.000Z"),
-              linkedPullRequest: {
-                projectId: PROJECT_ID,
-                repository: "owner/repository",
-                number: 42,
-                url: "https://example.test/owner/repository/pull/42",
-              },
-            }),
-          ]),
-          settings: {
-            ...DEFAULT_SERVER_SETTINGS,
-            sidebarAutoSettleAfterDays: null,
-            sidebarAutoSettleOnMerge: true,
-          },
-          defaultBranch: null,
-          pullRequestSummary: (input) =>
-            Effect.succeed({
-              ...makePullRequestSummary({ ...input, state: "merged" }),
-              baseBranch: "dev",
-              mergedAt: NOW,
-            }),
-        });
-
-        yield* Effect.gen(function* () {
-          const reactor = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(reactor, fixture.activation, fixture.snapshotReads);
-          assert.deepStrictEqual(
-            (yield* Ref.get(fixture.commands)).map((command) => command.threadId),
-            [ThreadId.make("merged-no-default")],
-          );
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
   );
 
   it.effect("a merge does not settle threads linked to an unrelated pull request", () =>

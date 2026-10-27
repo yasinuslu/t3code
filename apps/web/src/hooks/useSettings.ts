@@ -522,31 +522,6 @@ export function useEnvironmentModelPreferences(environmentId: EnvironmentId | nu
   return resolveModelPreferences(settings ?? DEFAULT_SERVER_SETTINGS, legacy);
 }
 
-/** Whether experimental Grow is on (`growEnabled`), read from the primary environment. */
-export function useGrowEnabled(): boolean {
-  return useAtomValue(primaryServerSettingsAtom).growEnabled;
-}
-
-/**
- * Whether the experimental Grow presentation is on (`growPresentation`, Settings > Experimental):
- * Grow shows a thread's presentation and Live preview instead of its plain conversation.
- */
-export function useGrowPresentation(): boolean {
-  return useAtomValue(primaryServerSettingsAtom).growPresentation;
-}
-
-/**
- * Whether Grow is the app's one main view: Grow is on and the deprecated
- * classic threads view (Grow and Threads behind a switch) is off.
- */
-export function useGrowIsHome(): boolean {
-  const growEnabled = useGrowEnabled();
-  const settingsHydrated = useClientSettingsHydrated();
-  const classic = useClientSettings((settings) => settings.classicThreadsViewEnabled);
-  return growEnabled && !(settingsHydrated && classic);
-}
-
-/** Read current settings for one environment, merged with client-local preferences. */
 export function useEnvironmentSettings<T = UnifiedSettings>(
   environmentId: EnvironmentId,
   selector?: (settings: UnifiedSettings) => T,

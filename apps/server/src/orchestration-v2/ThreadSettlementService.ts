@@ -6,7 +6,6 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
   CommandId,
-  type ThreadStatusOutcome,
   isOrchestrationV2WorkActive,
   type ThreadId,
   type OrchestrationV2DomainEvent,
@@ -41,34 +40,10 @@ export interface SettlementPullRequest {
   readonly state: "open" | "closed" | "merged";
   readonly closedAt?: string | null;
   readonly mergedAt?: string | null;
-  /** The branch the pull request targets; absent where the source does not report one. */
-  readonly baseBranch?: string | null;
-}
-
-/**
- * Whether the pull request finished the thread's work. A merge into a branch
- * other than the repository's default (an integration branch such as `dev`, or
- * the parent of a stacked pull request) ships nothing yet, so it counts as still
- * open. When the default branch or the base is unknown, a merge is terminal, as
- * it always was.
- */
-function pullRequestIsTerminal(
-  pullRequest: Pick<SettlementPullRequest, "state" | "baseBranch">,
-  defaultBranch: string | null,
-): boolean {
-  if (pullRequest.state === "closed") return true;
-  if (pullRequest.state !== "merged") return false;
-  return (
-    defaultBranch === null ||
-    pullRequest.baseBranch == null ||
-    pullRequest.baseBranch === defaultBranch
-  );
 }
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
-/** How long a thread that continued after its merge stays quiet before it settles. */
-const MERGED_RESUMED_IDLE_MS = 30 * 60 * 1_000;
 
 function toMillis(value: DateTime.Utc | null | undefined): number | null {
   return value == null ? null : DateTime.toEpochMillis(value);
@@ -81,17 +56,6 @@ function latestMillis(values: ReadonlyArray<number | null>): number | null {
     if (latest === null || value > latest) latest = value;
   }
   return latest;
-}
-
-function fromBranchPullRequest(
-  pullRequest: GitManager.GitBranchPullRequest,
-): SettlementPullRequest {
-  return {
-    state: pullRequest.state,
-    closedAt: pullRequest.closedAt ?? null,
-    mergedAt: pullRequest.mergedAt ?? null,
-    baseBranch: pullRequest.baseRef,
-  };
 }
 
 function pullRequestMatchesProject(
@@ -156,24 +120,17 @@ export function threadHasQueuedTurnStart(
   ].every((value) => value === null || value < messageAtMs);
 }
 
-/**
- * A merged pull request is not held open for good by a later user message or a
- * thread created after the merge: once the thread has been quiet for
- * `MERGED_RESUMED_IDLE_MS` the finished work settles anyway.
- */
 function pullRequestSettles(
   thread: Pick<
     ProjectionStore.ProjectionSettlementCandidate,
     "createdAt" | "latestUserAuthoredMessageAt"
   >,
   pullRequest: SettlementPullRequest,
-  defaultBranch: string | null,
   autoSettleOnMerge: boolean,
-  nowMs: number,
-  activityAtMs: number | null,
 ): boolean {
-  if (!pullRequestIsTerminal(pullRequest, defaultBranch)) return false;
-  if (pullRequest.state === "merged" && !autoSettleOnMerge) return false;
+  if (pullRequest.state !== "closed" && (pullRequest.state !== "merged" || !autoSettleOnMerge)) {
+    return false;
+  }
   const terminalAt = pullRequest.state === "merged" ? pullRequest.mergedAt : pullRequest.closedAt;
   if (terminalAt == null) return false;
   const userAnchorMs = latestMillis([
@@ -183,35 +140,7 @@ function pullRequestSettles(
   if (userAnchorMs === null) return false;
   const pullRequestAtMs = Date.parse(terminalAt);
   if (Number.isNaN(pullRequestAtMs)) return false;
-  if (pullRequestAtMs >= userAnchorMs) return true;
-  return (
-    pullRequest.state === "merged" &&
-    activityAtMs !== null &&
-    nowMs - activityAtMs >= MERGED_RESUMED_IDLE_MS
-  );
-}
-
-/**
- * The outcome the agent's latest report passed (`thread_status_update`) while it still speaks
- * for the thread: a later message from the user answers a `needs-you` and reopens a `done`, and
- * a later run (a watch, background work or another agent woke it) made news the report does not
- * cover. Only an explicit outcome counts here; one read off an older report's text is for display.
- */
-export function reportedOutcome(
-  thread: Pick<
-    ProjectionStore.ProjectionSettlementCandidate,
-    "statusReport" | "latestUserAuthoredMessageAt" | "latestRunStartedAt"
-  >,
-): ThreadStatusOutcome | null {
-  const report = thread.statusReport;
-  if (report === undefined) return null;
-  const reportAtMs = Date.parse(report.updatedAt);
-  const laterAtMs = latestMillis([
-    toMillis(thread.latestUserAuthoredMessageAt),
-    toMillis(thread.latestRunStartedAt),
-  ]);
-  if (Number.isNaN(reportAtMs) || (laterAtMs !== null && reportAtMs < laterAtMs)) return null;
-  return report.outcome ?? null;
+  return pullRequestAtMs >= userAnchorMs;
 }
 
 export function isAutoSettlementCandidate(
@@ -224,8 +153,6 @@ export function isAutoSettlementCandidate(
   // A guest is waiting on the owner; settling would hide the Request.
   if ((thread.pendingGuestMessageCount ?? 0) > 0) return false;
   if (thread.activityRunStatus != null) return false;
-  // A failed run needs someone to look at it; settling would hide it.
-  if (thread.status === "failed") return false;
   if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return false;
   if (threadHasQueuedTurnStart(thread, nowMs)) return false;
   // Interrupted runs must keep the same snooze protection the sidebar shows.
@@ -261,78 +188,17 @@ export function isSnoozed(
 export function resolveAutoSettlementAt(input: {
   readonly thread: ProjectionStore.ProjectionSettlementCandidate;
   readonly pullRequest: SettlementPullRequest | null;
-  /** The repository's default branch; null when unknown, which treats every merge as terminal. */
-  readonly defaultBranch?: string | null;
   readonly nowMs: number;
   readonly autoSettleAfterDays: number | null;
   readonly autoSettleOnMerge: boolean;
-  /**
-   * Whether `pullRequest` is the answer of a branch lookup. False on the projection-only
-   * pass, where a branch thread's pull request is not known yet.
-   */
-  readonly branchChecked?: boolean;
   readonly autoSettleKeepPullRequests?: boolean;
 }): DateTime.Utc | null {
   const { thread } = input;
-  const defaultBranch = input.defaultBranch ?? null;
   let pullRequest = input.pullRequest;
   const links = settlementPullRequestLinks(thread.pullRequests ?? []);
-  // The agent's own word comes first: work that waits on the user never settles until a
-  // pull request merges or closes after it said so, and a result it says has landed
-  // settles even when its pull request merged into an integration branch such as `dev`.
-  const outcome = reportedOutcome(thread);
-  const reportAtMs = Date.parse(thread.statusReport?.updatedAt ?? "");
-  const endedAfterReport = (
-    candidate:
-      | {
-          readonly state: SettlementPullRequest["state"];
-          readonly mergedAt?: string | null | undefined;
-          readonly closedAt?: string | null | undefined;
-        }
-      | null
-      | undefined,
-  ) => {
-    if (candidate == null || candidate.state === "open") return false;
-    const endedAt = Date.parse(
-      (candidate.state === "merged" ? candidate.mergedAt : candidate.closedAt) ?? "",
-    );
-    return !Number.isNaN(endedAt) && endedAt >= reportAtMs;
-  };
-  if (
-    outcome === "needs-you" &&
-    !endedAfterReport(pullRequest) &&
-    !links.some((link) => endedAfterReport(link.snapshot))
-  ) {
-    return null;
-  }
-  const pullRequestKnown =
-    links.length > 0 || thread.branch === null || input.branchChecked === true;
-  if (
-    outcome === "done" &&
-    pullRequestKnown &&
-    pullRequest?.state !== "open" &&
-    !links.some((link) => link.snapshot === null || link.snapshot.state === "open") &&
-    isAutoSettlementCandidate(thread, input.nowMs)
-  ) {
-    const landedAtMs = latestMillis([
-      Number.isNaN(reportAtMs) ? null : reportAtMs,
-      toMillis(thread.latestRunCompletedAt),
-    ]);
-    return landedAtMs === null ? thread.updatedAt : DateTime.makeUnsafe(landedAtMs);
-  }
   if (links.some((link) => link.snapshot === null)) return null;
-  // A merge into an integration branch such as `dev` means the work is still in
-  // flight, so neither the merge nor inactivity settles the thread.
-  if (
-    links.some(
-      (link) =>
-        link.snapshot?.state === "merged" && !pullRequestIsTerminal(link.snapshot, defaultBranch),
-    )
-  ) {
-    return null;
-  }
-  // An open link has not finished, so only inactivity can settle the thread,
-  // never a merged or closed lookup.
+  // An open link means the pull request has not finished, so only inactivity
+  // can settle the thread, never a merged or closed lookup.
   const hasOpenLink = links.some((link) => link.snapshot?.state === "open");
   if (hasOpenLink) {
     pullRequest = null;
@@ -347,7 +213,6 @@ export function resolveAutoSettlementAt(input: {
             state: latest.snapshot.state,
             mergedAt: latest.snapshot.mergedAt ?? null,
             closedAt: latest.snapshot.closedAt ?? null,
-            baseBranch: latest.snapshot.baseBranch,
           };
   }
   if (!isAutoSettlementCandidate(thread, input.nowMs)) return null;
@@ -358,17 +223,7 @@ export function resolveAutoSettlementAt(input: {
       toMillis(thread.latestRunStartedAt),
       toMillis(thread.latestRunCompletedAt),
     ]) ?? DateTime.toEpochMillis(thread.createdAt);
-  if (
-    pullRequest !== null &&
-    pullRequestSettles(
-      thread,
-      pullRequest,
-      defaultBranch,
-      input.autoSettleOnMerge,
-      input.nowMs,
-      activityAtMs,
-    )
-  ) {
+  if (pullRequest !== null && pullRequestSettles(thread, pullRequest, input.autoSettleOnMerge)) {
     return DateTime.makeUnsafe(activityAtMs);
   }
   const hasPullRequest =
@@ -467,74 +322,20 @@ export const make = Effect.gen(function* () {
     // Merge events resweep all candidates because unlinked threads settle through branch lookup.
     const candidates = threads.filter((thread) => isAutoSettlementCandidate(thread, nowMs));
 
-    // Use the same cwd as the sidebar so both paths share GitManager's PR cache.
-    const lookupCwdByThreadId = new Map<string, string>();
-    yield* Effect.forEach(
-      candidates,
-      (thread) =>
-        Effect.gen(function* () {
-          const project = projects.get(thread.projectId);
-          if (project === undefined || thread.branch === null) return;
-          const worktreeExists =
-            thread.worktreePath !== null &&
-            (yield* fileSystem.exists(thread.worktreePath).pipe(Effect.orElseSucceed(() => false)));
-          lookupCwdByThreadId.set(
-            thread.id,
-            worktreeExists && thread.worktreePath !== null
-              ? thread.worktreePath
-              : project.workspaceRoot,
-          );
-        }),
-      { concurrency: 8, discard: true },
-    );
-
-    // One local git read per checkout per sweep, and only when a merged pull
-    // request with a known base is being judged: every other decision stays
-    // projection-backed. Unknown stays null, which keeps a merge terminal.
-    const defaultBranchByCwd = new Map<string, Effect.Effect<string | null>>();
-    const defaultBranchFor = Effect.fn("ThreadSettlementServiceV2.defaultBranchFor")(function* (
-      thread: (typeof candidates)[number],
-      pullRequest: SettlementPullRequest | null,
-    ) {
-      const mergedWithBase = (candidate: Pick<SettlementPullRequest, "state" | "baseBranch">) =>
-        candidate.state === "merged" && candidate.baseBranch != null;
-      const needed =
-        (pullRequest !== null && mergedWithBase(pullRequest)) ||
-        visibleThreadPullRequests(thread.pullRequests ?? []).some(
-          (link) => link.snapshot !== null && mergedWithBase(link.snapshot),
-        );
-      const cwd =
-        lookupCwdByThreadId.get(thread.id) ?? projects.get(thread.projectId)?.workspaceRoot;
-      if (!needed || cwd === undefined) return null;
-      let cached = defaultBranchByCwd.get(cwd);
-      if (cached === undefined) {
-        cached = yield* Effect.cached(git.defaultBranch({ cwd }));
-        defaultBranchByCwd.set(cwd, cached);
-      }
-      return yield* cached;
-    });
-
     const settleThread = Effect.fn("ThreadSettlementServiceV2.settleThread")(
-      function* (
-        thread: (typeof candidates)[number],
-        pullRequest: SettlementPullRequest | null,
-        branchChecked: boolean,
-      ) {
+      function* (thread: (typeof candidates)[number], pullRequest: SettlementPullRequest | null) {
         const currentSettings = resolveProjectSettings(
           yield* settingsService.getSettings,
           thread.projectId,
         ).settings;
-        const defaultBranch = yield* defaultBranchFor(thread, pullRequest);
         const decisionNow = yield* DateTime.now;
         const settledAt = resolveAutoSettlementAt({
           thread,
           pullRequest,
-          defaultBranch,
           nowMs: DateTime.toEpochMillis(decisionNow),
           autoSettleAfterDays: currentSettings.sidebarAutoSettleAfterDays,
           autoSettleOnMerge: currentSettings.sidebarAutoSettleOnMerge,
           autoSettleKeepPullRequests: currentSettings.sidebarAutoSettleKeepPullRequests,
-          branchChecked,
         });
         if (settledAt === null) return thread;
         const uuid = yield* crypto.randomUUIDv4();
@@ -562,21 +363,33 @@ export const make = Effect.gen(function* () {
 
     const lookupCandidates = (yield* Effect.forEach(
       candidates,
-      (thread) => settleThread(thread, null, false),
+      (thread) => settleThread(thread, null),
       { concurrency: 8 },
     ))
       .filter((thread) => thread !== null)
       .filter((thread) => visibleThreadPullRequests(thread.pullRequests ?? []).length === 0);
-    const lookupCandidateIds = new Set<string>(lookupCandidates.map((thread) => thread.id));
+    const lookupCwdByThreadId = new Map<string, string>();
+    yield* Effect.forEach(
+      lookupCandidates,
+      (thread) =>
+        Effect.gen(function* () {
+          const project = projects.get(thread.projectId);
+          if (project === undefined || thread.branch === null) return;
+          const worktreeExists =
+            thread.worktreePath !== null &&
+            (yield* fileSystem.exists(thread.worktreePath).pipe(Effect.orElseSucceed(() => false)));
+          lookupCwdByThreadId.set(
+            thread.id,
+            worktreeExists && thread.worktreePath !== null
+              ? thread.worktreePath
+              : project.workspaceRoot,
+          );
+        }),
+      { concurrency: 8, discard: true },
+    );
     if (mergedPullRequest !== null) {
       // Invalidate checkout caches on merge; cached open branches would delay settlement beyond this sweep.
-      const cwds = [
-        ...new Set(
-          [...lookupCwdByThreadId]
-            .filter(([threadId]) => lookupCandidateIds.has(threadId))
-            .map(([, cwd]) => cwd),
-        ),
-      ];
+      const cwds = [...new Set(lookupCwdByThreadId.values())];
       yield* Effect.forEach(cwds, (cwd) => git.invalidateStatus(cwd), {
         concurrency: 8,
         discard: true,
@@ -608,19 +421,16 @@ export const make = Effect.gen(function* () {
     ) {
       const currentSettings = yield* settingsService.getSettings;
       const decisionNow = yield* DateTime.now;
-      const defaultBranch = yield* defaultBranchFor(group[0]!, pullRequest);
       return group.some((thread) => {
         const { settings } = resolveProjectSettings(currentSettings, thread.projectId);
         return (
           resolveAutoSettlementAt({
             thread,
             pullRequest,
-            defaultBranch,
             nowMs: DateTime.toEpochMillis(decisionNow),
             autoSettleAfterDays: settings.sidebarAutoSettleAfterDays,
             autoSettleOnMerge: settings.sidebarAutoSettleOnMerge,
             autoSettleKeepPullRequests: settings.sidebarAutoSettleKeepPullRequests,
-            branchChecked: true,
           }) !== null
         );
       });
@@ -646,7 +456,6 @@ export const make = Effect.gen(function* () {
               state: "merged",
               closedAt: null,
               mergedAt: mergedPullRequest.mergedAt,
-              baseBranch: mergedPullRequest.baseBranch,
             } satisfies SettlementPullRequest)
           : yield* pullRequests.summary(
               {
@@ -660,7 +469,6 @@ export const make = Effect.gen(function* () {
           state: summary.state,
           closedAt: summary.closedAt ?? null,
           mergedAt: summary.mergedAt ?? null,
-          baseBranch: summary.baseBranch,
         } satisfies SettlementPullRequest;
         const cwd = lookupCwdByThreadId.get(thread.id);
         if (summary.state !== "open" && thread.branch !== null && cwd !== undefined) {
@@ -675,7 +483,7 @@ export const make = Effect.gen(function* () {
             project !== undefined &&
             pullRequestMatchesProject(current, project)
           ) {
-            return fromBranchPullRequest(current);
+            return current;
           }
         }
         return terminal;
@@ -686,8 +494,7 @@ export const make = Effect.gen(function* () {
         return yield* Effect.die(new Error("thread project not found"));
       }
       const refresh = group.filter((member) => shellClosedThreads.delete(member.id)).length > 0;
-      const current = yield* git.branchPullRequest({ cwd, branch: thread.branch }, { refresh });
-      return current === null ? null : fromBranchPullRequest(current);
+      return yield* git.branchPullRequest({ cwd, branch: thread.branch }, { refresh });
     });
 
     yield* Effect.forEach(
@@ -696,7 +503,7 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const pullRequest = yield* pullRequestFor(group);
           if (pullRequest === undefined) return;
-          yield* Effect.forEach(group, (thread) => settleThread(thread, pullRequest, true), {
+          yield* Effect.forEach(group, (thread) => settleThread(thread, pullRequest), {
             discard: true,
           });
         }).pipe(

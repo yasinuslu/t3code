@@ -159,13 +159,8 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
   let activeFlow: AuthFlow | undefined;
   let operation: "idle" | "auth" | "logout" | "cancel" | "closed" = "idle";
 
-  const setupError = (name: string, detail: string, promptNotRun?: true) =>
-    new ProviderSetupError({
-      instanceId: options.instanceId,
-      operation: name,
-      detail,
-      ...(promptNotRun ? { promptNotRun } : {}),
-    });
+  const setupError = (name: string, detail: string) =>
+    new ProviderSetupError({ instanceId: options.instanceId, operation: name, detail });
   const currentState = (ownerSessionId: string) =>
     SubscriptionRef.get(snapshot).pipe(
       Effect.map((value) => visibleSnapshot(value, ownerSessionId)),
@@ -199,7 +194,6 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
               return yield* setupError(
                 "startProcess",
                 "Antigravity sign-in or sign-out is in progress. Try again after it finishes.",
-                true,
               );
             }
             processes.add(owned);

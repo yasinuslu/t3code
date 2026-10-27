@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type ReactNode, type KeyboardEvent, type TouchEvent } from "react";
+import { memo, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Image as ImageGlyph, Text as TextGlyph } from "lucide";
@@ -25,8 +25,6 @@ import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { expandedImageKey } from "./ExpandedImagePreview";
 import { registerThreadOverlay } from "./threadOverlayRetention";
-
-const SWIPE_MIN_PX = 48;
 
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
@@ -112,26 +110,6 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     setImageOffset((current) => current + direction);
   };
 
-  // A horizontal swipe turns the page on touch screens, unless the image is zoomed and pans.
-  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const onTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    const touch = event.touches[0];
-    swipeStartRef.current =
-      event.touches.length === 1 && touch && !zoomableImageRef.current?.isZoomed()
-        ? { x: touch.clientX, y: touch.clientY }
-        : null;
-  };
-  const onTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    const start = swipeStartRef.current;
-    const touch = event.changedTouches[0];
-    swipeStartRef.current = null;
-    if (!start || !touch || preview.images.length <= 1) return;
-    const dx = touch.clientX - start.x;
-    const dy = touch.clientY - start.y;
-    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    navigateImage(dx < 0 ? 1 : -1);
-  };
-
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || isContextMenuOpen() || event.target instanceof HTMLVideoElement)
       return;
@@ -188,8 +166,6 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         bottomStickOnMobile={false}
         className="row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
         onKeyDown={onKeyDown}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}
         onClick={(event) => {

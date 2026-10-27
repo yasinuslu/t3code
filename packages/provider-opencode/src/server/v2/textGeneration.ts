@@ -15,7 +15,6 @@ import * as TextGenerationOperations from "@t3tools/provider-core/server/textGen
 const isTextGenerationError = Schema.is(TextGenerationError);
 
 const GENERATION_TIMEOUT = "3 minutes";
-const LONG_GENERATION_TIMEOUT = "5 minutes";
 
 // Free models refuse denied read/shell permissions; ask and reject requests as they arrive.
 const GENERATION_PERMISSIONS = [{ action: "*", resource: "*", effect: "ask" }] as const;
@@ -141,10 +140,7 @@ const runOnServer = Effect.fn("Opencode2TextGeneration.runOnServer")(function* (
   });
   const result = yield* Deferred.await(outcome).pipe(
     Effect.timeoutOrElse({
-      duration:
-        input.operation === "generateLivingPage" || input.operation === "generateWidget"
-          ? LONG_GENERATION_TIMEOUT
-          : GENERATION_TIMEOUT,
+      duration: GENERATION_TIMEOUT,
       orElse: () =>
         client.session.interrupt({ sessionID: Session.ID.make(session.id) }).pipe(
           Effect.ignore,

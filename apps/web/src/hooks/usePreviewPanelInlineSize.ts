@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useLayoutEffect, useState } from "react";
+import { type RefObject, useLayoutEffect, useState } from "react";
 
 import { type ResizableWidthHandlers, useResizableWidth } from "./useResizableWidth";
 import { observeResize } from "../lib/observeResize";
@@ -74,44 +74,4 @@ function getPreviewPanelMaxWidth(viewportWidth: number, containerWidth?: number)
     containerWidth === undefined ? Infinity : Math.floor(containerWidth) - SIBLING_COLUMN_MIN_WIDTH;
   // Keep max >= min; an inverted clamp would overwrite the saved width on drag end.
   return Math.max(PREVIEW_PANEL_MIN_WIDTH, Math.min(fractionCap, containerCap));
-}
-
-const PREVIEW_PANEL_HEIGHT_STORAGE_KEY = "t3code:preview-panel-height";
-const PREVIEW_PANEL_MIN_HEIGHT = 240;
-/** Room the chat column keeps above a stacked panel: header, a few messages, composer. */
-const STACKED_CHAT_MIN_HEIGHT = 320;
-const PREVIEW_PANEL_DEFAULT_HEIGHT_FRACTION = 0.45;
-
-/**
- * Height of the right panel when it stacks below the chat (portrait layout).
- * Shares the inline size shape: `width` is the panel's extent along the
- * stacking axis, here its height.
- */
-export function usePreviewPanelStackedSize(
-  options: { readonly storageKey?: string | undefined } = {},
-): PreviewPanelInlineSize {
-  const [vh, setVh] = useState(() => (typeof window === "undefined" ? 1600 : window.innerHeight));
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let frame = 0;
-    const onResize = () => {
-      if (frame !== 0) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        setVh(window.innerHeight);
-      });
-    };
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      if (frame !== 0) window.cancelAnimationFrame(frame);
-    };
-  }, []);
-  return useResizableWidth({
-    storageKey: options.storageKey ?? PREVIEW_PANEL_HEIGHT_STORAGE_KEY,
-    defaultWidth: Math.round(vh * PREVIEW_PANEL_DEFAULT_HEIGHT_FRACTION),
-    minWidth: PREVIEW_PANEL_MIN_HEIGHT,
-    maxWidth: Math.max(PREVIEW_PANEL_MIN_HEIGHT, vh - STACKED_CHAT_MIN_HEIGHT),
-    edge: "top",
-  });
 }

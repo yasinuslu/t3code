@@ -50,7 +50,6 @@ import {
   type GitActionMenuItem,
   type GitQuickAction,
   type DefaultBranchConfirmableAction,
-  describeGitActionFailure,
   requiresDefaultBranchConfirmation,
   resolveDefaultBranchActionDialogCopy,
   resolveFeatureBranchUnavailableReason,
@@ -101,8 +100,6 @@ import {
 } from "~/lib/sourceControlActions";
 import { useThreadProjection, useQuietThreadShell } from "~/state/entities";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
-import { useGitRepoTarget } from "~/hooks/useGitRepoTarget";
-import { GitRepoPicker } from "./GitRepoPicker";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
 import { sourceControlEnvironment } from "~/state/sourceControl";
@@ -127,10 +124,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 
 interface GitActionsControlProps {
   presentation?: "toolbar" | "menu";
-  /** The root repo's cwd. Actions target the thread's selected submodule when there is one. */
   gitCwd: string | null;
-  /** Names the root repo in the submodule picker. */
-  rootRepoLabel: string;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
   onOpenPullRequest?: ((number: number) => void) | undefined;
@@ -963,8 +957,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
 
 export default function GitActionsControl({
   presentation = "toolbar",
-  gitCwd: rootGitCwd,
-  rootRepoLabel,
+  gitCwd,
   activeThreadRef,
   draftId,
   displayMode = "toolbar",
@@ -979,10 +972,6 @@ export default function GitActionsControl({
     "thread branch metadata update",
   );
   const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
-  const repoTarget = useGitRepoTarget(activeThreadRef, rootGitCwd);
-  const gitCwd = repoTarget.cwd;
-  // A submodule's branch is not the thread's branch, so actions there never rewrite it.
-  const targetsSubmodule = repoTarget.submodule !== null;
   const successScopeKey = `${activeEnvironmentId ?? ""}\u0000${gitCwd ?? ""}`;
   const canWriteSourceControl = useEnvironmentScope(
     activeEnvironmentId,
@@ -1033,7 +1022,7 @@ export default function GitActionsControl({
   }, [inlineSuccess]);
 
   const persistThreadBranchSync = (branch: string | null, manualSelection = false) => {
-    if (!activeThreadRef || targetsSubmodule) {
+    if (!activeThreadRef) {
       return;
     }
 
@@ -1299,7 +1288,7 @@ export default function GitActionsControl({
         stackedThreadToast({
           type: "error",
           title: "Action failed",
-          description: describeGitActionFailure(error),
+          description: error instanceof Error ? error.message : "An error occurred.",
           timeout: errorToastTiming.timeout,
           ...(scopedToastData !== undefined ? { data: scopedToastData } : {}),
         }),
@@ -1432,7 +1421,7 @@ export default function GitActionsControl({
             stackedThreadToast({
               type: "error",
               title: "Pull failed",
-              description: describeGitActionFailure(error),
+              description: error instanceof Error ? error.message : "An error occurred.",
               timeout: errorToastTiming.timeout,
               ...(threadToastData !== undefined ? { data: threadToastData } : {}),
             }),
@@ -1645,20 +1634,8 @@ export default function GitActionsControl({
 
   if (!gitCwd) return null;
 
-  const repoPicker = (
-    <GitRepoPicker
-      presentation={presentation}
-      rootLabel={rootRepoLabel}
-      submodules={repoTarget.submodules}
-      selected={repoTarget.submodule}
-      onSelect={repoTarget.selectSubmodule}
-      disabled={isGitActionRunning}
-    />
-  );
-
   return (
     <>
-      {repoPicker}
       {presentation === "menu" ? (
         !isRepo ? (
           <MenuItem
@@ -1907,12 +1884,6 @@ export default function GitActionsControl({
           <DialogPanel>
             <div className="space-y-3 rounded-xl bg-zinc-25 p-3 text-sm ring-1 ring-black/5 dark:bg-white/[0.035] dark:ring-white/5">
               <div className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1">
-                {repoTarget.submodule && (
-                  <>
-                    <span className="text-muted-foreground">Submodule</span>
-                    <span className="truncate font-medium">{repoTarget.submodule.path}</span>
-                  </>
-                )}
                 <span className="text-muted-foreground">Branch</span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">

@@ -31,7 +31,6 @@ import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkC
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
 import { ProfileWindowReporter } from "../components/desktop/ProfileWindowReporter";
 import { isWindowProfileLock } from "../profileLock";
-import { PushNotificationCoordinator } from "../components/PushNotificationCoordinator";
 import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
 import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
 import { PullRequestGuideRunCoordinator } from "../components/pullRequest/guide/PullRequestGuideRunCoordinator";
@@ -243,7 +242,6 @@ function RootRouteBranch() {
         <SshPasswordPromptDialog />
         {/* Snapshots land in the main window; profile windows leave them to it. */}
         {isWindowProfileLock() ? null : <SnapShotCoordinator />}
-        {primaryEnvironmentAuthenticated ? <PushNotificationCoordinator /> : null}
         <ReopenClosedViewShortcut />
         <ConfirmDialogHost />
         <CustomSnoozeDialogHost />

@@ -14,13 +14,10 @@ import type { ComposerHandleRef } from "../../composerHandleContext";
 export function usePasteToFocusComposer(
   activeThreadId: ThreadId | null,
   composerRef: ComposerHandleRef,
-  /** True while an overlay (Home, the manager) covers this view; its pastes are not ours. */
-  coveredRef: { readonly current: boolean },
 ) {
   const pasteAsTextShortcutUntilRef = useRef(0);
   useEffect(() => {
     const keyHandler = (event: KeyboardEvent) => {
-      if (coveredRef.current) return;
       if (
         shouldRedirectInputToComposer(event) &&
         isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))
@@ -29,7 +26,6 @@ export function usePasteToFocusComposer(
       }
     };
     const handler = (event: ClipboardEvent) => {
-      if (coveredRef.current) return;
       if (!activeThreadId || isCommandPaletteOpen()) return;
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
@@ -53,5 +49,5 @@ export function usePasteToFocusComposer(
       window.removeEventListener("keydown", keyHandler, true);
       window.removeEventListener("paste", handler, true);
     };
-  }, [activeThreadId, composerRef, coveredRef]);
+  }, [activeThreadId, composerRef]);
 }

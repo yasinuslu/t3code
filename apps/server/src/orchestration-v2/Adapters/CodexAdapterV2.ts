@@ -98,7 +98,6 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { resolveAttachmentPath, resolveAttachmentPathById } from "../../attachmentStore.ts";
 import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
 import { ServerConfig } from "../../config.ts";
-import * as SandboxService from "../../sandbox/SandboxService.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { buildCodexAdditionalContext } from "../../provider/CodexDeveloperInstructions.ts";
 import {
@@ -736,12 +735,6 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
     /** ChatGPT token sharing does not accept service tiers. */
     readonly omitServiceTier?: boolean;
     readonly appContext?: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"];
-    /**
-     * The turn runs in a T3 sandbox (a microVM or container). Codex's own
-     * sandbox cannot create namespaces there, so the T3 sandbox is the boundary
-     * and the runtime mode's approval policy still applies.
-     */
-    readonly sandboxed?: boolean;
   }) {
     const runtimeModeDefaults = codexRuntimeModeTurnDefaults(input.runtimePolicy.runtimeMode);
     const approvalPolicy =
@@ -749,11 +742,9 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
         ? runtimeModeDefaults.approvalPolicy
         : yield* decodeTurnApprovalPolicy(input.runtimePolicy.approvalPolicy);
     const sandboxPolicy =
-      input.runtimePolicy.sandboxPolicy !== undefined
-        ? yield* decodeTurnSandboxPolicy(input.runtimePolicy.sandboxPolicy)
-        : input.sandboxed === true
-          ? ({ type: "dangerFullAccess" } as const)
-          : runtimeModeDefaults.sandboxPolicy;
+      input.runtimePolicy.sandboxPolicy === undefined
+        ? runtimeModeDefaults.sandboxPolicy
+        : yield* decodeTurnSandboxPolicy(input.runtimePolicy.sandboxPolicy);
     const selectedEffort =
       getModelSelectionStringOptionValue(input.modelSelection, "reasoningEffort") ??
       codexDefaultReasoningEffortOverride(input.modelSelection.model);
@@ -1500,7 +1491,6 @@ export const layerAppServerClientFactory: Layer.Layer<
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const { native: nativeEventLogger } = yield* ProviderEventLoggers.ProviderEventLoggers;
     const agentScope = yield* AgentScope;
-    const sandboxes = yield* Effect.serviceOption(SandboxService.SandboxService);
 
     return CodexAppServerClientFactory.of({
       open: Effect.fn("CodexAdapterV2.open")(function* (input) {
@@ -1509,57 +1499,25 @@ export const layerAppServerClientFactory: Layer.Layer<
           ...codexAppServerEnvironment(input.environment),
           ...(input.settings.homePath ? { CODEX_HOME: input.settings.homePath } : {}),
         };
-        const args = codexAppServerArgs(
-          resolveCodexLaunchArgs(input.settings.launchArgs, input.environment),
+        const command = yield* makeCodexAppServerSpawnCommand({
+          command: input.settings.binaryPath || "codex",
+          args: codexAppServerArgs(
+            resolveCodexLaunchArgs(input.settings.launchArgs, input.environment),
+          ),
+          env: environment,
+          threadId: input.threadId,
+        }).pipe(Effect.provideService(AgentScope, agentScope));
+        const handle = yield* spawner.spawn(command).pipe(
+          Effect.provideService(Scope.Scope, scope),
+          Effect.mapError(
+            (cause) =>
+              new ProviderAdapter.ProviderAdapterOpenSessionError({
+                driver: CODEX_PROVIDER,
+                providerSessionId: input.providerSessionId,
+                cause,
+              }),
+          ),
         );
-        const openError = (cause: unknown) =>
-          new ProviderAdapter.ProviderAdapterOpenSessionError({
-            driver: CODEX_PROVIDER,
-            providerSessionId: input.providerSessionId,
-            cause,
-          });
-        const cwd = input.runtimePolicy.cwd;
-        const sandbox =
-          Option.isNone(sandboxes) || cwd === null
-            ? Option.none()
-            : yield* sandboxes.value
-                .execTarget({
-                  threadId: input.threadId,
-                  cwd,
-                  homes: environment.CODEX_HOME ? [environment.CODEX_HOME] : [],
-                })
-                .pipe(Effect.mapError(openError));
-        // In a sandbox the image's own `codex` runs the app-server; the host
-        // binary may not even be a Linux build.
-        const command = Option.isSome(sandbox)
-          ? yield* Effect.try({
-              try: () =>
-                sandbox.value.command({
-                  command: "codex",
-                  args,
-                  cwd: cwd ?? sandbox.value.workspacePath,
-                  env: environment,
-                  tty: false,
-                }),
-              catch: openError,
-            }).pipe(
-              Effect.tap((plan) => Scope.addFinalizer(scope, Effect.sync(plan.release))),
-              Effect.map((plan) =>
-                ChildProcess.make(plan.command, [...plan.args], {
-                  env: plan.env,
-                  extendEnv: false,
-                }),
-              ),
-            )
-          : yield* makeCodexAppServerSpawnCommand({
-              command: input.settings.binaryPath || "codex",
-              args,
-              env: environment,
-              threadId: input.threadId,
-            }).pipe(Effect.provideService(AgentScope, agentScope));
-        const handle = yield* spawner
-          .spawn(command)
-          .pipe(Effect.provideService(Scope.Scope, scope), Effect.mapError(openError));
         const protocolLogger = makeCodexAppServerProtocolLogger({
           nativeEventLogger,
           threadId: input.threadId,
@@ -1602,7 +1560,6 @@ export const createCodexAdapterV2 = Effect.fn("CodexAdapterV2.createCodexAdapter
   const hostEnvironment = yield* HostProcess.Environment;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const serverConfig = yield* ServerConfig;
-  const sandboxes = yield* Effect.serviceOption(SandboxService.SandboxService);
   const homeLayout = yield* resolveCodexHomeLayout(config);
 
   yield* materializeCodexShadowHome(homeLayout).pipe(
@@ -1634,7 +1591,6 @@ export const createCodexAdapterV2 = Effect.fn("CodexAdapterV2.createCodexAdapter
     idAllocator,
     serverConfig,
     continuationRequests,
-    ...(Option.isSome(sandboxes) ? { sandboxes: sandboxes.value } : {}),
     ...hooks,
   });
 });
@@ -1657,8 +1613,6 @@ export interface CodexAdapterV2Options {
   readonly fileSystem: FileSystem.FileSystem;
   readonly idAllocator: IdAllocator.IdAllocatorV2["Service"];
   readonly serverConfig: ServerConfig["Service"];
-  /** Tells turns whether their thread runs in a sandbox. */
-  readonly sandboxes?: SandboxService.SandboxService["Service"];
   /** Omitting this leaves late completions projection-only. */
   readonly continuationRequests?: {
     readonly offer: (
@@ -6307,13 +6261,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               deviceToolsAvailable: mcpSession?.capabilities?.has("device") ?? false,
               omitServiceTier: adapterOptions.resolveRuntime !== undefined,
               ...(turnInput.appContext === undefined ? {} : { appContext: turnInput.appContext }),
-              sandboxed:
-                adapterOptions.sandboxes !== undefined &&
-                turnInput.runtimePolicy.cwd !== null &&
-                (yield* adapterOptions.sandboxes.isSandboxed({
-                  threadId: turnInput.threadId,
-                  cwd: turnInput.runtimePolicy.cwd,
-                })),
             });
             yield* Ref.update(pendingRootTurns, (current) => {
               const updated = new Map(current);

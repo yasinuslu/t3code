@@ -31,7 +31,6 @@ import {
 } from "./lib/windowControlsOverlay";
 import { applyStoredProfileLock } from "./profileLock";
 import { startProviderAuthDelivery } from "./providerAuthDelivery";
-import { listenForNotificationOpen, registerPushServiceWorker } from "./pushNotifications";
 import { getRouter, type AppRouter } from "./router";
 import { appAtomRegistry } from "./rpc/atomRegistry";
 import { primaryServerConfigAtom } from "./state/server";
@@ -134,10 +133,6 @@ export function startAppServices(): AppRouter {
 
   // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
   const router = getRouter(isElectron ? createHashHistory() : createBrowserHistory());
-
-  // Push-only service worker; a tap on a notification is routed like any in-app link.
-  registerPushServiceWorker();
-  listenForNotificationOpen(router.history);
 
   if (isElectron) {
     syncDocumentElectronPlatformClasses(navigator.platform);

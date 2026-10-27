@@ -41,11 +41,9 @@ import { useEnvironmentQuery } from "../../../state/query";
 import { useThreadSelection } from "../../../state/use-thread-selection";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
-import { useSelectedThreadGitTargetRepository } from "../../../state/use-selected-thread-git-target";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
 import { resolveGitOverviewReviewNavigationAction } from "./git-overview-navigation";
-import { GitTargetRepositoryPicker } from "./GitTargetRepositoryPicker";
 import { menuItemIconName, statusSummary } from "./gitSheetComponents";
 import {
   LinkedPullRequestRow,
@@ -53,7 +51,6 @@ import {
   useLinkedPullRequestLines,
 } from "../LinkedPullRequestList";
 import { useLinkedPullRequestActions } from "../useLinkedPullRequestActions";
-import { ThreadSandboxCard } from "./ThreadSandboxCard";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -90,9 +87,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
     replace: presentation === "sheet",
     context: selectedThread ?? undefined,
   });
-  const { selectedThreadWorktreePath } = useSelectedThreadWorktree();
-  const gitTargetRepository = useSelectedThreadGitTargetRepository();
-  const { targetCwd: selectedThreadCwd } = gitTargetRepository;
+  const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
   const linkedPrLines = useLinkedPullRequestLines(selectedThread, selectedEnvironmentRuntime);
   const linkedPrActions = useLinkedPullRequestActions({
     thread: selectedThread,
@@ -100,7 +95,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
     runtime: selectedEnvironmentRuntime,
   });
   const gitState = useSelectedThreadGitState();
-  const gitActions = useSelectedThreadGitActions(selectedThreadCwd);
+  const gitActions = useSelectedThreadGitActions();
   const { canWriteSourceControl, canChangeThreadBranch } = gitActions;
 
   const gitStatus = useEnvironmentQuery(
@@ -257,13 +252,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
         ) : undefined
       }
     >
-      {gitTargetRepository.hasSubmodules ? (
-        <GitTargetRepositoryPicker
-          options={gitTargetRepository.options}
-          selectedPath={gitTargetRepository.selectedPath}
-          onSelect={gitTargetRepository.selectTarget}
-        />
-      ) : null}
       <ListSection>
         {sheetMenuItems.map(({ item, disabledReason }) => (
           <ListRow
@@ -350,7 +338,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
           </Text>
         </ListSection>
       ) : null}
-      <ThreadSandboxCard environmentId={environmentId} threadId={threadId} />
     </ScrollView>
   );
 

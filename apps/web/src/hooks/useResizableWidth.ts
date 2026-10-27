@@ -14,8 +14,7 @@ export interface UseResizableWidthOptions {
   readonly defaultWidth: number;
   readonly minWidth: number;
   readonly maxWidth: number;
-  /** "top" grows a bottom-anchored panel upward; the value is then a height. */
-  readonly edge: "left" | "right" | "top";
+  readonly edge: "left" | "right";
 }
 
 export interface ResizableWidthHandlers {

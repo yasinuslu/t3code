@@ -95,7 +95,6 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { isMacPlatform } from "~/lib/utils";
 import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-import { type ExternalThreadRowOptions, useSidebarThreadRowSlot } from "../sidebarThreadRowSlot";
 import { useSidebarQuietThreadShells } from "../brainstormStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
 import {
@@ -116,7 +115,7 @@ import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings, useGrowEnabled } from "../hooks/useSettings";
+import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -240,7 +239,6 @@ import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import {
   SidebarSearchResultRow,
-  SidebarThreadRow,
   SortableThreadRow,
   type SidebarProviderEntry,
   type SidebarSweepAction,
@@ -987,7 +985,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     projectScopeKey: persistedProjectScopeKey,
     setProjectScopeKey,
   });
-  const growEnabled = useGrowEnabled();
   const activeSpace = spaces.find((space) => space.id === activeSpaceId) ?? null;
   const handleSpaceSwipe = useSpaceSwipe(switchSpace);
   useSpaceMouseButtons(switchSpace);
@@ -2777,97 +2774,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     label: (projectDisplayNameByKey as ReadonlyMap<string, string>).get(projectKey) ?? null,
   });
 
-  // The sidebar's row lent to Grow: one row shape, no drag, Grow's selection and marks.
-  const renderGrowThreadRow = (
-    thread: EnvironmentThreadShell,
-    external: ExternalThreadRowOptions,
-  ) => {
-    const threadKey = threadShellKey(thread);
-    const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
-    const variantAction = settledThreadKeys.has(threadKey)
-      ? "unsettle"
-      : snoozedThreadKeys.has(threadKey)
-        ? "unsnooze"
-        : "settle";
-    return (
-      <SidebarThreadRow
-        key={`${threadKey}:grow`}
-        thread={thread}
-        variant="grow"
-        variantAction={variantAction}
-        settlementSupported={capabilities?.threadSettlement === true}
-        snoozeSupported={capabilities?.threadSnooze === true}
-        pinningSupported={capabilities?.threadPinning === true}
-        sandboxesAvailable={serverConfigs.get(thread.environmentId)?.sandboxes === true}
-        isPinned={thread.pinnedAt != null}
-        dropVerb={null}
-        dragOverPinned={false}
-        sweepAction={actionSweep?.keys.has(threadKey) ? actionSweep.action : null}
-        snoozeWakeLabelText={
-          variantAction === "unsnooze" && thread.snoozedUntil != null
-            ? snoozeWakeLabel(thread.snoozedUntil, { now: new Date().toISOString() })
-            : null
-        }
-        wokeAt={threadWokeAt(thread, { now: snoozeNow })}
-        isActive={external.isActive}
-        isRouteThread={routeThreadKey === threadKey}
-        openPullRequestsInRightPanel={routeThreadRef !== null}
-        jumpLabel={null}
-        currentEnvironmentId={primaryEnvironmentId}
-        showEnvironment={showProjectEnvironments}
-        environmentLabel={environmentLabelById.get(thread.environmentId) ?? null}
-        environmentMachine={environmentMachineById.get(thread.environmentId) ?? "server"}
-        scratchMachineLabel={scratchMachineLabelFor(thread)}
-        project={projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null}
-        projectDisplayName={
-          projectDisplayNameByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
-        }
-        providerEntryByInstanceId={
-          providerEntriesByEnvironment.get(thread.environmentId) ?? EMPTY_PROVIDER_ENTRIES
-        }
-        timestampFormat={timestampFormat}
-        onThreadClick={external.onSelect}
-        onThreadActivate={external.onSelect}
-        onStartRename={startThreadRename}
-        onRenameTitleChange={setRenamingTitle}
-        onCommitRename={commitThreadRename}
-        onCancelRename={cancelThreadRename}
-        isRenaming={renamingThreadKey === threadKey}
-        renamingTitle={renamingThreadKey === threadKey ? renamingTitle : ""}
-        onContextMenu={(threadRef, position) =>
-          handleThreadContextMenu(threadRef, position, thread)
-        }
-        mark={external.mark}
-        subtitle={external.subtitle}
-        details={external.details}
-        onSettle={attemptSettle}
-        onActionSweepStart={startActionSweep}
-        onUnsettle={attemptUnsettle}
-        onSnooze={attemptSnooze}
-        onUnsnooze={attemptUnsnooze}
-        onUnpin={attemptUnpin}
-        onAcknowledgeWoke={acknowledgeWoke}
-        onFileDropThreads={handleThreadFileDrop}
-      />
-    );
-  };
-  // Republished every render, since the row reads this render's state.
-  useEffect(() => {
-    useSidebarThreadRowSlot.setState({ render: renderGrowThreadRow });
-  });
-  useEffect(() => () => useSidebarThreadRowSlot.setState({ render: null }), []);
-
   return (
     <SpaceRowProjectContext.Provider value={resolveSpaceRowProject}>
       <ThreadContextDragGhost />
       <SpaceMembershipPopoverLayer />
       <SidebarChromeHeader isElectron={isElectron} />
-      {/* With the fork's app bar in the titlebar row, spaces sit right below it, as on Grow. */}
-      {growEnabled ? (
-        <div className="px-2 pb-1" data-sidebar-spaces-top="">
-          <SpaceSwitcher onSwitch={switchSpace} />
-        </div>
-      ) : null}
       <SidebarManagerEntry />
       <CodeProfileProbes projects={projects} />
       <SidebarContent
@@ -3163,9 +3074,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               serverConfigs.get(thread.environmentId)?.environment.capabilities
                                 .threadPinning === true
                             }
-                            sandboxesAvailable={
-                              serverConfigs.get(thread.environmentId)?.sandboxes === true
-                            }
                             isPinned={thread.pinnedAt != null}
                             dropVerb={
                               dragState?.activeKey === threadKey
@@ -3438,7 +3346,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       </SidebarContent>
       <SidebarChromeFooter
         showUndoNotice={isSearchingThreads || sidebarListItemsFresh.length === 0}
-        spaces={growEnabled ? null : <SpaceSwitcher onSwitch={switchSpace} />}
+        spaces={<SpaceSwitcher onSwitch={switchSpace} />}
       />
     </SpaceRowProjectContext.Provider>
   );

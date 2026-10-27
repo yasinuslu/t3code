@@ -98,7 +98,6 @@ import {
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { observeResize } from "~/lib/observeResize";
-import { useReportPagesStore } from "~/browser/reportPages";
 
 interface Props {
   threadRef: ScopedThreadRef;
@@ -201,8 +200,6 @@ export function PreviewView({
         : findActiveBrowserRecordingRuntimeTabId(threadRef, tabId)
       : null;
   const snapshot = tabId ? (previewState.sessions[tabId] ?? null) : null;
-  // Report pages fill the panel at their design viewport, without device chrome.
-  const reportPage = useReportPagesStore((state) => (tabId ? state.tabIds.has(tabId) : false));
   const nativeServerTab = useRendersServerTabNatively(threadRef.environmentId, snapshot);
   const isServerTab = snapshot?.runtime === "server" && !nativeServerTab;
   const serverOwnsRendering = snapshot?.runtime === "server";
@@ -974,7 +971,7 @@ export function PreviewView({
       <div ref={serverBodyRef} className="relative min-h-0 flex-1 overflow-hidden">
         {runtimeTabId && snapshot && isServerTab ? (
           <>
-            {viewport._tag !== "fill" && !reportPage && !showEmptyState && !isUnreachable ? (
+            {viewport._tag !== "fill" && !showEmptyState && !isUnreachable ? (
               <div className="absolute inset-x-0 top-0 z-10">
                 <BrowserDeviceToolbar
                   setting={viewport}
@@ -987,9 +984,7 @@ export function PreviewView({
             ) : null}
             <div
               className="absolute inset-x-0 bottom-0"
-              style={{
-                top: viewport._tag !== "fill" && !reportPage ? BROWSER_DEVICE_TOOLBAR_HEIGHT : 0,
-              }}
+              style={{ top: viewport._tag !== "fill" ? BROWSER_DEVICE_TOOLBAR_HEIGHT : 0 }}
             >
               <ServerBrowserSurface
                 key={runtimeTabId}

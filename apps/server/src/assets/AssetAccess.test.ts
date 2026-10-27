@@ -1438,9 +1438,7 @@ describe("AssetAccess", () => {
         range: "bytes=0-4",
         cookie: "session",
       });
-      expect(fetched).toEqual([
-        { url: media.fetchUrl, headers: { range: "bytes=0-4" }, cwd: "/repo" },
-      ]);
+      expect(fetched).toEqual([{ url: media.fetchUrl, headers: { range: "bytes=0-4" } }]);
       expect(response.status).toBe(206);
       // The upstream sent no type, so it comes from the file name the host gave the media.
       expect(response.headers["content-type"]).toBe("image/png");
@@ -1451,16 +1449,6 @@ describe("AssetAccess", () => {
   it.effect("refuses media no host keeps behind a credential, without echoing the URL", () =>
     Effect.gen(function* () {
       const encodeAssetAccessError = Schema.encodeEffect(Schema.fromJsonString(AssetAccessError));
-
-      // A Forgejo attachment, with or without its repository in the path. The server only
-      // fetches it from a host it holds a forge login for.
-      const forge = sourceControlDefinitions.mediaUrl(
-        "https://Git.Example.org/owner/repo/attachments/6E7B3081-55c9-4870-8bbe-91f260279661",
-      );
-      expect(forge?.definition.kind).toBe("forgejo");
-      expect(forge?.fetchUrl).toBe(
-        "https://git.example.org/attachments/6e7b3081-55c9-4870-8bbe-91f260279661",
-      );
 
       for (const url of [
         "https://example.com/shot.png",

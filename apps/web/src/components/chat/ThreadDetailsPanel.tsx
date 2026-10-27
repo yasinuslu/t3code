@@ -11,7 +11,6 @@ import type { DraftId } from "../../composerDraftStore";
 import { useT3ProjectFileScripts } from "../../hooks/useT3ProjectFileScripts";
 import { type EnvMode, type EnvironmentOption } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
-import type { SandboxChoice } from "../SandboxToggle";
 import BaseGitActionsControl from "../GitActionsControl";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
@@ -23,7 +22,6 @@ import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
-import { ThreadSandboxControl } from "./ThreadSandboxControl";
 
 const GitActionsControl = memo(BaseGitActionsControl);
 
@@ -52,14 +50,8 @@ export interface ThreadDetailsPanelProps extends Pick<
   autoEnvironmentLabel?: string | undefined;
   onAutoEnvironment?: (() => void) | undefined;
   onEnvironmentChange?: (environmentId: EnvironmentId) => void;
-  /** A manager's row: it picks whose manager shows, so it stays a picker once started. */
-  switchesManagerMachine?: boolean;
   onEnvModeChange: (mode: EnvMode) => void;
   envMode: EnvMode;
-  /** A started thread on a server that can run sandboxes: shows its sandbox row. */
-  sandboxesAvailable: boolean;
-  /** A draft's choice to run in a sandbox, when its server can run them. */
-  sandboxChoice?: SandboxChoice;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
   startFromOrigin: boolean;
@@ -94,7 +86,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     startFromOrigin: props.startFromOrigin,
     onStartFromOriginChange: props.onStartFromOriginChange,
     envMode: props.envMode,
-    ...(props.sandboxChoice ? { sandboxChoice: props.sandboxChoice } : {}),
     ...(props.activeThreadBranchOverride !== undefined
       ? { activeThreadBranchOverride: props.activeThreadBranchOverride }
       : {}),
@@ -136,14 +127,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                   autoEnvironmentLabel={props.autoEnvironmentLabel}
                   onAutoEnvironment={props.onAutoEnvironment}
                   {...branchToolbarProps}
-                  envLocked={props.envLocked && props.switchesManagerMachine !== true}
-                />
-              ) : null}
-
-              {density !== "essential" && props.sandboxesAvailable ? (
-                <ThreadSandboxControl
-                  environmentId={props.environmentId}
-                  threadId={props.threadId}
                 />
               ) : null}
 
@@ -190,7 +173,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     displayMode="panel"
                     compact={density !== "full"}
                     gitCwd={props.gitCwd}
-                    rootRepoLabel={props.activeProjectName}
                     activeThreadRef={activeThreadRef}
                     {...(props.draftId ? { draftId: props.draftId } : {})}
                     {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}

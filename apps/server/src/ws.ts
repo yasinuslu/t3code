@@ -63,7 +63,6 @@ import {
   OrchestrationV2ThreadLaunchError,
   type OrchestrationProjectShell,
   type PullRequestListInput,
-  type UserNotificationsState,
   type OrchestrationV2ShellSnapshot,
   type OrchestrationV2ThreadStreamItem,
   type ApplicationStoredEvent,
@@ -102,7 +101,6 @@ import {
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
   WS_METHODS,
-  SandboxRequestError,
   WsRpcGroup,
 } from "@t3tools/contracts";
 import {
@@ -211,11 +209,8 @@ import * as PreviewLinkStatus from "./preview/PreviewLinkStatus.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import { resolveCodeProfiles } from "./workspace/CodeProfiles.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
-import * as GrowService from "./grow/GrowService.ts";
 import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
-import * as GrowWidgetPool from "./grow/GrowWidgetPool.ts";
 import { readElementsLibrary } from "./elements/ElementsLibrary.ts";
-import * as UserNotifications from "./notifications/UserNotifications.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
@@ -234,7 +229,6 @@ import { projectMutationOperation } from "./project/ProjectMutation.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
-import * as SandboxService from "./sandbox/SandboxService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
@@ -1306,30 +1300,6 @@ export const layerWsRpc = (
                 profileVisibility.visibleProjectIds(profileLock, projects),
               ),
             );
-      // Notifications carry no thread id; an in-app link (/<environmentId>/<threadId>) names it.
-      const filterNotifications = (state: UserNotificationsState) =>
-        profileLock === null
-          ? Effect.succeed(state)
-          : Effect.gen(function* () {
-              const items = yield* Effect.filter(state.items, (item) => {
-                const segment = item.link?.startsWith("/") ? item.link.split("/")[2] : undefined;
-                if (segment === undefined || segment === "") return Effect.succeed(true);
-                let threadId: string;
-                try {
-                  threadId = decodeURIComponent(segment.split(/[?#]/)[0] ?? "");
-                } catch {
-                  return Effect.succeed(true);
-                }
-                return threadId === ""
-                  ? Effect.succeed(true)
-                  : isThreadVisible(ThreadId.make(threadId));
-              });
-              return {
-                ...state,
-                items,
-                unreadCount: items.filter((item) => item.readAt === undefined).length,
-              };
-            });
       const filterScheduledTasks = (result: ScheduledTaskListResult) =>
         visibleProjectIdsNow.pipe(
           Effect.map((visible) =>
@@ -1466,7 +1436,6 @@ export const layerWsRpc = (
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
-      const sandboxes = yield* SandboxService.SandboxService;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
@@ -1487,10 +1456,7 @@ export const layerWsRpc = (
       const previewManager = yield* PreviewManager.PreviewManager;
       const previewLinkStatus = yield* PreviewLinkStatus.PreviewLinkStatus;
       const brainstorm = yield* BrainstormService.BrainstormService;
-      const grow = yield* GrowService.GrowService;
       const previewEnvironments = yield* PreviewEnvironmentService.PreviewEnvironmentService;
-      const widgetPool = yield* GrowWidgetPool.GrowWidgetPool;
-      const notifications = yield* UserNotifications.UserNotifications;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const modelManifest = yield* ModelManifest.ModelManifest;
@@ -1959,7 +1925,6 @@ export const layerWsRpc = (
           shellOlderSettled: true,
           threadResumeCompletionMarker: true,
           threadSnapshotPagination: true,
-          ...(sandboxes.supported ? { sandboxes: true } : {}),
           threadFind: true,
           threadFindProgressive: true,
           ...Option.match(scratchWorkspaceRoot, {
@@ -2124,17 +2089,6 @@ export const layerWsRpc = (
         [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: (input) => threadManagement.stopWorkflow(input),
         [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: (input) =>
           readWorkflowScript({ scriptPath: input.scriptPath }),
-        [ORCHESTRATION_V2_WS_METHODS.getBackgroundTaskOutput]: (input) =>
-          threadManagement.getBackgroundTaskOutput(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new OrchestrationV2GetThreadProjectionError({
-                  threadId: input.threadId,
-                  message: "Failed to read background task output",
-                  cause,
-                }),
-            ),
-          ),
         [ORCHESTRATION_V2_WS_METHODS.getTurnItem]: (input) =>
           threadManagement.getTurnItem(input).pipe(
             Effect.mapError(
@@ -3167,10 +3121,7 @@ export const layerWsRpc = (
         [WS_METHODS.brainstormSyncSpaces]: (input) => brainstorm.syncSpaces(input),
         [WS_METHODS.brainstormOpen]: (input) => brainstorm.open(input),
         [WS_METHODS.brainstormMutateTasks]: (input) => brainstorm.mutateTasks(input),
-        [WS_METHODS.brainstormThreadReport]: (input) => brainstorm.threadReport(input.threadId),
         [WS_METHODS.subscribeBrainstorm]: () => brainstorm.stateChanges,
-        [WS_METHODS.growState]: () => grow.state,
-        [WS_METHODS.growUpdate]: (input) => grow.update(input),
         [WS_METHODS.threadPreviewEnvironment]: (input) =>
           previewEnvironments[input.action](input.threadId).pipe(
             Effect.mapError(
@@ -3179,52 +3130,11 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.elementsLibrary]: (input) =>
           Effect.sync(() => readElementsLibrary(input.knownHash)),
-        [WS_METHODS.growWidgetPool]: () =>
-          widgetPool.read.pipe(
-            Effect.map((pool) => ({
-              configured: pool.dir !== "",
-              dir: pool.dir,
-              widgets: pool.widgets,
-              broken: pool.broken,
-            })),
-          ),
-        [WS_METHODS.subscribeGrow]: () => grow.changes,
-        [WS_METHODS.subscribeNotifications]: () =>
-          notifications.changes.pipe(Stream.mapEffect(filterNotifications)),
-        [WS_METHODS.notificationsNotify]: (input) => notifications.notify(input),
-        [WS_METHODS.notificationsMarkRead]: (input) => notifications.markRead(input),
-        [WS_METHODS.notificationsPushSubscribe]: (input) => notifications.subscribeDevice(input),
-        [WS_METHODS.notificationsPushUnsubscribe]: (input) =>
-          notifications.unsubscribeDevice(input.endpoint),
         [WS_METHODS.subscribeWorktreeSetup]: (input) => worktreeSetupTracker.stream(input.threadId),
         [WS_METHODS.worktreeSetupCancel]: (input) =>
           worktreeSetupTracker
             .cancel(input.threadId)
             .pipe(Effect.map((cancelled) => ({ cancelled }))),
-        [WS_METHODS.subscribeSandboxes]: () => sandboxes.stream,
-        [WS_METHODS.sandboxStop]: (input) =>
-          sandboxes.stop(input.threadId).pipe(
-            Effect.mapError(
-              (error) =>
-                new SandboxRequestError({
-                  operation: "stop",
-                  threadId: input.threadId,
-                  detail: error.detail,
-                }),
-            ),
-          ),
-        [WS_METHODS.sandboxEnable]: (input) => threadLaunch.enableSandbox(input.threadId),
-        [WS_METHODS.sandboxDisable]: (input) =>
-          sandboxes.detach(input.threadId).pipe(
-            Effect.mapError(
-              (error) =>
-                new SandboxRequestError({
-                  operation: "disable",
-                  threadId: input.threadId,
-                  detail: error.detail,
-                }),
-            ),
-          ),
         [WS_METHODS.vcsRefreshStatus]: (input) =>
           vcsStatusBroadcaster.refreshStatus(input.cwd, { localOnly: input.localOnly ?? false }),
         [WS_METHODS.vcsPull]: (input) =>
@@ -3285,13 +3195,6 @@ export const layerWsRpc = (
           gitWorkflow.createWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsRemoveWorktree]: (input) =>
           gitWorkflow.removeWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-        [WS_METHODS.worktreeFinish]: (input) =>
-          storageCleanup.finish({
-            threadId: input.threadId ?? null,
-            worktreePath: input.worktreePath ?? null,
-            into: input.into ?? null,
-            minIdleMs: input.minIdleMs ?? null,
-          }),
         [WS_METHODS.vcsCreateRef]: (input) =>
           gitWorkflow.createRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsSwitchRef]: (input) =>
@@ -3582,10 +3485,7 @@ export const layer = Layer.unwrap(
     const pullRequests = yield* PullRequestService.PullRequestService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
     const brainstorm = yield* BrainstormService.BrainstormService;
-    const grow = yield* GrowService.GrowService;
     const previewEnvironments = yield* PreviewEnvironmentService.PreviewEnvironmentService;
-    const widgetPool = yield* GrowWidgetPool.GrowWidgetPool;
-    const notifications = yield* UserNotifications.UserNotifications;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
       "GET",
@@ -3678,15 +3578,12 @@ export const layer = Layer.unwrap(
                 ),
               ),
               Layer.provide(Layer.succeed(BrainstormService.BrainstormService, brainstorm)),
-              Layer.provide(Layer.succeed(GrowService.GrowService, grow)),
               Layer.provide(
                 Layer.succeed(
                   PreviewEnvironmentService.PreviewEnvironmentService,
                   previewEnvironments,
                 ),
               ),
-              Layer.provide(Layer.succeed(GrowWidgetPool.GrowWidgetPool, widgetPool)),
-              Layer.provide(Layer.succeed(UserNotifications.UserNotifications, notifications)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(
                   Layer.provide(

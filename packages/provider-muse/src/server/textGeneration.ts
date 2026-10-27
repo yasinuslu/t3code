@@ -21,17 +21,13 @@ import { investigationUnsupported } from "@t3tools/provider-core/server/textGene
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
-  buildLivingPagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
-  buildWidgetPrompt,
 } from "@t3tools/provider-core/server/textGenerationPrompts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
-  stripCodeFence,
-  generationTimeoutMs,
   toJsonSchemaObject,
 } from "@t3tools/provider-core/server/textGenerationUtils";
 
@@ -275,7 +271,7 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
             cause,
           }),
       ),
-      Effect.timeoutOption(generationTimeoutMs(operation, 180_000)),
+      Effect.timeoutOption(180_000),
       Effect.flatMap(
         Option.match({
           onNone: () =>
@@ -346,33 +342,11 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
   });
   const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = () =>
     Effect.fail(investigationUnsupported("generateReviewGuide", "Muse Code"));
-  const generateLivingPage: ProviderTextGeneration["generateLivingPage"] = Effect.fn(
-    "MuseTextGeneration.generateLivingPage",
-  )(function* (input) {
-    const generated = yield* runMuseJson({
-      operation: "generateLivingPage",
-      ...buildLivingPagePrompt(input),
-      modelSelection: input.modelSelection,
-    });
-    return { unchanged: generated.unchanged, blocks: generated.blocks, missing: generated.missing };
-  });
-  const generateWidget: ProviderTextGeneration["generateWidget"] = Effect.fn(
-    "MuseTextGeneration.generateWidget",
-  )(function* (input) {
-    const generated = yield* runMuseJson({
-      operation: "generateWidget",
-      ...buildWidgetPrompt(input),
-      modelSelection: input.modelSelection,
-    });
-    return { name: generated.name.trim(), code: stripCodeFence(generated.code) };
-  });
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
-    generateLivingPage,
-    generateWidget,
   } satisfies ProviderTextGeneration;
 });

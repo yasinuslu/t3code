@@ -11,7 +11,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { resolveManagerProfile } from "./components/brainstorm/brainstorm.logic";
 import { resolveStorage } from "./lib/storage";
 import { profileLockNow } from "./profileLock";
-import { isInSpace, useProjectSpaceResolver, useSpaceStore } from "./spaceStore";
+import { useSpaceStore } from "./spaceStore";
 import { useQuietThreadShells, useThreadShells } from "./state/entities";
 
 /** What one manager-hosting environment reports. */
@@ -183,23 +183,6 @@ export function useManagerThreadKeys(): ReadonlySet<string> {
   return useMemo(() => new Set(Object.values(byProfile)), [byProfile]);
 }
 
-/**
- * Every manager's key, and whether the servers have reported yet (before that
- * a manager cannot be told from other threads).
- */
-export function useEveryManagerThreadKey(): {
-  readonly keys: ReadonlySet<string>;
-  readonly known: boolean;
-} {
-  const keys = useBrainstormStore((state) => state.allManagerThreadKeys);
-  const byProfile = useManagerThreadKeys();
-  const known = useBrainstormStore((state) => state.profiles !== null);
-  return useMemo(
-    () => ({ keys: new Set([...keys, ...byProfile]), known }),
-    [byProfile, keys, known],
-  );
-}
-
 export function useIsManagerThread(environmentId: string, threadId: string): boolean {
   return useBrainstormStore((state) =>
     Object.values(state.managerThreadKeyBySlot).includes(`${environmentId}:${threadId}`),
@@ -283,19 +266,5 @@ export function useSidebarQuietThreadShells(): ReadonlyArray<EnvironmentThreadSh
             return !hidden.has(key) && !managerKeys.has(key);
           }),
     [hidden, managerKeys, threads],
-  );
-}
-
-/** The work Home shows: the sidebar's threads in the active space. */
-export function useHomeThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
-  const threads = useSidebarThreadShells();
-  const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
-  const resolveSpaces = useProjectSpaceResolver();
-  return useMemo(
-    () =>
-      threads.filter((thread) =>
-        isInSpace(resolveSpaces([`${thread.environmentId}:${thread.projectId}`]), activeSpaceId),
-      ),
-    [activeSpaceId, resolveSpaces, threads],
   );
 }

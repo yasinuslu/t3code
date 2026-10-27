@@ -31,21 +31,6 @@ interface WorktreeSetupCardProps {
   onOpenTerminal: (() => void) | null;
 }
 
-/**
- * Stages that stream command output: the sandbox image build and the setup
- * script. The tail box is part of the row's footprint while the stage runs
- * (and after it failed, so the last lines explain the failure). It mounts
- * with the first output line at its full fixed height, so the card grows
- * once instead of with each line. A stage that ends before printing
- * anything never flashes an empty box.
- */
-function showsStageTail(stage: WorktreeSetupStage): boolean {
-  return (
-    (stage.id === "sandbox" || stage.id === "setup-script") &&
-    (stage.status === "failed" || (stage.status === "running" && stage.tail.length > 0))
-  );
-}
-
 function stageElapsedMs(stage: WorktreeSetupStage, nowMs: number): number | null {
   if (!stage.startedAt) return null;
   const start = Date.parse(stage.startedAt);
@@ -343,6 +328,10 @@ export function WorktreeSetupCard({
   const showTerminal = onOpenTerminal && setupStage && setupStage.status !== "pending";
   const collapsed = embedded && !running;
   const showHeader = !embedded && !running && snapshot.phase !== "done";
+  const showTail =
+    setupStage !== undefined &&
+    (setupStage.status === "failed" ||
+      (setupStage.status === "running" && setupStage.tail.length > 0));
 
   return (
     <section aria-label="Worktree setup" data-worktree-setup-phase={snapshot.phase}>
@@ -358,7 +347,7 @@ export function WorktreeSetupCard({
                 nowMs={nowMs}
                 scriptName={snapshot.setupScript?.name ?? null}
               />
-              {showsStageTail(stage) ? (
+              {stage.id === "setup-script" && showTail ? (
                 <OutputTail lines={stage.tail} failed={stage.status === "failed"} />
               ) : null}
             </div>

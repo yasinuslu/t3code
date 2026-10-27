@@ -4,8 +4,6 @@ import {
   resolveNewTaskBranchLabel,
   resolveNewTaskBranchWorktreePath,
   resolveNewTaskLocalWorkspaceSelection,
-  resolveNewTaskSandbox,
-  resolveNewTaskWorkspaceLabel,
   resolveNewTaskWorkspaceSelection,
 } from "./new-task-context-presentation";
 
@@ -105,35 +103,5 @@ describe("resolveNewTaskBranchWorktreePath", () => {
         branchWorktreePath: "/repo/.t3/worktrees/feature",
       }),
     ).toBeNull();
-  });
-});
-
-describe("resolveNewTaskSandbox", () => {
-  it("keeps a sandbox choice for any workspace", () => {
-    expect(resolveNewTaskSandbox({ draftSandbox: true, serverConfig: { sandboxes: true } })).toBe(
-      true,
-    );
-    expect(
-      resolveNewTaskSandbox({ draftSandbox: undefined, serverConfig: { sandboxes: true } }),
-    ).toBe(false);
-  });
-
-  it("drops the choice on a server without sandboxes", () => {
-    expect(resolveNewTaskSandbox({ draftSandbox: true, serverConfig: {} })).toBe(false);
-  });
-
-  it("keeps the choice while the server config is unknown", () => {
-    expect(resolveNewTaskSandbox({ draftSandbox: true, serverConfig: null })).toBe(true);
-  });
-});
-
-describe("resolveNewTaskWorkspaceLabel", () => {
-  it("names the workspace", () => {
-    expect(resolveNewTaskWorkspaceLabel({ workspaceMode: "worktree", worktreePath: null })).toBe(
-      "New worktree",
-    );
-    expect(resolveNewTaskWorkspaceLabel({ workspaceMode: "local", worktreePath: null })).toBe(
-      "Current checkout",
-    );
   });
 });

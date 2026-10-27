@@ -39,9 +39,3 @@ describe("buildRuntimeInstructions", () => {
     assert.include(instructions, "call unwatch_pull_request");
   });
 });
-
-it("always asks agents to keep the thread's presentation, with the status feeding it", () => {
-  const instructions = buildRuntimeInstructions({ harness: "Claude Code" });
-  assert.include(instructions, "<presentation>");
-  assert.include(instructions, "thread_status_update only feeds its first page");
-});

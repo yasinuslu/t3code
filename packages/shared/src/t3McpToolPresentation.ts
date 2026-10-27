@@ -62,6 +62,9 @@ export type T3McpToolSummaryAction =
   | "unwatch-pr"
   | "link-preview"
   | "unlink-preview"
+  | "presentation-set"
+  | "presentation-edit"
+  | "presentation-get"
   | "elements-describe"
   | "preview-environment-up"
   | "preview-environment-down"
@@ -117,6 +120,9 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "pull-request",
   ),
   link_preview: tool(["Link", "Linking", "Linked", "a preview"], "link-preview", "browser"),
+  presentation_set: tool(["Set", "Setting", "Set", "the presentation"], "presentation-set"),
+  presentation_edit: tool(["Edit", "Editing", "Edited", "the presentation"], "presentation-edit"),
+  presentation_get: tool(["Read", "Reading", "Read", "the presentation"], "presentation-get"),
   elements_describe: tool(
     ["Describe", "Describing", "Described", "web components"],
     "elements-describe",

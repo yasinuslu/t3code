@@ -20,8 +20,6 @@ export type PreviewPanelMode = "inline" | "sheet" | "sidebar" | "embedded";
 interface PreviewPanelShellProps {
   mode: PreviewPanelMode;
   maximized?: boolean;
-  /** Inline only: the panel sits below the chat (portrait layout) and inlineSize is its height. */
-  stacked?: boolean;
   inlineSize?: PreviewPanelInlineSize;
   open?: boolean;
   /** Use a distinct key per surface to keep remembered widths independent. */
@@ -55,8 +53,6 @@ function PreviewPanelShellFrame(
   },
 ) {
   const isInline = props.mode === "inline";
-  const stacked = isInline && (props.stacked ?? false);
-  const sizeProperty = stacked ? "height" : "width";
   const collapsible = isInline && props.open !== undefined;
   const open = props.open ?? true;
   const maximized = props.maximized ?? false;
@@ -132,32 +128,23 @@ function PreviewPanelShellFrame(
     <div
       ref={hostRef}
       className={cn(
-        "relative flex min-h-0 min-w-0 max-w-full flex-col self-stretch bg-background",
-        stacked ? "w-full" : "h-full",
+        "relative flex h-full min-h-0 min-w-0 max-w-full flex-col self-stretch bg-background",
         isInline
           ? maximized
             ? // Maximizing meets the sidebar border or window edge; omit the duplicate border.
               "flex-1"
-            : cn("shrink-0 border-border", stacked ? "border-t" : "border-l")
+            : "shrink-0 border-l border-border"
           : "w-full",
         collapsible &&
-          (stacked
-            ? "[[data-panel-animations=true]_&]:transition-[height]"
-            : "[[data-panel-animations=true]_&]:transition-[width]"),
-        collapsible &&
-          "[[data-panel-animations=true]_&]:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:ease-out",
-        collapsible &&
-          open &&
-          (stacked
-            ? "[[data-panel-animations=true]_&]:starting:h-0!"
-            : "[[data-panel-animations=true]_&]:starting:w-0!"),
+          "[[data-panel-animations=true]_&]:transition-[width] [[data-panel-animations=true]_&]:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:ease-out",
+        collapsible && open && "[[data-panel-animations=true]_&]:starting:w-0!",
         collapsible && !open && "pointer-events-none",
       )}
       style={
         isInline
           ? ({
               [RESIZABLE_WIDTH_PROPERTY]: `${width}px`,
-              [sizeProperty]: maximized
+              width: maximized
                 ? "100%"
                 : collapsible && !open
                   ? "0px"
@@ -167,22 +154,15 @@ function PreviewPanelShellFrame(
           : undefined
       }
       data-preview-panel-mode={props.mode}
-      data-pane="panel"
-      data-preview-panel-stacked={stacked ? "true" : undefined}
       data-preview-panel-maximized={maximized ? "true" : "false"}
     >
-      {isInline && !maximized ? (
-        <RightPanelResizeHandle
-          handlers={handlers}
-          orientation={stacked ? "horizontal" : "vertical"}
-        />
-      ) : null}
+      {isInline && !maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}
       <div className={cn("h-full min-h-0 w-full", collapsible && "overflow-clip")}>
         <div
           className="flex h-full min-h-0 min-w-0 flex-col"
           style={
             collapsible && !maximized
-              ? { [sizeProperty]: `calc(var(${RESIZABLE_WIDTH_PROPERTY}) - 1px)` }
+              ? { width: `calc(var(${RESIZABLE_WIDTH_PROPERTY}) - 1px)` }
               : undefined
           }
         >

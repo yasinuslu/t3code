@@ -23,16 +23,7 @@ import {
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown from "../ChatMarkdown";
 import { ThreadContextChip } from "../ThreadContextChip";
-import {
-  ImageIcon,
-  ListChecksIcon,
-  MessageCircleIcon,
-  MousePointerClickIcon,
-  PaintbrushIcon,
-  ReplyIcon,
-  RocketIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { MessageCircleIcon, MousePointerClickIcon, PaintbrushIcon } from "lucide-react";
 import type { ComposerContextId, KnownComposerContextRecord } from "@t3tools/contracts";
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
@@ -107,14 +98,6 @@ function UserMessageMentionChip(props: {
     </Tooltip>
   );
 }
-
-const GROW_REQUEST_ICON = {
-  presentation: <ImageIcon />,
-  ship: <RocketIcon />,
-  change: <SparklesIcon />,
-  reply: <ReplyIcon />,
-  form: <ListChecksIcon />,
-} as const;
 
 function UserMessageContextChip(props: {
   icon: ReactNode;
@@ -339,23 +322,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             tooltip={`$${record.name}`}
             copyMarkdown={context.copyMarkdown}
             kind="skill"
-          />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "grow-request",
-      canRender: (record) => record.kind === "grow-request",
-      render: (record, context) =>
-        record.kind === "grow-request" ? (
-          <UserMessageContextChip
-            icon={GROW_REQUEST_ICON[record.request]}
-            label={record.label}
-            kindLabel="Asked from Grow"
-            tooltip="Asked from Grow"
-            copyMarkdown={context.copyMarkdown}
-            kind="grow"
           />
         ) : (
           <UnavailableUserMessageContextChip {...context} />

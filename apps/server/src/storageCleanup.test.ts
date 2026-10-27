@@ -151,25 +151,6 @@ describe("V2 storage cleanup eligibility", () => {
       ).toBe(false);
     },
   );
-  it.each(["completed", "interrupted", "failed", "cancelled"] as const)(
-    "allows a worktree whose last turn %s",
-    (status) => {
-      expect(storageCleanupThreadIdle(candidateWithStatus(status), NOW_MS)).toBe(true);
-    },
-  );
-
-  it("lets a settled thread's stale background command go, but not an unsettled one's", () => {
-    const pendingBackgroundTasks = [{ taskId: "poll", kind: "command" as const }];
-    expect(storageCleanupThreadIdle({ ...candidate(), pendingBackgroundTasks }, NOW_MS)).toBe(
-      false,
-    );
-    expect(
-      storageCleanupThreadIdle(
-        { ...candidate(), pendingBackgroundTasks, settledOverride: "settled" },
-        NOW_MS,
-      ),
-    ).toBe(true);
-  });
 
   it("retains an active run even if the shell status is idle", () => {
     expect(

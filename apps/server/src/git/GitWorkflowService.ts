@@ -2,7 +2,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
 
 import {
   GitManagerError,
@@ -31,7 +30,6 @@ import {
 } from "@t3tools/contracts";
 
 import * as GitManager from "./GitManager.ts";
-import * as SandboxService from "../sandbox/SandboxService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
@@ -175,7 +173,6 @@ export const make = Effect.gen(function* () {
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
-  const sandboxes = yield* Effect.serviceOption(SandboxService.SandboxService);
   const fileSystem = yield* FileSystem.FileSystem;
 
   // Nested projects and path aliases must share the checkout's branch-mutation lease.
@@ -440,20 +437,6 @@ export const make = Effect.gen(function* () {
     removeWorktree: (input) =>
       ensureGitCommand("GitWorkflowService.removeWorktree", input.cwd).pipe(
         Effect.andThen(git.removeWorktree(input)),
-        // A removed worktree's sandbox has nothing left to run. A failure
-        // here only leaves the container behind; startup drops it later.
-        Effect.tap(() =>
-          Option.isNone(sandboxes)
-            ? Effect.void
-            : sandboxes.value.remove(input.path).pipe(
-                Effect.catchCause((cause) =>
-                  Effect.logWarning("Failed to remove the worktree's sandbox", {
-                    path: input.path,
-                    cause,
-                  }),
-                ),
-              ),
-        ),
       ),
     pruneWorktrees: (input) =>
       ensureGitCommand("GitWorkflowService.pruneWorktrees", input.cwd).pipe(

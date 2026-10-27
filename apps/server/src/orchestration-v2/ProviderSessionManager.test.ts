@@ -329,7 +329,6 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
       readonly initialProviderItemIdentityVersion?: 2;
     }) => Effect.Effect<void>;
     readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
-    readonly needsResume?: Effect.Effect<boolean>;
     readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
     readonly backgroundTasksEndWithProcess?: boolean;
     readonly hangSessionScopeClose?: boolean;
@@ -416,7 +415,6 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
           ...(options.hasPendingBackgroundWork === undefined
             ? {}
             : { hasPendingBackgroundWork: options.hasPendingBackgroundWork }),
-          ...(options.needsResume === undefined ? {} : { needsResume: () => options.needsResume! }),
           ...(options.hasPendingBackgroundWorkForThread === undefined
             ? {}
             : {
@@ -478,7 +476,6 @@ function layerTest(input: {
     readonly paused: Deferred.Deferred<void>;
   };
   readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
-  readonly needsResume?: Effect.Effect<boolean>;
   readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
   readonly backgroundTasksEndWithProcess?: boolean;
   readonly hangSessionScopeClose?: boolean;
@@ -508,7 +505,6 @@ function layerTest(input: {
       ...(input.hasPendingBackgroundWork === undefined
         ? {}
         : { hasPendingBackgroundWork: input.hasPendingBackgroundWork }),
-      ...(input.needsResume === undefined ? {} : { needsResume: input.needsResume }),
       ...(input.hasPendingBackgroundWorkForThread === undefined
         ? {}
         : { hasPendingBackgroundWorkForThread: input.hasPendingBackgroundWorkForThread }),
@@ -3270,57 +3266,6 @@ it.effect(
 
       yield* effect.pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 1000 })));
     }),
-);
-
-it.effect("ProviderSessionManagerV2 resumes a loaded thread again when the runtime asks to", () =>
-  Effect.gen(function* () {
-    const state = yield* Ref.make(emptyState);
-    // A lost native session: the adapter must see the resume so it can fail
-    // it into a fresh session instead of the turn reusing the dead session.
-    const lost = yield* Ref.make(false);
-    const effect = Effect.gen(function* () {
-      const eventSink = yield* EventSink.EventSinkV2;
-      const idAllocator = yield* IdAllocator.IdAllocatorV2;
-      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
-      const now = yield* DateTime.now;
-      const projectId = yield* idAllocator.allocate.project({
-        fixtureName: "provider-session-manager-needs-resume",
-      });
-      const threadId = yield* idAllocator.allocate.thread({
-        fixtureName: "provider-session-manager-needs-resume",
-        projectId,
-      });
-      const providerSessionId = idAllocator.derive.providerSession({
-        providerInstanceId: modelSelection.instanceId,
-      });
-      yield* eventSink.write({
-        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
-      });
-      const providerThread = makeProviderThread({ idAllocator, threadId, providerSessionId, now });
-      const runtime = yield* manager.open({
-        threadId,
-        providerSessionId,
-        modelSelection,
-        runtimePolicy,
-      });
-      const resume = runtime.resumeThread({
-        providerThread,
-        threadId,
-        modelSelection,
-        runtimePolicy,
-      });
-      yield* resume;
-      yield* resume;
-      assert.equal((yield* Ref.get(state)).resumeCount, 1);
-      yield* Ref.set(lost, true);
-      yield* resume;
-      assert.equal((yield* Ref.get(state)).resumeCount, 2);
-    });
-
-    yield* effect.pipe(
-      Effect.provide(layerTest({ state, idleTimeoutMs: 1000, needsResume: Ref.get(lost) })),
-    );
-  }),
 );
 
 it.effect(

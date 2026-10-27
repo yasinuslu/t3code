@@ -45,6 +45,7 @@ export * from "./threadMetadataMcp.ts";
 export * from "./threadPullRequest.ts";
 export * from "./threadPreviewLink.ts";
 export * from "./elements.ts";
+export * from "./threadPresentation.ts";
 export * from "./threadPreviewEnvironment.ts";
 export * from "./threadSearch.ts";
 export * from "./threadTitle.ts";

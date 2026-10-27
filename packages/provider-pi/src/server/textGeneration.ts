@@ -10,7 +10,6 @@ import type { PiSettings } from "../settings.ts";
 import { makePiRpcConnection, parsePiModelSlug } from "./rpc.ts";
 import { buildPiRpcLaunch, resolvePiLaunchArgs } from "./mcpInjection.ts";
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
-import { generationTimeoutMs } from "@t3tools/provider-core/server/textGenerationUtils";
 
 const PI_TIMEOUT_MS = 180_000;
 
@@ -104,7 +103,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
     (effect, request) => {
       const { operation } = request;
       return effect.pipe(
-        Effect.timeoutOption(generationTimeoutMs(operation, PI_TIMEOUT_MS)),
+        Effect.timeoutOption(PI_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
             onNone: () =>

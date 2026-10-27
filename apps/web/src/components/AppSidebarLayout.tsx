@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
-  useLayoutEffect,
   useState,
   useSyncExternalStore,
   type CSSProperties,
@@ -31,32 +30,18 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import {
-  useEnvironmentIdentificationMode,
-  useGrowEnabled,
-  useGrowIsHome,
-  useLegacySidebarEnabled,
-} from "../hooks/useSettings";
+import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
   usePanelNavigationSuppression,
 } from "../panelAnimations";
 import { BrainstormHost } from "./brainstorm/BrainstormHost";
-import { HomeOverlay } from "./home/HomeOverlay";
 import { ManagerRoute } from "./brainstorm/ManagerRoute";
-import {
-  setClassicThreadsView,
-  setHomeOverlayEnabled,
-  useHomeOverlayStore,
-} from "../homeOverlayStore";
-import { GrowRouting } from "./grow/GrowRouting";
-import { ModeShortcuts, ModeSwitch } from "./ModeSwitch";
 import { PaneShortcuts } from "./PaneShortcuts";
 import { ProfileShortcuts } from "./ProfileShortcuts";
 import { ShellShortcuts } from "./ShellShortcuts";
 import { ShortcutsSheet } from "./ShortcutsSheet";
-import { PhoneTabBar } from "./PhoneTabBar";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
@@ -307,7 +292,6 @@ function registerAppShellCommands(router: AnyRouter, shellElement: Element): () 
 function SidebarControl() {
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
-  const homeOpen = useHomeOverlayStore((state) => state.open);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
@@ -322,7 +306,6 @@ function SidebarControl() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      if (useHomeOverlayStore.getState().open) return;
       if (
         event.target instanceof HTMLElement &&
         event.target.closest("[data-keybinding-capture]")
@@ -370,10 +353,8 @@ function SidebarControl() {
     <div
       ref={appShellCommandsRef}
       className={cn(
-        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-45 ml-px flex h-[var(--workspace-topbar-height)] items-center",
+        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
         isMobile && mobileSheetMounted && "hidden",
-        // Home covers the sidebar; hidden, not unmounted, so the shell commands stay.
-        homeOpen && "hidden",
       )}
       data-sidebar-control=""
     >
@@ -400,14 +381,6 @@ function SidebarControl() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const legacySidebarEnabled = useLegacySidebarEnabled();
-  const growEnabled = useGrowEnabled();
-  // Before first paint, so a reloaded Home never flashes while the flag is off.
-  useLayoutEffect(() => setHomeOverlayEnabled(growEnabled), [growEnabled]);
-  const growIsHome = useGrowIsHome();
-  useLayoutEffect(
-    () => setClassicThreadsView(growEnabled && !growIsHome),
-    [growEnabled, growIsHome],
-  );
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
     pendingKey: null,
@@ -484,17 +457,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         </Sidebar>
         {children}
         <BackgroundThreadAnnouncer />
-        {growEnabled ? <HomeOverlay /> : null}
         <ManagerRoute />
-        {growEnabled ? <GrowRouting /> : null}
         <SidebarControl />
-        {growEnabled ? (
-          <>
-            <ModeSwitch />
-            <PhoneTabBar />
-          </>
-        ) : null}
-        <ModeShortcuts />
         <ProfileShortcuts />
         <PaneShortcuts />
         <ShellShortcuts />

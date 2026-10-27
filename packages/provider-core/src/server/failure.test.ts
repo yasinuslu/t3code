@@ -2,21 +2,16 @@ import { assert, it } from "@effect/vitest";
 import {
   NodeId,
   ProviderDriverKind,
-  ProviderInstanceId,
-  ProviderSessionId,
-  ProviderSetupError,
   ProviderThreadId,
   ProviderTurnId,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
-import { PROMPT_NOT_RUN_FAILURE_CODE } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
 import {
-  isProviderTurnRefusedBeforeInput,
   makeProviderFailure,
   makeProviderFailureTurnItem,
   MAX_PROVIDER_FAILURE_MESSAGE_LENGTH,
@@ -124,38 +119,6 @@ it("uses the innermost category without carrying an outer reason into it", () =>
   );
 });
 
-// A refusal took no input, so the turn start restores its history handoffs
-// instead of leaving them pending (which discards the native conversation).
-it("tells a turn refused before input from other start failures", () => {
-  const startError = (cause: unknown) => ({ _tag: "ProviderAdapterTurnStartError", cause });
-  assert.isTrue(
-    isProviderTurnRefusedBeforeInput(
-      Cause.fail(startError({ _tag: "ClaudeBackgroundWorkBlocksQueryReplacementError" })),
-    ),
-  );
-  assert.isFalse(
-    isProviderTurnRefusedBeforeInput(
-      startError({ _tag: "ClaudeAgentSdkQueryRunnerError", method: "offer", cause: "closed" }),
-    ),
-  );
-});
-
-it("shows why a sandbox could not run the turn", () => {
-  const cause = {
-    _tag: "ProviderAdapterTurnStartError",
-    cause: {
-      _tag: "SandboxError",
-      operation: "exec",
-      workspacePath: "/repo",
-      detail: "The sandbox does not mount /home/me/.claude.",
-    },
-  };
-  assert.strictEqual(
-    makeProviderFailure({ cause }).message,
-    "The thread's sandbox could not run this turn: The sandbox does not mount /home/me/.claude.",
-  );
-});
-
 it("does not expose defect text nested inside a known error category", () => {
   const failure = makeProviderFailure({
     cause: {
@@ -250,31 +213,3 @@ it.effect("keys terminal failure items by provider turn across retries and fallb
     assert.equal(firstAttempt.ordinal, 101);
   }).pipe(Effect.provide(IdAllocator.layer)),
 );
-
-// A sandbox that stops while the session opens never saw the prompt, so the
-// failure carries the code that makes the server send the message again.
-it("marks an open that failed before the prompt was handed over as not run", () => {
-  // The server's ProviderSessionOpenError carries the same flag; its shape is all that matters here.
-  const stopped = Object.assign(new Error("The sandbox stopped while the session was opening."), {
-    _tag: "ProviderSessionOpenError",
-    promptNotRun: true,
-  });
-  assert.equal(makeProviderFailure({ cause: stopped }).code, PROMPT_NOT_RUN_FAILURE_CODE);
-  assert.equal(
-    makeProviderFailure({ cause: new Error("outer", { cause: stopped }) }).code,
-    PROMPT_NOT_RUN_FAILURE_CODE,
-  );
-  const signingIn = new ProviderSetupError({
-    instanceId: ProviderInstanceId.make("claudeAgent"),
-    operation: "session",
-    detail: "This provider's sign-in is changing. Try again after it finishes.",
-    promptNotRun: true,
-  });
-  assert.equal(makeProviderFailure({ cause: signingIn }).code, PROMPT_NOT_RUN_FAILURE_CODE);
-  assert.equal(
-    makeProviderFailure({
-      cause: Object.assign(new Error("open failed"), { _tag: "ProviderSessionOpenError" }),
-    }).code,
-    null,
-  );
-});

@@ -4,7 +4,7 @@ import * as Schema from "effect/Schema";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import { registerManagerShortcut } from "../../window/ManagerShortcut.ts";
-import { forgetShellChordsOf, setShellChords } from "../../window/ShellChords.ts";
+import { setShellChords } from "../../window/ShellChords.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 import { SET_MANAGER_SHORTCUT_CHANNEL, SET_SHELL_CHORDS_CHANNEL } from "../channels.ts";
 
@@ -31,10 +31,8 @@ const ShellChords = Schema.Array(
 
 /**
  * The renderer reports the chords the shell acts on below the page (profile windows, menu
- * Settings and zoom, Grow's keys over a preview), resolved from its keybindings.
+ * Settings and zoom), resolved from its keybindings.
  */
-/** The renderers that already have a cleanup on their close, so a repeat report adds none. */
-const trackedShellSenders = new Set<number>();
 
 export const installShellChords = Effect.fn("desktop.ipc.installShellChords")(function* () {
   const ipc = yield* DesktopIpc.DesktopIpc;
@@ -43,21 +41,7 @@ export const installShellChords = Effect.fn("desktop.ipc.installShellChords")(fu
       channel: SET_SHELL_CHORDS_CHANNEL,
       payload: ShellChords,
       result: Schema.Void,
-      handler: (chords, event) =>
-        Effect.sync(() => {
-          const sender =
-            event === undefined ? undefined : Electron.webContents.fromId(event.sender.id);
-          if (!sender) return setShellChords(chords);
-          const windowId = sender.id;
-          setShellChords(chords, windowId);
-          if (!trackedShellSenders.has(windowId)) {
-            trackedShellSenders.add(windowId);
-            sender.once("destroyed", () => {
-              trackedShellSenders.delete(windowId);
-              forgetShellChordsOf(windowId);
-            });
-          }
-        }),
+      handler: (chords) => Effect.sync(() => setShellChords(chords)),
     }),
   );
 });

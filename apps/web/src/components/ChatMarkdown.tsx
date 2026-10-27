@@ -189,8 +189,6 @@ import {
   BrowserPreviewUnavailableError,
   BrowserSettingsReadError,
 } from "../browser/openFileInPreview";
-import { isReportPage, useReportPagesStore } from "../browser/reportPages";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 import { MarkdownCodeBlock, SuspenseShikiCodeBlock } from "./chat/MarkdownCodeBlock";
@@ -511,9 +509,6 @@ function useChatMarkdownState({
   const searchProjectEntries = useAtomQueryRunner(projectEnvironment.searchEntries, {
     reportFailure: false,
   });
-  const readProjectFile = useAtomQueryRunner(projectEnvironment.readFile, {
-    reportFailure: false,
-  });
   const getFilesystemMetadata = useAtomQueryRunner(filesystemEnvironment.getMetadata, {
     reportFailure: false,
     refresh: true,
@@ -738,7 +733,7 @@ function useChatMarkdownState({
       return result;
     });
   };
-  const openMarkdownFileInPreview = (path: string, report = false) => {
+  const openMarkdownFileInPreview = (path: string) => {
     const preparedConnection = threadRef ? readPreparedConnection(threadRef.environmentId) : null;
     if (!threadRef || !canOperatePreview || preparedConnection === null) {
       return Promise.resolve(
@@ -758,7 +753,6 @@ function useChatMarkdownState({
       httpBaseUrl: preparedConnection.httpBaseUrl,
       createAssetUrl,
       openPreview,
-      report,
     });
   };
   const findWorkspaceFileMatch = async (fileLinkMeta: MarkdownFileLinkMeta) => {
@@ -803,35 +797,8 @@ function useChatMarkdownState({
     if (!threadRef) return;
     // Every open supersedes pending lookups, including synchronous opens.
     const isLatestLookup = claimWorkspaceBasenameLookup();
-    const openInPanel = (path: string) =>
+    const openAt = (path: string) =>
       useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line);
-    // A report page lands big: the preview browser at its design size where there is one,
-    // otherwise the maximized files panel (which scales reports to fit).
-    const openAt = (path: string) => {
-      if (
-        !cwd ||
-        environmentId === null ||
-        fileLinkMeta.line !== undefined ||
-        !/\.html?$/i.test(path)
-      ) {
-        openInPanel(path);
-        return;
-      }
-      void (async () => {
-        const file = await readProjectFile({ environmentId, input: { cwd, relativePath: path } });
-        if (!isLatestLookup()) return;
-        if (file._tag !== "Success" || !isReportPage(file.value.contents)) {
-          openInPanel(path);
-          return;
-        }
-        if (canOperatePreview && isPreviewAvailableFor(threadRef.environmentId)) {
-          const opened = await openMarkdownFileInPreview(resolveWorkspaceFilePath(path, cwd), true);
-          if (opened._tag === "Success" || isAtomCommandInterrupted(opened)) return;
-        }
-        openInPanel(path);
-        useReportPagesStore.getState().requestMaximize(scopedThreadKey(threadRef));
-      })();
-    };
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||

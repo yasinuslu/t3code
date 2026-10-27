@@ -50,9 +50,6 @@ import { PREFERRED_HIGHLIGHTER } from "../lib/syntaxHighlighting";
 import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
 import { useProject, useThreadCheckpointSummaries, useQuietThreadShell } from "../state/entities";
-import { useGitRepoTarget } from "../hooks/useGitRepoTarget";
-import { toRootRepoPath } from "../gitRepoTargetStore";
-import { GitRepoPicker } from "./GitRepoPicker";
 import { useClientSettings, updateClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffFilePathCopyButton } from "./DiffFilePathCopyButton";
@@ -260,10 +257,6 @@ export default function DiffPanel({
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
   );
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
-  // Working-tree and branch diffs follow the thread's selected repository; turn diffs always
-  // cover the whole checkout, submodules included.
-  const repoTarget = useGitRepoTarget(routeThreadRef, activeCwd ?? null);
-  const gitDiffCwd = repoTarget.cwd;
   const turnDiffSummaries = useThreadCheckpointSummaries(routeThreadRef);
   const orderedTurnDiffSummaries = turnDiffSummaries.toSorted((left, right) => {
     if (left.checkpointTurnCount !== right.checkpointTurnCount) {
@@ -301,9 +294,7 @@ export default function DiffPanel({
       : selectedTurn?.runId === latestTurn?.runId
         ? "Latest turn"
         : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
-  const reviewSectionId = selectedTurn
-    ? `turn:${selectedTurn.runId}`
-    : `${selectedGitScope}:${repoTarget.submodule?.path ?? ""}`;
+  const reviewSectionId = selectedTurn ? `turn:${selectedTurn.runId}` : selectedGitScope;
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
     : null;
@@ -332,11 +323,11 @@ export default function DiffPanel({
     { enabled: isGitRepo && selectedTurn !== undefined },
   );
   const branchDiffPreview = useEnvironmentQuery(
-    canReadFiles && selectedRunId === null && activeThread && gitDiffCwd
+    canReadFiles && selectedRunId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
           input: {
-            cwd: gitDiffCwd,
+            cwd: activeCwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
             ignoreWhitespace: diffIgnoreWhitespace,
           },
@@ -344,7 +335,7 @@ export default function DiffPanel({
       : null,
   );
   const canRefreshGitDiff =
-    isGitRepo && selectedRunId === null && activeThread != null && gitDiffCwd != null;
+    isGitRepo && selectedRunId === null && activeThread != null && activeCwd != null;
   const activeThreadRefreshKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
     : null;
@@ -484,7 +475,7 @@ export default function DiffPanel({
     enabled: canRefreshGitDiff,
     mutationId: workspaceMutationId,
     refresh: refreshDiffForWorkspaceMutation,
-    resourceKey: `diff:${activeThreadRefreshKey ?? ""}:${gitDiffCwd ?? ""}`,
+    resourceKey: `diff:${activeThreadRefreshKey ?? ""}`,
   });
 
   useEffect(() => {
@@ -589,12 +580,10 @@ export default function DiffPanel({
     }
   }, [collapseScopeKey, selectedFilePath, selectedFileRevealRequestId, revealDiffFile]);
 
-  // Git-scope paths are relative to the selected repo; openers expect root-repo paths.
-  const gitScopeSubmodule = selectedTurn ? null : repoTarget.submodule;
   const openDiffFile = (filePath: string) => {
     openDiffFilePrimaryAction({
       threadRef: routeThreadRef,
-      filePath: toRootRepoPath(gitScopeSubmodule, filePath),
+      filePath,
       activeCwd,
       repositoryRoot: activeRepositoryRoot,
       openInEditor: (targetPath) => {
@@ -722,14 +711,6 @@ export default function DiffPanel({
             </DropdownMenuSub>
           </DropdownMenuContent>
         </DropdownMenu>
-        {selectedRunId === null && (
-          <GitRepoPicker
-            rootLabel={activeProject?.title ?? "Repository"}
-            submodules={repoTarget.submodules}
-            selected={repoTarget.submodule}
-            onSelect={repoTarget.selectSubmodule}
-          />
-        )}
         {selectedRunId === null && selectedGitScope === "branch" && selectedGitSource?.baseRef && (
           <div
             className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-xs text-muted-foreground"
@@ -1102,7 +1083,7 @@ export default function DiffPanel({
                     onFileContextMenu(
                       {
                         environmentId: activeThread?.environmentId ?? null,
-                        filePath: toRootRepoPath(gitScopeSubmodule, filePath),
+                        filePath,
                         workspaceRoot: activeCwd,
                         repositoryRoot: activeRepositoryRoot,
                       },

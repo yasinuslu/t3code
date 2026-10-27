@@ -47,8 +47,6 @@ function Launcher(props: { keys: string; received: string[] }) {
 function Chat(props: { composerKeys: string[]; launcher?: { keys: string; received: string[] } }) {
   useChatShortcuts({
     enabled: true,
-    covered: false,
-    typeToFocusComposer: true,
     keybindings: [],
     scriptKeybindings: [],
     getShortcutContext: () => shortcutContext,

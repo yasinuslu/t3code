@@ -1,13 +1,8 @@
-import {
-  SourceControlProviderError,
-  SourceControlProviderKind,
-  type VcsStatusResult,
-} from "@t3tools/contracts";
+import { SourceControlProviderKind, type VcsStatusResult } from "@t3tools/contracts";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { assert, describe, it } from "vite-plus/test";
 import {
   buildMenuItems,
-  describeGitActionFailure,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
   resolveDefaultBranchActionDialogCopy,
@@ -220,26 +215,5 @@ describe("resolveAutoFeatureBranchName", () => {
   it("treats existing ref names as case-insensitive for collision checks", () => {
     const ref = resolveAutoFeatureBranchName(["Feature/Ticket-1"], "feature/ticket-1");
     assert.equal(ref, "feature/ticket-1-2");
-  });
-});
-
-describe("describeGitActionFailure", () => {
-  it("names the provider and keeps only its detail for a provider failure", () => {
-    const error = new SourceControlProviderError({
-      provider: SourceControlProviderKind.make("forgejo"),
-      operation: "listChangeRequests",
-      cwd: "/repo",
-      detail: "Failed to list change requests: fj is not signed in to git.example.com.",
-    });
-
-    assert.equal(
-      describeGitActionFailure(error),
-      "Forgejo: Failed to list change requests: fj is not signed in to git.example.com.",
-    );
-  });
-
-  it("falls back to the error message for other failures", () => {
-    assert.equal(describeGitActionFailure(new Error("push rejected")), "push rejected");
-    assert.equal(describeGitActionFailure("nope"), "An error occurred.");
   });
 });

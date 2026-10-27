@@ -49,7 +49,7 @@ import {
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
-import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
@@ -66,10 +66,6 @@ import {
   MessageSquareIcon,
   MonitorIcon,
   PaletteIcon,
-  PanelBottomIcon,
-  ProportionsIcon,
-  RectangleHorizontalIcon,
-  RectangleVerticalIcon,
   RotateCcwIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -94,8 +90,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { toggleManager } from "../lib/goToManager";
 import { stepProfile } from "./ProfileShortcuts";
-import { APP_MODES, backToGrow, setAppMode, useAppMode } from "../appMode";
-import { growOnScreenThread, openFullView } from "../growFocus";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -106,13 +100,7 @@ import {
   copyPromptLink,
   promptLinkRepositoryOf,
 } from "./promptLinks/copyPromptLink";
-import {
-  useClientSettings,
-  useGrowEnabled,
-  useGrowIsHome,
-  updateClientSettings,
-} from "../hooks/useSettings";
-import { WINDOW_LAYOUT_OPTIONS } from "../hooks/useStackedLayout";
+import { useClientSettings } from "../hooks/useSettings";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useTheme } from "../hooks/useTheme";
 import { readLocalApi } from "../localApi";
@@ -164,7 +152,7 @@ import {
   newProjectId,
 } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
+import { buildThreadRouteParams } from "../threadRoutes";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
 import {
   applyWslEnvironmentConfiguration,
@@ -520,14 +508,6 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
-  const windowLayout = useClientSettings((settings) => settings.windowLayout);
-  const growEnabled = useGrowEnabled();
-  const growIsHome = useGrowIsHome();
-  const appMode = useAppMode();
-  const paletteRouteThread = useParams({
-    strict: false,
-    select: (params) => resolveThreadRouteRef(params),
-  });
   const severalProfiles = useBrainstormStore((state) => (state.profiles?.length ?? 0) > 1);
   const codeProfiles = useAtomValue(primaryServerSettingsAtom).codeProfiles;
   const createProject = useAtomCommand(projectEnvironment.create, {
@@ -1538,52 +1518,6 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push(changeThemeItem);
   actionItems.push(changeAppearanceItem);
 
-  actionItems.push({
-    kind: "submenu",
-    value: "action:window-layout",
-    searchTerms: [
-      "window layout",
-      "portrait",
-      "landscape",
-      "vertical",
-      "monitor",
-      "stacked",
-      "rotate",
-    ],
-    title: "Window layout",
-    icon: <PanelBottomIcon className={ITEM_ICON_CLASS} />,
-    addonIcon: <PanelBottomIcon className={ADDON_ICON_CLASS} />,
-    groups: [
-      {
-        value: "window-layout",
-        label: "Window layout",
-        items: WINDOW_LAYOUT_OPTIONS.map(({ value, label, description }) => {
-          const Icon =
-            value === "auto"
-              ? ProportionsIcon
-              : value === "portrait"
-                ? RectangleVerticalIcon
-                : RectangleHorizontalIcon;
-          return {
-            kind: "action",
-            value: `window-layout:${value}`,
-            title: label,
-            description,
-            searchTerms: [label, "layout", "window"],
-            icon: <Icon className={ITEM_ICON_CLASS} />,
-            titleTrailingContent:
-              windowLayout === value ? (
-                <span className="text-xs text-muted-foreground/70">Current</span>
-              ) : undefined,
-            run: async () => {
-              await updateClientSettings({ windowLayout: value });
-            },
-          };
-        }),
-      },
-    ],
-  });
-
   // Desktop: one window per code profile, the same as Window menu > <profile> Window.
   const openProfileWindow = window.desktopBridge?.openProfileWindow;
   if (openProfileWindow) {
@@ -1699,62 +1633,6 @@ function OpenCommandPaletteDialog(props: {
       icon: <CompassIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: command,
       run: async () => stepProfile(direction),
-    });
-  }
-
-  if (growIsHome) {
-    const onScreen = growOnScreenThread();
-    if (appMode !== "grow") {
-      actionItems.push({
-        kind: "action",
-        value: "action:mode-grow",
-        searchTerms: ["grow", "home", "back", "main", "deck", "mode", "view"],
-        title: "Back to Grow",
-        icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: "mode.grow",
-        run: async () => backToGrow(paletteRouteThread),
-      });
-    } else if (onScreen !== null) {
-      actionItems.push({
-        kind: "action",
-        value: "action:full-view",
-        searchTerms: [
-          "full view",
-          "diff",
-          "changes",
-          "terminal",
-          "files",
-          "panel",
-          "threads",
-          "classic",
-        ],
-        title: "Open this thread in full view (diff, terminal, files)",
-        icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: "mode.normal",
-        run: async () => void openFullView(onScreen),
-      });
-    }
-    actionItems.push({
-      kind: "action",
-      value: "action:archived-threads",
-      searchTerms: ["archived", "archive", "threads", "unarchive", "old"],
-      title: "Show archived threads",
-      icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        await navigate({ to: "/settings/archived" });
-      },
-    });
-  }
-
-  for (const entry of growEnabled && !growIsHome ? APP_MODES : []) {
-    actionItems.push({
-      kind: "action",
-      value: `action:mode-${entry.mode}`,
-      searchTerms: ["mode", "switch", "view", "grow", "home", "normal", "threads", "t3"],
-      title: `Switch to ${entry.label} mode`,
-      icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-      shortcutCommand: entry.command,
-      run: async () => setAppMode(entry.mode),
     });
   }
 

@@ -12,7 +12,7 @@ import { lastReviewGitSectionsAtom, reviewEnvironment } from "../../state/review
 import { lastReviewTurnDiffsAtom } from "../../state/reviewTurnDiffs";
 import { environmentSession } from "../../state/session";
 import { useSelectedThreadProjection } from "../../state/use-thread-detail";
-import { useSelectedThreadGitTargetRepository } from "../../state/use-selected-thread-git-target";
+import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import {
   buildReviewSectionItems,
   getReadyReviewCheckpoints,
@@ -52,19 +52,18 @@ export function useReviewSections(input: {
   });
   const { canReadFiles } = fileAccess;
   const selectedThread = useSelectedThreadProjection();
-  const gitTargetRepository = useSelectedThreadGitTargetRepository();
-  const { targetCwd } = gitTargetRepository;
+  const { selectedThreadCwd } = useSelectedThreadWorktree();
   const diffPreview = useEnvironmentQuery(
-    canReadFiles && enabled && environmentId !== undefined && targetCwd !== null
+    canReadFiles && enabled && environmentId !== undefined && selectedThreadCwd !== null
       ? reviewEnvironment.diffPreview({
           environmentId,
-          input: { cwd: targetCwd },
+          input: { cwd: selectedThreadCwd },
         })
       : null,
   );
   const lastGitSections = useAtomValue(
-    environmentId !== undefined && targetCwd !== null
-      ? lastReviewGitSectionsAtom(environmentId, targetCwd)
+    environmentId !== undefined && selectedThreadCwd !== null
+      ? lastReviewGitSectionsAtom(environmentId, selectedThreadCwd)
       : NO_GIT_SECTIONS_ATOM,
   );
 
@@ -155,6 +154,5 @@ export function useReviewSections(input: {
     selectedSection,
     refreshSelectedSection,
     selectSection,
-    gitTargetRepository,
   };
 }

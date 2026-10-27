@@ -6,7 +6,6 @@ import { ComposerContextLabel } from "./ComposerContextLabel";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import {
-  BoxIcon,
   ChevronDownIcon,
   FolderGit2Icon,
   FolderGitIcon,
@@ -48,7 +47,6 @@ import { openAddProjectToMachine } from "./AddProjectToMachineDialog";
 import { type AddProjectTarget, useAddProjectTargets } from "../hooks/useAddProjectTargets";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
 import { PreviousWorktreeItemContent } from "./PreviousWorktreeItemContent";
-import { type SandboxChoice, SandboxToggle } from "./SandboxToggle";
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
 import {
   THREAD_DETAILS_PANEL_ICON_CLASS,
@@ -57,7 +55,6 @@ import {
 import { ComposerControl } from "./chat/ComposerControl";
 import {
   Menu,
-  MenuCheckboxItem,
   MenuGroup,
   MenuGroupLabel,
   MenuItem,
@@ -99,8 +96,6 @@ interface BranchToolbarProps {
   draftId?: DraftId;
   onEnvModeChange: (mode: EnvMode) => void;
   envMode: EnvMode;
-  /** A draft's sandbox choice; left out when the server cannot run sandboxes. */
-  sandboxChoice?: SandboxChoice;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
   startFromOrigin: boolean;
@@ -168,7 +163,6 @@ interface RunContextSelectorProps {
   effectiveEnvMode: EnvMode;
   activeWorktreePath: string | null;
   onEnvModeChange: (mode: EnvMode) => void;
-  sandboxChoice: SandboxChoice | undefined;
   previousWorktreeLabel: string | null;
   previousWorktreeBranch: string | null;
   onUsePreviousWorktree: () => void;
@@ -192,7 +186,6 @@ const RunContextSelector = memo(function RunContextSelector({
   effectiveEnvMode,
   activeWorktreePath,
   onEnvModeChange,
-  sandboxChoice,
   previousWorktreeLabel,
   previousWorktreeBranch,
   onUsePreviousWorktree,
@@ -447,19 +440,6 @@ const RunContextSelector = memo(function RunContextSelector({
               </MenuRadioItem>
             ) : null}
           </MenuRadioGroup>
-          {sandboxChoice ? (
-            <MenuCheckboxItem
-              variant="switch"
-              disabled={isLocked}
-              checked={sandboxChoice.checked}
-              onCheckedChange={sandboxChoice.onCheckedChange}
-            >
-              <span className="flex min-w-0 items-center gap-1.5">
-                <BoxIcon className="size-3" />
-                <span className="min-w-0 truncate">Sandbox</span>
-              </span>
-            </MenuCheckboxItem>
-          ) : null}
         </MenuGroup>
       </MenuPopup>
     </Menu>
@@ -651,7 +631,6 @@ export const BranchToolbar = memo(function BranchToolbar({
   draftId,
   onEnvModeChange,
   envMode,
-  sandboxChoice,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
   startFromOrigin,
@@ -760,11 +739,7 @@ export const BranchToolbar = memo(function BranchToolbar({
             onUsePreviousWorktree={onUsePreviousWorktree}
             addTargets={addTargets}
             onAddToMachine={onAddToMachine}
-            sandboxChoice={undefined}
           />
-        ) : null}
-        {panelSection !== "branch" && sandboxChoice ? (
-          <SandboxToggle choice={sandboxChoice} disabled={envModeLocked} />
         ) : null}
         {panelSection !== "workspace" ? (
           <BranchToolbarBranchSelector
@@ -813,7 +788,6 @@ export const BranchToolbar = memo(function BranchToolbar({
             effectiveEnvMode={effectiveEnvMode}
             activeWorktreePath={activeWorktreePath}
             onEnvModeChange={onEnvModeChange}
-            sandboxChoice={sandboxChoice}
             previousWorktreeLabel={previousWorktreeLabel}
             previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
             onUsePreviousWorktree={onUsePreviousWorktree}
@@ -861,9 +835,6 @@ export const BranchToolbar = memo(function BranchToolbar({
               previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
               onUsePreviousWorktree={onUsePreviousWorktree}
             />
-          ) : null}
-          {showGitControls && sandboxChoice ? (
-            <SandboxToggle choice={sandboxChoice} disabled={envModeLocked} />
           ) : null}
         </div>
       ) : null}

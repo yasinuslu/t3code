@@ -21,6 +21,7 @@ import {
   orderWebThreadLineageRows,
   resolveMergeBackTargetThreadId,
   type ThreadRelationshipEdge,
+  type ThreadRelationshipWalkRow,
 } from "@t3tools/client-runtime/state/thread-relationships";
 import {
   canDetachThreadProviderSession,
@@ -45,12 +46,10 @@ import {
   ChevronDownIcon,
   CornerLeftUpIcon,
   GitForkIcon,
-  LayersIcon,
   LoaderCircleIcon,
   MoreHorizontalIcon,
   PlusIcon,
   SquareIcon,
-  Unlink2Icon,
   UnplugIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -61,20 +60,12 @@ import {
   useProjects,
   useThreadProjection,
   useThreadRelationshipShells,
-  useThreadShells,
 } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
 import { threadEnvironment } from "../../state/threads";
 import { orchestrationEnvironment } from "../../state/orchestration";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { AgentElapsed } from "./AgentElapsed";
-import { openBackgroundCommand } from "../../backgroundCommandsDialogStore";
-import {
-  BackgroundCommandKindIcon,
-  BackgroundCommandStatusDot,
-  useBackgroundCommands,
-} from "./BackgroundCommandsDialog";
-import { backgroundCommandStatusLabel } from "@t3tools/client-runtime/state/background-commands";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
 import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
 
@@ -130,17 +121,18 @@ function ThreadLineageRowList(props: {
   );
 }
 
-function ThreadLineageGroup<Row>(props: {
+function ThreadLineageGroup(props: {
   readonly label: string | null;
-  readonly rows: ReadonlyArray<Row>;
-  readonly failedCount: number;
+  readonly rows: ReadonlyArray<ThreadRelationshipWalkRow>;
   readonly expanded: boolean;
-  readonly children: (rows: ReadonlyArray<Row>) => ReactNode;
+  readonly children: (rows: ReadonlyArray<ThreadRelationshipWalkRow>) => ReactNode;
 }) {
   const [expanded, setExpanded] = useState(props.expanded);
   const [visibleCount, setVisibleCount] = useState(THREAD_LINEAGE_INITIAL_COUNT);
   const { visibleRows, hiddenCount } = resolveThreadLineageWindow(props.rows, visibleCount);
-  const failedCount = props.failedCount;
+  const failedCount = props.rows.filter(
+    ({ edge }) => edge.status === "failed" || edge.status === "error",
+  ).length;
   if (props.rows.length === 0) return null;
   return (
     <div>
@@ -233,8 +225,6 @@ export function ThreadRelationshipsPanel(props: {
   const projection = useThreadProjection(ref)?.projection ?? null;
   const providersByEnvironment = useEnvironmentProviders();
   const relationshipShells = useThreadRelationshipShells(ref);
-  // Supersede links live on the other threads, so they need every shell, not just related ones.
-  const threadShells = useThreadShells();
   const allProjects = useProjects();
   const archived = useArchivedThreadSnapshots([props.environmentId]);
   const archivedShells = archived.snapshots.find(
@@ -260,7 +250,6 @@ export function ThreadRelationshipsPanel(props: {
   const navigate = useNavigate();
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack);
   const stopSession = useAtomCommand(threadEnvironment.stopSession);
-  const setSupersededBy = useAtomCommand(threadEnvironment.setSupersededBy);
   const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn);
   const stopWorkflowCommand = useAtomCommand(orchestrationEnvironment.stopWorkflow);
   const canOperateWorkflow = useAtomValue(
@@ -305,43 +294,6 @@ export function ThreadRelationshipsPanel(props: {
   ];
   const graph = deriveThreadRelationshipGraph({ threads: shells, projection });
   const currentProject = projects.find((project) => project.id === currentThread?.projectId);
-  const supersedeCandidates: ReadonlyArray<OrchestrationV2ThreadShell> = [
-    ...threadShells
-      .filter((thread) => thread.environmentId === props.environmentId)
-      .map((thread) => thread.source),
-    ...(archivedShells ?? []),
-  ];
-  const supersedeById = new Map(supersedeCandidates.map((thread) => [thread.id, thread]));
-  const supersededByLink = currentThread?.supersededBy ?? null;
-  // Superseded by (this thread was let go for another) and its reverse, oldest first.
-  const supersedeRows = [
-    ...(supersededByLink === null
-      ? []
-      : [
-          {
-            kind: "supersededBy" as const,
-            threadId: supersededByLink.threadId,
-            note: supersededByLink.note,
-            thread: supersedeById.get(supersededByLink.threadId),
-          },
-        ]),
-    ...supersedeCandidates
-      .filter(
-        (thread) => thread.supersededBy?.threadId === props.threadId && thread.deletedAt === null,
-      )
-      .sort((left, right) => (left.supersededBy!.at < right.supersededBy!.at ? -1 : 1))
-      .map((thread) => ({
-        kind: "supersedes" as const,
-        threadId: thread.id,
-        note: thread.supersededBy!.note,
-        thread,
-      })),
-  ];
-  const unlinkSuccessor = () =>
-    void setSupersededBy({
-      environmentId: props.environmentId,
-      input: { threadId: props.threadId, supersededBy: null },
-    });
   const latestMergeBackRun = projection === null ? null : resolveLatestMergeBackRun(projection);
   const mergeTargetThreadId = resolveMergeBackTargetThreadId(projection);
   const relationshipRows = orderWebThreadLineageRows({
@@ -360,7 +312,6 @@ export function ThreadRelationshipsPanel(props: {
       : { ...row, edge: { ...row.edge, status: workflowGroup.workflow.status } };
   });
   const canMerge = mergeTargetThreadId !== null && latestMergeBackRun !== null;
-  const backgroundCommands = useBackgroundCommands(props.environmentId, props.threadId);
   const canDetach = projection ? canDetachThreadProviderSession(projection) : false;
 
   const {
@@ -380,41 +331,13 @@ export function ThreadRelationshipsPanel(props: {
     { id: "related", label: null, rows: related, expanded: true },
     { id: "active", label: null, rows: active, expanded: true },
     { id: "previous", label: "Previous agents", rows: previous, expanded: false },
-  ].map((group) => ({
-    ...group,
-    failedCount: group.rows.filter(
-      ({ edge }) => edge.status === "failed" || edge.status === "error",
-    ).length,
-  }));
-  const { runningCommands = [], previousCommands = [] } = groupBy(backgroundCommands, (command) =>
-    command.status === "running" ? "runningCommands" : "previousCommands",
-  );
-  const commandGroups = [
-    { id: "running-commands", label: null, rows: runningCommands, expanded: true },
-    {
-      id: "previous-commands",
-      label: "Previous commands",
-      rows: previousCommands,
-      expanded: false,
-    },
-  ].map((group) => ({
-    ...group,
-    failedCount: group.rows.filter((command) => command.status === "failed").length,
-  }));
-  // Subagents without a child thread yet have no row, so count them separately.
+  ];
   const runningCount =
     (projection?.subagents.filter(
       (agent) => agent.childThreadId === null && agent.status === "running",
-    ).length ?? 0) +
-    active.filter(({ edge }) => edge.status === "running").length +
-    runningCommands.length;
+    ).length ?? 0) + active.filter(({ edge }) => edge.status === "running").length;
 
-  if (
-    relationshipRows.length === 0 &&
-    supersedeRows.length === 0 &&
-    runningCount === 0 &&
-    backgroundCommands.length === 0
-  ) {
+  if (relationshipRows.length === 0 && runningCount === 0) {
     return null;
   }
 
@@ -492,7 +415,7 @@ export function ThreadRelationshipsPanel(props: {
       showHeading={runningCount > 0 || canDetach || related.length > 0 || active.length > 0}
       data-thread-relationships-panel
       actions={
-        canDetach || currentThread?.supersededBy != null ? (
+        canDetach ? (
           <Menu>
             <MenuTrigger
               render={
@@ -508,69 +431,15 @@ export function ThreadRelationshipsPanel(props: {
               <MoreHorizontalIcon className="size-3.5" />
             </MenuTrigger>
             <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
-              {canDetach ? (
-                <MenuItem onClick={() => void detach()}>
-                  <UnplugIcon className="size-3.5" />
-                  Disconnect agent session
-                </MenuItem>
-              ) : null}
-              {currentThread?.supersededBy != null ? (
-                <MenuItem onClick={unlinkSuccessor}>
-                  <Unlink2Icon className="size-3.5" />
-                  Remove the superseded-by link
-                </MenuItem>
-              ) : null}
+              <MenuItem onClick={() => void detach()}>
+                <UnplugIcon className="size-3.5" />
+                Disconnect agent session
+              </MenuItem>
             </MenuPopup>
           </Menu>
         ) : null
       }
     >
-      {supersedeRows.length > 0 ? (
-        <ThreadLineageRowList hiddenCount={0} onShowMore={() => {}}>
-          {supersedeRows.map((row) => {
-            const title = row.thread?.title ?? row.threadId;
-            const label = row.kind === "supersededBy" ? "Superseded by" : "Supersedes";
-            const Icon = row.kind === "supersededBy" ? ArrowRightIcon : LayersIcon;
-            return (
-              <li key={`${row.kind}:${row.threadId}`} className="group flex flex-col rounded-lg">
-                <Tooltip>
-                  <TooltipTrigger
-                    delay={200}
-                    render={
-                      <ThreadDetailsControl
-                        size="sm"
-                        variant="ghost"
-                        part="row"
-                        aria-label={`${label} ${title}${row.note ? `: ${row.note}` : ""}`}
-                        disabled={row.thread === undefined}
-                        onClick={() => openThread(row.threadId)}
-                      />
-                    }
-                  >
-                    <span className="relative flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-                      <Icon className="size-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-left text-sm font-medium leading-4 text-foreground/85">
-                      {title}
-                    </span>
-                    <span className="shrink-0 text-2xs text-muted-foreground">{label}</span>
-                  </TooltipTrigger>
-                  <TooltipPopup side="left" className="max-w-80">
-                    {row.thread === undefined
-                      ? "This thread is unavailable"
-                      : row.note || `${label} ${title}`}
-                  </TooltipPopup>
-                </Tooltip>
-                {row.note ? (
-                  <span className="truncate ps-8 pe-2 pb-1 text-2xs text-muted-foreground">
-                    {row.note}
-                  </span>
-                ) : null}
-              </li>
-            );
-          })}
-        </ThreadLineageRowList>
-      ) : null}
       {groups.map((group) => (
         <ThreadLineageGroup key={`${scopedThreadKey(ref)}:${group.id}`} {...group}>
           {(visibleRows) =>
@@ -630,7 +499,7 @@ export function ThreadRelationshipsPanel(props: {
                 agent?.origin === "provider_native" &&
                 providerDriver === "claudeAgent";
               const trailingVisibilityClass = (workflowGroup ? canStopWorkflow : canStop)
-                ? "group-hover:opacity-0 group-focus-within:opacity-0 touch:opacity-0 [@media(hover:none)]:opacity-0"
+                ? "group-hover:opacity-0 group-focus-within:opacity-0 pointer-coarse:opacity-0 [@media(hover:none)]:opacity-0"
                 : "";
               const project = projects.find((project) => project.id === node?.thread?.projectId);
               const relationshipHint = node?.missing
@@ -800,7 +669,7 @@ export function ThreadRelationshipsPanel(props: {
                     relationshipLink
                   )}
                   {canStop && agent ? (
-                    <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 touch:pointer-events-auto touch:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+                    <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
                       <Tooltip>
                         <TooltipTrigger
                           render={
@@ -828,40 +697,6 @@ export function ThreadRelationshipsPanel(props: {
                 </li>
               );
             })
-          }
-        </ThreadLineageGroup>
-      ))}
-      {commandGroups.map((group) => (
-        <ThreadLineageGroup key={`${scopedThreadKey(ref)}:${group.id}`} {...group}>
-          {(visibleRows) =>
-            visibleRows.map((command) => (
-              <li key={command.taskId} className="group flex h-8 items-center rounded-lg">
-                <ThreadDetailsControl
-                  size="sm"
-                  variant="ghost"
-                  part="row"
-                  aria-label={`Show ${command.kind} ${command.label}`}
-                  onClick={() =>
-                    openBackgroundCommand({
-                      environmentId: props.environmentId,
-                      threadId: props.threadId,
-                      taskId: command.taskId,
-                    })
-                  }
-                >
-                  <span className="relative flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-                    <BackgroundCommandKindIcon kind={command.kind} />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-left text-sm font-medium leading-4 text-foreground/85">
-                    {command.label}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground">
-                    <BackgroundCommandStatusDot status={command.status} />
-                    {backgroundCommandStatusLabel(command)}
-                  </span>
-                </ThreadDetailsControl>
-              </li>
-            ))
           }
         </ThreadLineageGroup>
       ))}

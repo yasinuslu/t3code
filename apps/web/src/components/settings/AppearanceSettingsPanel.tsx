@@ -18,7 +18,6 @@ import {
 } from "../SidebarStageBackdrop";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import { useTheme } from "../../hooks/useTheme";
-import { WINDOW_LAYOUT_OPTIONS } from "../../hooks/useStackedLayout";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -347,49 +346,6 @@ export function AppearanceSettingsPanel() {
                   <SelectItem value="comfortable">Comfortable (default)</SelectItem>
                   <SelectItem value="wide">Wide</SelectItem>
                   <SelectItem value="full">Full</SelectItem>
-                </SelectPopup>
-              </Select>
-            </div>
-          }
-        />
-        <SettingsRow
-          {...searchableSetting("window-layout")}
-          description="Portrait puts the panel below the chat, for tall windows such as a rotated monitor. Auto switches by window shape."
-          resetAction={
-            settings.windowLayout !== DEFAULT_UNIFIED_SETTINGS.windowLayout ? (
-              <SettingResetButton
-                label="window layout"
-                onClick={() =>
-                  updateSettings({ windowLayout: DEFAULT_UNIFIED_SETTINGS.windowLayout })
-                }
-              />
-            ) : null
-          }
-          control={
-            <div className="w-full sm:w-40">
-              <Select
-                value={settings.windowLayout}
-                onValueChange={(value) => {
-                  const option = WINDOW_LAYOUT_OPTIONS.find(
-                    (candidate) => candidate.value === value,
-                  );
-                  if (option) updateSettings({ windowLayout: option.value });
-                }}
-              >
-                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Window layout">
-                  <SelectValue>
-                    {
-                      WINDOW_LAYOUT_OPTIONS.find((option) => option.value === settings.windowLayout)
-                        ?.label
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
-                  {WINDOW_LAYOUT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.value === "auto" ? `${option.label} (default)` : option.label}
-                    </SelectItem>
-                  ))}
                 </SelectPopup>
               </Select>
             </div>

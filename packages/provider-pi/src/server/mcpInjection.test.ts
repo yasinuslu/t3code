@@ -4,7 +4,6 @@ import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts"
 import {
   T3_MCP_BEARER_ENV,
   T3_MCP_URL_ENV,
-  T3_PI_RUNTIME_INSTRUCTIONS_ENV,
   T3_PI_RUNTIME_MODE_ENV,
   T3_PI_MCP_EXTENSION_PATH_ENV,
 } from "./mcpExtensionSource.ts";
@@ -60,10 +59,6 @@ describe("pi T3 MCP injection", () => {
     assert.equal(launch.env[T3_MCP_BEARER_ENV], "secret-pi-token");
     assert.equal(launch.env[T3_PI_RUNTIME_MODE_ENV], "approval-required");
     assert.equal(launch.env[T3_PI_MCP_EXTENSION_PATH_ENV], "/tmp/cache/pi-t3-mcp-extension.ts");
-    assert.include(
-      launch.env[T3_PI_RUNTIME_INSTRUCTIONS_ENV],
-      "running in T3 Code through the Pi harness",
-    );
 
     const permissionOnly = buildPiRpcLaunch({
       launchArgs: [],

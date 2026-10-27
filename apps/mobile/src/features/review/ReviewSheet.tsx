@@ -51,7 +51,6 @@ import {
 } from "../layout/AdaptiveWorkspaceLayout";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useReviewCacheForThread } from "./reviewState";
-import { GitTargetRepositoryPicker } from "../threads/git/GitTargetRepositoryPicker";
 import {
   isNativeReviewDiffDrawEvent,
   type NativeReviewDiffViewHandle,
@@ -463,7 +462,6 @@ export function ReviewSheet(props: ReviewSheetProps) {
     refreshSelectedSection,
     selectSection,
     isSelectedSectionPending,
-    gitTargetRepository,
   } = useReviewSections({
     enabled: isEnvironmentReady,
     environmentId,
@@ -485,7 +483,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   } = useReviewDiffData({
     threadKey: reviewCache.threadKey,
     environmentId,
-    cwd: gitTargetRepository.targetCwd,
+    cwd: selectedThreadCwd,
     selectedSection,
     draftMessage,
   });
@@ -634,23 +632,8 @@ export function ReviewSheet(props: ReviewSheetProps) {
   useRegisterWorkspaceInspector(showChangedFilesPane ? renderInspector : undefined);
   const showChangedFilesToggle = panes.supportsAuxiliaryPane && showChangedFilesPane;
 
-  const showGitTargetPicker =
-    gitTargetRepository.hasSubmodules &&
-    (selectedSection?.kind === "working-tree" || selectedSection?.kind === "branch-range");
   const listHeader = (() => {
     const children: ReactElement[] = [];
-
-    if (showGitTargetPicker) {
-      children.push(
-        <View key="git-target-repository" className="px-2 pb-2 pt-2 android:px-3">
-          <GitTargetRepositoryPicker
-            options={gitTargetRepository.options}
-            selectedPath={gitTargetRepository.selectedPath}
-            onSelect={gitTargetRepository.selectTarget}
-          />
-        </View>,
-      );
-    }
 
     if (error) {
       children.push(

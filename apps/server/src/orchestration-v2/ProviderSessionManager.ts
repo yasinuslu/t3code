@@ -45,7 +45,6 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ServerSettings from "../serverSettings.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
-import * as SandboxService from "../sandbox/SandboxService.ts";
 import * as EventSink from "./EventSink.ts";
 import * as CommandOutputHub from "./CommandOutputHub.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -71,17 +70,12 @@ export const ProviderSessionReleaseReason = Schema.Literals([
 ]);
 export type ProviderSessionReleaseReason = typeof ProviderSessionReleaseReason.Type;
 
-/** Provider drivers that run inside a worktree's sandbox. */
-const SANDBOX_DRIVERS: ReadonlySet<string> = new Set(["codex", "claudeAgent"]);
-
 export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSessionOpenError>()(
   "ProviderSessionOpenError",
   {
     instanceId: ProviderInstanceId,
     providerSessionId: ProviderSessionId,
     cause: Schema.optional(Schema.Defect()),
-    /** Set when the open failed before the prompt was handed over, so sending it again is safe. */
-    promptNotRun: Schema.optional(Schema.Boolean),
   },
 ) {
   override get message(): string {
@@ -199,9 +193,6 @@ interface LiveSessionEntry {
   /** Scope revocation to recorded credential ids so superseded sessions cannot revoke replacements opened before detach. */
   readonly mcpCredentialIdByThread: ReadonlyMap<ThreadId, string>;
   readonly supportsMultipleProviderThreads: boolean;
-  readonly cwd: string | null;
-  /** The session's processes run in a sandbox and die with it. */
-  readonly sandboxed: boolean;
   readonly runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly exposedRuntime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly eventSubscribers: Ref.Ref<
@@ -317,20 +308,6 @@ export const layerWithOptions = (
     Effect.gen(function* () {
       const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
       const fileSystem = yield* FileSystem.FileSystem;
-      const sandboxes = yield* Effect.serviceOption(SandboxService.SandboxService);
-      // How often each sandbox workspace stopped. A sandboxed open that sees
-      // the count change holds a client whose process died with the sandbox.
-      const sandboxStops = new Map<string, number>();
-      const isInside = (workspacePath: string, cwd: string) =>
-        cwd === workspacePath || cwd.startsWith(`${workspacePath}/`);
-      const stopCount = (cwd: string | null, sandboxed: boolean) => {
-        if (cwd === null || !sandboxed) return 0;
-        let count = 0;
-        for (const [workspacePath, stops] of sandboxStops) {
-          if (isInside(workspacePath, cwd)) count += stops;
-        }
-        return count;
-      };
       const mcpSessionRegistry = yield* McpSessionRegistry.McpSessionRegistry;
       const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
       /** Unreadable settings must preserve explicit browser-access opt-outs. */
@@ -916,15 +893,10 @@ export const layerWithOptions = (
         function* (input: {
           readonly providerSessionId: ProviderSessionId;
           readonly onlyIfIdleGeneration?: number;
-          /** Release only this entry, never a replacement that took its id (compared by runtime). */
-          readonly onlyIfEntry?: LiveSessionEntry;
         }): Effect.fn.Return<readonly [Option.Option<LiveSessionEntry>, DateTime.Utc]> {
           const key = sessionKey(input.providerSessionId);
           const candidate = (yield* Ref.get(sessions)).get(key);
-          if (
-            candidate === undefined ||
-            (input.onlyIfEntry !== undefined && candidate.runtime !== input.onlyIfEntry.runtime)
-          ) {
+          if (candidate === undefined) {
             return [Option.none<LiveSessionEntry>(), yield* DateTime.now] as const;
           }
           const removed = yield* Effect.zip(
@@ -998,7 +970,6 @@ export const layerWithOptions = (
         readonly detachedThreadId?: ThreadId;
         readonly cancelIdleFiber?: boolean;
         readonly onlyIfIdleGeneration?: number;
-        readonly onlyIfEntry?: LiveSessionEntry;
         readonly gracefulSubscribers?: boolean;
       }) =>
         Effect.acquireUseRelease(
@@ -1008,8 +979,6 @@ export const layerWithOptions = (
               onNone: () => Effect.void,
               onSome: (entry) =>
                 Effect.gen(function* () {
-                  if (Option.isSome(sandboxes))
-                    sandboxes.value.turnEnded(entry.runtime.providerSessionId);
                   const releasedBackgroundTasks = yield* readReleasedBackgroundTasks({
                     entry,
                     reason: input.reason,
@@ -1451,22 +1420,6 @@ export const layerWithOptions = (
           }),
         );
 
-      /** Wakes a sleeping sandbox before its provider gets input, and keeps it awake for the turn. */
-      const sandboxTurnStarted = (providerSessionId: ProviderSessionId, threadId: ThreadId) =>
-        Effect.gen(function* () {
-          if (Option.isNone(sandboxes)) return;
-          const entry = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
-          if (entry === undefined || !entry.sandboxed || entry.cwd === null) return;
-          yield* sandboxes.value.turnStarted({ key: providerSessionId, threadId, cwd: entry.cwd });
-        }).pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("orchestration-v2.driver-session.sandbox-wake-failed", {
-              providerSessionId,
-              cause,
-            }),
-          ),
-        );
-
       const markIdle = (
         providerSessionId: ProviderSessionId,
         providerThreadId: ProviderThreadId,
@@ -1477,10 +1430,10 @@ export const layerWithOptions = (
           Effect.gen(function* () {
             const key = sessionKey(providerSessionId);
             const now = yield* Clock.currentTimeMillis;
-            const idle = yield* Ref.modify(sessions, (current) => {
+            yield* Ref.update(sessions, (current) => {
               const entry = current.get(key);
               if (entry === undefined) {
-                return [true, current] as const;
+                return current;
               }
               const busyTurns = new Set(entry.busyTurns);
               busyTurns.delete(busyTurnKey(providerThreadId, runOrdinal));
@@ -1490,9 +1443,8 @@ export const layerWithOptions = (
                 busyTurns,
                 lastActivityAtMs: now,
               });
-              return [busyTurns.size === 0, updated] as const;
+              return updated;
             });
-            if (idle && Option.isSome(sandboxes)) sandboxes.value.turnEnded(providerSessionId);
             yield* scheduleIdleReleaseInternal(providerSessionId);
             yield* scheduleThreadUnload(providerSessionId, providerThreadId);
           }),
@@ -1788,12 +1740,7 @@ export const layerWithOptions = (
                 isProviderThreadLoaded({ providerSessionId, threadId, providerThreadKey }),
               ),
               Effect.flatMap((loaded) =>
-                loaded
-                  ? (runtime.needsResume?.(input.providerThread) ?? Effect.succeed(false))
-                  : Effect.succeed(true),
-              ),
-              Effect.flatMap((mustResume) =>
-                mustResume ? runtime.resumeThread(input) : Effect.succeed(input.providerThread),
+                loaded ? Effect.succeed(input.providerThread) : runtime.resumeThread(input),
               ),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
@@ -1865,13 +1812,7 @@ export const layerWithOptions = (
                     ),
                   ),
                   () =>
-                    sandboxTurnStarted(providerSessionId, input.threadId).pipe(
-                      Effect.andThen(
-                        runtime
-                          .startTurn(input)
-                          .pipe(turnMetrics("send", input.modelSelection.model)),
-                      ),
-                    ),
+                    runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
                   (_, exit) =>
                     Exit.isFailure(exit)
                       ? observeActivity(
@@ -2104,49 +2045,6 @@ export const layerWithOptions = (
         ),
       );
 
-      // A stopped or removed sandbox took its sessions' processes with it.
-      // Release them so the next turn opens a fresh session, restarting the
-      // sandbox, instead of reusing a dead client. A thread that moved in or
-      // out of a sandbox drops its own session, which runs in the wrong place;
-      // shared sessions are keyed by sandbox, so the thread just switches.
-      if (Option.isSome(sandboxes)) {
-        yield* sandboxes.value.stopped.pipe(
-          Stream.runForEach((event) =>
-            Effect.gen(function* () {
-              if (event.processesStopped) {
-                sandboxStops.set(
-                  event.workspacePath,
-                  (sandboxStops.get(event.workspacePath) ?? 0) + 1,
-                );
-              }
-              const moved = new Set(event.threadIds);
-              const dead = [...(yield* Ref.get(sessions)).values()].filter((entry) =>
-                event.processesStopped
-                  ? entry.sandboxed &&
-                    entry.cwd !== null &&
-                    isInside(event.workspacePath, entry.cwd)
-                  : !entry.supportsMultipleProviderThreads &&
-                    [...entry.attachedThreadIds].some((threadId) => moved.has(threadId)),
-              );
-              yield* Effect.forEach(
-                dead,
-                (entry) =>
-                  releaseEntry({
-                    providerSessionId: entry.runtime.providerSessionId,
-                    reason: "runtime_error",
-                    detail: event.processesStopped
-                      ? "The sandbox stopped."
-                      : "The thread moved in or out of a sandbox.",
-                    onlyIfEntry: entry,
-                  }).pipe(Effect.ignore),
-                { discard: true },
-              );
-            }),
-          ),
-          Effect.forkScoped,
-        );
-      }
-
       return ProviderSessionManagerV2.of({
         shutdown,
         open: (input) =>
@@ -2168,36 +2066,6 @@ export const layerWithOptions = (
               }
               const key = sessionKey(input.providerSessionId);
               const existing = (yield* Ref.get(sessions)).get(key);
-              // Only these adapters start their CLI through the sandbox. Any
-              // other provider would run on the host, outside the sandbox the
-              // user chose, so it fails instead, also when it would reuse a
-              // session that is already open.
-              const sandboxed =
-                cwd !== null &&
-                Option.isSome(sandboxes) &&
-                (yield* sandboxes.value.isSandboxed({ threadId: input.threadId, cwd }));
-              if (sandboxed) {
-                const driver =
-                  existing?.runtime.driver ??
-                  (yield* registry.get(input.modelSelection.instanceId).pipe(
-                    Effect.map((adapter) => adapter.driver),
-                    Effect.mapError(
-                      (cause) =>
-                        new ProviderSessionOpenError({
-                          instanceId: input.modelSelection.instanceId,
-                          providerSessionId: input.providerSessionId,
-                          cause,
-                        }),
-                    ),
-                  ));
-                if (!SANDBOX_DRIVERS.has(driver)) {
-                  return yield* new ProviderSessionOpenError({
-                    instanceId: input.modelSelection.instanceId,
-                    providerSessionId: input.providerSessionId,
-                    cause: `${driver} cannot run in a sandbox yet. Use Claude or Codex in this thread.`,
-                  });
-                }
-              }
               if (existing !== undefined) {
                 const attached = existing.attachedThreadIds.has(input.threadId);
                 if (!attached && !existing.supportsMultipleProviderThreads) {
@@ -2239,7 +2107,6 @@ export const layerWithOptions = (
                   dropMcpCredentialReservation(input.threadId, mcpCredentialId);
                 }
               });
-              const stopsAtOpen = stopCount(cwd, sandboxed);
               const sessionScope = yield* Scope.fork(sessionScopes);
               yield* agentScope.clear(input.threadId);
               const runtime = yield* adapter
@@ -2307,8 +2174,6 @@ export const layerWithOptions = (
                 supportsMultipleProviderThreads:
                   runtime.providerSession.capabilities.sessions
                     .supportsMultipleProviderThreadsPerSession,
-                cwd,
-                sandboxed,
                 runtime,
                 exposedRuntime,
                 eventSubscribers,
@@ -2327,21 +2192,6 @@ export const layerWithOptions = (
                 return updated;
               });
               yield* dropReservation;
-              if (stopCount(cwd, sandboxed) !== stopsAtOpen) {
-                yield* releaseEntry({
-                  providerSessionId: input.providerSessionId,
-                  reason: "runtime_error",
-                  detail: "The sandbox stopped while the session was opening.",
-                  onlyIfEntry: entry,
-                }).pipe(logReleaseFailure(input.providerSessionId));
-                return yield* new ProviderSessionOpenError({
-                  instanceId: input.modelSelection.instanceId,
-                  providerSessionId: input.providerSessionId,
-                  cause:
-                    "The sandbox stopped while the session was opening. Send the message again.",
-                  promptNotRun: true,
-                });
-              }
               yield* withActivityError(
                 input.providerSessionId,
                 writeProviderSessionEvents({

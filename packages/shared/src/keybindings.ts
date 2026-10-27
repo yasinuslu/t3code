@@ -181,6 +181,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+alt+b", command: "preview.toggle" },
   { key: "ctrl+alt+t", command: "rightPanel.toggleTerminal" },
   { key: "ctrl+alt+f", command: "rightPanel.toggleFiles" },
+  { key: "ctrl+alt+r", command: "rightPanel.togglePresentation" },
   { key: "ctrl+alt+d", command: "diff.toggle" },
   { key: "ctrl+alt+p", command: "rightPanel.togglePullRequest" },
   // Orchestrator V2 has no Agents surface; subagents live in the thread details panel.

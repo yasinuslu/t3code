@@ -337,11 +337,6 @@ export default defineConfig(() => {
       port,
       strictPort: true,
       allowedHosts,
-      // The widget frame is sandboxed without same-origin, so its module requests come from
-      // origin "null"; Vite only answers its default local origins otherwise.
-      cors: {
-        origin: [/^https?:\/\/(?:(?:[^:]+\.)?localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/, "null"],
-      },
       // Warm the module graph before first request to avoid serial import transforms over tailnet.
       // Bundled dev ignores this; warmBundledDevPlugin handles it there.
       warmup: {
@@ -383,8 +378,6 @@ export default defineConfig(() => {
       manifest: true,
       sourcemap: buildSourcemap,
       rolldownOptions: {
-        // The living page runs its widgets in this sandboxed page (src/widgetFrame).
-        input: { main: "index.html", widgetFrame: "widget-frame.html" },
         output: {
           // PDF.js resolves decoder modules and ICC data relative to wasmUrl.
           assetFileNames: (asset) =>

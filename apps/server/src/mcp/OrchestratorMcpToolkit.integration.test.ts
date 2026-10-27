@@ -30,7 +30,6 @@ import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
-import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -48,11 +47,7 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 
-const layerOrchestratorToolkit = Layer.merge(
-  McpHttpServer.layerOrchestratorToolkit,
-  McpHttpServer.layerThreadToolkit,
-).pipe(
-  Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
+const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
 );
@@ -303,49 +298,6 @@ describe("orchestrator MCP toolkit", () => {
                 Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
                 Effect.provideService(McpSchema.McpServerClient, client),
               );
-
-          // Consolidating: an older thread settles, superseded by the parent.
-          const olderThreadId = ThreadId.make("thread:mcp-older");
-          yield* orchestrator.dispatch({
-            type: "thread.create",
-            createdBy: "user",
-            creationSource: "web",
-            commandId: CommandId.make("command:mcp-older:create"),
-            threadId: olderThreadId,
-            projectId,
-            title: "MCP older idea",
-            modelSelection: codexSelection,
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            branch: null,
-            worktreePath: cwd,
-          });
-          yield* invoke("t3_thread_organize", {
-            threadId: olderThreadId,
-            action: "settle",
-            supersededBy: parentThreadId,
-            note: "  Folded into\nthe parent  ",
-          });
-          const older = yield* orchestrator.getThreadShell(olderThreadId);
-          expect(older?.settledAt).not.toBeNull();
-          expect(older?.supersededBy).toMatchObject({
-            threadId: parentThreadId,
-            note: "Folded into the parent",
-          });
-          // The parent superseding its own predecessor would loop the chain.
-          const loop = yield* invoke("t3_thread_organize", {
-            action: "settle",
-            supersededBy: olderThreadId,
-          });
-          expect(loop.isError).toBe(true);
-          expect(JSON.stringify(loop.content)).toContain(
-            "That would make the supersede chain loop back to this thread.",
-          );
-          expect(
-            (yield* orchestrator.getThreadShell(parentThreadId))?.supersededBy,
-          ).toBeUndefined();
-          yield* invoke("t3_thread_organize", { threadId: olderThreadId, action: "unsupersede" });
-          expect((yield* orchestrator.getThreadShell(olderThreadId))?.supersededBy).toBeUndefined();
 
           const delegationStartSequence =
             yield* orchestrator.getThreadEventSequence(parentThreadId);

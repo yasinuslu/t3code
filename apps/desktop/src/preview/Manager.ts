@@ -62,7 +62,6 @@ import {
   sendManagerAction,
   TOGGLE_MANAGER_ACTION,
 } from "../window/ManagerShortcut.ts";
-import { growCommandLeavesPage, growCommandOfInput } from "../window/ShellChords.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as DesktopBrowserHost from "./DesktopBrowserHost.ts";
 import * as PreviewPasskeys from "./Passkeys.ts";
@@ -1488,21 +1487,6 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       if (currentMainWindow && isManagerShortcut(input, currentManagerChord())) {
         event.preventDefault();
         sendManagerAction(currentMainWindow, TOGGLE_MANAGER_ACTION);
-        return;
-      }
-      // Grow's keys (Settings › Keyboard) reach Grow from inside the page: stepping threads and
-      // jumping places must not need the mouse to leave the page first. The renderer replays
-      // the press as `grow-key:<code>:<shift><alt><ctrl>`.
-      const growCommand = currentMainWindow
-        ? growCommandOfInput(input, hostPlatform, currentMainWindow.webContents.id)
-        : null;
-      if (currentMainWindow && growCommand !== null) {
-        event.preventDefault();
-        if (growCommandLeavesPage(growCommand)) currentMainWindow.webContents.focus();
-        currentMainWindow.webContents.send(
-          MENU_ACTION_CHANNEL,
-          `grow-key:${input.code}:${input.shift ? 1 : 0}${input.alt ? 1 : 0}${input.control ? 1 : 0}`,
-        );
         return;
       }
       const host = wc.hostWebContents;

@@ -5,21 +5,6 @@ import type { ComposerDraftWorkspaceSelection } from "../../state/use-composer-d
 
 type WorkspaceMode = "local" | "worktree";
 
-/**
- * Whether a new task starts in a sandbox. The draft keeps the user's choice;
- * a server that does not offer sandboxes drops it, and an unknown config
- * (offline or still loading) keeps it so editing a queued task cannot lose it.
- */
-export function resolveNewTaskSandbox(input: {
-  readonly draftSandbox: boolean | undefined;
-  readonly serverConfig: { readonly sandboxes?: boolean } | null;
-}): boolean {
-  return (
-    input.draftSandbox === true &&
-    (input.serverConfig === null || input.serverConfig.sandboxes === true)
-  );
-}
-
 export function resolveNewTaskWorkspaceSelection(input: {
   readonly selection: ComposerDraftWorkspaceSelection | undefined;
   readonly fallback: ComposerDraftWorkspaceSelection;

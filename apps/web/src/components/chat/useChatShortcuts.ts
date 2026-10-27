@@ -23,10 +23,6 @@ export type ChatShortcutCommands = Partial<Record<KeybindingCommand, ChatShortcu
 
 export interface ChatShortcutsInput {
   readonly enabled: boolean;
-  /** Under an open overlay (Home, the manager) the view stays mounted but takes no keys. */
-  readonly covered: boolean;
-  /** False: typed letters stay with the host view's own keys instead of landing in the composer. */
-  readonly typeToFocusComposer: boolean;
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly scriptKeybindings: ResolvedKeybindingsConfig;
   readonly getShortcutContext: (target: EventTarget | null) => ShortcutMatchContext & {
@@ -50,7 +46,6 @@ export interface ChatShortcutsInput {
 export function useChatShortcuts(input: ChatShortcutsInput) {
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     const { keybindings } = input;
-    if (input.covered) return;
     if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
       event.stopPropagation();
       return;
@@ -68,7 +63,6 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     if (
       !shortcutContext.terminalFocus &&
       !shortcutContext.modelPickerOpen &&
-      input.typeToFocusComposer &&
       shouldTypeToFocusComposer(event) &&
       input.composerRef.current?.insertTextAtEnd(event.key) === true
     ) {

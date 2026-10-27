@@ -1,7 +1,5 @@
-import { WidgetGalleryButton } from "../grow/WidgetGallery";
 import { SettingsGroup } from "./SettingsGroup";
 import { NotificationSettings } from "./NotificationSettings";
-import { PushNotificationsSettings } from "./PushNotificationsSettings";
 import { changeProfileLock, isWindowProfileLock, profileLockNow } from "../../profileLock";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
@@ -409,7 +407,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Diff colors"]
       : []),
     ...(settings.chatWidth !== DEFAULT_UNIFIED_SETTINGS.chatWidth ? ["Chat width"] : []),
-    ...(settings.windowLayout !== DEFAULT_UNIFIED_SETTINGS.windowLayout ? ["Window layout"] : []),
     ...(settings.mathRenderingEnabled !== DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled
       ? ["Render math"]
       : []),
@@ -459,9 +456,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       : []),
     ...(settings.snoozeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads
       ? ["Snooze until limits reset"]
-      : []),
-    ...(settings.growEnabled !== DEFAULT_UNIFIED_SETTINGS.growEnabled
-      ? ["Grow (experimental)"]
       : []),
     ...(settings.hostsManager !== DEFAULT_UNIFIED_SETTINGS.hostsManager
       ? ["Host the manager"]
@@ -519,12 +513,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       : []),
     ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
       ? ["Add project base directory"]
-      : []),
-    ...(settings.growWidgetPool !== DEFAULT_UNIFIED_SETTINGS.growWidgetPool
-      ? ["Grow widget pool"]
-      : []),
-    ...(settings.growPresentation !== DEFAULT_UNIFIED_SETTINGS.growPresentation
-      ? ["Presentation and Live"]
       : []),
     ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
       ? ["Unpin confirmation"]
@@ -601,7 +589,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
-      windowLayout: DEFAULT_UNIFIED_SETTINGS.windowLayout,
       mathRenderingEnabled: DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled,
       redesignEnabled: DEFAULT_UNIFIED_SETTINGS.redesignEnabled,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
@@ -631,7 +618,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
-      growEnabled: DEFAULT_UNIFIED_SETTINGS.growEnabled,
       hostsManager: DEFAULT_UNIFIED_SETTINGS.hostsManager,
       managerProfiles: DEFAULT_UNIFIED_SETTINGS.managerProfiles,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -644,8 +630,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
-      growWidgetPool: DEFAULT_UNIFIED_SETTINGS.growWidgetPool,
-      growPresentation: DEFAULT_UNIFIED_SETTINGS.growPresentation,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -805,7 +789,6 @@ const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
   "legacy-plan-mode",
   "legacy-context-window-indicator",
   "legacy-sidebar",
-  "legacy-classic-threads-view",
 ]);
 
 function LegacyFeaturesSection() {
@@ -868,19 +851,6 @@ function LegacyFeaturesSection() {
                     updateSettings({ legacySidebarEnabled: Boolean(checked) })
                   }
                   aria-label="Sidebar (legacy)"
-                />
-              }
-            />
-            <SettingsRow
-              {...searchableSetting("legacy-classic-threads-view")}
-              description="Bring back the Grow / Threads switch, with thread links opening the thread page instead of Grow."
-              control={
-                <Switch
-                  checked={settings.classicThreadsViewEnabled}
-                  onCheckedChange={(checked) =>
-                    updateSettings({ classicThreadsViewEnabled: Boolean(checked) })
-                  }
-                  aria-label="Classic threads view (deprecated)"
                 />
               }
             />
@@ -969,7 +939,6 @@ export function GeneralSettingsPanel() {
     textGenerationModelInstanceEntries,
   );
   const mixedAddProjectBaseDirectory = useScopedSettingsMixed(["addProjectBaseDirectory"]);
-  const mixedGrowWidgetPool = useScopedSettingsMixed(["growWidgetPool"]);
   const mixedTextGenerationModel = useScopedSettingsMixed(["textGenerationModelSelection"]);
 
   return (
@@ -1268,7 +1237,6 @@ export function GeneralSettingsPanel() {
 
       <SettingsSection id="behavior" title="Behavior">
         <NotificationSettings />
-        <PushNotificationsSettings />
         <SettingsRow
           {...searchableSetting("in-app-notifications")}
           description="Show a toast when another thread finishes, fails, or needs input or approval while this app has focus."
@@ -1796,77 +1764,6 @@ export function GeneralSettingsPanel() {
               spellCheck={false}
               aria-label="Add project base directory"
             />
-          }
-        />
-      </SettingsSection>
-
-      <SettingsSection id="experimental" title="Experimental">
-        <SettingsRow
-          serverScoped
-          {...searchableSetting("grow")}
-          description="Grow as the main view over the sidebar, with the Grow / Threads switch. Off, the standard sidebar and thread view; the manager works either way."
-          settingKeys={["growEnabled"]}
-          control={
-            <ScopedSwitch
-              settingKeys={["growEnabled"]}
-              checked={settings.growEnabled}
-              onCheckedChange={(checked) => updateSettings({ growEnabled: Boolean(checked) })}
-              aria-label="Grow (experimental)"
-            />
-          }
-        />
-        <SettingsRow
-          serverScoped
-          settingKeys={["growPresentation"]}
-          {...searchableSetting("grow-presentation")}
-          description="Grow shows each thread's presentation and Live preview instead of its conversation, and living pages are composed. Every thread's presentation is always in its right panel."
-          resetAction={
-            settings.growPresentation !== DEFAULT_UNIFIED_SETTINGS.growPresentation ? (
-              <SettingResetButton
-                label="Presentation and Live"
-                onClick={() =>
-                  updateSettings({ growPresentation: DEFAULT_UNIFIED_SETTINGS.growPresentation })
-                }
-              />
-            ) : null
-          }
-          control={
-            <ScopedSwitch
-              settingKeys={["growPresentation"]}
-              checked={settings.growPresentation}
-              onCheckedChange={(checked) => updateSettings({ growPresentation: Boolean(checked) })}
-              aria-label="Show presentations and Live in Grow"
-            />
-          }
-        />
-        <SettingsRow
-          serverScoped
-          settingKeys={["growWidgetPool"]}
-          {...searchableSetting("grow-widget-pool")}
-          description="The folder of widgets Grow draws each thread's living page from. Empty turns living pages off."
-          resetAction={
-            settings.growWidgetPool !== DEFAULT_UNIFIED_SETTINGS.growWidgetPool ? (
-              <SettingResetButton
-                label="Grow widget pool"
-                onClick={() =>
-                  updateSettings({ growWidgetPool: DEFAULT_UNIFIED_SETTINGS.growWidgetPool })
-                }
-              />
-            ) : null
-          }
-          control={
-            <div className="flex w-full items-center gap-2 sm:w-auto">
-              <DraftInput
-                size="sm"
-                className="w-full sm:w-72"
-                value={mixedGrowWidgetPool ? "" : settings.growWidgetPool}
-                onCommit={(next) => updateSettings({ growWidgetPool: next })}
-                placeholder={mixedGrowWidgetPool ? "Mixed" : "/path/to/brain/widgets"}
-                spellCheck={false}
-                aria-label="Grow widget pool folder"
-              />
-              {settings.growWidgetPool ? <WidgetGalleryButton /> : null}
-            </div>
           }
         />
       </SettingsSection>

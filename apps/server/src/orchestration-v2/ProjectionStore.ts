@@ -42,8 +42,6 @@ import type {
   ProviderSessionId,
   ProviderThreadId,
   ThreadPresentation,
-  ThreadGrowRequest,
-  ThreadStatusReport,
   ProviderTurnId,
   RunAttemptId,
 } from "@t3tools/contracts";
@@ -73,9 +71,6 @@ import {
   CheckpointScopeId,
   CheckpointId,
   ThreadId,
-  threadStatusReportHasProof,
-  threadStatusReportOutcome,
-  type ThreadStatusOutcome,
   TurnItemId,
   NodeId,
   ProjectId,
@@ -98,7 +93,6 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
-import { growBlockedAt, growRequestsUpdatedAt } from "./growRequests.ts";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
@@ -227,8 +221,6 @@ export type ProjectionSettlementCandidate = Pick<
 > &
   Pick<OrchestrationV2AppThread, "lastSnoozeWakeAt"> & {
     readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
-    /** The agent's latest report; its outcome can settle or hold the thread. */
-    readonly statusReport?: ThreadStatusReport | undefined;
   };
 
 const ProjectionCheckpointContext = Schema.Struct({
@@ -521,11 +513,6 @@ export interface ProjectionStoreV2Shape {
   readonly getThreadsWithPullRequests: (
     threadId?: ThreadId,
   ) => Effect.Effect<ReadonlyArray<ProjectionThreadPullRequests>, ProjectionStoreV2Error>;
-  /** Active threads with regular compaction turned on. Skips run, message and item reads. */
-  readonly getAutoCompactThreads: () => Effect.Effect<
-    ReadonlyArray<OrchestrationV2AppThread>,
-    ProjectionStoreV2Error
-  >;
   readonly getThreadWorktreePaths: (options?: {
     readonly includeArchived?: boolean;
   }) => Effect.Effect<
@@ -666,36 +653,6 @@ export class ProjectionStoreV2 extends Context.Service<ProjectionStoreV2, Projec
 ) {}
 
 export const ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION = 2;
-
-const withStatusOutcome = (outcome: ThreadStatusOutcome | null) =>
-  outcome === null ? {} : { statusOutcome: outcome };
-
-/** Shell fields for a status report: the text stays server-side, the proof flag travels. */
-function statusShellFields(report: ThreadStatusReport) {
-  return {
-    statusUpdatedAt: report.updatedAt,
-    ...(threadStatusReportHasProof(report.text) ? { statusProof: true as const } : {}),
-    ...withStatusOutcome(threadStatusReportOutcome(report)),
-  };
-}
-
-/** Shell fields for a presentation: the pages stay server-side, their count travels. */
-function presentationShellFields(presentation: ThreadPresentation) {
-  return {
-    presentationUpdatedAt: presentation.updatedAt,
-    presentationPages: presentation.pages.length,
-  };
-}
-
-/** Shell fields for Grow requests: they stay server-side, when they changed or got blocked travels. */
-function growRequestShellFields(requests: ReadonlyArray<ThreadGrowRequest> | undefined) {
-  const updatedAt = growRequestsUpdatedAt(requests);
-  const blockedAt = growBlockedAt(requests);
-  return {
-    ...(updatedAt === undefined ? {} : { growRequestsUpdatedAt: updatedAt }),
-    ...(blockedAt === undefined ? {} : { growBlockedAt: blockedAt }),
-  };
-}
 
 function needsRecovery(
   projection: OrchestrationV2ThreadProjection,
@@ -1606,6 +1563,14 @@ function secretRequestAsPendingInput(
   };
 }
 
+/** Shell fields for a presentation: the pages stay server-side, their count travels. */
+function presentationShellFields(presentation: ThreadPresentation) {
+  return {
+    presentationUpdatedAt: presentation.updatedAt,
+    presentationPages: presentation.pages.length,
+  };
+}
+
 export function threadShellFromProjection(
   projection: OrchestrationV2ThreadProjection,
 ): OrchestrationV2ThreadShell {
@@ -1695,19 +1660,12 @@ export function threadShellFromProjection(
     ...(projection.thread.previewLinks === undefined || projection.thread.previewLinks.length === 0
       ? {}
       : { previewLinks: projection.thread.previewLinks }),
-    ...(projection.thread.statusReport === undefined
-      ? {}
-      : statusShellFields(projection.thread.statusReport)),
     ...(projection.thread.presentation === undefined
       ? {}
       : presentationShellFields(projection.thread.presentation)),
     ...(projection.thread.previewEnvironment === undefined
       ? {}
       : { previewEnvironment: projection.thread.previewEnvironment }),
-    ...growRequestShellFields(projection.thread.growRequests),
-    ...(projection.thread.supersededBy == null
-      ? {}
-      : { supersededBy: projection.thread.supersededBy }),
     ...(projection.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: projection.thread.activeOrderKey }),
@@ -1988,19 +1946,12 @@ function shellFromState(input: {
     input.state.thread.previewLinks.length === 0
       ? {}
       : { previewLinks: input.state.thread.previewLinks }),
-    ...(input.state.thread.statusReport === undefined
-      ? {}
-      : statusShellFields(input.state.thread.statusReport)),
     ...(input.state.thread.presentation === undefined
       ? {}
       : presentationShellFields(input.state.thread.presentation)),
     ...(input.state.thread.previewEnvironment === undefined
       ? {}
       : { previewEnvironment: input.state.thread.previewEnvironment }),
-    ...growRequestShellFields(input.state.thread.growRequests),
-    ...(input.state.thread.supersededBy == null
-      ? {}
-      : { supersededBy: input.state.thread.supersededBy }),
     ...(input.state.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: input.state.thread.activeOrderKey }),
@@ -6366,19 +6317,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
       );
 
-    const getAutoCompactThreads: ProjectionStoreV2Shape["getAutoCompactThreads"] = () =>
-      Effect.gen(function* () {
-        const rows = yield* sql<PayloadRow>`
-          SELECT payload_json
-          FROM orchestration_v2_projection_threads
-          WHERE deleted_at IS NULL
-            AND json_extract(payload_json, '$.archivedAt') IS NULL
-            AND json_extract(payload_json, '$.autoCompact') IS NOT NULL
-          ORDER BY thread_id ASC
-        `;
-        return yield* Effect.forEach(rows, (row) => decodeThreadPayload(row.payload_json));
-      }).pipe(Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })));
-
     const getThreadWorktreePaths: ProjectionStoreV2Shape["getThreadWorktreePaths"] = (options) =>
       sql<{ readonly thread_id: string; readonly worktree_path: string }>`
         SELECT thread_id, json_extract(payload_json, '$.worktreePath') AS worktree_path
@@ -6895,7 +6833,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getPlan: readOnReader(getPlan),
       getProviderControlContext: readOnReader(getProviderControlContext),
       getLimitRecoveryCandidates: readOnReader(getLimitRecoveryCandidates),
-      getAutoCompactThreads: readOnReader(getAutoCompactThreads),
       getRecoveryThreadIds: readOnReader(getRecoveryThreadIds),
       getUnreadableThreadIds: readOnReader(getUnreadableThreadIds),
       getThreadSnapshot: readOnReader(getThreadSnapshot),
@@ -7112,19 +7049,6 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             );
         },
       ),
-      getAutoCompactThreads: () =>
-        Ref.get(replayState).pipe(
-          Effect.map((state) =>
-            [...state.projections.values()]
-              .map(({ thread }) => thread)
-              .filter(
-                (thread) =>
-                  thread.deletedAt === null &&
-                  thread.archivedAt === null &&
-                  thread.autoCompact != null,
-              ),
-          ),
-        ),
       getThreadWorktreePaths: (options) =>
         Ref.get(replayState).pipe(
           Effect.map((state) =>

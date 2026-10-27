@@ -217,7 +217,7 @@ function SetupDetailsSheet({
           .map((stage) => (
             <View key={stage.id}>
               <StageRow stage={stage} scriptName={snapshot.setupScript?.name ?? null} now={now} />
-              {(stage.id === "setup-script" || stage.id === "sandbox") &&
+              {stage.id === "setup-script" &&
               (stage.status === "running" || stage.status === "failed" || stage.tail.length > 0) ? (
                 <OutputTail lines={stage.tail} failed={stage.status === "failed"} />
               ) : null}

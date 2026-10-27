@@ -151,16 +151,6 @@ function selectOpenCodeRuntimeTextGeneration(
         v1: v1.generateReviewGuide(input),
         v2: v2.generateReviewGuide(input),
       }),
-    generateLivingPage: (input) =>
-      byOpenCodeRuntime(probe.get, {
-        v1: v1.generateLivingPage(input),
-        v2: v2.generateLivingPage(input),
-      }),
-    generateWidget: (input) =>
-      byOpenCodeRuntime(probe.get, {
-        v1: v1.generateWidget(input),
-        v2: v2.generateWidget(input),
-      }),
   };
 }
 

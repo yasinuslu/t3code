@@ -171,6 +171,14 @@
       "types": "./src/state/brainstorm.ts",
       "default": "./src/state/brainstorm.ts"
     },
+    "./state/elements": {
+      "types": "./src/state/elements.ts",
+      "default": "./src/state/elements.ts"
+    },
+    "./state/previewEnvironment": {
+      "types": "./src/state/previewEnvironment.ts",
+      "default": "./src/state/previewEnvironment.ts"
+    },
     "./state/entities": {
       "types": "./src/state/entities.ts",
       "default": "./src/state/entities.ts"

@@ -483,114 +483,40 @@ export const layer: Layer.Layer<
           return;
         }
       }
-      // A worktree folder can disappear behind the thread's back, typically
-      // removed after its branch merged. Recreate it from the branch when git
-      // can; otherwise move the thread to the project root and say so in its
-      // timeline, so the next message runs instead of failing to open. A
-      // branch worktree without its `.git` link is removed too: a dev server
-      // still running in it rewrites its caches after the removal. Folders
-      // without a branch (Scratch, plain folders) never had one.
-      let thread = projection.thread;
       const { worktreePath, branch } = projection.thread;
-      if (worktreePath !== null) {
-        const pathExists = (path: string) =>
-          fileSystem.exists(path).pipe(Effect.orElseSucceed(() => true));
-        const exists =
-          (yield* pathExists(worktreePath)) &&
-          (branch === null || (yield* pathExists(`${worktreePath}/.git`)));
-        const project = exists
-          ? undefined
-          : yield* projects.getById(projection.thread.projectId).pipe(
-              Effect.map(Option.getOrUndefined),
-              Effect.orElseSucceed(() => undefined),
-            );
-        if (project !== undefined) {
-          yield* Effect.logWarning("provider turn start found its worktree missing", {
-            threadId: projection.thread.id,
-            worktreePath,
-            branch,
-          });
-          // Only worktrees T3 manages are recreated; a user's own folder is not ours to rebuild.
-          const recreated =
-            branch === null || !(yield* isManagedWorktreePath(worktreePath))
-              ? false
-              : yield* gitWorkflow.pruneWorktrees({ cwd: project.workspaceRoot }).pipe(
-                  Effect.andThen(
-                    gitWorkflow.createWorktree({
-                      cwd: project.workspaceRoot,
-                      refName: branch,
-                      path: worktreePath,
-                    }),
-                  ),
-                  Effect.as(true),
-                  Effect.catchCauseIf(
-                    (cause) => !Cause.hasInterruptsOnly(cause),
-                    (cause) =>
-                      Effect.logWarning("provider turn start failed to recreate worktree", {
-                        threadId: projection.thread.id,
-                        worktreePath,
-                        cause: Cause.pretty(cause),
-                      }).pipe(Effect.as(false)),
-                  ),
-                );
-          if (!recreated) {
-            // A live session still runs inside the deleted folder; the next
-            // open starts a fresh one in the project root.
-            yield* providerSessions
-              .release({
-                providerSessionId: providerThread.providerSessionId,
-                reason: "manual_shutdown",
-                detail: "The thread's worktree was removed.",
-              })
-              .pipe(Effect.ignoreCause({ log: true }));
-            const now = yield* DateTime.now;
-            thread = { ...projection.thread, worktreePath: null, branch: null, updatedAt: now };
-            const notice: OrchestrationV2TurnItem = {
-              id: idAllocator.derive.runSignalTurnItem({ runId, signal: "worktree-missing" }),
+      if (worktreePath !== null && branch !== null) {
+        const exists = yield* fileSystem
+          .exists(worktreePath)
+          .pipe(Effect.orElseSucceed(() => true));
+        if (!exists && (yield* isManagedWorktreePath(worktreePath))) {
+          const project = yield* projects.getById(projection.thread.projectId).pipe(
+            Effect.map(Option.getOrUndefined),
+            Effect.orElseSucceed(() => undefined),
+          );
+          if (project !== undefined) {
+            yield* Effect.logWarning("provider turn start recreating missing worktree", {
               threadId: projection.thread.id,
-              runId,
-              nodeId: rootNode.id,
-              providerThreadId: providerThread.id,
-              providerTurnId: null,
-              nativeItemRef: null,
-              parentItemId: null,
-              ordinal:
-                Math.max(
-                  0,
-                  ...projection.turnItems
-                    .filter((item) => item.runId === runId)
-                    .map((item) => item.ordinal),
-                ) + 1,
-              status: "completed",
-              title: "Worktree removed",
-              startedAt: now,
-              completedAt: now,
-              updatedAt: now,
-              type: "system_notice",
-              message: `Worktree removed; running in project root. ${worktreePath} no longer exists, so this thread now works in ${project.workspaceRoot}.`,
-            };
-            const eventPayloads = [
-              { type: "thread.metadata-updated", payload: thread },
-              { type: "turn-item.updated", payload: notice, runId, nodeId: rootNode.id },
-            ] as const;
-            const events = yield* Effect.forEach(eventPayloads, (event) =>
-              Effect.gen(function* () {
-                return {
-                  ...event,
-                  id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
-                  threadId: projection.thread.id,
-                  providerInstanceId: run.providerInstanceId,
-                  occurredAt: now,
-                } satisfies OrchestrationV2DomainEvent;
-              }),
-            );
-            yield* eventSink.writeIfRunCurrent({
-              threadId: projection.thread.id,
-              runId,
-              activeAttemptId: attempt.id,
-              expectedStatus: "starting",
-              events,
+              worktreePath,
+              branch,
             });
+            yield* gitWorkflow.pruneWorktrees({ cwd: project.workspaceRoot }).pipe(
+              Effect.andThen(
+                gitWorkflow.createWorktree({
+                  cwd: project.workspaceRoot,
+                  refName: branch,
+                  path: worktreePath,
+                }),
+              ),
+              Effect.catchCauseIf(
+                (cause) => !Cause.hasInterruptsOnly(cause),
+                (cause) =>
+                  Effect.logWarning("provider turn start failed to recreate worktree", {
+                    threadId: projection.thread.id,
+                    worktreePath,
+                    cause: Cause.pretty(cause),
+                  }),
+              ),
+            );
           }
         }
       }
@@ -619,7 +545,7 @@ export const layer: Layer.Layer<
       const { isCurrentAttemptInStatus } = runControls;
 
       const resolvedRuntimePolicy = yield* runtimePolicy.resolve({
-        thread,
+        thread: projection.thread,
         modelSelection: run.modelSelection,
       });
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
@@ -902,46 +828,8 @@ export const layer: Layer.Layer<
           ...effectiveHandoffs.filter((candidate) => candidate.targetRunId === run.id),
         ];
         resumeFellBack = true;
-        // One line in the timeline says why the agent may have lost detail.
-        // It follows the worktree notice when this start also wrote one.
-        const notice: OrchestrationV2TurnItem = {
-          id: idAllocator.derive.runSignalTurnItem({ runId, signal: "provider-resume-fallback" }),
-          threadId: projection.thread.id,
-          runId,
-          nodeId: run.rootNodeId,
-          providerThreadId: providerThread.id,
-          providerTurnId: null,
-          nativeItemRef: null,
-          parentItemId: null,
-          ordinal:
-            Math.max(
-              0,
-              ...projection.turnItems
-                .filter((item) => item.runId === runId)
-                .map((item) => item.ordinal),
-            ) + (thread === projection.thread ? 1 : 2),
-          status: "completed",
-          title: "Started a fresh session",
-          startedAt: createdAt,
-          completedAt: createdAt,
-          updatedAt: createdAt,
-          type: "system_notice",
-          message: uncertainDelivery
-            ? "The provider's session may be missing earlier context, so this thread continues in a fresh one that starts from a summary of the conversation."
-            : "The provider could not reopen this thread's session, so it continues in a fresh one that starts from a summary of the conversation.",
-        };
         yield* eventSink.write({
           events: [
-            {
-              id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
-              type: "turn-item.updated",
-              threadId: projection.thread.id,
-              runId: run.id,
-              ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
-              providerInstanceId: run.providerInstanceId,
-              occurredAt: createdAt,
-              payload: notice,
-            },
             {
               id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
               type: "context-handoff.updated",

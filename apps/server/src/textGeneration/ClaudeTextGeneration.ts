@@ -10,7 +10,6 @@ import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import {
-  generationTimeoutMs,
   normalizeCliError,
   toJsonSchemaObject,
 } from "@t3tools/provider-core/server/textGenerationUtils";
@@ -286,9 +285,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
 
     const rawStdout = yield* runClaudeCommand().pipe(
       Effect.scoped,
-      Effect.timeoutOption(
-        investigate?.timeoutMs ?? generationTimeoutMs(operation, CLAUDE_TIMEOUT_MS),
-      ),
+      Effect.timeoutOption(investigate?.timeoutMs ?? CLAUDE_TIMEOUT_MS),
       Effect.flatMap(
         Option.match({
           onNone: () =>

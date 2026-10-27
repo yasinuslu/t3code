@@ -53,15 +53,7 @@ const selectedThreadStatusRevalidation = createVcsStatusRevalidationAtomFamily({
     ),
 });
 
-/**
- * @param targetCwdOverride Repository to run commit/push/PR/pull actions and
- * status refreshes against, when it differs from the thread's own worktree —
- * e.g. a submodule selected in the git overview or review sheet. `undefined`
- * (the default) keeps the thread's own worktree. Branch and worktree
- * operations always stay on the thread's own worktree regardless of this
- * override, since they control the thread's checked-out branch.
- */
-export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
+export function useSelectedThreadGitActions() {
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -80,15 +72,7 @@ export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
     AuthOrchestrationOperateScope,
   );
   const canChangeThreadBranch = canWriteSourceControl && canOperateThread;
-  const { selectedThreadCwd: selectedThreadWorktreeCwd, selectedThreadWorktreePath } =
-    useSelectedThreadWorktree();
-  const selectedThreadCwd =
-    targetCwdOverride !== undefined ? targetCwdOverride : selectedThreadWorktreeCwd;
-  // Thread metadata (`branch`, `worktreePath`) tracks the thread's own
-  // worktree only — never a submodule's. Actions that ran against a
-  // submodule must still refresh status/branches but must not let a
-  // submodule branch name overwrite the thread's own branch metadata.
-  const isTargetingThreadWorktree = selectedThreadCwd === selectedThreadWorktreeCwd;
+  const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
   const runStackedAction = useAtomCommand(
     vcsActionManager.runStackedAction({
       environmentId: selectedThread?.environmentId ?? null,
@@ -277,12 +261,10 @@ export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
           const syncResult = await syncSelectedThreadBranchState({
             thread,
             cwd,
-            nextThreadState: isTargetingThreadWorktree
-              ? {
-                  branch: result.value.refName ?? thread.branch,
-                  worktreePath: selectedThreadWorktreePath,
-                }
-              : undefined,
+            nextThreadState: {
+              branch: result.value.refName ?? thread.branch,
+              worktreePath: selectedThreadWorktreePath,
+            },
           });
           return AsyncResult.isFailure(syncResult) ? AsyncResult.failure(syncResult.cause) : result;
         },
@@ -290,7 +272,6 @@ export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
       );
     },
     [
-      isTargetingThreadWorktree,
       runSelectedThreadGitMutation,
       selectedThreadWorktreePath,
       syncSelectedThreadBranchState,
@@ -314,12 +295,10 @@ export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
           const syncResult = await syncSelectedThreadBranchState({
             thread,
             cwd,
-            nextThreadState: isTargetingThreadWorktree
-              ? {
-                  branch: result.value.refName ?? thread.branch,
-                  worktreePath: selectedThreadWorktreePath,
-                }
-              : undefined,
+            nextThreadState: {
+              branch: result.value.refName ?? thread.branch,
+              worktreePath: selectedThreadWorktreePath,
+            },
           });
           return AsyncResult.isFailure(syncResult) ? AsyncResult.failure(syncResult.cause) : result;
         },
@@ -327,7 +306,6 @@ export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
       );
     },
     [
-      isTargetingThreadWorktree,
       runSelectedThreadGitMutation,
       selectedThreadWorktreePath,
       syncSelectedThreadBranchState,
@@ -417,12 +395,10 @@ export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
             const syncResult = await syncSelectedThreadBranchState({
               thread,
               cwd,
-              nextThreadState: isTargetingThreadWorktree
-                ? {
-                    branch: result.value.branch.name,
-                    worktreePath: selectedThreadWorktreePath,
-                  }
-                : undefined,
+              nextThreadState: {
+                branch: result.value.branch.name,
+                worktreePath: selectedThreadWorktreePath,
+              },
             });
             if (AsyncResult.isFailure(syncResult)) {
               return AsyncResult.failure(syncResult.cause);
@@ -443,7 +419,6 @@ export function useSelectedThreadGitActions(targetCwdOverride?: string | null) {
       );
     },
     [
-      isTargetingThreadWorktree,
       runStackedAction,
       refreshSelectedThreadGitStatus,
       runSelectedThreadGitMutation,

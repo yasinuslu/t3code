@@ -267,24 +267,17 @@ describe("shortcut sheet chord", () => {
 describe("sidebar focus chord", () => {
   const ctrl = (key: string) => event({ key, code: `Key${key.toUpperCase()}`, ctrlKey: true });
 
-  it("is Ctrl+B on a Mac, leaving Ctrl+S to Grow's next thread", () => {
+  it("is Ctrl+B on a Mac", () => {
     const mac = { platform: "MacIntel" };
     assert.strictEqual(
       resolveShortcutCommand(ctrl("b"), DEFAULT_RESOLVED_KEYBINDINGS, mac),
       "pane.sidebar",
     );
-    assert.strictEqual(
-      resolveShortcutCommand(ctrl("s"), DEFAULT_RESOLVED_KEYBINDINGS, {
-        ...mac,
-        context: { growOpen: true },
-      }),
-      "grow.step.next",
-    );
     assert.isNull(resolveShortcutCommand(ctrl("s"), DEFAULT_RESOLVED_KEYBINDINGS, mac));
   });
 
   it("stays Ctrl+S on Windows and Linux, where Ctrl+B hides the sidebar", () => {
-    const linux = { platform: "Linux", context: { growOpen: true } };
+    const linux = { platform: "Linux" };
     assert.strictEqual(
       resolveShortcutCommand(ctrl("s"), DEFAULT_RESOLVED_KEYBINDINGS, linux),
       "pane.sidebar",

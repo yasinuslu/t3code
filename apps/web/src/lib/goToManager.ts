@@ -1,10 +1,3 @@
-import { focusManagerInGrow } from "../growFocus";
-import {
-  growIsHome,
-  holdHomeOverlayOpen,
-  openHomeOverlay,
-  useHomeOverlayStore,
-} from "../homeOverlayStore";
 import {
   type ManagerReturn,
   requestManagerHidden,
@@ -52,76 +45,27 @@ async function dismissOpenPopups(): Promise<void> {
 
 /**
  * Opens the manager thread of the profile in view next to the sidebar, from any
- * screen (Grow too), with its composer focused. Popups in the way close first.
+ * screen, with its composer focused. Popups in the way close first.
  */
 export async function openManager(): Promise<void> {
   await dismissOpenPopups();
-  // With Grow as the main view, the manager is Grow's own pane.
-  if (growIsHome()) {
-    focusManagerInGrow();
-    openHomeOverlay();
-    return;
-  }
   requestManagerShown();
 }
 
-// Set while a way back to Grow is under way, when the route still shows the manager.
-let returning = false;
-
-// Grow shows the manager in its own pane, next to its list; set while Grow is up.
-let growManagerToggle: (() => void) | null = null;
-
-/** Grow registers how the shortcut shows and hides its manager pane; returns the unregister. */
-export function setGrowManagerToggle(toggle: () => void): () => void {
-  growManagerToggle = toggle;
-  return () => {
-    if (growManagerToggle === toggle) growManagerToggle = null;
-  };
-}
-
-/**
- * The manager shortcut: shows the manager, or goes back to where it was opened
- * from. Over Grow it is the same as M there: the manager in Grow's own pane.
- */
+/** The manager shortcut: shows the manager, or goes back to where it was opened from. */
 export function toggleManager(): void {
-  // A second press before the page is back would otherwise ask for the manager again.
-  if (returning) return;
-  if (growManagerToggle !== null && useHomeOverlayStore.getState().open) {
-    void dismissOpenPopups().then(() => growManagerToggle?.());
-    return;
-  }
-  if (growIsHome()) {
-    void openManager();
-    return;
-  }
-  // Under Grow the manager is not what shows, so the shortcut brings it up.
-  if (useManagerViewStore.getState().shown && !useHomeOverlayStore.getState().open) {
-    requestManagerHidden();
-  } else void openManager();
+  if (useManagerViewStore.getState().shown) requestManagerHidden();
+  else void openManager();
 }
 
-/**
- * Hides the manager by going back to where it was opened from. Grow comes back
- * at once and is held over the page while that changes underneath: waiting for
- * the page to load first left the manager on screen, unresponsive, for as long
- * as that took.
- */
+/** Hides the manager by going back to the page it was opened from. */
 export async function returnFromManager(
   returnTo: ManagerReturn | null,
   navigate: (href: string) => Promise<unknown>,
 ): Promise<void> {
-  const release = returnTo?.grow ? holdHomeOverlayOpen() : null;
-  returning = returnTo?.grow === true;
-  if (returnTo?.grow) openHomeOverlay();
   try {
     await navigate(returnTo?.href ?? "/");
-    // Home closes on a path change in an effect that runs a frame after it.
-    await nextFrame();
-    await nextFrame();
   } catch {
-    // The manager stays where it is; Grow, if it was asked for, is still up.
-  } finally {
-    returning = false;
-    release?.();
+    // The manager stays where it is.
   }
 }

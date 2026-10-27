@@ -386,37 +386,6 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
       }),
     );
 
-    it.effect("round-trips raw bytes as base64, NUL bytes included", () =>
-      Effect.gen(function* () {
-        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
-        const fileSystem = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const cwd = yield* makeTempDir;
-        const bytes = Uint8Array.from([0x50, 0x4b, 0, 0xff, 0x61, 0]);
-
-        yield* workspaceFileSystem.writeFile({
-          cwd,
-          relativePath: "book.xlsx",
-          contents: Buffer.from(bytes).toString("base64"),
-          encoding: "base64",
-        });
-        const onDisk = yield* fileSystem.readFile(path.join(cwd, "book.xlsx")).pipe(Effect.orDie);
-        const result = yield* workspaceFileSystem.readFile({
-          cwd,
-          relativePath: "book.xlsx",
-          encoding: "base64",
-        });
-
-        expect(Array.from(onDisk)).toEqual(Array.from(bytes));
-        expect(result).toEqual({
-          relativePath: "book.xlsx",
-          contents: Buffer.from(bytes).toString("base64"),
-          byteLength: bytes.length,
-          truncated: false,
-        });
-      }),
-    );
-
     it.effect("rejects writes by absolute path", () =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;

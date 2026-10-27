@@ -251,12 +251,10 @@ it.effect.each([
       const eligible = candidates.filter((thread) =>
         isAutoSettlementCandidate(thread, DateTime.toEpochMillis(now)),
       );
-      // `woke` woke on a failed run, and a failed thread never settles.
       assert.deepEqual(
         new Set(eligible.map((thread) => thread.id)),
-        new Set([idle, completed, queued, background, persistent, rolledBack]),
+        new Set([idle, completed, queued, woke, background, persistent, rolledBack]),
       );
-      assert.isTrue(candidates.some((thread) => thread.id === woke));
       assert.deepEqual(
         new Set(eligible.map((thread) => thread.id)),
         new Set(
@@ -270,7 +268,6 @@ it.effect.each([
         assert.deepEqual(candidate.pendingBackgroundTasks, expected.pendingBackgroundTasks);
         const settings = {
           pullRequest: null,
-          defaultBranch: null,
           nowMs: DateTime.toEpochMillis(now),
           autoSettleAfterDays: 7,
           autoSettleOnMerge: false,

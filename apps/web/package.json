@@ -78,10 +78,8 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-markdown": "^10.1.0",
-    "recharts": "^3.10.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
-    "remark-breaks": "^4.0.0",
     "remark-gfm": "catalog:",
     "remark-math": "6.0.0",
     "remark-parse": "catalog:",
@@ -92,7 +90,6 @@
     "unbash": "^5.0.0",
     "unified": "catalog:",
     "use-sync-external-store": "^1.6.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

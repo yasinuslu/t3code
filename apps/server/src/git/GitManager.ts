@@ -138,14 +138,6 @@ export class GitManager extends Context.Service<
       input: { readonly cwd: string; readonly branch: string },
       options?: { readonly refresh?: boolean; readonly freshGitState?: boolean },
     ) => Effect.Effect<GitBranchPullRequest | null, GitManagerServiceError>;
-    /**
-     * The repository's default branch as the primary remote records it
-     * (`refs/remotes/<remote>/HEAD`), the same answer the pull request lookup
-     * uses. Null when the checkout has no remote or no remote HEAD.
-     */
-    readonly defaultBranch: (input: {
-      readonly cwd: string;
-    }) => Effect.Effect<string | null, never>;
     readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
@@ -677,34 +669,6 @@ export const make = Effect.gen(function* () {
   const serverSettingsService = yield* ServerSettings.ServerSettingsService;
   const threads = yield* ProjectionStore.ProjectionStoreV2;
   const projects = yield* ProjectStore.ProjectStoreV2;
-  /**
-   * The project whose workspace root is `cwd`, or, for a submodule checkout,
-   * the project of the closest superproject that is one.
-   */
-  const projectIdForWorkspaceCwd = Effect.fnUntraced(function* (cwd: string) {
-    let candidate = cwd;
-    // Bounded: each step moves to a strictly shorter superproject path.
-    for (let depth = 0; depth < 8; depth += 1) {
-      const project = yield* projects.findActiveByWorkspaceRoot(candidate);
-      if (Option.isSome(project)) return project.value.projectId;
-      const superproject = yield* gitCore
-        .execute({
-          operation: "GitManager.projectSettingsFor.superproject",
-          cwd: candidate,
-          args: ["rev-parse", "--show-superproject-working-tree"],
-          allowNonZeroExit: true,
-          timeoutMs: 5_000,
-        })
-        .pipe(
-          Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : "")),
-          Effect.orElseSucceed(() => ""),
-        );
-      if (superproject.length === 0) break;
-      candidate = superproject;
-    }
-    return null;
-  });
-  /** Environment settings with the acting project's overrides applied. */
   const projectSettingsFor = Effect.fnUntraced(function* (input: {
     readonly cwd: string;
     readonly threadId?: ThreadId | undefined;
@@ -717,7 +681,10 @@ export const make = Effect.gen(function* () {
           Effect.map((thread) => thread?.projectId ?? null),
           Effect.orElseSucceed(() => null),
         )
-      : projectIdForWorkspaceCwd(input.cwd).pipe(Effect.orElseSucceed(() => null));
+      : projects.findActiveByWorkspaceRoot(input.cwd).pipe(
+          Effect.map((project) => Option.getOrNull(project)?.projectId ?? null),
+          Effect.orElseSucceed(() => null),
+        );
     return { settings: resolveProjectSettings(settings, projectId).settings, projectId };
   });
   const readThreadContext = Effect.fnUntraced(
@@ -1135,7 +1102,7 @@ export const make = Effect.gen(function* () {
     aheadOfDefaultCount: 0,
   };
   const readLocalStatus = Effect.fn("readLocalStatus")(function* (cwd: string) {
-    const details: GitVcsDriver.GitStatusDetails = yield* gitCore
+    const details = yield* gitCore
       .statusDetailsLocal(cwd, { includeDivergence: false, includeBranchChanges: true })
       .pipe(
         Effect.catchIf(isNotGitRepositoryError, () => Effect.succeed(nonRepositoryStatusDetails)),
@@ -1146,9 +1113,6 @@ export const make = Effect.gen(function* () {
 
     return {
       isRepo: details.isRepo,
-      ...(details.submodules && details.submodules.length > 0
-        ? { submodules: details.submodules }
-        : {}),
       ...(hostingProvider ? { sourceControlProvider: hostingProvider } : {}),
       hasPrimaryRemote: details.hasOriginRemote,
       isDefaultRef: details.isDefaultBranch,
@@ -2661,14 +2625,6 @@ export const make = Effect.gen(function* () {
       repositoryKey: pullRequestRepositoryKey(latest.url),
     };
   });
-  const defaultBranch: GitManager["Service"]["defaultBranch"] = Effect.fn("defaultBranch")(
-    function* (input) {
-      return yield* gitCore.resolvePrimaryRemoteName(input.cwd).pipe(
-        Effect.flatMap((remoteName) => gitCore.resolveDefaultBranchName(input.cwd, remoteName)),
-        Effect.orElseSucceed(() => null),
-      );
-    },
-  );
   const branchPullRequest: GitManager["Service"]["branchPullRequest"] = Effect.fn(
     "branchPullRequest",
   )(function* ({ cwd, branch }, options) {
@@ -3267,7 +3223,6 @@ export const make = Effect.gen(function* () {
     remoteStatus,
     status,
     branchPullRequest,
-    defaultBranch,
     invalidateLocalStatus,
     invalidateRemoteStatus,
     invalidateStatus,

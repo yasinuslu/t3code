@@ -6,7 +6,7 @@
 import type { ElementManifest, EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { growEnvironment } from "../state/grow";
+import { elementsEnvironment } from "../state/elements";
 import { useAtomCommand } from "../state/use-atom-command";
 
 export interface ElementsLibrary {
@@ -49,7 +49,7 @@ export function useElementsLibrary(
   environmentId: EnvironmentId | null,
   wanted: string,
 ): ElementsLibrary | null {
-  const fetchLibrary = useAtomCommand(growEnvironment.elementsLibrary, { reportFailure: false });
+  const fetchLibrary = useAtomCommand(elementsEnvironment.library, { reportFailure: false });
   const key = environmentId ?? "";
   const library = useSyncExternalStore(subscribe, () => libraries.get(key)?.library ?? null);
   const missing = library !== null && !library.components.has(wanted);

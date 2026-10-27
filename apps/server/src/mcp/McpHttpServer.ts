@@ -70,10 +70,6 @@ import * as BrainstormHandlers from "./toolkits/brainstorm/handlers.ts";
 import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
 import * as ElementsHandlers from "./toolkits/elements/handlers.ts";
 import { ElementsToolkit } from "./toolkits/elements/tools.ts";
-import * as GrowHandlers from "./toolkits/grow/handlers.ts";
-import { GrowToolkit } from "./toolkits/grow/tools.ts";
-import * as NotificationsHandlers from "./toolkits/notifications/handlers.ts";
-import { NotificationsToolkit } from "./toolkits/notifications/tools.ts";
 import * as PeersHandlers from "./toolkits/peers/handlers.ts";
 import { PeersToolkit } from "./toolkits/peers/tools.ts";
 import * as PresentationHandlers from "./toolkits/presentation/handlers.ts";
@@ -82,8 +78,6 @@ import * as PreviewEnvironmentHandlers from "./toolkits/previewEnvironment/handl
 import { PreviewEnvironmentToolkit } from "./toolkits/previewEnvironment/tools.ts";
 import * as PreviewLinksHandlers from "./toolkits/previewLinks/handlers.ts";
 import { PreviewLinksToolkit } from "./toolkits/previewLinks/tools.ts";
-import * as ThreadStatusHandlers from "./toolkits/threadStatus/handlers.ts";
-import { ThreadStatusToolkit } from "./toolkits/threadStatus/tools.ts";
 import {
   DeviceScreenshotTool,
   DeviceScreenshotToolkit,
@@ -1049,16 +1043,13 @@ export const layerDeviceToolkit = Layer.mergeAll(
   layerDeviceScreenshotRegistration,
 );
 
-// Fork toolkits: preview links, status, presentation, elements, preview environments, brainstorm, grow, notifications, peers.
+// Fork toolkits: preview links, presentation, elements, preview environments, brainstorm, peers.
 const layerForkToolkits = Layer.mergeAll(
   toolkitRegistration(PreviewLinksToolkit, PreviewLinksHandlers.layer),
-  toolkitRegistration(ThreadStatusToolkit, ThreadStatusHandlers.layer),
   toolkitRegistration(PresentationToolkit, PresentationHandlers.layer),
   toolkitRegistration(ElementsToolkit, ElementsHandlers.layer),
   toolkitRegistration(PreviewEnvironmentToolkit, PreviewEnvironmentHandlers.layer),
   toolkitRegistration(BrainstormToolkit, BrainstormHandlers.layer),
-  toolkitRegistration(GrowToolkit, GrowHandlers.layer),
-  toolkitRegistration(NotificationsToolkit, NotificationsHandlers.layer),
   toolkitRegistration(PeersToolkit, PeersHandlers.layer).pipe(
     Layer.provide(PeerEnvironments.layer),
   ),

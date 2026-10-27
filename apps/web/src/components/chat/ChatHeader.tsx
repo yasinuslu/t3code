@@ -14,7 +14,6 @@ import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import {
   memo,
-  use,
   useEffect,
   useRef,
   useState,
@@ -23,13 +22,11 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { OverlayLayerContext } from "../../homeOverlayStore";
 import { ManagerMachineSwitcher } from "../brainstorm/ManagerMachineSwitcher";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
-import { NotificationsBell } from "../NotificationsBell";
 import { ShortcutsButton } from "../ShortcutsSheet";
 import { useDesktopUpdateTitlebarVisible } from "./DesktopUpdateTitlebarButton";
 import { canShareWithGuestAtom } from "./guestShareAvailability";
@@ -37,7 +34,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { ProjectFavicon } from "../ProjectFavicon";
-import { ThreadSandboxBadge } from "./ThreadSandboxBadge";
 import {
   ProviderConfigDirIndicator,
   type ThreadProviderConfigDir,
@@ -53,7 +49,7 @@ import {
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { useIsManagerThread } from "~/brainstormStore";
-import { Button } from "../ui/button";
+import { PreviewEnvironmentControl } from "../preview/PreviewEnvironmentControl";
 import { ThreadPreviewLinks } from "../preview/ThreadPreviewLinkChip";
 import { useThreadShell } from "~/state/entities";
 import { textDirection } from "~/textDirection";
@@ -69,12 +65,8 @@ interface ChatHeaderProps {
   parentThreadLink: { threadId: ThreadId; title: string } | null;
   onOpenThread: (threadId: ThreadId) => void;
   rightPanelOpen: boolean;
-  /** Inside Grow: the title takes the free width, no project breadcrumb or preview chip, no room kept for panel toggles. */
-  embedded?: boolean;
   /** The provider profile the thread runs on, for drivers that report one. */
   providerConfigDir?: ThreadProviderConfigDir | null;
-  /** The thread when its server can run sandboxes; shows the sandbox badge. */
-  sandboxThreadId?: string | null;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
 }
@@ -100,9 +92,7 @@ export const ChatHeader = memo(function ChatHeader({
   parentThreadLink,
   onOpenThread,
   rightPanelOpen,
-  embedded = false,
   providerConfigDir = null,
-  sandboxThreadId = null,
   onNewThreadInProject,
   onOpenProjectSettings,
 }: ChatHeaderProps) {
@@ -110,10 +100,6 @@ export const ChatHeader = memo(function ChatHeader({
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
   const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
-  // Inside Grow rather than on its own page.
-  const inOverlay = use(OverlayLayerContext) > 0;
-  // The manager docked in Grow: only its name and badge.
-  const docked = (inOverlay && isManager) || embedded;
   // The update button widens the titlebar controls this header stops short of.
   const updateButtonVisible = useDesktopUpdateTitlebarVisible();
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
@@ -308,13 +294,13 @@ export const ChatHeader = memo(function ChatHeader({
       ref={breadcrumbContainerRef}
       className={cn(
         "@container flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        embedded ? "pr-3" : rightPanelOpen ? "pr-10" : updateButtonVisible ? "pr-56" : "pr-24",
+        rightPanelOpen ? "pr-10" : updateButtonVisible ? "pr-56" : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
       {/* The spaces in the sidebar pick the profile; a manager that runs on more than one
           machine picks the machine here, ahead of the breadcrumb so it never clips. */}
-      {isManager && !docked ? (
+      {isManager ? (
         <>
           <Badge size="lg" className="shrink-0">
             <MessagesSquareIcon aria-hidden />
@@ -327,7 +313,7 @@ export const ChatHeader = memo(function ChatHeader({
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
       >
-        {activeSpaceId !== ALL_SPACE_ID && !docked ? (
+        {activeSpaceId !== ALL_SPACE_ID ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink-0">
               <ActiveSpaceLabel className="text-muted-foreground" />
@@ -340,7 +326,7 @@ export const ChatHeader = memo(function ChatHeader({
         {/* The project always leads the thread itself: knowing which project
             a thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
-        {activeProject && !docked ? (
+        {activeProject ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink">
               <Tooltip>
@@ -468,39 +454,33 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {isServerThread && !docked ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
+      {isServerThread ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      {sandboxThreadId ? (
-        <ThreadSandboxBadge
-          environmentId={activeThreadEnvironmentId}
-          threadId={sandboxThreadId}
-          variant="badge"
-        />
-      ) : null}
       {/* A manager's title already names its profile; a narrow column keeps the room for the title. */}
       {providerConfigDir && !isManager ? (
         <div className="flex min-w-0 max-w-[min(20rem,40%)] shrink items-center @max-[28rem]:hidden">
-          <ProviderConfigDirIndicator value={providerConfigDir} compact={docked} />
+          <ProviderConfigDirIndicator value={providerConfigDir} compact={false} />
         </div>
       ) : null}
-      {/* Home and the embedded Grow chat have their own place for it. */}
-      {docked ? null : (
-        <div className="flex shrink-0 items-center">
-          <ShortcutsButton />
-          <NotificationsBell />
-        </div>
-      )}
+      <div className="flex shrink-0 items-center">
+        <ShortcutsButton />
+      </div>
     </div>
   );
 });
 
-/** The thread's preview chip and "+N" list. Its own component so the header does not subscribe to the thread shell. */
+/**
+ * The thread's preview chip and "+N" list, plus starting and stopping its preview environment.
+ * Its own component so the header does not subscribe to the thread shell.
+ */
 function ChatHeaderPreviewLinks({ threadRef }: { threadRef: ScopedThreadRef }) {
   const links = useThreadShell(threadRef)?.previewLinks;
-  if (!links || links.length === 0) return null;
   return (
-    <div className="flex min-w-0 shrink items-center gap-2">
-      <ThreadPreviewLinks threadRef={threadRef} links={links} />
+    <div className="flex min-w-0 shrink items-center gap-1">
+      {links && links.length > 0 ? (
+        <ThreadPreviewLinks threadRef={threadRef} links={links} />
+      ) : null}
+      <PreviewEnvironmentControl threadRef={threadRef} />
     </div>
   );
 }

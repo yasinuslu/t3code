@@ -29,7 +29,6 @@ import {
 } from "@t3tools/client-runtime/state/thread-settled";
 import { useAcknowledgeThreadWoke, useThreadActions } from "../../hooks/useThreadActions";
 import { settleAndAdvance } from "../../settleAndAdvance";
-import { openBackgroundCommand } from "../../backgroundCommandsDialogStore";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { resolveThreadLastVisitedAt } from "../Sidebar.logic";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -539,8 +538,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
         stopping: isStoppingBackgroundWork,
         onStop: handleStopBackgroundWorkStable,
         onOpenThread: onOpenRelatedThreadStable,
-        onOpenCommand: (taskId) =>
-          openBackgroundCommand({ environmentId, threadId: activeThread.id, taskId }),
       })
     : null;
   // The relative times read the clock; nowMinute re-renders them on the minute.

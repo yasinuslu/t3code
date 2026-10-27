@@ -91,11 +91,6 @@ export function goalBannerItem(input: {
   };
 }
 
-/** Claude tags these with a task id whose command and output the details dialog shows. */
-function opensBackgroundCommand(kind: string): boolean {
-  return kind === "command" || kind === "monitor";
-}
-
 export function backgroundWorkBannerItem(input: {
   readonly threadId: ThreadId;
   readonly tasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>;
@@ -103,12 +98,10 @@ export function backgroundWorkBannerItem(input: {
   readonly stopping: boolean;
   readonly onStop: () => Promise<void>;
   readonly onOpenThread: (threadId: ThreadId) => void;
-  readonly onOpenCommand: (taskId: string) => void;
 }): ComposerBannerStackItem | null {
-  const { onOpenThread, onOpenCommand } = input;
+  const { onOpenThread } = input;
   const presentation = presentPendingBackgroundWork(input.tasks);
   if (presentation === null) return null;
-  const [only] = presentation.items;
   return {
     id: `background-work:${input.threadId}`,
     variant: "default",
@@ -123,56 +116,35 @@ export function backgroundWorkBannerItem(input: {
       />
     ),
     title: presentation.title,
-    // Subagents open their thread; commands and monitors open their command and output.
     description:
-      presentation.items.length === 1 && only?.childThreadId === undefined ? (
-        // A single named item is already in the title.
-        only && opensBackgroundCommand(only.kind) ? (
-          <InlineButton tone="muted" onClick={() => onOpenCommand(only.taskId)}>
-            Show command and output
-          </InlineButton>
-        ) : undefined
-      ) : (
-        presentation.items.map((item, index) => {
-          const childThreadId = item.childThreadId;
-          const separator = index < presentation.items.length - 1 ? "," : null;
-          return (
-            <Fragment key={item.taskId}>
-              {index > 0 ? " " : null}
-              {childThreadId === undefined ? (
-                opensBackgroundCommand(item.kind) ? (
-                  <span className="whitespace-nowrap">
-                    <InlineButton
-                      tone="muted"
-                      aria-label={`Show ${item.kind} ${item.label}`}
-                      onClick={() => onOpenCommand(item.taskId)}
-                    >
-                      {item.label}
-                    </InlineButton>
-                    {separator}
-                  </span>
-                ) : (
+      presentation.items.length === 1 && presentation.items[0]?.childThreadId === undefined
+        ? undefined
+        : presentation.items.map((item, index) => {
+            const childThreadId = item.childThreadId;
+            const separator = index < presentation.items.length - 1 ? "," : null;
+            return (
+              <Fragment key={item.taskId}>
+                {index > 0 ? " " : null}
+                {childThreadId === undefined ? (
                   <>
                     {item.label}
                     {separator}
                   </>
-                )
-              ) : (
-                <span className="whitespace-nowrap">
-                  <InlineButton
-                    tone="muted"
-                    aria-label={`${presentation.items.length === 1 ? "Show" : "Open"} subagent ${item.label}`}
-                    onClick={() => onOpenThread(childThreadId)}
-                  >
-                    {presentation.items.length === 1 ? "Show" : item.label}
-                  </InlineButton>
-                  {separator}
-                </span>
-              )}
-            </Fragment>
-          );
-        })
-      ),
+                ) : (
+                  <span className="whitespace-nowrap">
+                    <InlineButton
+                      tone="muted"
+                      aria-label={`${presentation.items.length === 1 ? "Show" : "Open"} subagent ${item.label}`}
+                      onClick={() => onOpenThread(childThreadId)}
+                    >
+                      {presentation.items.length === 1 ? "Show" : item.label}
+                    </InlineButton>
+                    {separator}
+                  </span>
+                )}
+              </Fragment>
+            );
+          }),
     actions: (
       <Button
         size="xs"

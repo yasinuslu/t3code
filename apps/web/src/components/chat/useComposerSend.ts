@@ -190,8 +190,6 @@ interface ComposerSendInput {
   readonly providerInstanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   /** Every provider account of the environment, for account balancing a new thread. */
   readonly providerStatuses: ReadonlyArray<ServerProvider>;
-  /** The draft asked to run its new thread in a sandbox. */
-  readonly sandboxRequested: boolean;
   readonly composerRef: ComposerHandleRef;
   readonly composerDraftTarget: ComposerThreadTarget;
   readonly promptRef: { current: string };
@@ -280,7 +278,6 @@ export function useComposerSend(input: ComposerSendInput) {
     logicalProjectEnvironments,
     providerInstanceEntries,
     providerStatuses,
-    sandboxRequested,
     composerRef,
     composerDraftTarget,
     promptRef,
@@ -1266,7 +1263,6 @@ export function useComposerSend(input: ComposerSendInput) {
                     runSetupScript: true,
                   }
                 : {}),
-              ...(isLocalDraftThread && sandboxRequested ? { sandbox: true } : {}),
             }
           : undefined;
       const backgroundThreadRef =

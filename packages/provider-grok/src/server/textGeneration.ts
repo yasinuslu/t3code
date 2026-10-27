@@ -11,7 +11,6 @@ import type { GrokSettings } from "../settings.ts";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
-import { generationTimeoutMs } from "@t3tools/provider-core/server/textGenerationUtils";
 import {
   applyGrokAcpModelSelection,
   currentGrokModelIdFromSessionSetup,
@@ -84,7 +83,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
           prompt: [{ type: "text", text: prompt }],
         });
       }).pipe(
-        Effect.timeoutOption(generationTimeoutMs(operation, GROK_TIMEOUT_MS)),
+        Effect.timeoutOption(GROK_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
             onNone: () =>

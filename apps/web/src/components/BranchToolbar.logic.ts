@@ -20,8 +20,6 @@ export interface EnvironmentOption {
   label: string;
   isPrimary: boolean;
   machine: EnvironmentMachineKind;
-  /** Listed but cannot be picked now: the machine cannot be reached. */
-  offline?: boolean;
 }
 
 /** "Add to another machine" stays muted until hovered: easy to find, quieter than the machines. */

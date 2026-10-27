@@ -1,17 +1,9 @@
-import {
-  usePreviewPanelInlineSize,
-  usePreviewPanelStackedSize,
-} from "../../hooks/usePreviewPanelInlineSize";
+import { usePreviewPanelInlineSize } from "../../hooks/usePreviewPanelInlineSize";
 import { RightPanelSheet } from "../RightPanelSheet";
 import { RightPanelTabs, type RightPanelTabsProps } from "../RightPanelTabs";
 
-type ChatRightPanelProps = Omit<
-  RightPanelTabsProps,
-  "mode" | "inlineSize" | "maximized" | "stacked"
-> & {
+type ChatRightPanelProps = Omit<RightPanelTabsProps, "mode" | "inlineSize" | "maximized"> & {
   readonly sheet: boolean;
-  /** Portrait layout: the panel sits below the chat and its size is a height. */
-  readonly stacked: boolean;
   readonly maximized: boolean;
   readonly workspaceLayoutElement: HTMLElement | null;
   readonly widthStorageKey: string;
@@ -32,7 +24,6 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     sheetAnimationDurationMs,
     onCloseSheet,
     maximized,
-    stacked,
     layoutControls,
     ...tabs
   } = props;
@@ -40,17 +31,8 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     container: workspaceLayoutElement,
     widthStorageKey,
   });
-  const stackedSize = usePreviewPanelStackedSize();
   if (!sheet) {
-    return (
-      <RightPanelTabs
-        {...tabs}
-        mode="inline"
-        maximized={maximized}
-        stacked={stacked}
-        inlineSize={stacked ? stackedSize : inlineSize}
-      />
-    );
+    return <RightPanelTabs {...tabs} mode="inline" maximized={maximized} inlineSize={inlineSize} />;
   }
   return (
     <RightPanelSheet

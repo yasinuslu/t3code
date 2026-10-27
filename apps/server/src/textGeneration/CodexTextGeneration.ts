@@ -21,7 +21,6 @@ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { codexExecLaunchArgs, resolveCodexLaunchArgs } from "../provider/codexLaunchArgs.ts";
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import {
-  generationTimeoutMs,
   normalizeCliError,
   toJsonSchemaObject,
 } from "@t3tools/provider-core/server/textGenerationUtils";
@@ -355,9 +354,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     return yield* Effect.gen(function* () {
       yield* runCodexCommand().pipe(
         Effect.scoped,
-        Effect.timeoutOption(
-          investigate?.timeoutMs ?? generationTimeoutMs(operation, CODEX_TIMEOUT_MS),
-        ),
+        Effect.timeoutOption(investigate?.timeoutMs ?? CODEX_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
             onNone: () =>

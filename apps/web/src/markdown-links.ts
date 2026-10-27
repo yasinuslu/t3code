@@ -11,9 +11,6 @@ import { parseFileUrlHref, splitFilePathPosition } from "@t3tools/shared/fileLin
 import { formatWorkspaceRelativePath } from "./filePathDisplay";
 import { isTerminalLinkActivation } from "./terminal-links";
 
-/** Marks a file chip: an anchor to a host path that opens in place and never navigates. */
-export const MARKDOWN_FILE_LINK_CLASS_NAME = "chat-markdown-file-link";
-
 export interface MarkdownFileLinkMeta {
   filePath: string;
   workspaceLookupPath: string | null;

@@ -15,7 +15,6 @@ import {
   isWorkspaceImagePreviewPath,
   isWorkspaceFontPreviewPath,
   isWorkspaceVideoPreviewPath,
-  spreadsheetFormat,
   officePreviewKind,
   binaryPreviewKind,
 } from "@t3tools/shared/filePreview";
@@ -44,13 +43,12 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
-import { FolderTree, Globe2, PencilIcon, WrapTextIcon } from "lucide-react";
+import { FolderTree, Globe2, WrapTextIcon } from "lucide-react";
 import { Code2, Eye, Table2 } from "lucide";
 import * as Schema from "effect/Schema";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPreview";
-import { isReportPage } from "~/browser/reportPages";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
 import { OpenInPicker } from "~/components/chat/OpenInPicker";
 import { MediaVideoPlayer } from "~/components/media/MediaVideoPlayer";
@@ -82,12 +80,8 @@ import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 
 import { AttachmentFilePreview } from "./AttachmentFilePreview";
 import { AudioPreview } from "./AudioPreview";
-import {
-  BrowserDocumentFrame,
-  isPdfPreviewFile,
-  ReportDocumentFrame,
-} from "./BrowserDocumentFrame";
-import { DelimitedTablePreview, EditableDelimitedTable } from "./DelimitedTablePreview";
+import { BrowserDocumentFrame, isPdfPreviewFile } from "./BrowserDocumentFrame";
+import { DelimitedTablePreview } from "./DelimitedTablePreview";
 import { PreviewImage } from "./PreviewImage";
 import FileBrowserPanel from "./FileBrowserPanel";
 import { FileBreadcrumbs } from "./FileBreadcrumbs";
@@ -112,7 +106,6 @@ import {
   FileSurfaceLoading,
 } from "./fileSurfaceChrome";
 import SourceFilePreview from "./ReadOnlySourcePreview";
-import { WorkbookFileSurface } from "./SpreadsheetFileSurface";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey } from "./fileContentRevision";
@@ -232,7 +225,6 @@ function WorkspaceBrowserPreview(props: {
   readonly workspaceRoot: string;
   readonly title: string;
   readonly workspaceMutationId: string | null;
-  readonly report: boolean;
 }) {
   const resource = workspaceAssetResource({
     kind: "workspace-file",
@@ -261,12 +253,9 @@ function WorkspaceBrowserPreview(props: {
       </div>
     );
   }
-  const src = `${assetUrl.url}${revisionSuffix}`;
-  return props.report ? (
-    <ReportDocumentFrame src={src} title={props.title} />
-  ) : (
+  return (
     <BrowserDocumentFrame
-      src={src}
+      src={`${assetUrl.url}${revisionSuffix}`}
       documentKey={`${props.environmentId}:${resource._tag}:${props.threadRef.threadId}:${props.absolutePath}:${props.workspaceMutationId}`}
       title={props.title}
       pdf={isPdfPreviewFile(props.absolutePath)}
@@ -971,35 +960,6 @@ function RenderedMarkdownSurface({
   );
 }
 
-/** A CSV or TSV grid that saves itself the way the text editor does. */
-function EditableTableSurface(props: {
-  readonly environmentId: EnvironmentId;
-  readonly cwd: string;
-  readonly relativePath: string;
-  readonly text: string;
-  readonly delimiter: "," | "\t";
-  readonly onPendingChange: (relativePath: string, pending: boolean) => void;
-}) {
-  const { environmentId, cwd, relativePath } = props;
-  const saveCoordinator = useFileSaveCoordinator({
-    environmentId,
-    cwd,
-    relativePath,
-    onPendingChange: props.onPendingChange,
-  });
-  return (
-    <EditableDelimitedTable
-      name={relativePath}
-      text={props.text}
-      delimiter={props.delimiter}
-      onTextChange={(next) => {
-        setProjectFileQueryData(environmentId, cwd, relativePath, next);
-        saveCoordinator.change(next);
-      }}
-    />
-  );
-}
-
 function renderedToggleLabel(
   mode: "markdown" | "mermaid" | "html" | "table",
   rendered: boolean,
@@ -1061,18 +1021,8 @@ export default function FilePreviewPanel({
   const isImage = relativePath !== null && !isVideo && isWorkspaceImagePreviewPath(relativePath);
   const isMedia = isImage || isVideo || isAudio;
   const isPdf = relativePath !== null && isPdfPreviewFile(relativePath);
-  const workbookFormat =
-    attachment === undefined && relativePath !== null
-      ? spreadsheetFormat({ name: relativePath })
-      : null;
-  // The office preview shows .xlsx; Edit cells swaps in the SheetJS editor, which also covers
-  // legacy .xls that the office preview cannot read.
-  const [editingSheetPath, setEditingSheetPath] = useState<string | null>(null);
-  const editingSheet = relativePath !== null && editingSheetPath === relativePath;
-  const ownWorkbook = workbookFormat === "xls" || (workbookFormat === "xlsx" && editingSheet);
   const isDocument =
     relativePath !== null &&
-    !ownWorkbook &&
     (binaryPreviewKind({ name: relativePath }) !== null ||
       officePreviewKind({ name: relativePath }) !== null ||
       isWorkspaceFontPreviewPath(relativePath));
@@ -1082,16 +1032,12 @@ export default function FilePreviewPanel({
   const fileAccess = useFilesystemReadAccess(environmentId);
   const { canReadFiles } = fileAccess;
   const canWriteFiles = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
-  const textFile = useProjectFileQuery(
+  const file = useProjectFileQuery(
     environmentId,
     cwd,
     relativePath,
-    attachment === undefined && relativePath !== null && !ownWorkbook,
+    attachment === undefined && relativePath !== null,
   );
-  // A workbook the editor opens is binary: its bytes come over as base64.
-  const workbookFile = useProjectFileQuery(environmentId, cwd, relativePath, ownWorkbook, "base64");
-  const file = ownWorkbook ? workbookFile : textFile;
-  const isReportFile = isHtml && file.data !== null && isReportPage(file.data.contents);
   const [fileRefreshRevision, setFileRefreshRevision] = useState(0);
   const attemptedPath = file.readError?.resolvedPath ?? file.readError?.operationPath;
   // Folder links fail file reads; retain mutation refresh to detect conversion to files. Host folders own
@@ -1169,7 +1115,6 @@ export default function FilePreviewPanel({
     previewPath !== null && attachment === undefined && renderedMode !== null;
   const showsRawText =
     previewPath !== null &&
-    workbookFormat === null &&
     file.data !== null &&
     !(isMarkdown && renderMarkdown) &&
     !renderMermaid &&
@@ -1197,13 +1142,6 @@ export default function FilePreviewPanel({
     !isVideo &&
     previewAvailable &&
     isBrowserPreviewFile(previewPath);
-  // Viewing uses the read-only previews; the spreadsheet editor is opt-in per file.
-  const canEditSheet =
-    previewPath !== null &&
-    !isHostFile &&
-    canWriteFiles &&
-    (workbookFormat === "xlsx" ||
-      (tableDelimiter !== null && renderTable && file.data !== null && !file.data.truncated));
   // Navigating up preserves the file tab; retain the trail's path spelling to find its folder tab.
   const navigateToFolder = (crumbPath: string) => {
     const path =
@@ -1263,7 +1201,6 @@ export default function FilePreviewPanel({
         httpBaseUrl: environmentHttpBaseUrl,
         createAssetUrl,
         openPreview,
-        report: isReportFile,
       });
       if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
         return;
@@ -1353,15 +1290,6 @@ export default function FilePreviewPanel({
               />
             </FileSurfaceAction>
           ) : null}
-          {canEditSheet ? (
-            <FileSurfaceAction
-              label={editingSheet ? "Stop editing cells" : "Edit cells"}
-              pressed={editingSheet}
-              onPress={() => setEditingSheetPath(editingSheet ? null : relativePath)}
-            >
-              <PencilIcon className="size-3.5" />
-            </FileSurfaceAction>
-          ) : null}
           {showsRawText ? (
             <FileSurfaceAction
               label={wordWrap ? "Disable word wrap" : "Enable word wrap"}
@@ -1449,15 +1377,6 @@ export default function FilePreviewPanel({
               alt={relativePath}
               workspaceMutationId={workspaceMutationId}
             />
-          ) : relativePath && file.isMissing && file.data === null ? (
-            // An agent may announce a report before writing it; the asset URL
-            // would only say the preview failed, so name the real state.
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center text-xs leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Not written yet</span>
-              <span>
-                This file does not exist on disk yet. It will appear here once it is written.
-              </span>
-            </div>
           ) : relativePath && renderBrowserFile && absolutePath ? (
             <WorkspaceBrowserPreview
               key={absolutePath}
@@ -1468,13 +1387,11 @@ export default function FilePreviewPanel({
               workspaceRoot={cwd}
               title={relativePath}
               workspaceMutationId={workspaceMutationId}
-              report={isReportFile}
             />
           ) : relativePath &&
             absolutePath &&
             file.data?.truncated &&
             !isDocument &&
-            !ownWorkbook &&
             !draft &&
             !isMarkdown &&
             !isMermaid &&
@@ -1545,24 +1462,7 @@ export default function FilePreviewPanel({
               <Spinner size="lg" />
             </div>
           ) : relativePath && file.data ? (
-            ownWorkbook && workbookFormat !== null ? (
-              file.data.truncated ? (
-                <FileSurfaceFailure message="This workbook is larger than 12 MB, so it is not opened here. Open it in a spreadsheet app." />
-              ) : (
-                <WorkbookFileSurface
-                  key={relativePath}
-                  environmentId={environmentId}
-                  cwd={cwd}
-                  relativePath={relativePath}
-                  format={workbookFormat}
-                  contents={file.data.contents}
-                  readOnly={isHostFile || !canWriteFiles}
-                  refresh={file.refresh}
-                  onOpenFile={onOpenFile}
-                  onPendingChange={onPendingChange}
-                />
-              )
-            ) : renderMermaid ? (
+            renderMermaid ? (
               <Suspense fallback={<FileSurfaceLoading />}>
                 <MermaidFilePreview text={file.data.contents} />
               </Suspense>
@@ -1579,24 +1479,12 @@ export default function FilePreviewPanel({
                 onPendingChange={onPendingChange}
               />
             ) : tableDelimiter && renderTable ? (
-              editingSheet ? (
-                <EditableTableSurface
-                  key={relativePath}
-                  environmentId={environmentId}
-                  cwd={cwd}
-                  relativePath={relativePath}
-                  text={file.data.contents}
-                  delimiter={tableDelimiter}
-                  onPendingChange={onPendingChange}
-                />
-              ) : (
-                <DelimitedTablePreview
-                  key={relativePath}
-                  name={relativePath}
-                  text={file.data.contents}
-                  delimiter={tableDelimiter}
-                />
-              )
+              <DelimitedTablePreview
+                key={relativePath}
+                name={relativePath}
+                text={file.data.contents}
+                delimiter={tableDelimiter}
+              />
             ) : file.data.truncated || isHostFile || !canWriteFiles ? (
               <SourceFilePreview
                 name={relativePath}

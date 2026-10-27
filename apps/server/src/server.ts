@@ -7,23 +7,12 @@ import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReact
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
 import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
 import * as AccountFailoverReactor from "./orchestration-v2/AccountFailoverReactor.ts";
-import * as ProofRequestReactor from "./orchestration-v2/ProofRequestReactor.ts";
 import * as ComponentRepairReactor from "./orchestration-v2/ComponentRepairReactor.ts";
-import * as PromptRetryReactor from "./orchestration-v2/PromptRetryReactor.ts";
 import * as PreviewLinkReportReactor from "./orchestration-v2/PreviewLinkReportReactor.ts";
 import * as BrainstormService from "./brainstorm/BrainstormService.ts";
-import * as GrowService from "./grow/GrowService.ts";
-import * as GrowWidgetPool from "./grow/GrowWidgetPool.ts";
-import * as LivingPageReactor from "./grow/LivingPageReactor.ts";
 import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
-import { notificationsHttpApiLayer } from "./notifications/http.ts";
-import * as UserNotifications from "./notifications/UserNotifications.ts";
-import * as WebPush from "./notifications/WebPush.ts";
 import * as PreviewLinkStatus from "./preview/PreviewLinkStatus.ts";
-import * as SandboxService from "./sandbox/SandboxService.ts";
-import * as SandboxThreadLifecycle from "./sandbox/SandboxThreadLifecycle.ts";
 import * as CodeProfiles from "./provider/CodeProfiles.ts";
-import * as ElementsDemoSeeder from "./elements/ElementsDemoSeeder.ts";
 // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
@@ -606,15 +595,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ),
   layerThreadPullRequestWorker,
   DelegatedTaskAnalytics.layer,
-  SandboxThreadLifecycle.layer,
   Layer.effectDiscard(
     Effect.gen(function* () {
       const service = yield* PreviewLinkReportReactor.PreviewLinkReportReactor;
       yield* service.start();
     }),
   ).pipe(Layer.provide(PreviewLinkReportReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
-  // Experimental: demo threads from T3CODE_ELEMENTS_DEMO (no-op when unset).
-  ElementsDemoSeeder.layer.pipe(Layer.provide(RuntimeLayer.layerEventSink)),
   Layer.effectDiscard(
     Effect.gen(function* () {
       const service = yield* PullRequestSyncReactor.PullRequestSyncReactor;
@@ -694,7 +680,6 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
     ),
   ),
   Layer.provideMerge(layerWorkspace),
-  Layer.provideMerge(SandboxService.layer.pipe(Layer.provide(ProcessRunner.layer))),
   Layer.provideMerge(ProjectEnrichmentService.layer),
   Layer.provideMerge(Layer.mergeAll(NativeAppIconResolver.layer, layerProjectFaviconResolver)),
   Layer.provideMerge(layerRepositoryIdentityResolver),
@@ -743,7 +728,6 @@ const layerMakeRoutes = Layer.mergeAll(
       Layer.provide(OrchestrationHttp.layer),
       Layer.provide(PullRequestHttp.layer),
       Layer.provide(ProjectHttp.layer),
-      Layer.provide(notificationsHttpApiLayer),
       Layer.provide(ServerHttp.layerServerEnvironmentHttpApi),
       Layer.provide(WebhookRoute.layer.pipe(Layer.provide(RelayDeliveryProof.layer))),
       Layer.provide(AuthHttp.layerAuthenticatedAuth),
@@ -768,13 +752,6 @@ const layerMakeRoutes = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(AccountFailoverReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
-  // Also skips manager threads, so it starts here for the same reason.
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const service = yield* ProofRequestReactor.ProofRequestReactor;
-      yield* service.start();
-    }),
-  ).pipe(Layer.provide(ProofRequestReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
   // Tells an agent which components in its finished reply render as error cards.
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -782,20 +759,6 @@ const layerMakeRoutes = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ComponentRepairReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
-  // Keeps each thread's living page current with a cheap writer model, apart from its agent.
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const service = yield* LivingPageReactor.LivingPageReactor;
-      yield* service.start();
-    }),
-  ).pipe(Layer.provide(LivingPageReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
-  // Resends a message the provider refused to run, so no thread waits on the user for it.
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const service = yield* PromptRetryReactor.PromptRetryReactor;
-      yield* service.start();
-    }),
-  ).pipe(Layer.provide(PromptRetryReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
 ).pipe(
   Layer.provide(
     PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
@@ -810,15 +773,12 @@ const layerMakeRoutes = Layer.mergeAll(
   ),
   Layer.provide(PreviewBrowser.layer),
   Layer.provide(BrainstormService.layerWithManagerScope),
-  Layer.provide(GrowService.layer),
-  Layer.provide(GrowWidgetPool.layer),
   Layer.provide(
     PreviewEnvironmentService.layer.pipe(
       Layer.provide(T3ProjectFileLoader.layer),
       Layer.provide(ProcessRunner.layer),
     ),
   ),
-  Layer.provide(UserNotifications.layer.pipe(Layer.provide(WebPush.layer))),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate))),
   Layer.provide(layerCommandReadiness),

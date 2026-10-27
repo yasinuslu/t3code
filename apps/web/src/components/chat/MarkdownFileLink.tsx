@@ -9,10 +9,7 @@ import { memo, type CSSProperties, type MouseEvent as ReactMouseEvent } from "re
 
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
-import {
-  MARKDOWN_FILE_LINK_CLASS_NAME,
-  shouldOpenMarkdownFileLinkInEditor,
-} from "../../markdown-links";
+import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";
 import type { markdownFileCopyPaths } from "../../markdownFileHostPath";
 import { documentIconColorForFileName } from "../../pierre-icons";
 import { ContextChip } from "../ContextChip";
@@ -48,6 +45,8 @@ interface MarkdownFileLinkProps {
   onReveal?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   revealLabel?: string | undefined;
 }
+
+const MARKDOWN_FILE_LINK_CLASS_NAME = "chat-markdown-file-link";
 
 export const MarkdownFileLink = memo(function MarkdownFileLink({
   environmentId,

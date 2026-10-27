@@ -15,7 +15,6 @@ import { applyAntigravityAcpModelSelection } from "../provider/acp/AntigravityAc
 import { removeAntigravitySessionFiles } from "../provider/acp/AntigravitySessionFiles.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
-import { generationTimeoutMs } from "@t3tools/provider-core/server/textGenerationUtils";
 
 const ANTIGRAVITY_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_CHARS = 128_000;
@@ -268,7 +267,7 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
         return yield* TextGenerationOperations.decodeJsonReply(input, "Antigravity", rawResult);
       }).pipe(
         Effect.scoped,
-        Effect.timeoutOption(generationTimeoutMs(operation, ANTIGRAVITY_TIMEOUT_MS)),
+        Effect.timeoutOption(ANTIGRAVITY_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
             onNone: () =>

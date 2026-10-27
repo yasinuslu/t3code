@@ -11,8 +11,6 @@ type NotificationOutcome = OrchestrationV2Notification["outcome"];
 
 export type BackgroundWork = {
   readonly label?: string | undefined;
-  /** The provider task id a tool item names as its `backgroundTaskId`. */
-  readonly taskId?: string | undefined;
 } & (
   | { readonly kind: "subagent"; readonly childThreadId?: ThreadId | undefined }
   | { readonly kind: "command"; readonly exitCode?: number | undefined }
@@ -135,25 +133,10 @@ export function backgroundWorkNotification(
   const [first, ...rest] = reports;
   if (first === undefined) return null;
   const outcome = combinedOutcome(reports.map((report) => report.outcome));
-  const tasks = reports.flatMap((report) =>
-    report.taskId === undefined
-      ? []
-      : [
-          {
-            taskId: report.taskId,
-            outcome: report.outcome,
-            ...(report.label?.trim() ? { label: report.label.trim() } : {}),
-            ...(report.kind === "command" && report.exitCode !== undefined
-              ? { exitCode: report.exitCode }
-              : {}),
-          },
-        ],
-  );
   return {
     source: reportsSource([first, ...rest]),
     outcome,
     summary: reportsSummary([first, ...rest], outcome),
-    ...(tasks.length === 0 ? {} : { tasks }),
   };
 }
 

@@ -17,8 +17,6 @@ import {
   useComposerDraftStore,
 } from "../composerDraftStore";
 import { environmentCatalog } from "../connection/catalog";
-import { useCoveredByOverlay } from "../homeOverlayStore";
-import { useGrowIsHome } from "../hooks/useSettings";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { useEnvironmentThreadRefs, useThreadRefs, useQuietThreadShell } from "../state/entities";
 import { useEnvironmentShellStatus } from "../state/shell";
@@ -44,8 +42,6 @@ export function ThreadRouteView({
   background?: boolean;
 }) {
   const navigate = useNavigate();
-  const growIsHome = useGrowIsHome();
-  const coveredByOverlay = useCoveredByOverlay();
   const draftId = target.kind === "draft" ? target.draftId : null;
   const draftSession = useComposerDraftStore((store) =>
     draftId === null ? null : store.getDraftSession(draftId),
@@ -167,6 +163,7 @@ export function ThreadRouteView({
     !catalog.entries.has(target.threadRef.environmentId)
       ? target.threadRef.environmentId
       : null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- a timer that gives up on an unknown environment
   useEffect(() => {
     if (unknownEnvironmentId === null || background) return;
     const timer = setTimeout(() => {
@@ -201,7 +198,6 @@ export function ThreadRouteView({
   }, [draftThread, serverThreadStarted, target]);
 
   let view: React.ReactNode = null;
-  const coveredByGrow = growIsHome && coveredByOverlay;
   if (target.kind === "draft") {
     if (draftSession) {
       view = (
@@ -215,9 +211,6 @@ export function ThreadRouteView({
         />
       );
     }
-  } else if (coveredByGrow && promotedDraftId === null) {
-    // Grow shows this thread itself; a second chat view of it under Grow would only cost.
-    view = null;
   } else if (renderState === "ready" || (renderState === "loading" && serverThreadShell !== null)) {
     view = (
       <ChatView

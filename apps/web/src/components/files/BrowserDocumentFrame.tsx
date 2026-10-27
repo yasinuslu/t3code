@@ -34,7 +34,6 @@ import {
 import { isElectron } from "~/env";
 import { FileSurfaceLoading } from "./fileSurfaceChrome";
 
-import { REPORT_DESIGN_VIEWPORT } from "~/browser/reportPages";
 import { useOpenLink } from "~/browser/useOpenLink";
 import { ExpandedImageDialog } from "~/components/chat/ExpandedImageDialog";
 import type { ExpandedImagePreview } from "~/components/chat/ExpandedImagePreview";
@@ -332,43 +331,5 @@ export function HtmlRenderDocument(props: {
         <ExpandedImageDialog preview={expandedImage} onClose={() => setExpandedImage(null)} />
       ) : null}
     </>
-  );
-}
-
-/** A report page at its design viewport, scaled to fit, so the whole one-screen page shows. */
-export function ReportDocumentFrame(props: { readonly src: string; readonly title: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
-  const { width, height } = REPORT_DESIGN_VIEWPORT;
-  const scale = size ? Math.min(size.width / width, size.height / height) : 0;
-  return (
-    <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden bg-muted/35">
-      {size ? (
-        <iframe
-          key={props.src}
-          src={props.src}
-          title={props.title}
-          className="absolute border-0 bg-white"
-          style={{
-            width,
-            height,
-            left: (size.width - width * scale) / 2,
-            top: (size.height - height * scale) / 2,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-          }}
-          sandbox="allow-scripts allow-forms allow-popups allow-modals"
-        />
-      ) : null}
-    </div>
   );
 }

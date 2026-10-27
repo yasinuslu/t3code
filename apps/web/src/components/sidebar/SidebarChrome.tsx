@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
-import { useEnvironmentIdentificationMode, useGrowEnabled } from "../../hooks/useSettings";
+import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
@@ -39,8 +39,6 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }) {
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
-  // The fork's app bar (ModeSwitch) takes this row; the spaces below name the scope.
-  const appBar = useGrowEnabled();
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
     environmentIdentificationMode === "artwork",
@@ -66,17 +64,13 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         />
       </div>
       <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
-        {appBar ? null : (
-          <>
-            <SidebarBrand onBackdrop={backdropVariant !== null} />
-            <ActiveSpaceLabel
-              className={cn(
-                "hidden text-sm font-medium md:inline-flex",
-                backdropVariant ? "text-white/80" : "text-muted-foreground",
-              )}
-            />
-          </>
-        )}
+        <SidebarBrand onBackdrop={backdropVariant !== null} />
+        <ActiveSpaceLabel
+          className={cn(
+            "hidden text-sm font-medium md:inline-flex",
+            backdropVariant ? "text-white/80" : "text-muted-foreground",
+          )}
+        />
         {pillLabel ? (
           <div className="ml-1 flex h-7 items-center">
             <Badge data-environment-identification="pill" size="sm" variant="secondary">
@@ -94,7 +88,6 @@ export function SidebarBrandWidthProbe({
 }: {
   onWidthChange: (width: number) => void;
 }) {
-  const appBar = useGrowEnabled();
   const observeWidth = (probe: HTMLDivElement) => {
     return observeResize(probe, ([entry]) => {
       if (entry) onWidthChange(entry.borderBoxSize[0]?.inlineSize ?? probe.offsetWidth);
@@ -108,7 +101,7 @@ export function SidebarBrandWidthProbe({
       ref={observeWidth}
     >
       <div className="ml-[var(--workspace-titlebar-content-left)] flex">
-        {appBar ? null : <SidebarBrandMark onBackdrop={false} />}
+        <SidebarBrandMark onBackdrop={false} />
       </div>
     </div>
   );

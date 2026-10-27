@@ -653,14 +653,8 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
           }
         : {};
     };
-    // Grow's widget frame is sandboxed with an opaque origin, and module scripts load with CORS.
-    // The build is public, so its bundle can be read from anywhere.
-    const cors: Record<string, string> = relativePath.startsWith("assets/")
-      ? { "Access-Control-Allow-Origin": "*" }
-      : {};
     const headers: Record<string, string> = {
       "Cache-Control": cacheControl,
-      ...cors,
       ...validators(fileInfo),
     };
     const etag = headers.ETag;
@@ -697,7 +691,6 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
       return HttpServerResponse.uint8Array(bytes, {
         headers: {
           "Cache-Control": cacheControl,
-          ...cors,
           ...validators({ ...info, size: ByteSize.bytes(bytes.byteLength) }),
         },
         contentType,

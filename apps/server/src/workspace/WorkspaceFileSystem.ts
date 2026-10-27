@@ -11,7 +11,6 @@ import type {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "@t3tools/contracts";
-import { SPREADSHEET_MAX_BYTES } from "@t3tools/shared/filePreview";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { isNetworkPath } from "@t3tools/shared/path";
@@ -396,18 +395,7 @@ export const make = Effect.gen(function* () {
             });
           }
 
-          // Raw bytes (a workbook) get a bigger limit and skip the text check below.
-          const binary = input.encoding === "base64";
-          const maxBytes = binary ? SPREADSHEET_MAX_BYTES : PROJECT_READ_FILE_MAX_BYTES;
-          if (binary && stat.size > maxBytes) {
-            return {
-              relativePath: target.relativePath,
-              contents: "",
-              byteLength: stat.size,
-              truncated: true,
-            };
-          }
-          const bytesToRead = Math.min(stat.size, maxBytes);
+          const bytesToRead = Math.min(stat.size, PROJECT_READ_FILE_MAX_BYTES);
           const buffer = Buffer.alloc(bytesToRead);
           const { bytesRead } = yield* Effect.tryPromise({
             try: () => handle.read(buffer, 0, bytesToRead, 0),
@@ -422,7 +410,7 @@ export const make = Effect.gen(function* () {
               }),
           });
           const fileBytes = buffer.subarray(0, bytesRead);
-          if (!binary && fileBytes.includes(0)) {
+          if (fileBytes.includes(0)) {
             return yield* new WorkspaceBinaryFileError({
               workspaceRoot: input.cwd,
               relativePath: input.relativePath,
@@ -432,11 +420,9 @@ export const make = Effect.gen(function* () {
 
           return {
             relativePath: target.relativePath,
-            contents: binary
-              ? Buffer.from(fileBytes).toString("base64")
-              : new TextDecoder("utf-8").decode(fileBytes),
+            contents: new TextDecoder("utf-8").decode(fileBytes),
             byteLength: stat.size,
-            truncated: stat.size > maxBytes,
+            truncated: stat.size > PROJECT_READ_FILE_MAX_BYTES,
           };
         }),
       (handle) =>
@@ -562,17 +548,13 @@ export const make = Effect.gen(function* () {
     yield* Effect.tryPromise({
       // A symlink swapped in after the check is not followed. Windows lacks O_NOFOLLOW.
       try: () =>
-        NodeFSP.writeFile(
-          realTargetPath,
-          input.encoding === "base64" ? Buffer.from(input.contents, "base64") : input.contents,
-          {
-            flag:
-              NodeFS.constants.O_WRONLY |
-              NodeFS.constants.O_CREAT |
-              NodeFS.constants.O_TRUNC |
-              (NodeFS.constants.O_NOFOLLOW ?? 0),
-          },
-        ),
+        NodeFSP.writeFile(realTargetPath, input.contents, {
+          flag:
+            NodeFS.constants.O_WRONLY |
+            NodeFS.constants.O_CREAT |
+            NodeFS.constants.O_TRUNC |
+            (NodeFS.constants.O_NOFOLLOW ?? 0),
+        }),
       catch: (cause) =>
         new WorkspaceFileSystemOperationError({
           workspaceRoot: input.cwd,

@@ -19,7 +19,6 @@ import * as Schema from "effect/Schema";
 
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
-import * as SandboxService from "../sandbox/SandboxService.ts";
 import * as ProjectService from "./ProjectService.ts";
 
 export interface ProjectSetupScriptRunnerResultNoScript {
@@ -190,7 +189,6 @@ export const make = Effect.gen(function* () {
     yield* HostProcess.Platform,
     yield* HostProcess.Environment,
   );
-  const sandboxes = yield* Effect.serviceOption(SandboxService.SandboxService);
 
   const observeTerminalCompletion = Effect.fn("ProjectSetupScriptRunner.observeTerminalCompletion")(
     function* (input: {
@@ -427,11 +425,7 @@ export const make = Effect.gen(function* () {
       observe && completionToken
         ? wrapCommandForCompletion(
             script.command,
-            // A sandbox terminal is bash in the container, whatever the host shell is.
-            Option.isSome(sandboxes) &&
-              (yield* sandboxes.value.isSandboxed({ threadId: input.threadId, cwd }))
-              ? "posix"
-              : completionShell,
+            completionShell,
             completionSentinel(completionToken),
           )
         : script.command;

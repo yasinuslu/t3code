@@ -190,6 +190,10 @@ export interface EnvironmentThreadShell {
   readonly branchPullRequest?: ThreadLinkedPullRequest | null;
   /** Previews (running builds) of this thread's work, oldest first; absent on client-built shells. */
   readonly previewLinks?: ReadonlyArray<ThreadPreviewLink>;
+  /** When the agent last set the thread's presentation; absent until one does. */
+  readonly presentationUpdatedAt?: string;
+  /** How many pages that presentation has. */
+  readonly presentationPages?: number;
   /** Where the thread's preview environment stands; absent until one is started. */
   readonly previewEnvironment?: import("@t3tools/contracts").ThreadPreviewEnvironment;
   /**
@@ -309,6 +313,12 @@ export function presentThreadShell(
     linkedPullRequest: thread.linkedPullRequest ?? null,
     branchPullRequest: thread.branchPullRequest ?? null,
     previewLinks: thread.previewLinks ?? NO_PREVIEW_LINKS,
+    ...(thread.presentationUpdatedAt === undefined
+      ? {}
+      : {
+          presentationUpdatedAt: thread.presentationUpdatedAt,
+          presentationPages: thread.presentationPages ?? 0,
+        }),
     ...(thread.previewEnvironment === undefined
       ? {}
       : { previewEnvironment: thread.previewEnvironment }),

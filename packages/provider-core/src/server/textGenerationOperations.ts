@@ -9,17 +9,14 @@ import type { ProviderTextGeneration } from "./textGeneration.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
-  buildLivingPagePrompt,
   buildPrContentPrompt,
   buildReviewGuidePrompt,
   buildThreadTitlePrompt,
-  buildWidgetPrompt,
 } from "./textGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
-  stripCodeFence,
 } from "./textGenerationUtils.ts";
 
 export type Operation = keyof ProviderTextGeneration;
@@ -170,47 +167,11 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
     });
   });
 
-  const generateLivingPage: ProviderTextGeneration["generateLivingPage"] = Effect.fn(
-    `${name}.generateLivingPage`,
-  )(function* (input) {
-    const generated = yield* run({
-      operation: "generateLivingPage",
-      cwd: input.cwd,
-      modelSelection: input.modelSelection,
-      ...buildLivingPagePrompt({
-        context: input.context,
-        pool: input.pool,
-        previous: input.previous,
-      }),
-    });
-    return { unchanged: generated.unchanged, blocks: generated.blocks, missing: generated.missing };
-  });
-
-  const generateWidget: ProviderTextGeneration["generateWidget"] = Effect.fn(
-    `${name}.generateWidget`,
-  )(function* (input) {
-    const generated = yield* run({
-      operation: "generateWidget",
-      cwd: input.cwd,
-      modelSelection: input.modelSelection,
-      ...buildWidgetPrompt({
-        name: input.name,
-        purpose: input.purpose,
-        readme: input.readme,
-        sample: input.sample,
-        existing: input.existing,
-      }),
-    });
-    return { name: generated.name.trim(), code: stripCodeFence(generated.code) };
-  });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
-    generateLivingPage,
-    generateWidget,
   } satisfies ProviderTextGeneration;
 }

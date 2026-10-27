@@ -10,7 +10,6 @@ import type {
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
-import { PROMPT_NOT_RUN_FAILURE_CODE } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as DateTime from "effect/DateTime";
 import * as Cause from "effect/Cause";
 
@@ -95,16 +94,6 @@ function curatedCauseMessages(cause: unknown): {
         case "ClaudeMcpRegistrationTimeoutError":
         case "CursorModelUnavailableError":
           return { known: stringField(cause, "message"), category: categoryMessage() };
-        // Written by T3 for the user: why the thread's sandbox could not run it.
-        case "SandboxError": {
-          const detail = stringField(cause, "detail");
-          if (detail !== undefined)
-            return {
-              known: `The thread's sandbox could not run this turn: ${detail}`,
-              category: categoryMessage(),
-            };
-          break;
-        }
         case "ContextHandoffDeliveryUncertainError":
           return {
             known:
@@ -144,51 +133,7 @@ export function knownProviderFailureMessage(cause: unknown): string | undefined 
   return curatedCauseMessages(cause).known;
 }
 
-/**
- * Whether the provider refused a turn before taking any input, so history
- * handed with it certainly did not reach the native conversation.
- */
-export function isProviderTurnRefusedBeforeInput(cause: unknown): boolean {
-  const seen = new Set<unknown>();
-  for (let depth = 0; depth < 16 && cause != null && !seen.has(cause); depth++) {
-    seen.add(cause);
-    if (Cause.isCause(cause)) {
-      cause = Cause.squash(cause);
-      continue;
-    }
-    if (typeof cause !== "object") return false;
-    if (Reflect.get(cause, "_tag") === "ClaudeBackgroundWorkBlocksQueryReplacementError") {
-      return true;
-    }
-    cause = Reflect.get(cause, "cause");
-  }
-  return false;
-}
-
-/**
- * Whether an error in the cause chain says the prompt never reached the
- * provider (`promptNotRun`), so the server may send it again.
- */
-export function isPromptNotRunCause(cause: unknown): boolean {
-  const seen = new Set<unknown>();
-  try {
-    for (let depth = 0; depth < 16 && cause != null && !seen.has(cause); depth++) {
-      seen.add(cause);
-      if (Cause.isCause(cause)) {
-        cause = Cause.squash(cause);
-        continue;
-      }
-      if (typeof cause !== "object") return false;
-      if (Reflect.get(cause, "promptNotRun") === true) return true;
-      cause = Reflect.get(cause, "cause");
-    }
-  } catch {
-    return false;
-  }
-  return false;
-}
-
-function stringField(value: unknown, key: "message" | "code" | "detail"): string | undefined {
+function stringField(value: unknown, key: "message" | "code"): string | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   try {
     const candidate = (value as Record<string, unknown>)[key];
@@ -268,10 +213,7 @@ export function makeProviderFailure(input: {
   const rawMessage =
     input.message ?? curated.known ?? curated.category ?? DEFAULT_PROVIDER_FAILURE_MESSAGE;
   const message = boundedText(rawMessage, MAX_PROVIDER_FAILURE_MESSAGE_LENGTH);
-  const rawCode =
-    input.code ??
-    stringField(input.cause, "code") ??
-    (isPromptNotRunCause(input.cause) ? PROMPT_NOT_RUN_FAILURE_CODE : null);
+  const rawCode = input.code ?? stringField(input.cause, "code") ?? null;
   const code =
     rawCode === null ? null : boundedText(rawCode, MAX_PROVIDER_FAILURE_CODE_LENGTH) || null;
 

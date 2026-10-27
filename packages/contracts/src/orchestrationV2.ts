@@ -63,6 +63,7 @@ import {
   ThreadPullRequestWatch,
 } from "./threadPullRequest.ts";
 import { ThreadPreviewLink, ThreadPreviewLinkSource } from "./threadPreviewLink.ts";
+import { PresentationPage, ThreadPresentation } from "./threadPresentation.ts";
 import {
   ThreadPreviewEnvironment,
   ThreadPreviewEnvironmentStatus,
@@ -419,6 +420,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   /** Previews (running builds) of this thread's work; optional so older servers still decode. */
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
+  /** The presentation its agent last set (`presentation_set`); absent until one does. */
+  presentation: Schema.optional(ThreadPresentation),
   /** The thread's project-declared preview environment; absent until one is started. */
   previewEnvironment: Schema.optional(ThreadPreviewEnvironment),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
@@ -1933,6 +1936,10 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   /** Previews (running builds) of this thread's work; optional so older servers still decode. */
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
+  /** When the agent last set the thread's presentation; the pages stay server-side. */
+  presentationUpdatedAt: Schema.optional(IsoDateTime),
+  /** How many pages that presentation has; absent when there is none. */
+  presentationPages: Schema.optional(Schema.Number),
   /** Where the thread's preview environment stands; absent until one is started. */
   previewEnvironment: Schema.optional(ThreadPreviewEnvironment),
   lineage: OrchestrationV2AppThreadLineage,
@@ -2913,6 +2920,17 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     url: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.presentation.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    /** Replaces the previous presentation; empty removes it. Files must already be stored. */
+    pages: Schema.Array(PresentationPage),
+    /** The thread's latest run: edits within one run amend one version. */
+    run: Schema.optional(Schema.String),
+    /** The stored pages of the version this one moves past, when it starts a new version. */
+    snapshot: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.preview-environment.set"),

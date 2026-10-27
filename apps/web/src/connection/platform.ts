@@ -466,7 +466,6 @@ const loadSecondaryConnectionRegistration = Effect.fn(
   }).pipe(Effect.mapError(mapRemoteEnvironmentError));
   // Desktop operations need the pool backend id to reach the owning instance; RPC uses the environment id.
   const connectionId = desktopLocalConnectionId(entry.id);
-  // A bootstrap label (e.g. "WSL: Ubuntu") outranks the generic descriptor label.
   const label = entry.label || descriptor.label;
   return {
     registration: new BearerConnectionRegistration({
@@ -474,7 +473,6 @@ const loadSecondaryConnectionRegistration = Effect.fn(
         environmentId: descriptor.environmentId,
         label,
         connectionId,
-        ...(entry.label ? { labelOverride: true } : {}),
       }),
       profile: new BearerConnectionProfile({
         connectionId,

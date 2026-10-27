@@ -2,24 +2,16 @@ import { FILL_PREVIEW_VIEWPORT, type ScopedThreadRef } from "@t3tools/contracts"
 import { previewPdfAssetUrl } from "@t3tools/shared/preview";
 import { useAtomValue } from "@effect/atom-react";
 import { useEnvironmentHttpBaseUrl } from "~/state/environments";
-import {
-  ExternalLinkIcon,
-  Maximize2Icon,
-  Minimize2Icon,
-  PanelRightIcon,
-  PictureInPicture2,
-  XIcon,
-} from "lucide-react";
+import { PanelRightIcon, PictureInPicture2, XIcon } from "lucide-react";
 import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
-  useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 
 import { useChatCanvas } from "../chat/ChatCanvasContext";
 import { BrowserSurfaceSlot } from "~/browser/BrowserSurfaceSlot";
@@ -60,12 +52,10 @@ import { deviceStreamScreenAtom } from "../device/deviceStreamSession";
 import type { PreviewStreamViewport } from "@t3tools/client-runtime/preview/server-browser-stream";
 import { previewBridge } from "./previewBridge";
 import { showPreviewPopup } from "./showPreviewPopup";
-import { openPreviewLinkExternally } from "./useOpenThreadPreviewLink";
 import {
   clampPreviewMiniPlayerPosition,
   NO_PREVIEW_MINI_PLAYER_OBSTACLES,
   PREVIEW_MINI_PLAYER_CORNER_RADIUS,
-  PREVIEW_MINI_PLAYER_EDGE_GAP,
   PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX,
   type PreviewMiniPlayerFrame,
   resizePreviewMiniPlayer,
@@ -76,6 +66,7 @@ import {
 
 interface PointerGesture {
   readonly pointerId: number;
+  readonly pointerType: string;
   readonly pointerX: number;
   readonly pointerY: number;
   readonly frame: PreviewMiniPlayerFrame;
@@ -87,14 +78,11 @@ const HANDLE_TAP_SLOP_PX = 6;
 
 interface Props {
   readonly threadRef: ScopedThreadRef;
-  /** Names the thread that owns the preview, since an agent may open it unasked. */
-  readonly threadTitle?: string | null | undefined;
   readonly miniPlayer: PreviewMiniPlayerState;
 }
 
 const frameCornerRadius = () => PREVIEW_MINI_PLAYER_CORNER_RADIUS;
 
-// Grab zones straddling each edge; only the bottom-right corner draws a grip.
 const RESIZE_HANDLES: ReadonlyArray<{
   readonly direction: BrowserViewportResizeDirection;
   readonly className: string;
@@ -106,16 +94,15 @@ const RESIZE_HANDLES: ReadonlyArray<{
   { direction: "northwest", className: "-left-2 -top-2 size-4 cursor-nwse-resize" },
   { direction: "northeast", className: "-right-2 -top-2 size-4 cursor-nesw-resize" },
   { direction: "southwest", className: "-bottom-2 -left-2 size-4 cursor-nesw-resize" },
-  { direction: "southeast", className: "-bottom-1.5 -right-1.5 size-6 cursor-nwse-resize" },
+  { direction: "southeast", className: "-bottom-2 -right-2 size-4 cursor-nwse-resize" },
 ];
 
-export function ThreadPreviewMiniPlayer({ threadRef, threadTitle = null, miniPlayer }: Props) {
+export function ThreadPreviewMiniPlayer({ threadRef, miniPlayer }: Props) {
   const { source } = miniPlayer;
   return source.kind === "browser" ? (
     <BrowserMiniPlayer
       key={source.tabId}
       threadRef={threadRef}
-      threadTitle={threadTitle}
       tabId={source.tabId}
       miniPlayer={miniPlayer}
     />
@@ -123,19 +110,13 @@ export function ThreadPreviewMiniPlayer({ threadRef, threadTitle = null, miniPla
     <DeviceMiniPlayer
       key={previewMiniPlayerSourceKey(source)}
       threadRef={threadRef}
-      threadTitle={threadTitle}
       source={source}
       miniPlayer={miniPlayer}
     />
   );
 }
 
-function BrowserMiniPlayer({
-  threadRef,
-  threadTitle = null,
-  tabId,
-  miniPlayer,
-}: Props & { readonly tabId: string }) {
+function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly tabId: string }) {
   const httpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
   const previewState = useThreadPreviewState(threadRef);
   const snapshot = previewState.sessions[tabId] ?? null;
@@ -200,7 +181,6 @@ function BrowserMiniPlayer({
       ? previewPdfAssetUrl(snapshot.navStatus.url, httpBaseUrl)
       : null;
   const poppedOut = serverTab ? serverPictureInPicture : Boolean(desktopOverlay?.pictureInPicture);
-  const pageUrl = snapshot.navStatus._tag === "Idle" ? null : snapshot.navStatus.url;
   const canPopOut = serverTab
     ? poppedOut || (pdfUrl === null && supportsServerPictureInPicture())
     : true;
@@ -208,14 +188,11 @@ function BrowserMiniPlayer({
   return (
     <MiniPlayerShell
       threadRef={threadRef}
-      threadTitle={threadTitle}
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
       label="Floating browser preview"
       recording={recording}
-      placeholder={pageUrl}
       onOpenInPanel={openInPanel}
-      onOpenExternal={pageUrl ? () => openPreviewLinkExternally(pageUrl) : undefined}
       pillActions={
         canPopOut ? (
           <Tooltip>
@@ -287,7 +264,6 @@ function BrowserMiniPlayer({
 
 function DeviceMiniPlayer({
   threadRef,
-  threadTitle = null,
   source,
   miniPlayer,
 }: Props & { readonly source: Extract<PreviewMiniPlayerSource, { kind: "device" }> }) {
@@ -316,7 +292,6 @@ function DeviceMiniPlayer({
   return (
     <MiniPlayerShell
       threadRef={threadRef}
-      threadTitle={threadTitle}
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
       label="Floating device preview"
@@ -347,28 +322,20 @@ function DeviceMiniPlayer({
 /** Match native clipping and DOM radii to align their separately composited edges. */
 function MiniPlayerShell({
   threadRef,
-  threadTitle,
   miniPlayer,
   sourceSize,
   label,
   onOpenInPanel,
-  onOpenExternal,
-  placeholder,
   pillActions,
   recording = false,
   cornerRadius = frameCornerRadius,
   children,
 }: {
   readonly threadRef: ScopedThreadRef;
-  readonly threadTitle: string | null;
   readonly miniPlayer: PreviewMiniPlayerState;
   readonly sourceSize: PreviewMiniPlayerSize;
   readonly label: string;
   readonly onOpenInPanel: () => void;
-  /** Opens the page in the system browser; absent when the source has no URL. */
-  readonly onOpenExternal?: (() => void) | undefined;
-  /** Shown on the player's backdrop, so a page that has not painted still says what it is. */
-  readonly placeholder?: string | null | undefined;
   readonly pillActions?: ReactNode;
   readonly recording?: boolean;
   readonly cornerRadius?: (frame: PreviewMiniPlayerSize) => number;
@@ -376,6 +343,19 @@ function MiniPlayerShell({
 }) {
   const canvas = useChatCanvas();
   const gestureRef = useRef<PointerGesture | null>(null);
+  // Touch toggles the pill after the tap's click so that click cannot land on the newly opened pill.
+  const [pillOpen, setPillOpen] = useState(false);
+  const handleTappedRef = useRef(false);
+  const handleRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!pillOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && handleRef.current?.contains(event.target)) return;
+      setPillOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    return () => document.removeEventListener("pointerdown", dismiss, true);
+  }, [pillOpen]);
   const container = canvas?.container ?? null;
   const obstacles = NO_PREVIEW_MINI_PLAYER_OBSTACLES;
   const sourceKey = previewMiniPlayerSourceKey(miniPlayer.source);
@@ -409,59 +389,6 @@ function MiniPlayerShell({
     usePreviewMiniPlayerStore.getState().close(threadRef);
   };
 
-  // Enlarging remembers the frame it came from, so the same button puts it back.
-  const [restoreFrame, setRestoreFrame] = useState<PreviewMiniPlayerFrame | null>(null);
-  const maximised = restoreFrame !== null;
-  const toggleMaximised = () => {
-    if (!frame || !container) return;
-    const store = usePreviewMiniPlayerStore.getState();
-    if (restoreFrame) {
-      store.resize(threadRef, sourceKey, restoreFrame.width, {
-        x: restoreFrame.x,
-        y: restoreFrame.y,
-      });
-      setRestoreFrame(null);
-      return;
-    }
-    // The layout clamps the width to what the container holds at the source aspect ratio.
-    store.resize(threadRef, sourceKey, container.width, {
-      x: PREVIEW_MINI_PLAYER_EDGE_GAP,
-      y: PREVIEW_MINI_PLAYER_EDGE_GAP,
-    });
-    setRestoreFrame(frame);
-  };
-
-  const sectionRef = useRef<HTMLElement | null>(null);
-  const layerRef = useRef<HTMLDivElement | null>(null);
-  const syncLayer = useCallback(() => {
-    const section = sectionRef.current;
-    const layer = layerRef.current;
-    if (!section || !layer) return;
-    const rect = section.getBoundingClientRect();
-    layer.style.left = `${rect.left}px`;
-    layer.style.top = `${rect.top}px`;
-    layer.style.width = `${rect.width}px`;
-    layer.style.height = `${rect.height}px`;
-  }, []);
-  // The frame changes on every drag and resize step, each of which re-renders the shell.
-  useLayoutEffect(syncLayer);
-  const hasFrame = frame !== null;
-  useLayoutEffect(() => {
-    const section = sectionRef.current;
-    if (!hasFrame || !section) return;
-    // Layout shifts around the player (sidebars, panels) move it without resizing it.
-    const observer = new ResizeObserver(syncLayer);
-    observer.observe(section);
-    if (section.offsetParent) observer.observe(section.offsetParent);
-    window.addEventListener("resize", syncLayer);
-    window.addEventListener("scroll", syncLayer, true);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", syncLayer);
-      window.removeEventListener("scroll", syncLayer, true);
-    };
-  }, [hasFrame, syncLayer]);
-
   const beginGesture = (
     event: ReactPointerEvent<HTMLElement>,
     direction: BrowserViewportResizeDirection | null,
@@ -469,6 +396,7 @@ function MiniPlayerShell({
     if (event.button !== 0 || !frame) return;
     gestureRef.current = {
       pointerId: event.pointerId,
+      pointerType: event.pointerType,
       pointerX: event.clientX,
       pointerY: event.clientY,
       frame,
@@ -515,6 +443,11 @@ function MiniPlayerShell({
     const gesture = gestureRef.current;
     if (gesture?.pointerId !== event.pointerId) return;
     gestureRef.current = null;
+    handleTappedRef.current =
+      event.type === "pointerup" &&
+      gesture.direction === null &&
+      gesture.pointerType === "touch" &&
+      !gesture.moved;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -524,7 +457,6 @@ function MiniPlayerShell({
     <div className="pointer-events-none absolute inset-0">
       {frame ? (
         <section
-          ref={sectionRef}
           aria-label={label}
           data-preview-mini-player={sourceKey}
           className="pointer-events-none absolute select-none"
@@ -536,129 +468,95 @@ function MiniPlayerShell({
             borderRadius: radius,
           }}
         >
-          <div className="absolute inset-0 z-[47] flex items-center justify-center rounded-[inherit] bg-muted px-4 shadow-2xl/35">
-            {placeholder ? (
-              <span className="line-clamp-2 break-all text-center text-xs text-muted-foreground">
-                {placeholder}
-              </span>
-            ) : null}
+          <div
+            ref={handleRef}
+            data-pill-open={pillOpen ? "" : undefined}
+            className="group pointer-events-auto absolute z-[49] size-3 touch-none cursor-grab active:cursor-grabbing pointer-coarse:-m-2.5 pointer-coarse:size-8"
+            style={{ right: pillInset, top: pillInset }}
+            onPointerDown={(event) => beginGesture(event, null)}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endGesture}
+            onPointerCancel={endGesture}
+            onClick={() => {
+              if (!handleTappedRef.current) return;
+              handleTappedRef.current = false;
+              setPillOpen((open) => !open);
+            }}
+          >
+            <div
+              role={recording ? "status" : undefined}
+              aria-label={recording ? "Recording preview" : undefined}
+              aria-hidden={!recording}
+              className="absolute right-0 top-0 size-2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 group-data-pill-open:opacity-0 pointer-coarse:right-2.5 pointer-coarse:top-2.5"
+            >
+              <span
+                className={cn(
+                  "block size-2 rounded-full shadow-sm ring-1 ring-background/70",
+                  recording
+                    ? "bg-destructive motion-safe:animate-status-pulse"
+                    : "bg-foreground/25",
+                )}
+              />
+            </div>
+            <div className="pointer-events-none absolute right-0 top-0 flex h-8 cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 opacity-0 shadow-lg/20 backdrop-blur-xl transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-data-pill-open:pointer-events-auto group-data-pill-open:opacity-100 active:cursor-grabbing pointer-coarse:right-2.5 pointer-coarse:top-2.5">
+              {recording ? (
+                <span aria-hidden className="flex size-6 shrink-0 items-center justify-center">
+                  <span className="size-2 rounded-full bg-destructive motion-safe:animate-status-pulse" />
+                </span>
+              ) : null}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Open preview in right panel"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={onOpenInPanel}
+                    />
+                  }
+                >
+                  <PanelRightIcon />
+                </TooltipTrigger>
+                <TooltipPopup side="top">Open in right panel</TooltipPopup>
+              </Tooltip>
+              {pillActions}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Close floating preview"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={close}
+                    />
+                  }
+                >
+                  <XIcon />
+                </TooltipTrigger>
+                <TooltipPopup side="top">Close floating preview</TooltipPopup>
+              </Tooltip>
+            </div>
           </div>
+
+          <div className="absolute inset-0 z-[47] rounded-[inherit] bg-muted shadow-2xl/35" />
           {children(frame)}
+          <div className="pointer-events-none absolute inset-0 z-[49] rounded-[inherit] ring-1 ring-inset ring-border/80" />
+          {RESIZE_HANDLES.map(({ direction, className }) => (
+            <div
+              key={direction}
+              role="presentation"
+              data-preview-mini-player-resize={direction}
+              className={cn("pointer-events-auto absolute z-[49] touch-none", className)}
+              onPointerDown={(event) => beginGesture(event, direction)}
+              onPointerMove={handlePointerMove}
+              onPointerUp={endGesture}
+              onPointerCancel={endGesture}
+            />
+          ))}
         </section>
       ) : null}
-      {/* The native webview is composited at the window level (z 48) and Home's overlay
-          is a stacking context below it, so controls rendered here would sit under the
-          page. They live in a window-level layer that follows the section instead. */}
-      {frame
-        ? createPortal(
-            <div
-              ref={layerRef}
-              className="pointer-events-none fixed z-[49]"
-              style={{ borderRadius: radius }}
-            >
-              <div
-                className="pointer-events-auto absolute z-[49] flex h-8 max-w-[calc(100%-1rem)] touch-none cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 shadow-lg/20 backdrop-blur-xl active:cursor-grabbing"
-                style={{ right: pillInset, top: pillInset }}
-                onPointerDown={(event) => beginGesture(event, null)}
-                onPointerMove={handlePointerMove}
-                onPointerUp={endGesture}
-                onPointerCancel={endGesture}
-              >
-                {recording ? (
-                  <span
-                    role="status"
-                    aria-label="Recording preview"
-                    className="flex size-6 shrink-0 items-center justify-center"
-                  >
-                    <span className="size-2 rounded-full bg-destructive motion-safe:animate-status-pulse" />
-                  </span>
-                ) : null}
-                {threadTitle ? (
-                  <span className="min-w-0 truncate px-1.5 text-xs text-muted-foreground">
-                    {threadTitle}
-                  </span>
-                ) : null}
-                <PillAction
-                  label={maximised ? "Restore floating preview size" : "Enlarge floating preview"}
-                  onClick={toggleMaximised}
-                >
-                  {maximised ? <Minimize2Icon /> : <Maximize2Icon />}
-                </PillAction>
-                <PillAction label="Open preview in right panel" onClick={onOpenInPanel}>
-                  <PanelRightIcon />
-                </PillAction>
-                {onOpenExternal ? (
-                  <PillAction label="Open in external browser" onClick={onOpenExternal}>
-                    <ExternalLinkIcon />
-                  </PillAction>
-                ) : null}
-                {pillActions}
-                <PillAction label="Close floating preview" onClick={close}>
-                  <XIcon />
-                </PillAction>
-              </div>
-              <div className="pointer-events-none absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-border/80" />
-              {RESIZE_HANDLES.map(({ direction, className }) => (
-                <div
-                  key={direction}
-                  role="presentation"
-                  data-preview-mini-player-resize={direction}
-                  className={cn("pointer-events-auto absolute touch-none", className)}
-                  onPointerDown={(event) => beginGesture(event, direction)}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={endGesture}
-                  onPointerCancel={endGesture}
-                >
-                  {direction === "southeast" ? (
-                    <svg
-                      aria-hidden
-                      viewBox="0 0 12 12"
-                      className="absolute right-2 bottom-2 size-3 text-foreground/70"
-                    >
-                      <path
-                        d="M11 3 3 11M11 7 7 11"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  ) : null}
-                </div>
-              ))}
-            </div>,
-            document.body,
-          )
-        : null}
     </div>
-  );
-}
-
-/** A pill button; its pointer-down must not start the pill's drag gesture. */
-function PillAction({
-  label,
-  onClick,
-  children,
-}: {
-  readonly label: string;
-  readonly onClick: () => void;
-  readonly children: ReactNode;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={label}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={onClick}
-          />
-        }
-      >
-        {children}
-      </TooltipTrigger>
-      <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
   );
 }

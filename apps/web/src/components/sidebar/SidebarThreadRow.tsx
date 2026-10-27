@@ -113,7 +113,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
 import { ThreadPreviewLinks } from "../preview/ThreadPreviewLinkChip";
-import { ThreadSandboxBadge } from "../chat/ThreadSandboxBadge";
 import { THREAD_PROJECT_KEY_ATTRIBUTE, ThreadSpaceBadges } from "./SpaceMembership";
 
 // The fields thread rows show. Provider status pushes refresh `checkedAt`,
@@ -541,17 +540,13 @@ function SidebarThreadEnvironmentChip({
   );
 }
 
-export type SidebarThreadRowProps = {
+type SidebarThreadRowProps = {
   thread: SidebarThreadSummary;
-  // "grow" is the row lent to Grow: one calm shape for every thread, the title
-  // first with room to wrap, the host's state mark leading, the rest on hover.
-  variant: "card" | "slim" | "grow";
+  variant: "card" | "slim";
   variantAction: SidebarSweepAction;
   settlementSupported: boolean;
   snoozeSupported: boolean;
   pinningSupported: boolean;
-  // The thread's server can run sandboxes; sandboxed rows then show a mark.
-  sandboxesAvailable: boolean;
   isPinned: boolean;
   sortable?: SortableThreadRowBag | undefined;
   dropVerb: SidebarDropVerb | null;
@@ -598,10 +593,6 @@ export type SidebarThreadRowProps = {
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
-  // The grow variant's host-provided parts (see ExternalThreadRowOptions).
-  mark?: ReactNode | undefined;
-  subtitle?: string | null | undefined;
-  details?: ReactNode | undefined;
 };
 
 // Mounted only while renaming, so each rename starts uncommitted.
@@ -645,7 +636,7 @@ function ThreadRenameInput(props: {
   );
 }
 
-export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
+const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     isRenaming,
     onCancelRename,
@@ -952,16 +943,6 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     }
   };
 
-  // Grow keeps its own accent and never fades a row: its list is a queue to read.
-  const growRowSurfaceClassName = cn(
-    "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-    props.isActive
-      ? "bg-primary/15 text-foreground before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary hover:bg-primary/20"
-      : isSelected || props.sweepAction !== null
-        ? "bg-sidebar-row-selected text-foreground"
-        : "bg-transparent text-foreground hover:bg-accent",
-    isFileDragOver && "ring-1 ring-inset ring-primary/70",
-  );
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" &&
@@ -1035,33 +1016,28 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
       aria-hidden
       className={cn(
         "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
-        variant === "grow" || !shouldRecede ? "font-medium" : "font-normal",
-        variant === "grow"
+        shouldRecede ? "font-normal" : "font-medium",
+        variant === "card"
           ? cn(
-              "line-clamp-2 break-words",
-              variantAction === "unsettle" ? "text-muted-foreground" : "text-foreground",
+              "truncate",
+              shouldRecede
+                ? "text-secondary-label redesign:text-foreground/75 redesign:group-hover/sidebar-row:text-foreground redesign:group-focus-visible/sidebar-row:text-foreground"
+                : isUnread || isWoke || status === "input" || status === "request"
+                  ? "text-foreground"
+                  : status === "failed"
+                    ? "text-foreground/95"
+                    : "text-foreground/90 redesign:text-foreground",
             )
-          : variant === "card"
-            ? cn(
-                "truncate",
-                shouldRecede
-                  ? "text-secondary-label redesign:text-foreground/75 redesign:group-hover/sidebar-row:text-foreground redesign:group-focus-visible/sidebar-row:text-foreground"
-                  : isUnread || isWoke || status === "input" || status === "request"
-                    ? "text-foreground"
-                    : status === "failed"
-                      ? "text-foreground/95"
-                      : "text-foreground/90 redesign:text-foreground",
-              )
-            : cn(
-                "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
-                shouldRecede
-                  ? "text-secondary-label/70 redesign:text-secondary-label"
-                  : props.isActive || isWoke || status === "input" || status === "request"
-                    ? "text-foreground"
-                    : isUnread
-                      ? "text-muted-foreground"
-                      : "text-secondary-label/70",
-              ),
+          : cn(
+              "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+              shouldRecede
+                ? "text-secondary-label/70 redesign:text-secondary-label"
+                : props.isActive || isWoke || status === "input" || status === "request"
+                  ? "text-foreground"
+                  : isUnread
+                    ? "text-muted-foreground"
+                    : "text-secondary-label/70",
+            ),
         isRegeneratingTitle && "opacity-55",
       )}
       dir={textDirection(thread.title)}
@@ -1101,9 +1077,6 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         }}
       />
     ) : null;
-  const sandboxIndicator = props.sandboxesAvailable ? (
-    <ThreadSandboxBadge environmentId={thread.environmentId} threadId={thread.id} variant="icon" />
-  ) : null;
   const terminalStatusIcon = (
     <ThreadTerminalStatusButton
       threadRef={threadRef}
@@ -1163,9 +1136,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     )
   ) : null;
 
-  // Snooze sits beside Settle only on Grow's rows, which have no shelf to park in.
-  const settleWithSnooze = variant === "grow" && showSnoozeButton && variantAction === "settle";
-  // The row tail of the slim and grow rows: the time at rest, the action on hover and focus.
+  // The slim row's tail: the time at rest, the action on hover and focus.
   const timeAndActionSlot = sortable?.isDragging ? (
     dragDestination
   ) : (
@@ -1178,10 +1149,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
       <span
         className={cn(
           "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-          !isWoke &&
-            (settleWithSnooze
-              ? "group-any-hover/sidebar-row:hidden"
-              : "group-any-hover/sidebar-row:opacity-0"),
+          !isWoke && "group-any-hover/sidebar-row:opacity-0",
           snoozeMenuOpen && "hidden",
         )}
       >
@@ -1259,18 +1227,10 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         <span
           className={cn(
             "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-            (isWoke || settleWithSnooze) && "group-any-hover/sidebar-row:static",
+            isWoke && "group-any-hover/sidebar-row:static",
             snoozeMenuOpen && "pointer-events-auto static opacity-100",
           )}
         >
-          {settleWithSnooze ? (
-            <SnoozeMenuButton
-              open={snoozeMenuOpen}
-              onOpenChange={setSnoozeMenuOpen}
-              onSnooze={handleSnoozePreset}
-              timestampFormat={props.timestampFormat}
-            />
-          ) : null}
           <button
             type="button"
             aria-label="Settle thread"
@@ -1284,85 +1244,6 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
       )}
     </span>
   );
-
-  if (variant === "grow") {
-    return (
-      <li
-        data-thread-item={threadKey}
-        {...{ [THREAD_PROJECT_KEY_ATTRIBUTE]: threadProjectKey }}
-        {...(fileDropHandlers ?? {})}
-        className="relative list-none [content-visibility:auto] [contain-intrinsic-size:auto_56px]"
-      >
-        <Tooltip disabled={snoozeMenuOpen}>
-          <TooltipTrigger
-            render={
-              <div
-                ref={rowRef}
-                role="button"
-                tabIndex={0}
-                aria-label={accessibility.label}
-                aria-current={accessibility.current}
-                data-testid="sidebar-row-grow"
-                data-pane-row=""
-                aria-busy={isRegeneratingTitle || undefined}
-                className={cn(growRowSurfaceClassName, "flex items-start gap-2 px-2 py-2")}
-                onClick={handleClick}
-                onDoubleClick={handleDoubleClick}
-                onKeyDown={handleKeyDown}
-                onContextMenu={handleContextMenu}
-              />
-            }
-          >
-            {accessibleTitle}
-            {/* The host's one state mark, on the title's first line. */}
-            <span className="flex h-5 shrink-0 items-center">
-              {props.mark ?? <span aria-hidden className="size-3.5" />}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="flex min-w-0 items-start gap-2">
-                {draftIndicator}
-                {title}
-                {isRegeneratingTitle ? (
-                  <span role="status" className="sr-only">
-                    Regenerating title
-                  </span>
-                ) : null}
-                {timeAndActionSlot}
-              </span>
-              {/* Where it lives, quietly, and one PR state. The rest waits for hover. */}
-              <span className="mt-0.5 flex h-5 min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
-                {props.project ? (
-                  <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
-                ) : null}
-                <span className="min-w-0 flex-1 truncate">
-                  {props.subtitle ?? props.projectDisplayName ?? thread.branch ?? ""}
-                </span>
-                {pinIndicator}
-                {terminalStatusIcon}
-                {prBadge}
-                {showEnvironmentChip ? (
-                  <SidebarThreadEnvironmentChip
-                    label={props.environmentLabel}
-                    machine={props.environmentMachine}
-                    // Steps aside for the hover-only chips; the hover card names the machine.
-                    className="group-focus-within/sidebar-row:hidden group-any-hover/sidebar-row:hidden"
-                  />
-                ) : null}
-                <span className="hidden items-center gap-1.5 group-focus-within/sidebar-row:inline-flex group-any-hover/sidebar-row:inline-flex">
-                  {previewLinksChip}
-                  {sandboxIndicator}
-                  {props.details}
-                </span>
-              </span>
-            </span>
-            {props.sweepAction !== null ? dragDestination : null}
-          </TooltipTrigger>
-          {detailsTooltip}
-        </Tooltip>
-        <ThreadSpaceBadges projectKey={threadProjectKey} />
-      </li>
-    );
-  }
 
   if (variant === "slim") {
     return (
@@ -1408,7 +1289,6 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
             </span>
             {draftIndicator}
             {title}
-            {sandboxIndicator}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -1484,7 +1364,6 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
               {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
-              {sandboxIndicator}
               {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
               {pinIndicator}

@@ -42,7 +42,6 @@ const QueuedThreadCreationSchema = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   startFromOrigin: Schema.optional(Schema.Boolean),
-  sandbox: Schema.optional(Schema.Boolean),
   pullRequestReference: Schema.optional(Schema.String),
 });
 
@@ -74,8 +73,6 @@ export interface QueuedThreadCreation {
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly startFromOrigin?: boolean;
-  /** Run the thread in a sandbox of its folder (local or new worktree). */
-  readonly sandbox?: boolean;
   readonly pullRequestReference?: string;
 }
 

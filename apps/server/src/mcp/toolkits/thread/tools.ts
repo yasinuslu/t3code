@@ -7,7 +7,6 @@ import {
   OrchestrationV2ContextTransfer,
   TrimmedNonEmptyString,
   ModelSelection,
-  ThreadAutoCompact,
   RuntimeMode,
   ProviderInteractionMode,
   RuntimeRequestId,
@@ -31,7 +30,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`. Settling this thread applies at turn end. A failed turn or queued message leaves it active. When consolidating threads, settle the old one with `supersededBy` (the thread that carries its work on) and a one-line `note`; `unsupersede` removes that link.",
+    "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`. Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     action: Schema.Literals([
@@ -41,16 +40,11 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
       "unsnooze",
       "settle",
       "unsettle",
-      "unsupersede",
       "archive",
       "unarchive",
       "mark_unread",
     ]),
     snoozedUntil: Schema.optional(IsoDateTime),
-    /** With settle: the thread that superseded this one. */
-    supersededBy: Schema.optional(ThreadId),
-    /** With supersededBy: one line on why, and what carried over. */
-    note: Schema.optional(Schema.String.check(Schema.isMaxLength(280))),
   }),
   success: Schema.Union([
     OrchestrationV2DispatchCommandResult,
@@ -179,15 +173,13 @@ const PendingRequestRespondTool = Tool.make("t3_pending_request_respond", {
 
 const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
   ...commandTool,
-  description:
-    "Read a thread's provider, model, modes, and regular compaction. Omit `threadId` for this thread.",
+  description: "Read a thread's provider, model, and modes. Omit `threadId` for this thread.",
   parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
   success: Schema.Struct({
     threadId: ThreadId,
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
-    autoCompact: Schema.NullOr(ThreadAutoCompact),
   }),
 })
   .annotate(Tool.Readonly, true)
@@ -195,11 +187,10 @@ const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
 const ThreadConfigureTool = Tool.make("t3_thread_configure", {
   ...commandTool,
   description:
-    "Set a thread's provider, model, and options, and/or its regular compaction. Omit `threadId` for this thread. Moving another thread to a different provider instance hands its conversation over on its next turn; follow with `t3_thread_send` to continue it. `autoCompact: { thresholdTokens, intervalHours? }` sends the provider's own /compact while the thread is idle once the context reaches thresholdTokens, or intervalHours after the last compaction when there was activity; null turns it off. Permission modes stay. Values from `orchestrator_capabilities`.",
+    "Set a thread's provider, model, and options. Omit `threadId` for this thread. Moving another thread to a different provider instance hands its conversation over on its next turn; follow with `t3_thread_send` to continue it. Permission modes stay. Values from `orchestrator_capabilities`.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
-    modelSelection: Schema.optional(ModelSelection),
-    autoCompact: Schema.optional(Schema.NullOr(ThreadAutoCompact)),
+    modelSelection: ModelSelection,
   }),
 }).annotate(Tool.Destructive, true);
 

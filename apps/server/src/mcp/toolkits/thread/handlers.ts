@@ -186,7 +186,6 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         modelSelection: thread.modelSelection,
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,
-        autoCompact: thread.autoCompact ?? null,
       };
     }),
   ),
@@ -196,36 +195,16 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         threads,
         projection: { thread },
       } = yield* readThread(input.threadId);
-      if (input.modelSelection === undefined && input.autoCompact === undefined) {
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "Pass modelSelection, autoCompact, or both.",
-        });
-      }
-      let sequence = 0;
-      if (input.modelSelection !== undefined) {
-        const result = yield* threads
-          .dispatch({
-            type: modelSelectionCommandType(thread.providerInstanceId, input.modelSelection),
-            threadId: thread.id,
-            commandId: yield* newCommandId(),
-            modelSelection: input.modelSelection,
-          })
-          .pipe(Effect.mapError(dispatchFailure));
-        sequence = result.sequence;
-      }
-      if (input.autoCompact !== undefined) {
-        const result = yield* threads
-          .dispatch({
-            type: "thread.metadata.update",
-            threadId: thread.id,
-            commandId: yield* newCommandId(),
-            autoCompact: input.autoCompact,
-          })
-          .pipe(Effect.mapError(dispatchFailure));
-        sequence = result.sequence;
-      }
-      return { sequence };
+      const type = modelSelectionCommandType(thread.providerInstanceId, input.modelSelection);
+      const result = yield* threads
+        .dispatch({
+          type,
+          threadId: thread.id,
+          commandId: yield* newCommandId(),
+          modelSelection: input.modelSelection,
+        })
+        .pipe(Effect.mapError(dispatchFailure));
+      return { sequence: result.sequence };
     }),
   ),
   t3_pending_request_list: McpToolAccess.reads((input) =>
@@ -321,32 +300,6 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   t3_thread_organize: writesThread((input) =>
     Effect.gen(function* () {
       const { threads, projection, caller } = yield* readThread(input.threadId);
-      if (input.supersededBy !== undefined && input.action !== "settle") {
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "supersededBy only goes with the settle action.",
-        });
-      }
-      if (input.supersededBy !== undefined) {
-        // Link first so the thread never sits settled without its successor.
-        yield* threads
-          .dispatch({
-            commandId: yield* newCommandId(),
-            threadId: projection.thread.id,
-            type: "thread.superseded-by.set",
-            supersededBy: { threadId: input.supersededBy, note: input.note ?? "" },
-          })
-          .pipe(
-            // The orchestrator's reason (missing successor, a loop) is the agent's to fix.
-            Effect.mapError((error) =>
-              (error._tag === "OrchestratorDispatchError" ||
-                error._tag === "OrchestratorCommandRejectedError") &&
-              typeof error.cause === "string"
-                ? new OrchestratorMcpFailure({ code: "invalid_request", message: error.cause })
-                : unavailable(),
-            ),
-          );
-      }
       const common = { commandId: yield* newCommandId(), threadId: projection.thread.id };
       if (input.action === "settle") {
         return yield* threads
@@ -355,9 +308,6 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       }
       let command: OrchestrationV2Command;
       switch (input.action) {
-        case "unsupersede":
-          command = { ...common, type: "thread.superseded-by.set", supersededBy: null };
-          break;
         case "snooze":
           if (input.snoozedUntil === undefined) {
             return yield* new OrchestratorMcpFailure({

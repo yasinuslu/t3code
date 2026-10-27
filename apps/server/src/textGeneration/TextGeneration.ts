@@ -15,16 +15,12 @@ export type {
   BranchNameGenerationResult,
   CommitMessageGenerationInput,
   CommitMessageGenerationResult,
-  LivingPageGenerationInput,
-  LivingPageGenerationResult,
   PrContentGenerationInput,
   PrContentGenerationResult,
   ReviewGuideGenerationInput,
   ReviewGuideGenerationResult,
   ThreadTitleGenerationInput,
   ThreadTitleGenerationResult,
-  WidgetGenerationInput,
-  WidgetGenerationResult,
 } from "@t3tools/provider-core/server/textGeneration";
 
 export class TextGeneration extends Context.Service<TextGeneration, ProviderTextGeneration>()(
@@ -36,9 +32,7 @@ type TextGenerationOp =
   | "generatePrContent"
   | "generateBranchName"
   | "generateThreadTitle"
-  | "generateReviewGuide"
-  | "generateLivingPage"
-  | "generateWidget";
+  | "generateReviewGuide";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -94,14 +88,6 @@ export const make = Effect.gen(function* () {
             return yield* textGeneration.generateThreadTitle({ ...input, linkedContext });
           }),
         ),
-      ),
-    generateLivingPage: (input) =>
-      resolveInstance(registry, "generateLivingPage", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateLivingPage(input)),
-      ),
-    generateWidget: (input) =>
-      resolveInstance(registry, "generateWidget", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateWidget(input)),
       ),
   });
 });

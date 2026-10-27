@@ -5,7 +5,6 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { isElectron } from "../env";
-import { openHomeOnStartup } from "../homeOverlayStore";
 import { NoProjectsHero } from "../components/NoProjectsHero";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
@@ -47,13 +46,8 @@ function IndexDraftLanding() {
   const attempt = startState.retryRequest;
 
   useEffect(() => {
-    if (mostRecentProject === null) {
-      return;
-    }
-    // The start page is where the app lands with no thread asked for: Home sits over it.
-    openHomeOnStartup();
     // Starting a draft after the user has left would replace the page they picked.
-    if (startedAttemptRef.current === attempt || !isStillOnIndex()) {
+    if (mostRecentProject === null || startedAttemptRef.current === attempt || !isStillOnIndex()) {
       return;
     }
     const projectRef = scopeProjectRef(mostRecentProject.environmentId, mostRecentProject.id);

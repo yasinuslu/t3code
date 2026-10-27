@@ -3,13 +3,11 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
 import type { McpProviderSessionConfig } from "@t3tools/provider-core/server/mcpSession";
-import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import {
   PI_T3_MCP_EXTENSION_FILENAME,
   PI_T3_MCP_EXTENSION_SOURCE,
   T3_MCP_BEARER_ENV,
   T3_MCP_URL_ENV,
-  T3_PI_RUNTIME_INSTRUCTIONS_ENV,
   T3_PI_RUNTIME_MODE_ENV,
   T3_PI_MCP_EXTENSION_PATH_ENV,
 } from "./mcpExtensionSource.ts";
@@ -300,9 +298,6 @@ export function buildPiRpcLaunch(input: {
             [T3_PI_RUNTIME_MODE_ENV]:
               input.runtimeMode === "auto" ? "approval-required" : input.runtimeMode,
           }
-        : {}),
-      ...(hasT3Extension
-        ? { [T3_PI_RUNTIME_INSTRUCTIONS_ENV]: buildRuntimeInstructions({ harness: "Pi" }) }
         : {}),
       ...(hasT3Mcp && input.mcpSession !== undefined
         ? {

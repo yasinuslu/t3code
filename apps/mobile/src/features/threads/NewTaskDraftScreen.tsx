@@ -1093,17 +1093,6 @@ export function NewTaskDraftScreen(props: {
         onPress={() => flow.setWorkspaceMode(flow.workspaceMode === "local" ? "worktree" : "local")}
         showChevron={false}
       />
-      {flow.canUseSandbox ? (
-        <ComposerInlineControl
-          accessibilityHint="Runs the task in an isolated microVM"
-          accessibilityLabel={flow.sandbox ? "Sandbox on" : "Sandbox off"}
-          disabled={isComposerInteractionLocked}
-          icon="cube"
-          label={flow.sandbox ? "Sandbox on" : "Sandbox off"}
-          maxWidth={120}
-          onPress={() => flow.setSandbox(!flow.sandbox)}
-        />
-      ) : null}
 
       <View className="min-w-0 shrink">
         <ComposerInlineControl

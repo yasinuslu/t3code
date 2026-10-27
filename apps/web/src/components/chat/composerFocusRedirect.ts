@@ -1,9 +1,7 @@
-// A grid (the spreadsheet surface) turns typed characters into cell edits itself.
 export const TYPE_TO_FOCUS_EDITABLE_SELECTOR = [
   "input",
   "textarea",
   "select",
-  '[role="grid"]',
   '[contenteditable="true"]',
   '[contenteditable="plaintext-only"]',
   '[role="textbox"]',

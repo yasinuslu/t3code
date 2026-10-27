@@ -253,135 +253,6 @@ it.each([
   expect(harness.createWorktree).toHaveBeenCalledTimes(input.recreated ? 1 : 0);
 });
 
-const runWorktreeHuskStart = (branch: string | null) => {
-  const threadId = ThreadId.make("thread_provider_turn_start_worktree_gone");
-  const runId = RunId.make("run_provider_turn_start_worktree_gone");
-  const attemptId = RunAttemptId.make("attempt_provider_turn_start_worktree_gone");
-  const rootNodeId = NodeId.make("node_provider_turn_start_worktree_gone");
-  const providerThreadId = ProviderThreadId.make("provider_thread_worktree_gone");
-  const providerSessionId = ProviderSessionId.make("provider_session_worktree_gone");
-  const messageId = MessageId.make("message_provider_turn_start_worktree_gone");
-  const checkpointScopeId = CheckpointScopeId.make("checkpoint_scope_worktree_gone");
-  const projection = {
-    thread: {
-      id: threadId,
-      projectId: ProjectId.make("project_provider_turn_start_worktree_gone"),
-      branch,
-      worktreePath: "/tmp/removed-provider-turn-start-worktree",
-    },
-    runs: [
-      {
-        id: runId,
-        status: "starting",
-        rootNodeId,
-        activeAttemptId: attemptId,
-        providerThreadId,
-        providerInstanceId: ProviderInstanceId.make("codex"),
-        userMessageId: messageId,
-        ordinal: 2,
-      },
-    ],
-    nodes: [{ id: rootNodeId, checkpointScopeId }],
-    attempts: [{ id: attemptId }],
-    providerThreads: [{ id: providerThreadId, providerSessionId }],
-    messages: [{ id: messageId, text: "Continue", attachments: [] }],
-    checkpointScopes: [{ id: checkpointScopeId }],
-    contextHandoffs: [],
-    contextTransfers: [],
-    turnItems: [],
-  } as unknown as OrchestrationV2ThreadProjection;
-  const written: Array<OrchestrationV2DomainEvent> = [];
-  const writeIfRunCurrent = vi.fn(
-    (input: { readonly events: ReadonlyArray<OrchestrationV2DomainEvent> }) => {
-      written.push(...input.events);
-      return Effect.succeed({ committed: true, storedEvents: [] } as never);
-    },
-  );
-  const release = vi.fn(() => Effect.void);
-  const resolve = vi.fn(() => Effect.die("stop after the runtime policy"));
-  const layer = ProviderTurnStart.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({}),
-        Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
-        IdAllocator.layer,
-        Layer.succeed(FileSystem.FileSystem, {
-          exists: (path: string) => Effect.succeed(!path.endsWith("/.git")),
-          realPath: (target: string) =>
-            Effect.fail(
-              PlatformError.systemError({
-                _tag: "NotFound",
-                module: "FileSystem",
-                method: "realPath",
-                pathOrDescriptor: target,
-              }),
-            ),
-        } as never),
-        layerWorktreeLocation(),
-        Layer.mock(GitWorkflow.GitWorkflowService)({
-          pruneWorktrees: () => Effect.void,
-          // The merged branch was deleted, so git cannot check it out again.
-          createWorktree: () => Effect.die("invalid reference: feature/merged"),
-        }),
-        Layer.mock(ProjectService.ProjectService)({
-          getById: () =>
-            Effect.succeedSome({ workspaceRoot: "/tmp/worktree-gone-project" } as never),
-        }),
-        Layer.mock(ProjectionStore.ProjectionStoreV2)({
-          getThreadRecords: () => Effect.succeed(projection),
-          getTurnStartContext: () => Effect.succeed({ ...projection, hasConversation: true }),
-          getRuntimeRecoveryProjection: () =>
-            Effect.succeed({ ...projection, runs: [], turnItems: [] } as never),
-        }),
-        Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({ release }),
-        Layer.mock(ProviderAuthService.ProviderAuthService)({
-          tryHandlePromptCommand: () => Effect.succeed(false),
-        }),
-        Layer.mock(RunExecutionService.RunExecutionServiceV2)({}),
-        Layer.mock(RuntimePolicy.RuntimePolicyV2)({ resolve }),
-      ),
-    ),
-  );
-
-  const run = Effect.gen(function* () {
-    yield* (yield* ProviderTurnStart.ProviderTurnStartServiceV2)
-      .start({ threadId, runId })
-      .pipe(Effect.exit);
-  }).pipe(Effect.provide(layer), Effect.runPromise);
-  return { run, written, release, resolve, providerSessionId };
-};
-
-it("moves a thread whose worktree and branch are gone to the project root", async () => {
-  // Only a husk is left: a dev server still running there rewrote its caches
-  // after `git worktree remove`, so the folder exists without its .git link.
-  const { run, written, release, resolve, providerSessionId } =
-    runWorktreeHuskStart("feature/merged");
-  await run;
-
-  expect(release).toHaveBeenCalledWith(expect.objectContaining({ providerSessionId }));
-  const rebound = written.find((event) => event.type === "thread.metadata-updated");
-  expect(rebound?.payload).toMatchObject({ worktreePath: null, branch: null });
-  const notice = written.find(
-    (event) => event.type === "turn-item.updated" && event.payload.type === "system_notice",
-  );
-  expect(notice?.payload).toMatchObject({
-    message: expect.stringContaining("Worktree removed; running in project root"),
-  });
-  // The session opens in the project root, not the removed folder.
-  expect(resolve).toHaveBeenCalledWith(
-    expect.objectContaining({ thread: expect.objectContaining({ worktreePath: null }) }),
-  );
-});
-
-it("keeps a folder without a branch, which never had a .git link", async () => {
-  // Scratch threads run in plain folders that are not git checkouts.
-  const { run, written, release } = runWorktreeHuskStart(null);
-  await run;
-
-  expect(release).not.toHaveBeenCalled();
-  expect(written.find((event) => event.type === "thread.metadata-updated")).toBeUndefined();
-});
-
 function makeLocalCommandHarness(input: {
   readonly text: string;
   readonly worktreePath?: string;
@@ -1007,8 +878,7 @@ effectIt.effect.each(["cleanup-first", "startup-first"])(
       const path = yield* Path.Path;
       const workspaceRoot = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-start-" });
       const worktreePath = path.join(workspaceRoot, "project", "worktree");
-      // A branch worktree without its .git link counts as removed.
-      yield* fileSystem.makeDirectory(path.join(worktreePath, ".git"), { recursive: true });
+      yield* fileSystem.makeDirectory(worktreePath, { recursive: true });
       const release = yield* Deferred.make<void>();
       const openEntered = yield* Deferred.make<void>();
       const harness = makeLocalCommandHarness({
@@ -1019,9 +889,7 @@ effectIt.effect.each(["cleanup-first", "startup-first"])(
         failReadsAfterRunning: true,
       });
       harness.createWorktree.mockImplementation(() =>
-        fileSystem
-          .makeDirectory(path.join(worktreePath, ".git"), { recursive: true })
-          .pipe(Effect.as({} as never), Effect.orDie),
+        fileSystem.makeDirectory(worktreePath).pipe(Effect.as({} as never), Effect.orDie),
       );
       const open = harness.open.getMockImplementation()!;
       harness.open.mockImplementation(() =>

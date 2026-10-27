@@ -1,7 +1,6 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import type { UsageChartMetric } from "./UsageProviderChart";
 import { resolveShortcutCommand, type ShortcutEventLike } from "../../keybindings";
-import { useHomeOverlayStore } from "../../homeOverlayStore";
 
 export type UsageMetric = UsageChartMetric | "limits";
 export const METRIC_OPTIONS = [
@@ -21,8 +20,6 @@ export function resolveUsageShortcut(
   event: ShortcutEventLike & { target: EventTarget | null },
   keybindings: ResolvedKeybindingsConfig,
 ) {
-  // Grow covers the page and holds the same Alt letters (Alt+C snoozes there).
-  if (useHomeOverlayStore.getState().open) return null;
   const target = event.target;
   if (
     target instanceof HTMLElement &&

@@ -281,8 +281,6 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
-    generateLivingPage: () => Effect.succeed({ unchanged: true, blocks: [], missing: [] }),
-    generateWidget: () => Effect.succeed({ name: "Widget", code: "" }),
     generateReviewGuide: () => Effect.succeed({ stops: [] }),
     ...overrides,
   };
@@ -332,8 +330,6 @@ function createTextGeneration(
             }),
         ),
       ),
-    generateLivingPage: (input) => implementation.generateLivingPage(input),
-    generateWidget: (input) => implementation.generateWidget(input),
     generateReviewGuide: (input) => implementation.generateReviewGuide(input),
   };
 }
@@ -2409,79 +2405,6 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
           Effect.map((result) => result.stdout.trim()),
         ),
       ).toBe("Implement stacked git actions");
-    }),
-  );
-
-  it.effect("applies the project's settings to a commit in its submodule", () =>
-    Effect.gen(function* () {
-      const repoDir = NodeFS.realpathSync.native(yield* makeTempDir("t3code-git-manager-"));
-      const libSource = yield* makeTempDir("t3code-git-manager-lib-");
-      yield* initRepo(repoDir);
-      yield* initRepo(libSource);
-      yield* runGit(repoDir, [
-        "-c",
-        "protocol.file.allow=always",
-        "submodule",
-        "add",
-        libSource,
-        "lib",
-      ]);
-      yield* runGit(repoDir, ["commit", "-m", "Add lib"]);
-      const libDir = NodePath.join(repoDir, "lib");
-      yield* runGit(libDir, ["config", "user.email", "test@example.com"]);
-      yield* runGit(libDir, ["config", "user.name", "Test User"]);
-      NodeFS.writeFileSync(NodePath.join(libDir, "README.md"), "changed\n");
-
-      const projectId = ProjectId.make("project-submodule");
-      let generatedPolicy: TextGeneration.CommitMessageGenerationInput["policy"] = undefined;
-      const { manager } = yield* makeManager({
-        serverSettings: {
-          projectSettingsOverrides: {
-            [projectId]: {
-              sourceControlWritingStyle: {
-                mode: "custom" as const,
-                customInstructions: "Project tone.",
-              },
-            },
-          },
-        },
-        seed: Effect.gen(function* () {
-          yield* (yield* ProjectStore.ProjectStoreV2).apply({
-            sequence: 1,
-            eventId: EventId.make("event:git-submodule:project"),
-            aggregateKind: "project",
-            aggregateId: projectId,
-            occurredAt: "2026-01-01T00:00:00.000Z",
-            commandId: null,
-            causationEventId: null,
-            correlationId: null,
-            metadata: {},
-            type: "project.created",
-            payload: {
-              projectId,
-              title: "Project",
-              workspaceRoot: repoDir,
-              defaultModelSelection: null,
-              scripts: [],
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:00.000Z",
-            },
-          });
-        }),
-        textGeneration: {
-          generateCommitMessage: (input) => {
-            generatedPolicy = input.policy;
-            return Effect.succeed({ subject: "Update lib readme", body: "" });
-          },
-        },
-      });
-
-      const result = yield* runStackedAction(manager, { cwd: libDir, action: "commit" });
-
-      expect(result.commit.status).toBe("created");
-      expect(generatedPolicy).toMatchObject({ commitInstructions: "Project tone." });
-      const rootStatus = yield* manager.localStatus({ cwd: repoDir });
-      expect(rootStatus.submodules).toEqual([{ path: "lib", cwd: libDir, hasChanges: true }]);
     }),
   );
 

@@ -9,7 +9,6 @@ import { type ProviderSetupError, TextGenerationError } from "@t3tools/contracts
 import type { CursorSettings } from "../settings.ts";
 
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
-import { generationTimeoutMs } from "@t3tools/provider-core/server/textGenerationUtils";
 import { cursorSdkModelSelection } from "./sdkModel.ts";
 import type { CursorAuth } from "./auth.ts";
 import * as CursorSdk from "./CursorSdk.ts";
@@ -160,7 +159,7 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
         return yield* Effect.tryPromise(() => run.wait());
       }).pipe(Effect.scoped);
       const promptResult = yield* request.pipe(
-        Effect.timeoutOption(generationTimeoutMs(operation, CURSOR_TIMEOUT_MS)),
+        Effect.timeoutOption(CURSOR_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
             onNone: () =>

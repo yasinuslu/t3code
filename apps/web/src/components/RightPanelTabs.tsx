@@ -98,8 +98,6 @@ import { observeResize } from "~/lib/observeResize";
 export interface RightPanelTabsProps {
   mode: PreviewPanelMode;
   maximized?: boolean;
-  /** Inline panel below the chat (portrait layout); the chat header keeps the titlebar. */
-  stacked?: boolean;
   open?: boolean;
   keybindings: ResolvedKeybindingsConfig;
   getShortcutContext: () => ShortcutMatchContext;
@@ -183,7 +181,6 @@ const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
   "autocomplete-popup",
 ]
   .map((slot) => `[data-slot="${slot}"]:is([data-open],[data-ending-style])`)
-  .concat(["[data-manager-overlay]", "[data-home-overlay]"])
   .join(",");
 
 const SURFACE_UNAVAILABLE_HINTS = {
@@ -976,8 +973,7 @@ function RightPanelTab(
 }
 
 export function RightPanelTabs(props: RightPanelTabsProps) {
-  const stacked = props.mode === "inline" && (props.stacked ?? false);
-  const ownsDesktopTitleBar = isElectron && props.mode === "inline" && !stacked;
+  const ownsDesktopTitleBar = isElectron && props.mode === "inline";
   const browserProfiles = useBrowserDefaults().profiles;
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -1274,7 +1270,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     <PreviewPanelShell
       mode={props.mode}
       {...(props.maximized !== undefined ? { maximized: props.maximized } : {})}
-      stacked={stacked}
       {...(props.open !== undefined ? { open: props.open } : {})}
       {...(props.widthStorageKey !== undefined ? { widthStorageKey: props.widthStorageKey } : {})}
       {...(props.defaultWidth !== undefined ? { defaultWidth: props.defaultWidth } : {})}
@@ -1283,7 +1278,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       <div
         className={cn(
           "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
-          props.mode === "inline" && !stacked && !props.layoutControls ? "pr-28" : "pr-3",
+          props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,

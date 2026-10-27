@@ -14,7 +14,6 @@ import { appCommand } from "./cli/app.ts";
 import { browserCommand } from "./cli/browser.ts";
 import { connectCommand } from "./cli/connect.ts";
 import { pairCommand } from "./cli/pair.ts";
-import { notifyCommand } from "./cli/notify.ts";
 import { peerCommand } from "./cli/peer.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { extendConnectionAttemptTimeout, keepOutboundFetchOnHttp1 } from "./outboundHttp.ts";
@@ -78,7 +77,6 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       pairCommand,
       authCommand,
       peerCommand,
-      notifyCommand,
       browserCommand,
       projectCommand,
       threadCommand,

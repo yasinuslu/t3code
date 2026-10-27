@@ -33,7 +33,6 @@ export function useBrowserViewportResize(options: {
   readonly containerSize: PreviewViewportSize;
   readonly deviceToolbarVisible: boolean;
   readonly aspectRatio: number | null;
-  readonly allowUpscale?: boolean;
 }) {
   const { tabId, viewport, zoomFactor, containerSize, deviceToolbarVisible, aspectRatio } = options;
   const dragCleanupRef = useRef<(() => void) | null>(null);
@@ -58,12 +57,7 @@ export function useBrowserViewportResize(options: {
   const layout =
     deviceToolbarVisible && effectiveViewport._tag !== "fill"
       ? resolveBrowserDeviceViewportLayout(containerSize, effectiveViewport, zoomFactor)
-      : resolveBrowserViewportLayout(
-          containerSize,
-          effectiveViewport,
-          zoomFactor,
-          options.allowUpscale ?? false,
-        );
+      : resolveBrowserViewportLayout(containerSize, effectiveViewport, zoomFactor);
 
   useEffect(
     () => () => {

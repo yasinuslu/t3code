@@ -40,7 +40,6 @@ import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { resolveProjectFileBackedSetting } from "@t3tools/shared/projectSettings";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
-import { listInitializedSubmodules } from "./gitSubmodules.ts";
 import { removeEmptyDirectory } from "./removeEmptyDirectory.ts";
 import { explicitBareRepositoryEnv, gitConfigEnv } from "./VcsProcess.ts";
 import { removeLinkedWorktree } from "./worktreeRemoval.ts";
@@ -231,33 +230,6 @@ function parsePorcelainPath(record: string): string | null {
   if (fieldsBeforePath === undefined) return null;
   const filePath = record.split(" ").slice(fieldsBeforePath).join(" ");
   return filePath.length > 0 ? filePath : null;
-}
-
-/**
- * Reads the `S<c><m><u>` submodule token of `git status --porcelain=2` rows and
- * returns the repository-relative paths of submodules with a moved commit,
- * tracked changes or untracked files.
- */
-export function parseChangedSubmodulePaths(statusStdout: string): Set<string> {
-  const changed = new Set<string>();
-  // Status runs with -z (NUL records); nested submodule reads use plain newlines.
-  for (const line of statusStdout.split(/\0|\r?\n/g)) {
-    // Field counts before the path: `1` rows have 8, `2` rows 9, `u` rows 10.
-    const pathFieldIndex = line.startsWith("1 ")
-      ? 8
-      : line.startsWith("2 ")
-        ? 9
-        : line.startsWith("u ")
-          ? 10
-          : -1;
-    if (pathFieldIndex < 0) continue;
-    const fields = line.split(" ");
-    const token = fields[2] ?? "";
-    if (!token.startsWith("S") || token === "S...") continue;
-    const [filePath] = fields.slice(pathFieldIndex).join(" ").split("\t");
-    if (filePath) changed.add(filePath);
-  }
-  return changed;
 }
 
 function filterBranchesForListQuery(
@@ -2028,58 +2000,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     };
   });
 
-  /**
-   * Git status already recurses into submodules, so a nested submodule's
-   * changes mark every ancestor dirty. Top-level flags come from the root's
-   * status output; a submodule with nested ones runs its own status only when
-   * it is dirty itself, since a clean parent implies clean children.
-   */
-  const readSubmoduleStatuses = Effect.fn("readSubmoduleStatuses")(function* (
-    rootStatusStdout: string,
-    submodules: ReadonlyArray<{ readonly path: string; readonly cwd: string }>,
-  ) {
-    if (submodules.length === 0) return [];
-    // Listed parents before children, so the closest parent is the last prefix match.
-    const parentOf = (submodulePath: string) =>
-      submodules.findLast((candidate) => submodulePath.startsWith(`${candidate.path}/`)) ?? null;
-    const changedByParentPath = new Map<string, Set<string>>([
-      ["", parseChangedSubmodulePaths(rootStatusStdout)],
-    ]);
-    const statuses: Array<{ path: string; cwd: string; hasChanges: boolean }> = [];
-    for (const submodule of submodules) {
-      const parent = parentOf(submodule.path);
-      const parentPath = parent?.path ?? "";
-      const relativePath =
-        parent === null ? submodule.path : submodule.path.slice(parent.path.length + 1);
-      let changed = changedByParentPath.get(parentPath);
-      if (changed === undefined && parent !== null) {
-        const parentStatus = statuses.find((status) => status.path === parent.path);
-        changed = parentStatus?.hasChanges
-          ? yield* executeGit(
-              "GitVcsDriver.statusDetails.submoduleStatus",
-              parent.cwd,
-              ["status", "--porcelain=2"],
-              { allowNonZeroExit: true },
-            ).pipe(
-              Effect.map((result) =>
-                result.exitCode === 0
-                  ? parseChangedSubmodulePaths(result.stdout)
-                  : new Set<string>(),
-              ),
-              Effect.orElseSucceed(() => new Set<string>()),
-            )
-          : new Set<string>();
-        changedByParentPath.set(parentPath, changed);
-      }
-      statuses.push({
-        path: submodule.path,
-        cwd: submodule.cwd,
-        hasChanges: changed?.has(relativePath) ?? false,
-      });
-    }
-    return statuses;
-  });
-
   const readStatusDetailsLocal = Effect.fn("readStatusDetailsLocal")(function* (
     cwd: string,
     options?: GitVcsDriver.GitLocalStatusOptions,
@@ -2167,77 +2087,63 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       Effect.catchTags({ GitCommandError: () => Effect.succeed(null) }),
     );
     const statusCacheKey = repositoryPaths?.gitCommonDir;
-    const worktreeRoot = repositoryPaths?.worktreeRoot ?? null;
-    const [numstatEntries, defaultBranch, hasPrimaryRemote, initializedSubmodules] =
-      yield* Effect.all(
-        [
-          // Porcelain diff rewrites indexes despite GIT_OPTIONAL_LOCKS=0; plumbing with -M preserves rename detection.
-          executeGitWithStableDiagnostics(
-            "GitVcsDriver.statusDetails.numstat",
-            cwd,
-            ["diff-index", "-M", "--numstat", "-z", "HEAD", "--"],
-            { allowNonZeroExit: true },
-          ).pipe(
-            Effect.flatMap((result) => {
-              if (result.exitCode === 0) return Effect.succeed(parseReviewNumstat(result.stdout));
-              if (isUnbornHeadStderr(result.stderr)) {
-                return Effect.map(
-                  Effect.all([
-                    runGitStdout("GitVcsDriver.statusDetails.numstat.unborn", cwd, [
-                      "diff-files",
-                      "--numstat",
-                      "-z",
-                    ]),
-                    runGitStdout("GitVcsDriver.statusDetails.numstat.unborn.staged", cwd, [
-                      "diff",
-                      "--cached",
-                      "--numstat",
-                      "-z",
-                    ]),
+    const [numstatEntries, defaultBranch, hasPrimaryRemote] = yield* Effect.all(
+      [
+        // Porcelain diff rewrites indexes despite GIT_OPTIONAL_LOCKS=0; plumbing with -M preserves rename detection.
+        executeGitWithStableDiagnostics(
+          "GitVcsDriver.statusDetails.numstat",
+          cwd,
+          ["diff-index", "-M", "--numstat", "-z", "HEAD", "--"],
+          { allowNonZeroExit: true },
+        ).pipe(
+          Effect.flatMap((result) => {
+            if (result.exitCode === 0) return Effect.succeed(parseReviewNumstat(result.stdout));
+            if (isUnbornHeadStderr(result.stderr)) {
+              return Effect.map(
+                Effect.all([
+                  runGitStdout("GitVcsDriver.statusDetails.numstat.unborn", cwd, [
+                    "diff-files",
+                    "--numstat",
+                    "-z",
                   ]),
-                  ([unstagedStdout, stagedStdout]) => [
-                    ...parseReviewNumstat(stagedStdout),
-                    ...parseReviewNumstat(unstagedStdout),
-                  ],
-                );
-              }
-              return Effect.fail(
-                new GitCommandError({
-                  ...gitCommandContext({
-                    operation: "GitVcsDriver.statusDetails.numstat",
-                    cwd,
-                    args: ["diff-index", "-M", "--numstat", "-z", "HEAD", "--"],
-                  }),
-                  detail: "git diff-index HEAD --numstat failed.",
-                  exitCode: result.exitCode,
-                  stdoutLength: result.stdout.length,
-                  stderrLength: result.stderr.length,
-                }),
+                  runGitStdout("GitVcsDriver.statusDetails.numstat.unborn.staged", cwd, [
+                    "diff",
+                    "--cached",
+                    "--numstat",
+                    "-z",
+                  ]),
+                ]),
+                ([unstagedStdout, stagedStdout]) => [
+                  ...parseReviewNumstat(stagedStdout),
+                  ...parseReviewNumstat(unstagedStdout),
+                ],
               );
-            }),
-          ),
-          statusCacheKey
-            ? Cache.get(defaultBranchCache, statusCacheKey).pipe(Effect.orElseSucceed(() => null))
-            : resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null)),
-          statusCacheKey
-            ? Cache.get(originExistsCache, statusCacheKey).pipe(Effect.orElseSucceed(() => false))
-            : originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
-          worktreeRoot === null
-            ? Effect.succeed([])
-            : listInitializedSubmodules(worktreeRoot, (gitCwd, args) =>
-                executeGit("GitVcsDriver.statusDetails.submodules", gitCwd, args, {
-                  timeoutMs: 5_000,
-                  allowNonZeroExit: true,
+            }
+            return Effect.fail(
+              new GitCommandError({
+                ...gitCommandContext({
+                  operation: "GitVcsDriver.statusDetails.numstat",
+                  cwd,
+                  args: ["diff-index", "-M", "--numstat", "-z", "HEAD", "--"],
                 }),
-              ).pipe(
-                Effect.provideService(FileSystem.FileSystem, fileSystem),
-                Effect.provideService(Path.Path, path),
-              ),
-        ],
-        { concurrency: "unbounded" },
-      );
+                detail: "git diff-index HEAD --numstat failed.",
+                exitCode: result.exitCode,
+                stdoutLength: result.stdout.length,
+                stderrLength: result.stderr.length,
+              }),
+            );
+          }),
+        ),
+        statusCacheKey
+          ? Cache.get(defaultBranchCache, statusCacheKey).pipe(Effect.orElseSucceed(() => null))
+          : resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null)),
+        statusCacheKey
+          ? Cache.get(originExistsCache, statusCacheKey).pipe(Effect.orElseSucceed(() => false))
+          : originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
+      ],
+      { concurrency: "unbounded" },
+    );
     const statusStdout = statusResult.stdout;
-    const submodules = yield* readSubmoduleStatuses(statusStdout, initializedSubmodules);
 
     let refName: string | null = null;
     let upstreamRef: string | null = null;
@@ -2349,7 +2255,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       aheadCount,
       behindCount,
       aheadOfDefaultCount,
-      ...(submodules.length > 0 ? { submodules } : {}),
     };
   });
 

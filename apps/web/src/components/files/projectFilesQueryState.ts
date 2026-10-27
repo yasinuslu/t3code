@@ -52,8 +52,6 @@ interface ProjectFileQueryState extends ProjectQueryState<ProjectReadFileResult>
   readonly readError: ProjectReadFileError | null;
   readonly isNotFile: boolean;
   readonly isFile: boolean;
-  /** Nothing exists at the path yet; the read failed before the file was opened. */
-  readonly isMissing: boolean;
 }
 
 function getProjectEntriesQueryAtom(
@@ -71,7 +69,6 @@ export function getProjectFileQueryAtom(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string | null,
-  encoding?: "base64",
 ) {
   return projectEnvironment.readFile({
     environmentId,
@@ -79,7 +76,6 @@ export function getProjectFileQueryAtom(
       cwd,
       relativePath: relativePath ?? EMPTY_PROJECT_FILE_PATH,
       ...(relativePath === T3_PROJECT_FILE_NAME ? { allowMissing: true } : {}),
-      ...(encoding ? { encoding } : {}),
     },
   });
 }
@@ -252,8 +248,6 @@ export function useProjectFileQuery(
   cwd: string,
   relativePath: string | null,
   enabled = true,
-  /** "base64" reads a binary file's bytes; the in-app text overlay does not apply to those. */
-  encoding?: "base64",
 ): ProjectFileQueryState {
   // Read media-like paths too; a failed read is how folders with those names are detected.
   const fileAccess = useFilesystemReadAccess(environmentId);
@@ -261,7 +255,7 @@ export function useProjectFileQuery(
   const isQueryEnabled = enabled;
   const atom =
     enabled && canReadFiles
-      ? getProjectFileQueryAtom(environmentId, cwd, relativePath, encoding)
+      ? getProjectFileQueryAtom(environmentId, cwd, relativePath)
       : EMPTY_PROJECT_FILE_QUERY_ATOM;
   const result = useAtomValue(atom);
   const refreshAtom = useAtomRefresh(atom);
@@ -271,7 +265,7 @@ export function useProjectFileQuery(
   const optimisticResult = useAtomValue(
     optimisticFileAtom(environmentId, cwd, relativePath ?? EMPTY_PROJECT_FILE_PATH),
   );
-  const optimisticFile = relativePath === null || encoding ? null : optimisticResult;
+  const optimisticFile = relativePath === null ? null : optimisticResult;
   const cause = failureCause(result);
   const readError = isProjectReadFileError(cause) ? cause : null;
   const data = canReadFiles ? (optimisticFile?.data ?? (isMissing ? null : readData)) : null;
@@ -292,9 +286,6 @@ export function useProjectFileQuery(
     isNotFile,
     // A folder error overrides cached contents retained across failed refreshes.
     isFile: !isNotFile && (data !== null || readError?.failure === "binary_file"),
-    isMissing:
-      (isMissing && !optimisticFile) ||
-      (readError?.failure === "operation_failed" && readError.operation === "realpath-target"),
     refresh,
   };
 }

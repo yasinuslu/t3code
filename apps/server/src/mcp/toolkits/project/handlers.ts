@@ -2,7 +2,6 @@ import { MessageId, ThreadId, OrchestratorMcpFailure, ProjectId } from "@t3tools
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
-import * as GrowService from "../../../grow/GrowService.ts";
 import * as ThreadLaunch from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
@@ -203,11 +202,6 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           }),
         );
         const thread = result.projection.thread;
-        // Grow shows where a thread came from; a launch has no fork lineage to say so.
-        const grow = yield* Effect.serviceOption(GrowService.GrowService);
-        if (caller !== undefined && Option.isSome(grow)) {
-          yield* grow.value.update({ threadId: thread.id, parentThreadId: caller.id });
-        }
         const run = result.projection.runs.find((run) => run.userMessageId === messageId);
         return {
           threadId: thread.id,

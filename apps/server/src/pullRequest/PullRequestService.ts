@@ -100,8 +100,6 @@ import { toChangeBreakdown } from "./pullRequestChangeBreakdown.ts";
 
 export interface PullRequestMergeEvent extends PullRequestRef {
   readonly mergedAt: string;
-  /** The branch the pull request merged into; settlement compares it with the default branch. */
-  readonly baseBranch: string;
 }
 
 type PullRequestReading = Pick<
@@ -3499,7 +3497,6 @@ export const make = Effect.gen(function* () {
         repository,
         number: input.number,
         mergedAt: DateTime.formatIso(yield* DateTime.now),
-        baseBranch: confirmed.baseBranch,
       });
     }
   });

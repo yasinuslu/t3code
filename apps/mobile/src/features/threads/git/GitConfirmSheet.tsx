@@ -15,7 +15,6 @@ import { NativeStackScreenOptions } from "../../../native/StackHeader";
 import { AppText as Text } from "../../../components/ui/AppText";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
-import { useSelectedThreadGitTargetRepository } from "../../../state/use-selected-thread-git-target";
 import { useThreadSelection } from "../../../state/use-thread-selection";
 import { SheetActionButton } from "./gitSheetComponents";
 
@@ -34,8 +33,7 @@ export function GitConfirmSheet(props: GitConfirmSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const gitState = useSelectedThreadGitState();
-  const { targetCwd } = useSelectedThreadGitTargetRepository();
-  const gitActions = useSelectedThreadGitActions(targetCwd);
+  const gitActions = useSelectedThreadGitActions();
   const { canWriteSourceControl, canChangeThreadBranch } = gitActions;
   const { selectedThreadProject } = useThreadSelection();
   const terminology = sourceControlClients.get(
