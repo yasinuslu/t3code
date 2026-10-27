@@ -2826,7 +2826,7 @@ function ComponentTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "comp
   const ctx = use(TimelineRowCtx);
   return (
     <div className="min-w-0 px-1">
-      {row.text !== null ? (
+      {row.text ? (
         <div className="mb-3">
           <ChatMarkdown
             text={row.text}
