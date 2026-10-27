@@ -623,7 +623,15 @@ export function componentCallOf(
   const item = entry.structuredPayload;
   if (item?.type !== "dynamic_tool" || !isT3RenderComponentTool(item.toolName)) return null;
   const status = entry.toolLifecycleStatus;
-  if (status === "failed" || status === "declined" || status === "stopped") return null;
+  // Claude reports a rejected MCP call as completed with an error result.
+  if (
+    status === "failed" ||
+    status === "declined" ||
+    status === "stopped" ||
+    workEntryDisplayIndicatesToolFailure(entry)
+  ) {
+    return null;
+  }
   const input = (typeof item.input === "object" && item.input !== null ? item.input : {}) as {
     readonly tag?: unknown;
     readonly props?: unknown;
@@ -660,6 +668,8 @@ function replyNotebookEntryIds(
   }
   for (let index = terminalIndex - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
+    // Thinking between the parts still folds away, but does not end the reply.
+    if (entry.kind === "work" && entry.entry.tone === "thinking") continue;
     const component = isRenderComponentCall(entry);
     if (!component && !(entry.kind === "message" && entry.message.role === "assistant")) break;
     ids.add(entry.id);
