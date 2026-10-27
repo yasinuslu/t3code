@@ -171,6 +171,16 @@ describe("orchestration V2 wire projection", () => {
     });
   });
 
+  it("keeps a large render_component input whole, since the chat draws it", () => {
+    const input = { tag: "t3-datatable", props: { rows: [{ text: "x".repeat(20_000) }] } };
+    const projected = projectTurnItemForWire({
+      ...base,
+      toolName: "mcp__t3-code__render_component",
+      input,
+    });
+    expect(projected.type === "dynamic_tool" ? projected.input : null).toEqual(input);
+  });
+
   it("truncates detail at a UTF-8 boundary without changing the source", () => {
     const progress = "a".repeat(32_767) + "😀" + "x".repeat(100_000);
     const item = {

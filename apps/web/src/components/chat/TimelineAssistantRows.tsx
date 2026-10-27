@@ -9,6 +9,7 @@ import { Button } from "../ui/button";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { HtmlRenderFrame } from "./HtmlRenderFrame";
 import { McpAppFrame } from "./McpAppFrame";
+import { ElementSlot } from "../../elements/ElementSlot";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { useFileContextMenuHandler } from "../../fileContextMenu";
 import { useProject, useThreadShell } from "../../state/entities";
@@ -370,3 +371,37 @@ function AssistantChangedFilesSectionInner({
     />
   );
 }
+
+export function ComponentTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "component" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1">
+      {row.text ? (
+        <div className="mb-3">
+          <ChatMarkdown
+            text={row.text}
+            cwd={ctx.markdownCwd}
+            threadRef={ctx.threadRef ?? undefined}
+            skills={ctx.skills}
+            headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          />
+        </div>
+      ) : null}
+      <ElementSlot
+        tag={row.tag}
+        attributes={NO_ATTRIBUTES}
+        body={row.propsJson ?? ""}
+        propsJson={row.propsJson}
+        environmentId={ctx.activeThreadEnvironmentId ?? ctx.threadRef?.environmentId ?? null}
+        threadRef={ctx.threadRef ?? undefined}
+        streaming={row.propsJson === null}
+      />
+    </div>
+  );
+}
+
+const NO_ATTRIBUTES: Readonly<Record<string, string>> = {};
