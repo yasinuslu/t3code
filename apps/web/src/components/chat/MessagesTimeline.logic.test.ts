@@ -612,6 +612,106 @@ describe("resolveAssistantMessageCopyState", () => {
 });
 
 describe("deriveMessagesTimelineRows", () => {
+  it("draws render_component calls in place between the reply's text, like a notebook", () => {
+    const runId = RunId.make("component-run");
+    const at = "2026-10-27T09:00:00Z";
+    const text = (id: string): TimelineEntry => ({
+      kind: "message",
+      id,
+      createdAt: at,
+      message: {
+        id: MessageId.make(id),
+        role: "assistant",
+        text: id,
+        runId,
+        streaming: false,
+        createdAt: at,
+        updatedAt: at,
+      },
+    });
+    const call = (
+      id: string,
+      props: Record<string, unknown>,
+      status: "completed" | "failed",
+      toolName = "mcp__t3-code__render_component",
+    ): TimelineEntry => ({
+      kind: "work",
+      id,
+      createdAt: at,
+      entry: {
+        id,
+        runId,
+        createdAt: at,
+        label: "Show a component",
+        tone: "tool",
+        itemType: "dynamic_tool",
+        toolLifecycleStatus: status,
+        structuredPayload: {
+          id: TurnItemId.make(id),
+          type: "dynamic_tool",
+          threadId: ThreadId.make("thread"),
+          runId,
+          nodeId: null,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 1,
+          status,
+          title: null,
+          toolName,
+          input: { tag: "t3-decision", props },
+          createdAt: DateTime.makeUnsafe(at),
+          updatedAt: DateTime.makeUnsafe(at),
+        } as never,
+      },
+    });
+    const bash: TimelineEntry = {
+      kind: "work",
+      id: "bash",
+      createdAt: at,
+      entry: {
+        id: "bash",
+        runId,
+        createdAt: at,
+        label: "Ran cat",
+        tone: "tool",
+        command: "cat file",
+        toolLifecycleStatus: "completed",
+      },
+    };
+    const decision = { question: "Which?", options: [] };
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        text("checking"),
+        bash,
+        text("intro"),
+        call("rejected", { title: "Which?" }, "failed"),
+        call("shown", decision, "completed"),
+        text("outro"),
+        call("asked", decision, "completed"),
+      ],
+      latestRun: { runId, status: "completed", startedAt: at, completedAt: at },
+      isWorking: false,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+    // Settled: the work before the reply folds, the rejected draft folds with it, and the
+    // reply reads text, component, text, component with its footer last.
+    expect(rows.map((row) => (row.kind === "message" ? row.message.text : row.kind))).toEqual([
+      "turn-fold",
+      "intro",
+      "component",
+      "outro",
+      "component",
+      "assistant-meta",
+    ]);
+    expect(rows.find((row) => row.kind === "component")).toMatchObject({
+      tag: "t3-decision",
+      propsJson: JSON.stringify(decision),
+    });
+  });
+
   it("stops stranded thinking after a steer and follows the next thought or tool", () => {
     const runId = RunId.make("steered-run");
     const at = "2026-10-01T06:19:10Z";

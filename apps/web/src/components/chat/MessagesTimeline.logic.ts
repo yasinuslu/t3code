@@ -43,6 +43,7 @@ import {
 } from "@t3tools/contracts";
 import type { ThreadRunSummary } from "@t3tools/client-runtime/state/shell";
 import {
+  isT3RenderComponentTool,
   resolveT3McpToolDefinition,
   resolveT3McpToolPresentation,
   type T3McpToolPresentation,
@@ -596,11 +597,76 @@ type MessagesTimelineRowContent =
       id: string;
       createdAt: string;
       proposedPlan: ProposedPlan;
+    }
+  | {
+      /** A `render_component` call, drawn as the component in its place in the reply. */
+      kind: "component";
+      id: string;
+      createdAt: string;
+      tag: string;
+      /** The props as JSON; null until the call has been accepted. */
+      propsJson: string | null;
     };
 
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
   result: MessagesTimelineRow[];
+}
+
+/**
+ * The component a `render_component` call shows, or null for any other entry. A rejected call
+ * stays an ordinary failed tool row: the agent saw the error and calls again.
+ */
+export function componentCallOf(
+  entry: WorkLogEntry,
+): { readonly tag: string; readonly propsJson: string | null } | null {
+  const item = entry.structuredPayload;
+  if (item?.type !== "dynamic_tool" || !isT3RenderComponentTool(item.toolName)) return null;
+  const status = entry.toolLifecycleStatus;
+  if (status === "failed" || status === "declined" || status === "stopped") return null;
+  const input = (typeof item.input === "object" && item.input !== null ? item.input : {}) as {
+    readonly tag?: unknown;
+    readonly props?: unknown;
+  };
+  const tag = typeof input.tag === "string" ? input.tag.trim().replace(/^<|>$/g, "") : "";
+  if (tag === "") return null;
+  const accepted =
+    status === "completed" && typeof input.props === "object" && input.props !== null;
+  return { tag, propsJson: accepted ? JSON.stringify(input.props) : null };
+}
+
+const isComponentEntry = (entry: TimelineEntry) =>
+  entry.kind === "work" && componentCallOf(entry.entry) !== null;
+
+const isRenderComponentCall = (entry: TimelineEntry) =>
+  entry.kind === "work" &&
+  entry.entry.structuredPayload?.type === "dynamic_tool" &&
+  isT3RenderComponentTool(entry.entry.structuredPayload.toolName);
+
+/**
+ * The run's reply as the user reads it once the turn folds: the final message plus the assistant
+ * text and component calls right around it, so text, component, text survives the fold together.
+ */
+function replyNotebookEntryIds(
+  entries: ReadonlyArray<TimelineEntry>,
+  terminalIndex: number,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  let hasComponent = false;
+  for (let index = terminalIndex + 1; index < entries.length; index += 1) {
+    if (!isRenderComponentCall(entries[index]!)) break;
+    ids.add(entries[index]!.id);
+    hasComponent = true;
+  }
+  for (let index = terminalIndex - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    const component = isRenderComponentCall(entry);
+    if (!component && !(entry.kind === "message" && entry.message.role === "assistant")) break;
+    ids.add(entry.id);
+    hasComponent ||= component;
+  }
+  // Without a component the reply is the final message alone, as before.
+  return hasComponent ? ids : new Set();
 }
 
 export function computeMessageDurationStart(
@@ -1013,8 +1079,16 @@ function deriveTurnFolds(input: {
     const terminalEntryIndex = group.terminalEntry
       ? group.entries.findIndex((entry) => entry.id === group.terminalEntry?.id)
       : group.entries.length;
+    const replyEntryIds = replyNotebookEntryIds(group.entries, terminalEntryIndex);
     for (const [index, entry] of group.entries.entries()) {
       if (entry.id === group.terminalEntry?.id) {
+        continue;
+      }
+      if (replyEntryIds.has(entry.id)) {
+        // Rejected component calls were the agent's drafts; only what it showed stays.
+        if (entry.kind === "work" && componentCallOf(entry.entry) === null) {
+          hiddenEntryIds.add(entry.id);
+        }
         continue;
       }
       const isCompaction =
@@ -1119,6 +1193,12 @@ function attachTrailingToolGroupsToAssistant(
       const candidate = rows[index];
       if (!candidate || candidate.kind === "message") {
         break;
+      }
+      // A component that closes the reply sits above its footer, not under it.
+      if (candidate.kind === "component") {
+        hasTrailingToolGroup = true;
+        lastTrailingWorkIndex = index;
+        continue;
       }
       if (candidate.kind === "work-toggle" && candidate.runId === runId) {
         hasTrailingToolGroup = true;
@@ -1361,6 +1441,7 @@ export function deriveMessagesTimelineRows(input: {
       const entry = timelineEntries[index]!;
       if (
         entry.kind !== "work" ||
+        isComponentEntry(entry) ||
         entry.entry.tone === "error" ||
         entry.entry.sourceActivityKind === "runtime.error" ||
         entry.entry.itemType === "system_notice" ||
@@ -1525,6 +1606,18 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    const componentCall =
+      timelineEntry.kind === "work" ? componentCallOf(timelineEntry.entry) : null;
+    if (componentCall !== null) {
+      nextRows.push({
+        kind: "component",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        ...componentCall,
+      });
+      continue;
+    }
+
     if (timelineEntry.kind === "work") {
       if (
         (timelineEntry.entry.runId != null && failedRunIds.has(timelineEntry.entry.runId)) ||
@@ -1551,6 +1644,7 @@ export function deriveMessagesTimelineRows(input: {
         if (
           !nextEntry ||
           nextEntry.kind !== "work" ||
+          isComponentEntry(nextEntry) ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
           nextEntry.entry.tone === "error" ||
           nextEntry.entry.sourceActivityKind === "runtime.error" ||
@@ -2100,6 +2194,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "proposed-plan":
       return a.proposedPlan === (b as typeof a).proposedPlan;
+
+    case "component":
+      return a.tag === (b as typeof a).tag && a.propsJson === (b as typeof a).propsJson;
 
     case "event":
       return (

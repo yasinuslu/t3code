@@ -76,7 +76,7 @@ export function componentRepairText(problems: ReadonlyArray<ElementProblem>): st
     ...problems.map(
       (problem) => `<${problem.tag}>: ${problem.errors.join(" ")}\n${quote(problem.source)}`,
     ),
-    `Call elements_describe for ${tags}, then send only the corrected component${problems.length === 1 ? "" : "s"} again, with no recap.`,
+    `Call elements_describe for ${tags}, then show only the corrected component${problems.length === 1 ? "" : "s"} again with render_component, with no recap.`,
   ].join("\n\n");
 }
 

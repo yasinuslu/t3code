@@ -11,6 +11,7 @@
  * @module ElementsLibrary
  */
 import type { ElementManifest, ElementsLibraryState } from "@t3tools/contracts";
+import { validateElementProps } from "@t3tools/shared/elementProps";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -173,14 +174,61 @@ export function describeElements(tags: ReadonlyArray<string>): {
   };
 }
 
+export type RenderComponentResult =
+  | { readonly ok: true; readonly tag: string; readonly interactive: boolean }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * Checks a `render_component` call against the library. A rejected call returns everything the
+ * agent needs to retry in the same turn: what is wrong, the props schema and an example.
+ */
+export function renderComponent(
+  rawTag: string,
+  props: Readonly<Record<string, unknown>>,
+): RenderComponentResult {
+  const { state } = load(elementsLibraryDir());
+  if (!state.configured || state.components.length === 0) {
+    return { ok: false, message: "No component library is configured on this T3 server." };
+  }
+  const tag = rawTag.trim().replace(/^<|>$/g, "");
+  const manifest = state.components.find((component) => component.tag === tag);
+  if (manifest === undefined) {
+    const close = closeNames(
+      tag,
+      state.components.filter((c) => c.hidden !== true).map((c) => c.tag),
+    );
+    return {
+      ok: false,
+      message: `Unknown component ${tag}.${close.length > 0 ? ` Close names: ${close.join(", ")}.` : " Call elements_describe with no tags for the catalog."}`,
+    };
+  }
+  const result = validateElementProps(manifest, props);
+  if (result.kind === "ok") {
+    return { ok: true, tag, interactive: manifest.interactive === true };
+  }
+  const errors = result.kind === "invalid" ? result.errors : [];
+  return {
+    ok: false,
+    message: [
+      `${tag} was not shown: ${errors.join(" ")}`,
+      `Call render_component again with corrected props. Props schema: ${JSON.stringify(manifest.props)}`,
+      ...(manifest.example === undefined
+        ? []
+        : [`Example props: ${JSON.stringify(manifest.example)}`]),
+    ].join("\n"),
+  };
+}
+
 const CORE_EXAMPLE_TAGS = ["t3-headline", "t3-decision", "t3-checks"];
 
-/** The manifest example of each core component, written the way the agent must write it. */
+/** The manifest example of each core component, as a `render_component` call. */
 function coreExamples(components: ReadonlyArray<ElementManifest>): string {
   return CORE_EXAMPLE_TAGS.flatMap((tag) => {
     const example = components.find((component) => component.tag === tag)?.example;
-    return example === undefined ? [] : [`<${tag}>\n${JSON.stringify(example)}\n</${tag}>`];
-  }).join("\n\n");
+    return example === undefined
+      ? []
+      : [`render_component({"tag":"${tag}","props":${JSON.stringify(example)}})`];
+  }).join("\n");
 }
 
 /**
@@ -194,7 +242,7 @@ export function elementsInstructions(): string {
   if (components.length === 0) return "";
   const catalog = components.map(compactLine).join("\n");
   return `<web_components>
-T3 Code renders a library of web components inline in your replies. Use them: they are your richer language with the user, not decoration. Reach for one whenever it says something better than prose. Interactive components send the user's choice back to you as their next message, so you can talk with the user through them instead of asking them to type.
+T3 Code shows a library of web components in your replies. Use them: they are your richer language with the user, not decoration. Reach for one whenever it says something better than prose. Interactive components send the user's choice back to you as their next message, so you can talk with the user through them instead of asking them to type.
 
 ## When to reach for one
 Make a component the default for these shapes, and keep plain prose for everything else. One or two per reply is normal; a reply made only of components is not.
@@ -206,19 +254,20 @@ Make a component the default for these shapes, and keep plain prose for everythi
 - Before and after is t3-compare; a screenshot with the change boxed is t3-screenshot.
 - Numbers that matter (three or more, or a delta) are t3-metrics; a series is t3-chart or t3-plot; compared options are t3-versus or t3-table.
 - Progress and acceptance criteria are t3-steps or t3-checklist; a diff or snippet is t3-diff-card; a command and its output is t3-terminal.
-Stay plain for a short conversational reply, a one-line answer, a clarification that needs no choice, and anything that is prose by nature. Never say the same thing in a component and again in prose. Components render only in chat replies and Grow document pages: thread_status_update text, commit messages, PR descriptions and files stay plain markdown.
+Stay plain for a short conversational reply, a one-line answer, a clarification that needs no choice, and anything that is prose by nature. Never say the same thing in a component and again in prose. Components show only in chat replies and Grow document pages: thread_status_update text, commit messages, PR descriptions and files stay plain markdown.
 
-How to write one: put the tag on its own line with a blank line before and after it, and no blank lines inside it. Components with a JSON body (every one without a [text body] mark below, interactive ones included) take one JSON object of props as the only content between an opening and a closing tag, never attributes; a self-closing tag renders an error. There are no child tags: never write <t3-option>, <t3-check> or the like; options, items and rows are arrays inside that JSON. Components with a text body take plain text, and short scalar props as attributes (kebab-case). Images are absolute file paths or URLs. Prose around components stays normal markdown. Never wrap a component in a code fence unless you want to show its source.
+## How to show one
+Call the \`render_component\` tool with the tag and its props object. The component appears at that point in your reply, so a reply reads top to bottom like a notebook: write some text, call render_component, write more text, call it again. Props are checked when you call: a wrong shape comes back as an error that names what to fix, with the schema and an example, and nothing is shown until a call succeeds, so correct it and call again. After an interactive component, end your turn; the answer arrives as the user's next message. Images are absolute file paths or URLs.
 
-Examples of the three you will use most (the body is the JSON, nothing else):
-
+The three you will use most:
 ${coreExamples(components)}
+
+Only if you have no render_component tool, or inside a Grow document page (presentation_set and presentation_edit take markdown), write the component inline in the markdown instead: the tag on its own line with a blank line before and after it, and one JSON object of props as the only content between an opening and a closing tag, never attributes, never self-closing, no child tags, never in a code fence. A component marked [text body] below takes plain text there, and short scalar props as kebab-case attributes.
 
 If no component fits and one would really help, add it to the library at ${dir} (read its README: one folder per component, element.ts plus manifest.json, then bun run build); it is live at once for new replies.
 
 ## Components
-One line each: tag, summary, prop names (* = required). Props are JSON keys in the body (or attributes for text-body components).
-Before the first time you use a component in a thread, call the \`elements_describe\` tool with its tags (one cheap call; returns description, body kind, full props schema and an example), then write it exactly like the example. The one-line props below are not enough to write from: a guessed prop or tag renders a visible error card.
+One line each: tag, summary, prop names (* = required). The names are not the full shape: before the first time you use a component in a thread, call the \`elements_describe\` tool with its tags for the props schema and an example (one cheap call), then render it like the example.
 ${catalog}
 </web_components>`;
 }

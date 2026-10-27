@@ -159,6 +159,30 @@ export function elementProps(input: {
   return errors.length > 0 ? { kind: "invalid", errors } : { kind: "ok", props };
 }
 
+/**
+ * Props given as an object (the `render_component` tool), checked by the same rules as a written
+ * tag, plus unknown top-level names: nothing else could have put them there.
+ */
+export function validateElementProps(
+  manifest: ElementManifest,
+  props: Readonly<Record<string, unknown>>,
+): ElementPropsResult {
+  const schema = schemaProps(manifest);
+  const errors: string[] = [];
+  const required = Array.isArray(manifest.props.required)
+    ? (manifest.props.required as string[])
+    : [];
+  for (const name of required) {
+    if (props[name] === undefined) errors.push(`Missing "${name}".`);
+  }
+  for (const [name, value] of Object.entries(props)) {
+    const propSchema = asSchema(schema[name]);
+    if (propSchema) errors.push(...nestedErrors(name, propSchema, value));
+    else errors.push(`Unknown prop "${name}"; the props are ${Object.keys(schema).join(", ")}.`);
+  }
+  return errors.length > 0 ? { kind: "invalid", errors } : { kind: "ok", props: { ...props } };
+}
+
 /** One `<t3-*>` block as written in a finished reply. */
 export interface ElementBlock {
   readonly tag: string;

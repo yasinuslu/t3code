@@ -1,6 +1,7 @@
 /**
  * Finding the component a reply answers. A reply carries only the component's question (see
- * `formatComponentAnswer`), so the source is the nearest earlier assistant message that holds it.
+ * `formatComponentAnswer`), so the source is the nearest earlier assistant message or
+ * `render_component` row that holds it.
  */
 import { normalizeComponentQuestion } from "@t3tools/client-runtime/user-message";
 
@@ -8,6 +9,8 @@ interface TimelineRowLike {
   readonly id: string;
   readonly kind: string;
   readonly message?: { readonly role: string; readonly text: string };
+  /** Set on a `render_component` row. */
+  readonly propsJson?: string | null;
 }
 
 /** The part of a question that survives quote softening and JSON escaping in the message text. */
@@ -15,7 +18,7 @@ function questionNeedle(question: string): string {
   return question.split("'")[0]?.slice(0, 60) ?? "";
 }
 
-/** Id of the nearest assistant row above `fromRowId` whose text holds a component asking `question`. */
+/** Id of the nearest row above `fromRowId` that holds a component asking `question`. */
 export function findComponentSourceRowId(
   rows: ReadonlyArray<TimelineRowLike>,
   fromRowId: string,
@@ -25,6 +28,9 @@ export function findComponentSourceRowId(
   if (needle === "") return null;
   for (let index = rows.findIndex((row) => row.id === fromRowId) - 1; index >= 0; index -= 1) {
     const row = rows[index];
+    if (row?.kind === "component" && row.propsJson?.replace(/\s+/g, " ").includes(needle)) {
+      return row.id;
+    }
     if (row?.kind !== "message" || row.message?.role !== "assistant") continue;
     const text = row.message.text;
     if (text.includes("<t3-") && text.replace(/\s+/g, " ").includes(needle)) return row.id;

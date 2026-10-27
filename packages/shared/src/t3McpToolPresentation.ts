@@ -64,6 +64,7 @@ export type T3McpToolSummaryAction =
   | "presentation-edit"
   | "presentation-get"
   | "elements-describe"
+  | "render-component"
   | "preview-environment-up"
   | "preview-environment-down"
   | "grow-update"
@@ -137,6 +138,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Describe", "Describing", "Described", "web components"],
     "elements-describe",
   ),
+  render_component: tool(["Show", "Showing", "Showed", "a component"], "render-component"),
   preview_environment_up: tool(
     ["Start", "Starting", "Started", "the preview environment"],
     "preview-environment-up",
@@ -390,4 +392,9 @@ export function resolveT3McpToolSummaryAction(
   toolName: string | null | undefined,
 ): T3McpToolSummaryAction | null {
   return resolveT3McpToolDefinition(toolName)?.summaryAction ?? null;
+}
+
+/** The tool that puts a web component into the reply (`render_component`). */
+export function isT3RenderComponentTool(toolName: string | null | undefined): boolean {
+  return toolName != null && resolveT3McpToolName(toolName) === "render_component";
 }

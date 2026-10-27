@@ -4,6 +4,7 @@ import type {
   OrchestrationV2ThreadProjection,
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import { isT3RenderComponentTool } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput, toolOutputIndicatesFailure } from "@t3tools/shared/toolOutput";
 
 const MAX_DETAIL_STRING_BYTES = 32_768;
@@ -110,7 +111,10 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
       const output = compactDynamicToolOutput(rawOutput);
       return {
         ...projected,
-        input: summarizeDynamicValue(item.input),
+        // A shown component's input is what the chat draws, so it travels whole.
+        input: isT3RenderComponentTool(item.toolName)
+          ? boundDynamicValue(item.input)
+          : summarizeDynamicValue(item.input),
         ...(output === undefined ? {} : { output }),
         ...(hasDynamicValue(rawOutput) ? { outputOmitted: true } : {}),
       };

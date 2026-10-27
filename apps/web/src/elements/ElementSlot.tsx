@@ -26,7 +26,7 @@ import { readThreadShell, useThreadProjection } from "../state/entities";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { toastManager } from "../components/ui/toast";
-import { elementProps } from "@t3tools/shared/elementProps";
+import { elementProps, validateElementProps } from "@t3tools/shared/elementProps";
 
 import { elementPlainText, elementQuestion } from "./elementProps";
 import { useElementsLibrary } from "./library";
@@ -46,6 +46,11 @@ interface ElementSlotProps {
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | undefined;
   readonly streaming: boolean;
+  /**
+   * Props from a `render_component` call, as JSON, used instead of `attributes` and `body`;
+   * null while the call is still waiting to be accepted.
+   */
+  readonly propsJson?: string | null;
 }
 
 export function ElementSlot(props: ElementSlotProps) {
@@ -59,18 +64,19 @@ export function ElementSlot(props: ElementSlotProps) {
 function ElementSlotInner(props: ElementSlotProps) {
   const library = useElementsLibrary(props.environmentId, props.tag);
   const manifest = library?.components.get(props.tag);
-  const result = useMemo(
-    () =>
-      manifest === undefined
-        ? null
-        : elementProps({
-            manifest,
-            attributes: props.attributes,
-            body: props.body,
-            streaming: props.streaming,
-          }),
-    [manifest, props.attributes, props.body, props.streaming],
-  );
+  const result = useMemo(() => {
+    if (manifest === undefined) return null;
+    if (props.propsJson === null) return { kind: "pending" } as const;
+    if (props.propsJson !== undefined) {
+      return validateElementProps(manifest, JSON.parse(props.propsJson) as Record<string, unknown>);
+    }
+    return elementProps({
+      manifest,
+      attributes: props.attributes,
+      body: props.body,
+      streaming: props.streaming,
+    });
+  }, [manifest, props.attributes, props.body, props.streaming, props.propsJson]);
 
   if (library === null) return <Placeholder tag={props.tag} />;
   if (manifest === undefined || result === null) {
