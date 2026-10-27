@@ -94,27 +94,12 @@ import {
   BrainstormOpenResult,
   BrainstormState,
   BrainstormSyncSpacesInput,
-  BrainstormThreadReport,
-  BrainstormThreadReportInput,
 } from "./brainstorm.ts";
-import { GrowCard, GrowState, GrowUpdateInput } from "./grow.ts";
 import {
   ThreadPreviewEnvironmentError,
   ThreadPreviewEnvironmentInput,
 } from "./threadPreviewEnvironment.ts";
-import { GrowWidgetPoolState } from "./growWidget.ts";
 import { ElementsLibraryInput, ElementsLibraryState } from "./elements.ts";
-import {
-  UserNotificationError,
-  UserNotificationMarkReadInput,
-  UserNotificationMarkReadResult,
-  UserNotificationInput,
-  UserNotificationNotifyResult,
-  UserNotificationPushResult,
-  UserNotificationPushSubscribeInput,
-  UserNotificationPushUnsubscribeInput,
-  UserNotificationsState,
-} from "./userNotification.ts";
 import {
   AgentSessionImportInput,
   AgentSessionImportProjectChangedError,
@@ -148,7 +133,6 @@ import {
   WorktreeSetupStreamEvent,
   WorktreeSetupSubscribeInput,
 } from "./worktreeSetup.ts";
-import { SandboxListStreamEvent, SandboxRequestError, SandboxThreadInput } from "./sandbox.ts";
 import {
   GitActionProgressEvent,
   VcsSwitchRefInput,
@@ -168,9 +152,6 @@ import {
   GitPullRequestRefInput,
   VcsPullResult,
   VcsRemoveWorktreeInput,
-  WorktreeFinishError,
-  WorktreeFinishInput,
-  WorktreeFinishResult,
   GitResolvePullRequestResult,
   GitRunStackedActionInput,
   VcsStatusInput,
@@ -437,19 +418,9 @@ export const WS_METHODS = {
   brainstormSyncSpaces: "brainstorm.syncSpaces",
   brainstormOpen: "brainstorm.open",
   brainstormMutateTasks: "brainstorm.mutateTasks",
-  brainstormThreadReport: "brainstorm.threadReport",
   subscribeBrainstorm: "subscribeBrainstorm",
-  growState: "grow.state",
-  growUpdate: "grow.update",
   threadPreviewEnvironment: "thread.previewEnvironment",
-  growWidgetPool: "grow.widgetPool",
   elementsLibrary: "elements.library",
-  subscribeGrow: "subscribeGrow",
-  subscribeNotifications: "subscribeNotifications",
-  notificationsNotify: "notifications.notify",
-  notificationsMarkRead: "notifications.markRead",
-  notificationsPushSubscribe: "notifications.pushSubscribe",
-  notificationsPushUnsubscribe: "notifications.pushUnsubscribe",
   filesystemGetMetadata: "filesystem.getMetadata",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
@@ -485,7 +456,6 @@ export const WS_METHODS = {
   vcsListRefs: "vcs.listRefs",
   vcsCreateWorktree: "vcs.createWorktree",
   vcsRemoveWorktree: "vcs.removeWorktree",
-  worktreeFinish: "worktree.finish",
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
@@ -629,10 +599,6 @@ export const WS_METHODS = {
   subscribeVcsStatus: "subscribeVcsStatus",
   subscribeWorktreeSetup: "subscribeWorktreeSetup",
   worktreeSetupCancel: "worktreeSetup.cancel",
-  subscribeSandboxes: "subscribeSandboxes",
-  sandboxStop: "sandbox.stop",
-  sandboxEnable: "sandbox.enable",
-  sandboxDisable: "sandbox.disable",
   subscribeTerminalEvents: "subscribeTerminalEvents",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
@@ -1369,12 +1335,6 @@ const WsBrainstormMutateTasksRpc = Rpc.make(WS_METHODS.brainstormMutateTasks, {
   error: Schema.Union([BrainstormError, EnvironmentAuthorizationError]),
 });
 
-const WsBrainstormThreadReportRpc = Rpc.make(WS_METHODS.brainstormThreadReport, {
-  payload: BrainstormThreadReportInput,
-  success: BrainstormThreadReport,
-  error: Schema.Union([BrainstormError, EnvironmentAuthorizationError]),
-});
-
 const WsSubscribeBrainstormRpc = Rpc.make(WS_METHODS.subscribeBrainstorm, {
   payload: Schema.Struct({}),
   success: BrainstormState,
@@ -1382,71 +1342,15 @@ const WsSubscribeBrainstormRpc = Rpc.make(WS_METHODS.subscribeBrainstorm, {
   stream: true,
 });
 
-const WsGrowStateRpc = Rpc.make(WS_METHODS.growState, {
-  payload: Schema.Struct({}),
-  success: GrowState,
-  error: EnvironmentAuthorizationError,
-});
-
-const WsGrowUpdateRpc = Rpc.make(WS_METHODS.growUpdate, {
-  payload: GrowUpdateInput,
-  success: GrowCard,
-  error: EnvironmentAuthorizationError,
-});
-
 const WsThreadPreviewEnvironmentRpc = Rpc.make(WS_METHODS.threadPreviewEnvironment, {
   payload: ThreadPreviewEnvironmentInput,
   error: Schema.Union([ThreadPreviewEnvironmentError, EnvironmentAuthorizationError]),
-});
-
-const WsGrowWidgetPoolRpc = Rpc.make(WS_METHODS.growWidgetPool, {
-  payload: Schema.Struct({}),
-  success: GrowWidgetPoolState,
-  error: EnvironmentAuthorizationError,
 });
 
 const WsElementsLibraryRpc = Rpc.make(WS_METHODS.elementsLibrary, {
   payload: ElementsLibraryInput,
   success: ElementsLibraryState,
   error: EnvironmentAuthorizationError,
-});
-
-const WsSubscribeGrowRpc = Rpc.make(WS_METHODS.subscribeGrow, {
-  payload: Schema.Struct({}),
-  success: GrowState,
-  error: EnvironmentAuthorizationError,
-  stream: true,
-});
-
-const WsSubscribeNotificationsRpc = Rpc.make(WS_METHODS.subscribeNotifications, {
-  payload: Schema.Struct({}),
-  success: UserNotificationsState,
-  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
-  stream: true,
-});
-
-const WsNotificationsNotifyRpc = Rpc.make(WS_METHODS.notificationsNotify, {
-  payload: UserNotificationInput,
-  success: UserNotificationNotifyResult,
-  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
-});
-
-const WsNotificationsMarkReadRpc = Rpc.make(WS_METHODS.notificationsMarkRead, {
-  payload: UserNotificationMarkReadInput,
-  success: UserNotificationMarkReadResult,
-  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
-});
-
-const WsNotificationsPushSubscribeRpc = Rpc.make(WS_METHODS.notificationsPushSubscribe, {
-  payload: UserNotificationPushSubscribeInput,
-  success: UserNotificationPushResult,
-  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
-});
-
-const WsNotificationsPushUnsubscribeRpc = Rpc.make(WS_METHODS.notificationsPushUnsubscribe, {
-  payload: UserNotificationPushUnsubscribeInput,
-  success: UserNotificationPushResult,
-  error: Schema.Union([UserNotificationError, EnvironmentAuthorizationError]),
 });
 
 const WsAgentSessionsScanRpc = Rpc.make(WS_METHODS.agentSessionsScan, {
@@ -1547,33 +1451,8 @@ const WsSubscribeWorktreeSetupRpc = Rpc.make(WS_METHODS.subscribeWorktreeSetup, 
   stream: true,
 });
 
-const WsSubscribeSandboxesRpc = Rpc.make(WS_METHODS.subscribeSandboxes, {
-  payload: Schema.Struct({}),
-  success: SandboxListStreamEvent,
-  error: EnvironmentAuthorizationError,
-  stream: true,
-});
-
-const WsSandboxStopRpc = Rpc.make(WS_METHODS.sandboxStop, {
-  payload: SandboxThreadInput,
-  success: Schema.Void,
-  error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
-});
-
 /** Moves an existing thread into a sandbox for its workspace, starting one if needed. */
-const WsSandboxEnableRpc = Rpc.make(WS_METHODS.sandboxEnable, {
-  payload: SandboxThreadInput,
-  success: Schema.Void,
-  error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
-});
-
 /** Takes a thread out of its sandbox. The sandbox is deleted when no thread is left in it. */
-const WsSandboxDisableRpc = Rpc.make(WS_METHODS.sandboxDisable, {
-  payload: SandboxThreadInput,
-  success: Schema.Void,
-  error: Schema.Union([SandboxRequestError, EnvironmentAuthorizationError]),
-});
-
 const WsWorktreeSetupCancelRpc = Rpc.make(WS_METHODS.worktreeSetupCancel, {
   payload: WorktreeSetupCancelInput,
   success: WorktreeSetupCancelResult,
@@ -1615,12 +1494,6 @@ const WsVcsCreateWorktreeRpc = Rpc.make(WS_METHODS.vcsCreateWorktree, {
 const WsVcsRemoveWorktreeRpc = Rpc.make(WS_METHODS.vcsRemoveWorktree, {
   payload: VcsRemoveWorktreeInput,
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
-});
-
-const WsWorktreeFinishRpc = Rpc.make(WS_METHODS.worktreeFinish, {
-  payload: WorktreeFinishInput,
-  success: WorktreeFinishResult,
-  error: Schema.Union([WorktreeFinishError, GitCommandError, EnvironmentAuthorizationError]),
 });
 
 const WsVcsCreateRefRpc = Rpc.make(WS_METHODS.vcsCreateRef, {
@@ -1941,15 +1814,6 @@ const WsOrchestrationV2GetTurnItemRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.get
   error: Schema.Union([OrchestrationV2GetThreadProjectionError, EnvironmentAuthorizationError]),
 });
 
-const WsOrchestrationV2GetBackgroundTaskOutputRpc = Rpc.make(
-  ORCHESTRATION_V2_WS_METHODS.getBackgroundTaskOutput,
-  {
-    payload: OrchestrationV2RpcSchemas.getBackgroundTaskOutput.input,
-    success: OrchestrationV2RpcSchemas.getBackgroundTaskOutput.output,
-    error: Schema.Union([OrchestrationV2GetThreadProjectionError, EnvironmentAuthorizationError]),
-  },
-);
-
 const WsOrchestrationV2LaunchThreadRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.launchThread, {
   payload: OrchestrationV2RpcSchemas.launchThread.input,
   success: OrchestrationV2RpcSchemas.launchThread.output,
@@ -2251,19 +2115,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsBrainstormSyncSpacesRpc,
   WsBrainstormOpenRpc,
   WsBrainstormMutateTasksRpc,
-  WsBrainstormThreadReportRpc,
   WsSubscribeBrainstormRpc,
-  WsGrowStateRpc,
-  WsGrowUpdateRpc,
   WsThreadPreviewEnvironmentRpc,
-  WsGrowWidgetPoolRpc,
   WsElementsLibraryRpc,
-  WsSubscribeGrowRpc,
-  WsSubscribeNotificationsRpc,
-  WsNotificationsNotifyRpc,
-  WsNotificationsMarkReadRpc,
-  WsNotificationsPushSubscribeRpc,
-  WsNotificationsPushUnsubscribeRpc,
   WsFilesystemGetMetadataRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
@@ -2279,10 +2133,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeVcsStatusRpc,
   WsSubscribeWorktreeSetupRpc,
   WsWorktreeSetupCancelRpc,
-  WsSubscribeSandboxesRpc,
-  WsSandboxStopRpc,
-  WsSandboxEnableRpc,
-  WsSandboxDisableRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
   WsGitRunStackedActionRpc,
@@ -2291,7 +2141,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsListRefsRpc,
   WsVcsCreateWorktreeRpc,
   WsVcsRemoveWorktreeRpc,
-  WsWorktreeFinishRpc,
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
@@ -2339,7 +2188,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2GetWorkflowScriptRpc,
   WsOrchestrationV2StopWorkflowRpc,
   WsOrchestrationV2GetTurnItemRpc,
-  WsOrchestrationV2GetBackgroundTaskOutputRpc,
   WsOrchestrationV2GetTurnDiffRpc,
   WsOrchestrationV2GetFullThreadDiffRpc,
   WsOrchestrationV2SearchThreadsRpc,

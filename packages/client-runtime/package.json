@@ -131,10 +131,6 @@
       "types": "./src/relay/index.ts",
       "default": "./src/relay/index.ts"
     },
-    "./state/background-commands": {
-      "types": "./src/state/backgroundCommands.ts",
-      "default": "./src/state/backgroundCommands.ts"
-    },
     "./state/auth": {
       "types": "./src/state/auth.ts",
       "default": "./src/state/auth.ts"
@@ -174,14 +170,6 @@
     "./state/brainstorm": {
       "types": "./src/state/brainstorm.ts",
       "default": "./src/state/brainstorm.ts"
-    },
-    "./state/notifications": {
-      "types": "./src/state/notifications.ts",
-      "default": "./src/state/notifications.ts"
-    },
-    "./state/grow": {
-      "types": "./src/state/grow.ts",
-      "default": "./src/state/grow.ts"
     },
     "./state/entities": {
       "types": "./src/state/entities.ts",

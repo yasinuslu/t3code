@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   filePreviewKind,
-  spreadsheetFormat,
   decodeFilePreviewText,
   FILE_TEXT_PREVIEW_MAX_BYTES,
   hostPreviewMimeTypeFromExtension,
@@ -191,22 +190,5 @@ describe("attachment preview classification", () => {
     expect(preview.truncated).toBe(true);
     expect(preview.text.endsWith("�")).toBe(false);
     expect(preview.text.length).toBe(FILE_TEXT_PREVIEW_MAX_BYTES - 1);
-  });
-});
-
-describe("spreadsheetFormat", () => {
-  it("recognises workbooks by mime type or extension, never CSV", () => {
-    expect(spreadsheetFormat({ name: "Q3.XLSX" })).toBe("xlsx");
-    expect(spreadsheetFormat({ name: "old.xls", mimeType: "application/octet-stream" })).toBe(
-      "xls",
-    );
-    expect(
-      spreadsheetFormat({
-        name: "export",
-        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      }),
-    ).toBe("xlsx");
-    expect(spreadsheetFormat({ name: "data.csv" })).toBeNull();
-    expect(spreadsheetFormat({ name: "book.xlsx", mimeType: "application/pdf" })).toBeNull();
   });
 });

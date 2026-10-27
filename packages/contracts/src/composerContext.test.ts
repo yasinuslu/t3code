@@ -104,7 +104,6 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
   },
   mention: { ...base, kind: "mention", label: "@src/index.ts", path: "src/index.ts" },
   skill: { ...base, kind: "skill", label: "$pinchtab", name: "pinchtab" },
-  "grow-request": { ...base, kind: "grow-request", label: "Ship", request: "ship" },
   thread: {
     ...base,
     kind: "thread",

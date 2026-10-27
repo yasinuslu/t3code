@@ -239,20 +239,3 @@ export function isWorkspacePreviewEntryPath(path: string): boolean {
     binaryPreviewKind({ name: path }) !== null
   );
 }
-
-/** Largest workbook the viewer opens; it is parsed in memory and sent as one message. */
-export const SPREADSHEET_MAX_BYTES = 12 * 1024 * 1024;
-
-/** Binary workbooks the grid reads through SheetJS. CSV and TSV are text, see `filePreviewDelimiter`. */
-export function spreadsheetFormat(file: {
-  readonly name: string;
-  readonly mimeType?: string;
-}): "xlsx" | "xls" | null {
-  const mime = file.mimeType?.split(";", 1)[0]?.trim().toLowerCase();
-  if (mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return "xlsx";
-  if (mime === "application/vnd.ms-excel") return "xls";
-  if (mime && mime !== "application/octet-stream" && mime !== "text/plain") return null;
-  if (/\.xlsx$/i.test(file.name)) return "xlsx";
-  if (/\.xls$/i.test(file.name)) return "xls";
-  return null;
-}

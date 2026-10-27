@@ -1,8 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { ProjectId, RunId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { ThreadPresentation } from "./threadPresentation.ts";
-import { ThreadGrowRequest } from "./threadGrowRequest.ts";
+import { ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
  * Brainstorm: the manager chats (one per code profile, each working in its
@@ -53,34 +51,6 @@ export const BrainstormOpenResult = Schema.Struct({
   brainPath: Schema.String,
 });
 export type BrainstormOpenResult = typeof BrainstormOpenResult.Type;
-
-export const BrainstormThreadReportInput = Schema.Struct({
-  threadId: ThreadId,
-  /** The run the client last saw; a new run is a new report. */
-  runId: Schema.optional(Schema.NullOr(RunId)),
-  /** The status update the client last saw; a new one is a new report. */
-  statusUpdatedAt: Schema.optional(Schema.String),
-  /** The presentation the client last saw; a new one is a new report. */
-  presentationUpdatedAt: Schema.optional(Schema.String),
-  /** The Grow requests the client last saw; a change is a new report. */
-  growRequestsUpdatedAt: Schema.optional(Schema.String),
-});
-export type BrainstormThreadReportInput = typeof BrainstormThreadReportInput.Type;
-
-/** A thread's latest report: the last answer of its newest runs that has one. */
-export const BrainstormThreadReport = Schema.Struct({
-  threadId: ThreadId,
-  runId: Schema.NullOr(RunId),
-  /** Capped; null before the thread's first answer. */
-  text: Schema.NullOr(Schema.String),
-  /** The status report, when a later answer is the text: its images stay the thread's proof. */
-  statusText: Schema.optional(Schema.String),
-  /** The thread's presentation, when its agent set one. */
-  presentation: Schema.optional(ThreadPresentation),
-  /** What the user asked the thread for from Grow, newest last. */
-  growRequests: Schema.optional(Schema.Array(ThreadGrowRequest)),
-});
-export type BrainstormThreadReport = typeof BrainstormThreadReport.Type;
 
 export const BrainstormTask = Schema.Struct({
   /** 1-based position in its file; changes when tasks above it are added or removed. */

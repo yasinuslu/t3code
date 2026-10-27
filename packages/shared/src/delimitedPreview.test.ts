@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  delimitedTextStyle,
-  filePreviewDelimiter,
-  parseDelimited,
-  parseDelimitedPreview,
-  serializeDelimited,
-} from "./delimitedPreview.ts";
+import { parseDelimitedPreview } from "./delimitedPreview.ts";
 
 describe("delimited file previews", () => {
   it("preserves quoted separators, escaped quotes, blank cells and line breaks", () => {
@@ -84,33 +78,5 @@ describe("delimited file previews", () => {
         maxCellLength: 4096,
       }).rows[0]?.[0],
     ).toHaveLength(3000);
-  });
-});
-
-describe("full delimited text", () => {
-  it("parses without bounds and writes back in the file's own style", () => {
-    const wide = Array.from({ length: 40 }, (_, index) => `c${index}`).join(",");
-    const rows = Array.from({ length: 150 }, () => wide);
-    const text = `${rows.join("\r\n")}\r\n`;
-    const parsed = parseDelimited(text, ",");
-    expect(parsed.truncated).toBe(false);
-    expect(parsed.rows).toHaveLength(150);
-    expect(parsed.rows[0]).toHaveLength(40);
-    expect(serializeDelimited(parsed.rows, ",", delimitedTextStyle(text))).toBe(text);
-  });
-  it.each([
-    ["LF, no final newline", "a,b\n1,2"],
-    ["CRLF with a BOM", "\ufeffa,b\r\n1,2\r\n"],
-    ["quotes, delimiters and line breaks", 'name,notes\n"A, B","say ""hi""\nagain"\n'],
-    ["blank and ragged rows", "a,b,c\n\n1\n,,\n"],
-    ["a lone empty record", 'x\n""'],
-  ])("round-trips %s", (_label, text) => {
-    const { rows } = parseDelimited(text, ",");
-    expect(serializeDelimited(rows, ",", delimitedTextStyle(text))).toBe(text);
-  });
-  it("quotes only what needs it and keeps tab files tab-separated", () => {
-    const style = { eol: "\n" as const, bom: false, finalNewline: true };
-    expect(serializeDelimited([["a,b", "c"]], "\t", style)).toBe("a,b\tc\n");
-    expect(serializeDelimited([["a\tb", 'q"']], "\t", style)).toBe('"a\tb"\t"q"""\n');
   });
 });

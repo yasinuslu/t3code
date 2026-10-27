@@ -16,7 +16,6 @@ import type {
   ProviderInstanceId,
   RunId,
   ThreadId,
-  ThreadStatusOutcome,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
@@ -191,24 +190,8 @@ export interface EnvironmentThreadShell {
   readonly branchPullRequest?: ThreadLinkedPullRequest | null;
   /** Previews (running builds) of this thread's work, oldest first; absent on client-built shells. */
   readonly previewLinks?: ReadonlyArray<ThreadPreviewLink>;
-  /** When the agent last set the thread's status report; absent until one does. */
-  readonly statusUpdatedAt?: string;
-  /** True when that report embeds a proof image. */
-  readonly statusProof?: boolean;
-  /** What that report says about the user: they owe a move, or the work landed. */
-  readonly statusOutcome?: ThreadStatusOutcome;
-  /** When the agent last set the thread's presentation; absent until one does. */
-  readonly presentationUpdatedAt?: string;
-  /** How many pages that presentation has. */
-  readonly presentationPages?: number;
-  /** When the thread's Grow requests last changed; absent until the first. */
-  readonly growRequestsUpdatedAt?: string;
-  /** When an agent last answered a Grow request with "blocked". */
-  readonly growBlockedAt?: string;
   /** Where the thread's preview environment stands; absent until one is started. */
   readonly previewEnvironment?: import("@t3tools/contracts").ThreadPreviewEnvironment;
-  /** The thread that took this one further, with its one-line note. */
-  readonly supersededBy?: import("@t3tools/contracts").ThreadSupersededBy;
   /**
    * Server-tracked visited watermark. `undefined` means the environment's
    * server predates visited tracking and clients should fall back to any
@@ -326,23 +309,9 @@ export function presentThreadShell(
     linkedPullRequest: thread.linkedPullRequest ?? null,
     branchPullRequest: thread.branchPullRequest ?? null,
     previewLinks: thread.previewLinks ?? NO_PREVIEW_LINKS,
-    ...(thread.statusUpdatedAt === undefined ? {} : { statusUpdatedAt: thread.statusUpdatedAt }),
-    ...(thread.statusProof ? { statusProof: true } : {}),
-    ...(thread.statusOutcome === undefined ? {} : { statusOutcome: thread.statusOutcome }),
-    ...(thread.presentationUpdatedAt === undefined
-      ? {}
-      : {
-          presentationUpdatedAt: thread.presentationUpdatedAt,
-          presentationPages: thread.presentationPages ?? 0,
-        }),
-    ...(thread.growRequestsUpdatedAt === undefined
-      ? {}
-      : { growRequestsUpdatedAt: thread.growRequestsUpdatedAt }),
-    ...(thread.growBlockedAt === undefined ? {} : { growBlockedAt: thread.growBlockedAt }),
     ...(thread.previewEnvironment === undefined
       ? {}
       : { previewEnvironment: thread.previewEnvironment }),
-    ...(thread.supersededBy == null ? {} : { supersededBy: thread.supersededBy }),
     lineage: thread.lineage,
     forkedFrom: thread.forkedFrom,
     activeProviderThreadId: thread.activeProviderThreadId,

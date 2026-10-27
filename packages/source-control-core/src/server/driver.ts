@@ -19,8 +19,6 @@ export interface SourceControlMediaRequest {
   readonly url: string;
   /** Request headers to forward, such as `range`. */
   readonly headers: Readonly<Record<string, string>>;
-  /** The project the media belongs to, for a host whose credential is read per directory. */
-  readonly cwd?: string;
 }
 
 export interface SourceControlDriverInstance {

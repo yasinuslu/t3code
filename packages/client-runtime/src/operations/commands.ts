@@ -159,8 +159,6 @@ interface StartThreadBootstrap {
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
   };
-  /** Run the thread in a sandbox of its folder, whichever folder that is. */
-  readonly sandbox?: boolean;
   readonly runSetupScript?: boolean;
 }
 
@@ -521,21 +519,6 @@ export const setThreadAutoSettle = Effect.fn("EnvironmentCommands.setThreadAutoS
   });
 });
 
-export interface SetThreadSupersededByInput extends ThreadCommandInput {
-  /** The successor and a one-line note; null removes the link. */
-  readonly supersededBy: { readonly threadId: ThreadId; readonly note: string } | null;
-}
-export const setThreadSupersededBy = Effect.fn("EnvironmentCommands.setThreadSupersededBy")(
-  function* (input: SetThreadSupersededByInput) {
-    return yield* dispatch({
-      type: "thread.superseded-by.set",
-      commandId: yield* allocateCommandId(input),
-      threadId: input.threadId,
-      supersededBy: input.supersededBy,
-    });
-  },
-);
-
 export const reorderPinnedThread = Effect.fn("EnvironmentCommands.reorderPinnedThread")(function* (
   input: ReorderPinnedThreadInput,
 ) {
@@ -708,7 +691,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
     const existingProjection =
       bootstrap === undefined ? yield* getProjection(input.threadId) : null;
     const thread = bootstrap ?? existingProjection!.thread;
-    const folderStrategy =
+    const workspaceStrategy =
       prepareWorktree !== undefined
         ? {
             type: "worktree" as const,
@@ -730,8 +713,6 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
                 ? {}
                 : { branch: bootstrap.branch }),
             };
-    const workspaceStrategy =
-      input.bootstrap?.sandbox === true ? { ...folderStrategy, sandbox: true } : folderStrategy;
     return yield* request(ORCHESTRATION_V2_WS_METHODS.launchThread, {
       commandId,
       creationSource: input.creationSource ?? "web",

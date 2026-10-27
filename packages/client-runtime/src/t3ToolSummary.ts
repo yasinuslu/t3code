@@ -394,50 +394,14 @@ export function summarizeT3ToolCalls(
     case "link-preview":
       label = phrase("Linked", "link", quantity(selected.length, "preview"));
       break;
-    case "status-update":
-      label = phrase(
-        "Updated",
-        "update",
-        `the thread status${selected.length === 1 ? "" : ` ${times}`}`,
-      );
-      break;
-    case "presentation-set":
-      label = phrase("Set", "set", `the presentation${selected.length === 1 ? "" : ` ${times}`}`);
-      break;
-    case "presentation-edit":
-      label = phrase(
-        "Edited",
-        "edit",
-        `the presentation${selected.length === 1 ? "" : ` ${times}`}`,
-      );
-      break;
     case "elements-describe":
       label = phrase("Described", "describe", "web components");
-      break;
-    case "presentation-get":
-      label = phrase("Read", "read", "the presentation");
       break;
     case "preview-environment-up":
       label = phrase("Started", "start", "the preview environment");
       break;
     case "preview-environment-down":
       label = phrase("Stopped", "stop", "the preview environment");
-      break;
-    case "grow-request-close":
-      label = phrase("Answered", "answer", quantity(selected.length, "Grow request"));
-      break;
-    case "grow-update":
-      label = phrase(
-        "Updated",
-        "update",
-        `the Grow board${selected.length === 1 ? "" : ` ${times}`}`,
-      );
-      break;
-    case "grow-board":
-      label = phrase("Read", "read", "the Grow board");
-      break;
-    case "notify-user":
-      label = phrase("Notified", "notify", "the user");
       break;
     case "unlink-preview":
       label = phrase("Unlinked", "unlink", quantity(selected.length, "preview"));

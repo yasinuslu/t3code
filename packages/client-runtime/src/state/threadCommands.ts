@@ -19,7 +19,6 @@ import {
 } from "./runtime.ts";
 import {
   type ArchiveThreadInput,
-  type SetThreadSupersededByInput,
   type CancelQueuedRunInput,
   type RetryWorkspacePreparationInput,
   type CreateThreadInput,
@@ -85,7 +84,6 @@ import {
   reorderPinnedThread,
   reorderActiveThread,
   setThreadAutoSettle,
-  setThreadSupersededBy,
   settleThread,
   snoozeThread,
   startThreadTurn,
@@ -134,7 +132,6 @@ export type {
   ReorderPinnedThreadInput,
   ReorderActiveThreadInput,
   SetThreadAutoSettleInput,
-  SetThreadSupersededByInput,
   SettleThreadInput,
   SnoozeThreadInput,
   StartThreadTurnInput,
@@ -283,12 +280,6 @@ export function createThreadEnvironmentAtoms<R, E>(
     setAutoSettle: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-auto-settle",
       execute: (input: SetThreadAutoSettleInput) => setThreadAutoSettle(input),
-      scheduler,
-      concurrency,
-    }),
-    setSupersededBy: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:set-superseded-by",
-      execute: (input: SetThreadSupersededByInput) => setThreadSupersededBy(input),
       scheduler,
       concurrency,
     }),

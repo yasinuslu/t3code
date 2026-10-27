@@ -6,7 +6,6 @@ import {
   MAX_WHEN_EXPRESSION_DEPTH,
   MODEL_PICKER_JUMP_KEYBINDING_COMMANDS,
   PROFILE_WINDOW_KEYBINDING_COMMANDS,
-  type GrowKeybindingCommand,
   type ResolvedKeybindingRule,
   type ResolvedKeybindingsConfig,
   THREAD_JUMP_KEYBINDING_COMMANDS,
@@ -148,51 +147,7 @@ type WhenToken =
   | { type: "lparen" }
   | { type: "rparen" };
 
-/**
- * Grow's keys, one per command: the physical key on the left hand, held with the Grow
- * modifier. That is Alt on Windows and Linux and Control on a Mac, where Option types special
- * characters. Two rules per command, told apart by `isMac`, so the one keybindings file serves
- * a Mac and a PC alike. `growOpen` scopes them to the Grow screen, which also lets them take a
- * Control chord there (Ctrl+S) that means something else elsewhere.
- */
-const GROW_KEYS: ReadonlyArray<{
-  readonly command: GrowKeybindingCommand;
-  readonly key: string;
-  /** The Mac chord when it cannot be plain Control+key. */
-  readonly mac?: string;
-}> = [
-  { command: "grow.step.previous", key: "w" },
-  { command: "grow.step.next", key: "s" },
-  { command: "grow.page.previous", key: "a" },
-  { command: "grow.page.next", key: "d" },
-  { command: "grow.zone.threads", key: "1" },
-  { command: "grow.zone.presentation", key: "2" },
-  { command: "grow.zone.live", key: "3" },
-  { command: "grow.zone.chat", key: "4" },
-  { command: "grow.back", key: "q" },
-  { command: "grow.manager", key: "t" },
-  // Ctrl+E is the manager everywhere on a Mac (and the emacs end-of-line).
-  { command: "grow.main", key: "e", mac: "ctrl+shift+e" },
-  { command: "grow.settle", key: "x" },
-  { command: "grow.snooze", key: "c" },
-  { command: "grow.supersede", key: "shift+x" },
-  { command: "grow.undo", key: "z" },
-  { command: "grow.reload", key: "r" },
-  { command: "grow.search", key: "f" },
-  { command: "grow.toggleProjects", key: "g" },
-];
-
-const GROW_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = GROW_KEYS.flatMap(
-  ({ command, key, mac }) => [
-    { key: `alt+${key}`, command, when: "growOpen && !isMac" },
-    { key: mac ?? `ctrl+${key}`, command, when: "growOpen && isMac" },
-  ],
-);
-
-/**
- * The profile windows (desktop): Alt+Shift+1 ... 9, Control+Shift+1 ... 9 on a Mac. Not plain
- * Alt+digit, which is Grow's places.
- */
+/** The profile windows (desktop): Alt+Shift+1 ... 9, Control+Shift+1 ... 9 on a Mac. */
 const PROFILE_WINDOW_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> =
   PROFILE_WINDOW_KEYBINDING_COMMANDS.flatMap((command, index) => [
     { key: `alt+shift+${index + 1}`, command, when: "isDesktop && !isMac" },
@@ -226,7 +181,6 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+alt+b", command: "preview.toggle" },
   { key: "ctrl+alt+t", command: "rightPanel.toggleTerminal" },
   { key: "ctrl+alt+f", command: "rightPanel.toggleFiles" },
-  { key: "ctrl+alt+r", command: "rightPanel.togglePresentation" },
   { key: "ctrl+alt+d", command: "diff.toggle" },
   { key: "ctrl+alt+p", command: "rightPanel.togglePullRequest" },
   // Orchestrator V2 has no Agents surface; subagents live in the thread details panel.
@@ -257,17 +211,16 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // app also takes it system-wide.
   { key: "ctrl+alt+space", command: "manager.toggle" },
   // The same overlay on Ctrl+E, the one the UI advertises. `ctrl` rather than `mod`: it is
-  // the Control key on a Mac too, one key from Grow's bare T. It also works inside the
-  // composer and other inputs, where it replaces macOS's end-of-line. Not in a terminal,
-  // where Ctrl+E is end-of-line in every shell, and never system-wide (see ModeSwitch).
+  // the Control key on a Mac too. It also works inside the composer and other inputs, where it
+  // replaces macOS's end-of-line. Not in a terminal, where Ctrl+E is end-of-line in every
+  // shell, and never system-wide.
   { key: "ctrl+e", command: "manager.toggle", when: "!terminalFocus" },
   // Steps the code profile in view (yu, sn, ...) and its manager with it; Shift steps
-  // back. One light modifier and a letter under the left hand (Grow's bare V does the
-  // same). Never Q or W, which close things; Alt+R is Grow's reload. The physical key
-  // counts, so what Option types on a Mac layout does not get in the way.
+  // back. Never Q or W, which close things. The physical key counts, so what Option types
+  // on a Mac layout does not get in the way.
   { key: "alt+v", command: "profile.next", when: "!terminalFocus" },
   { key: "alt+shift+v", command: "profile.previous", when: "!terminalFocus" },
-  // On a Mac the profile keys follow Grow's: Control, not Option.
+  // On a Mac the profile keys use Control, not Option.
   { key: "ctrl+v", command: "profile.next", when: "!terminalFocus && !editableFocus && isMac" },
   {
     key: "ctrl+shift+v",
@@ -279,8 +232,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // a terminal alike, so focus never gets stuck in one pane. Ctrl+H is Backspace and Ctrl+L
   // clears a terminal, which these override inside T3 only; Ctrl+L stays "focus the URL" in
   // the browser panel, which is the right-most pane and has nothing to move to.
-  // On a Mac Ctrl+S is Grow's "next thread" and Cmd+B already hides the sidebar, so the sidebar
-  // is Ctrl+B there. On Windows and Linux Ctrl+B is that hide chord and Grow holds Alt.
+  // On a Mac Cmd+B already hides the sidebar, so the sidebar pane is Ctrl+B there. On Windows
+  // and Linux Ctrl+B is that hide chord.
   { key: "ctrl+s", command: "pane.sidebar", when: "!isMac" },
   { key: "ctrl+b", command: "pane.sidebar", when: "isMac && !terminalFocus && !editableFocus" },
   { key: "ctrl+h", command: "pane.left" },
@@ -291,13 +244,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "alt+j", command: "pane.rowNext", when: "!isMac" },
   { key: "ctrl+k", command: "pane.rowPrevious", when: "isMac && !editableFocus" },
   { key: "ctrl+j", command: "pane.rowNext", when: "isMac && !editableFocus" },
-  ...GROW_DEFAULT_KEYBINDINGS,
   ...PROFILE_WINDOW_DEFAULT_KEYBINDINGS,
-  // The two screens. `ctrl` rather than `mod`, like the panel chords above, so the
-  // chord is the same physical keys everywhere; 0 switches between Grow and T3.
-  { key: "ctrl+alt+1", command: "mode.grow" },
-  { key: "ctrl+alt+3", command: "mode.normal" },
-  { key: "ctrl+alt+0", command: "mode.cycle" },
   // Not Ctrl+Alt+A on Windows and Linux, which is the thread panel.
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus && isMac" },
   { key: "ctrl+alt+y", command: "theme.select", when: "!terminalFocus && !isMac" },
@@ -354,9 +301,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
     command,
     when: "modelPickerOpen && isDesktop",
   })),
-  { key: "alt+c", command: "usage.cost", when: "usagePageOpen" },
-  { key: "alt+t", command: "usage.tokens", when: "usagePageOpen" },
-  { key: "alt+l", command: "usage.limits", when: "usagePageOpen" },
+  { key: "c", command: "usage.cost", when: "usagePageOpen" },
+  { key: "t", command: "usage.tokens", when: "usagePageOpen" },
+  { key: "l", command: "usage.limits", when: "usagePageOpen" },
   { key: "mod+shift+1", command: "usage.period.day", when: "usagePageOpen" },
   { key: "mod+shift+2", command: "usage.period.week", when: "usagePageOpen" },
   { key: "mod+shift+3", command: "usage.period.month", when: "usagePageOpen" },
@@ -625,8 +572,8 @@ export function mergeWithDefaultKeybindings(
 /**
  * Control+letter chords a macOS text field reads as editing (emacs: A/E line start and end,
  * B/F back and forward, D delete, H backspace, K kill, N/P lines, O open line, T transpose,
- * Y yank). Grow holds its keys with Control on a Mac, so while the caret is in a text field
- * these stay with the text, and a page below the app keeps them too.
+ * Y yank). Shortcuts held with Control on a Mac leave these to the text while the caret is in
+ * a text field, and a page below the app keeps them too.
  */
 const MAC_TEXT_EDITING_LETTERS: ReadonlySet<string> = new Set([
   "a",

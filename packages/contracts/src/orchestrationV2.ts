@@ -63,14 +63,10 @@ import {
   ThreadPullRequestWatch,
 } from "./threadPullRequest.ts";
 import { ThreadPreviewLink, ThreadPreviewLinkSource } from "./threadPreviewLink.ts";
-import { PresentationPage, ThreadPresentation } from "./threadPresentation.ts";
 import {
   ThreadPreviewEnvironment,
   ThreadPreviewEnvironmentStatus,
 } from "./threadPreviewEnvironment.ts";
-import { GrowRequestOutcome, ThreadGrowRequest } from "./threadGrowRequest.ts";
-import { ThreadStatusOutcome, ThreadStatusReport } from "./threadStatusReport.ts";
-import { ThreadSupersededBy } from "./threadSupersede.ts";
 import {
   ProviderApprovalDecision,
   ProviderApprovalFullAccessOverride,
@@ -388,18 +384,6 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
 export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitRecoveryUpdate.Type;
 
 /**
- * Regular compaction for a long-lived thread: while the thread is idle, the
- * server sends the provider's own `/compact` once the context reaches
- * `thresholdTokens`, or after `intervalHours` since the last compaction when
- * the thread has had activity since.
- */
-export const ThreadAutoCompact = Schema.Struct({
-  thresholdTokens: PositiveInt,
-  intervalHours: Schema.optional(PositiveInt),
-});
-export type ThreadAutoCompact = typeof ThreadAutoCompact.Type;
-
-/**
  * `score` is an open count that halves every two weeks, as of `openedAt`.
  * `picks` stores lowercase palette queries, newest first.
  * Times are epoch milliseconds for ranking arithmetic.
@@ -435,16 +419,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   /** Previews (running builds) of this thread's work; optional so older servers still decode. */
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
-  /** The status its agent last set (`thread_status_update`); absent until one does. */
-  statusReport: Schema.optional(ThreadStatusReport),
-  /** The presentation its agent last set (`presentation_set`); absent until one does. */
-  presentation: Schema.optional(ThreadPresentation),
   /** The thread's project-declared preview environment; absent until one is started. */
   previewEnvironment: Schema.optional(ThreadPreviewEnvironment),
-  /** What the user asked it for from Grow, newest last; absent until they do. */
-  growRequests: Schema.optional(Schema.Array(ThreadGrowRequest)),
-  /** The thread that took this one further (Let go, superseded by); absent until set. */
-  supersededBy: Schema.optional(Schema.NullOr(ThreadSupersededBy)),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   lineage: OrchestrationV2AppThreadLineage,
@@ -476,8 +452,6 @@ export const OrchestrationV2AppThread = Schema.Struct({
   guestShare: Schema.optional(Schema.NullOr(ThreadGuestShare)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
-  /** Regular compaction; off when absent or null. */
-  autoCompact: Schema.optional(Schema.NullOr(ThreadAutoCompact)),
   // Fractional-index slot in the user-arranged pinned order. Optional so
   // payloads from pre-reorder servers still decode.
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -610,29 +584,21 @@ export const OrchestrationV2RunBackgroundWorkCancelled = Schema.Struct({
 export type OrchestrationV2RunBackgroundWorkCancelled =
   typeof OrchestrationV2RunBackgroundWorkCancelled.Type;
 
-/**
- * Where a launched thread works. `sandbox` is independent of the folder: any
- * strategy can run the thread's agent, terminals, and setup script in a
- * sandbox for that folder.
- */
 export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("root"),
     branch: Schema.optional(TrimmedNonEmptyString),
-    sandbox: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("existing_worktree"),
     worktreePath: TrimmedNonEmptyString,
     branch: Schema.optional(TrimmedNonEmptyString),
-    sandbox: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("worktree"),
     baseRef: TrimmedNonEmptyString,
     branch: Schema.optional(TrimmedNonEmptyString),
     startFromOrigin: Schema.optional(Schema.Boolean),
-    sandbox: Schema.optional(Schema.Boolean),
   }),
 ]);
 export type OrchestrationV2ThreadLaunchWorkspaceStrategy =
@@ -1206,34 +1172,11 @@ export const OrchestrationV2NotificationSource = kindUnionWithFallback(
 );
 export type OrchestrationV2NotificationSource = typeof OrchestrationV2NotificationSource.Type;
 
-// A notification records an observed event, not whether its payload has reached the agent.
-// Provider delivery, wake policy, and agent-facing instructions belong to the backend.
-const OrchestrationV2NotificationOutcome = Schema.Literals([
-  "completed",
-  "failed",
-  "cancelled",
-  "updated",
-  "unknown",
-]);
-
-/** One provider background task a notification reports, by the id its tool item carries. */
-export const OrchestrationV2NotificationTask = Schema.Struct({
-  taskId: TrimmedNonEmptyString,
-  outcome: OrchestrationV2NotificationOutcome,
-  exitCode: Schema.optional(Schema.Int),
-  /** The task description, which outlives the running roster that also names it. */
-  label: Schema.optional(TrimmedNonEmptyString),
-});
-export type OrchestrationV2NotificationTask = typeof OrchestrationV2NotificationTask.Type;
-
 export const OrchestrationV2Notification = Schema.Struct({
   source: OrchestrationV2NotificationSource,
-  // Item status describes this timeline record; outcome describes the reported work.
-  outcome: OrchestrationV2NotificationOutcome,
+  outcome: Schema.Literals(["completed", "failed", "cancelled", "updated", "unknown"]),
   summary: TrimmedNonEmptyString,
   detail: Schema.optional(Schema.String),
-  /** Per-task results for work whose tool item carries a `backgroundTaskId`. */
-  tasks: Schema.optional(Schema.Array(OrchestrationV2NotificationTask)),
 });
 export type OrchestrationV2Notification = typeof OrchestrationV2Notification.Type;
 
@@ -1571,8 +1514,6 @@ export const OrchestrationV2TurnItem = Schema.Union([
     outputOmitted: Schema.optional(Schema.Boolean),
     outputIndicatesFailure: Schema.optional(Schema.Boolean),
     exitCode: Schema.optional(Schema.Int),
-    /** The provider task a backgrounded command keeps running as; read its output by this id. */
-    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
     /** Set when the command is a monitor, so background work lists it as a monitor. */
     monitor: Schema.optional(Schema.Boolean),
   }),
@@ -1707,8 +1648,6 @@ export const OrchestrationV2TurnItem = Schema.Union([
     output: Schema.optional(Schema.Unknown),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
-    /** The provider task this tool started, such as a monitor; read its output by this id. */
-    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
   }),
 ]);
 export type OrchestrationV2TurnItem = typeof OrchestrationV2TurnItem.Type;
@@ -1994,24 +1933,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   /** Previews (running builds) of this thread's work; optional so older servers still decode. */
   previewLinks: Schema.optional(Schema.Array(ThreadPreviewLink)),
-  /** When the agent last set the thread's status report; the text stays server-side. */
-  statusUpdatedAt: Schema.optional(IsoDateTime),
-  /** The thread that superseded this one; "supersedes" is derived from other shells. */
-  supersededBy: Schema.optional(Schema.NullOr(ThreadSupersededBy)),
-  /** Whether that report embeds a proof image; absent when it does not. */
-  statusProof: Schema.optional(Schema.Boolean),
-  /** What that report says about the user (`threadStatusReportOutcome`); absent when nothing. */
-  statusOutcome: Schema.optional(ThreadStatusOutcome),
-  /** When the agent last set the thread's presentation; the pages stay server-side. */
-  presentationUpdatedAt: Schema.optional(IsoDateTime),
-  /** How many pages that presentation has; absent when there is none. */
-  presentationPages: Schema.optional(Schema.Number),
   /** Where the thread's preview environment stands; absent until one is started. */
   previewEnvironment: Schema.optional(ThreadPreviewEnvironment),
-  /** When the thread's Grow requests last changed; the requests stay server-side. */
-  growRequestsUpdatedAt: Schema.optional(IsoDateTime),
-  /** When an agent last answered a Grow request with "blocked"; absent when none was. */
-  growBlockedAt: Schema.optional(IsoDateTime),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
@@ -2429,8 +2352,6 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     outputOmitted: Schema.optional(Schema.Boolean),
     outputIndicatesFailure: Schema.optional(Schema.Boolean),
     exitCode: Schema.optional(Schema.Int),
-    /** The provider task a backgrounded command keeps running as; read its output by this id. */
-    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
     /** Set when the command is a monitor, so background work lists it as a monitor. */
     monitor: Schema.optional(Schema.Boolean),
   }),
@@ -2560,8 +2481,6 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     output: Schema.optional(Schema.Unknown),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
-    /** The provider task this tool started, such as a monitor; read its output by this id. */
-    backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
   }),
 ]);
 export type OrchestrationV2TurnItemJson = typeof OrchestrationV2TurnItemJson.Type;
@@ -2980,8 +2899,6 @@ export const OrchestrationV2Command = Schema.Union([
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
     /** Link (object) or unlink (null) a pull request; absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
-    /** Turn regular compaction on (object) or off (null); absent leaves it unchanged. */
-    autoCompact: Schema.optional(Schema.NullOr(ThreadAutoCompact)),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.preview-link.link"),
@@ -2998,45 +2915,11 @@ export const OrchestrationV2Command = Schema.Union([
     url: TrimmedNonEmptyString,
   }),
   Schema.Struct({
-    type: Schema.Literal("thread.status-report.set"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    /** Replaces the previous report; its screenshots must already be stored attachments. */
-    text: TrimmedNonEmptyString,
-    outcome: Schema.optional(ThreadStatusOutcome),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("thread.presentation.set"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    /** Replaces the previous presentation; empty removes it. Files must already be stored. */
-    pages: Schema.Array(PresentationPage),
-    /** The thread's latest run: edits within one run amend one version. */
-    run: Schema.optional(Schema.String),
-    /** The stored pages of the version this one moves past, when it starts a new version. */
-    snapshot: Schema.optional(Schema.String),
-  }),
-  Schema.Struct({
     type: Schema.Literal("thread.preview-environment.set"),
     commandId: CommandId,
     threadId: ThreadId,
     status: ThreadPreviewEnvironmentStatus,
     note: Schema.optional(Schema.String),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("thread.grow-request.close"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    requestId: Schema.String,
-    outcome: GrowRequestOutcome,
-    note: Schema.optional(Schema.String),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("thread.superseded-by.set"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    /** The successor thread and a one-line note; null clears the link. */
-    supersededBy: Schema.NullOr(Schema.Struct({ threadId: ThreadId, note: Schema.String })),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),
@@ -3477,7 +3360,6 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   getWorkflowScript: "orchestration.getWorkflowScript",
   stopWorkflow: "orchestration.stopWorkflow",
   getTurnItem: "orchestration.getTurnItem",
-  getBackgroundTaskOutput: "orchestration.getBackgroundTaskOutput",
   launchThread: "orchestration.launchThread",
   subscribeArchivedShell: "orchestration.subscribeArchivedShell",
   subscribeShell: "orchestration.subscribeShell",
@@ -3956,30 +3838,6 @@ export const OrchestrationV2GetTurnItemResult = Schema.Struct({
 });
 export type OrchestrationV2GetTurnItemResult = typeof OrchestrationV2GetTurnItemResult.Type;
 
-export const OrchestrationV2GetBackgroundTaskOutputInput = Schema.Struct({
-  threadId: ThreadId,
-  /** A `backgroundTaskId` from one of the thread's tool items. */
-  taskId: TrimmedNonEmptyString,
-});
-export type OrchestrationV2GetBackgroundTaskOutputInput =
-  typeof OrchestrationV2GetBackgroundTaskOutputInput.Type;
-
-/**
- * What a background command or monitor runs and the tail of what it printed so
- * far. `output` is null when the provider's output file is gone or unknown.
- */
-export const OrchestrationV2GetBackgroundTaskOutputResult = Schema.Struct({
-  command: Schema.NullOr(Schema.String),
-  output: Schema.NullOr(Schema.String),
-  /** Bytes the output file holds; `output` keeps only the last part when larger. */
-  outputBytes: NonNegativeInt,
-  truncated: Schema.Boolean,
-  /** Set once the task exited, from the exit line the provider appends to its output. */
-  exitCode: Schema.optional(Schema.Int),
-});
-export type OrchestrationV2GetBackgroundTaskOutputResult =
-  typeof OrchestrationV2GetBackgroundTaskOutputResult.Type;
-
 const WORKFLOW_SCRIPT_ERROR_MESSAGES = {
   "invalid-path": "Workflow scripts must be absolute .js paths.",
   "root-unavailable": "Script root unavailable.",
@@ -4113,10 +3971,6 @@ export const OrchestrationV2RpcSchemas = {
   getTurnItem: {
     input: OrchestrationV2GetTurnItemInput,
     output: OrchestrationV2GetTurnItemResult,
-  },
-  getBackgroundTaskOutput: {
-    input: OrchestrationV2GetBackgroundTaskOutputInput,
-    output: OrchestrationV2GetBackgroundTaskOutputResult,
   },
   launchThread: {
     input: OrchestrationV2ThreadLaunchInput,

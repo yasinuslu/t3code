@@ -10,7 +10,6 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
-import { GrowRequestKind } from "./threadGrowRequest.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
 
 /** Image and file records reference `ChatAttachment` ids, never bytes. */
@@ -25,7 +24,6 @@ export const COMPOSER_CONTEXT_KINDS = [
   "mention",
   "skill",
   "thread",
-  "grow-request",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -213,24 +211,9 @@ export const ThreadContextRecord = Schema.Struct({
 });
 export type ThreadContextRecord = typeof ThreadContextRecord.Type;
 
-/**
- * What the user asked for from Grow (a presentation, Ship, a change, a reply). The agent
- * reads what is expected and how to answer it; the thread keeps it open until answered.
- */
-export const GrowRequestContextRecord = Schema.Struct({
-  ...recordBase,
-  kind: Schema.Literal("grow-request"),
-  request: GrowRequestKind,
-});
-export type GrowRequestContextRecord = typeof GrowRequestContextRecord.Type;
-
 const isJson = Schema.is(Schema.Json);
 
-/**
- * Catch-all for kinds this build does not know. Known discriminators are excluded so a
- * malformed known record fails its own schema instead of sliding through unchecked.
- * Mirrors `ChatUnknownAttachment`.
- */
+/** Excludes known discriminators so malformed known records fail their own schema. */
 export const UnknownContextRecord = Schema.Struct({
   ...recordBase,
   kind: ComposerContextKind.check(Schema.isPattern(KNOWN_KIND_PATTERN)),
@@ -258,7 +241,6 @@ export const KnownComposerContextRecord = Schema.Union([
   MentionContextRecord,
   SkillContextRecord,
   ThreadContextRecord,
-  GrowRequestContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

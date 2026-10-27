@@ -1,4 +1,4 @@
-import { EnvironmentId, type ServerConfig } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Option from "effect/Option";
 
@@ -15,9 +15,7 @@ import {
 } from "./model.ts";
 import {
   environmentMcpUrl,
-  presentCatalogEntry,
   presentEnvironmentConnection,
-  resolveEnvironmentDisplayLabel,
   presentConnectionState,
 } from "./presentation.ts";
 
@@ -172,72 +170,5 @@ describe("connection presentation", () => {
       error: null,
       traceId: null,
     });
-  });
-});
-
-function descriptorConfig(environmentId: EnvironmentId, label: string) {
-  return { environment: { environmentId, label } } as unknown as ServerConfig;
-}
-
-describe("environment display label", () => {
-  const relayEnvironmentId = EnvironmentId.make("f5de33b4-1d88-452a-a72f-b3b1d5b68228");
-
-  it("prefers the live descriptor label over a stale saved one", () => {
-    expect(
-      resolveEnvironmentDisplayLabel(TARGET, descriptorConfig(TARGET.environmentId, "tenriyo")),
-    ).toBe("tenriyo");
-  });
-
-  it("replaces a relay label that fell back to the environment id", () => {
-    const target = new RelayConnectionTarget({
-      environmentId: relayEnvironmentId,
-      label: relayEnvironmentId,
-    });
-    expect(resolveEnvironmentDisplayLabel(target, null)).toBe(relayEnvironmentId);
-    expect(
-      resolveEnvironmentDisplayLabel(target, descriptorConfig(relayEnvironmentId, "  tenriyo  ")),
-    ).toBe("tenriyo");
-  });
-
-  it("keeps a deliberately chosen label", () => {
-    const target = new BearerConnectionTarget({
-      environmentId: TARGET.environmentId,
-      label: "WSL: Ubuntu",
-      connectionId: "local:wsl-ubuntu",
-      labelOverride: true,
-    });
-    expect(
-      resolveEnvironmentDisplayLabel(target, descriptorConfig(TARGET.environmentId, "DESKTOP-1")),
-    ).toBe("WSL: Ubuntu");
-  });
-
-  it("keeps the saved label without a usable descriptor", () => {
-    expect(resolveEnvironmentDisplayLabel(TARGET, null)).toBe(TARGET.label);
-    expect(
-      resolveEnvironmentDisplayLabel(TARGET, descriptorConfig(TARGET.environmentId, "   ")),
-    ).toBe(TARGET.label);
-    expect(
-      resolveEnvironmentDisplayLabel(
-        TARGET,
-        descriptorConfig(EnvironmentId.make("someone-else"), "other"),
-      ),
-    ).toBe(TARGET.label);
-  });
-
-  it("presents the entry with the display label and keeps it stable when unchanged", () => {
-    expect(presentCatalogEntry(ENTRY, null)).toBe(ENTRY);
-    expect(presentCatalogEntry(ENTRY, descriptorConfig(TARGET.environmentId, TARGET.label))).toBe(
-      ENTRY,
-    );
-    const presented = presentCatalogEntry(ENTRY, descriptorConfig(TARGET.environmentId, "tenriyo"));
-    expect(presented.target).toBeInstanceOf(BearerConnectionTarget);
-    expect(presented.target).toMatchObject({
-      _tag: "BearerConnectionTarget",
-      environmentId: TARGET.environmentId,
-      label: "tenriyo",
-      connectionId: TARGET.connectionId,
-    });
-    expect(presented.profile).toBe(ENTRY.profile);
-    expect(presented.enabled).toBe(true);
   });
 });

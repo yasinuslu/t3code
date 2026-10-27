@@ -5,12 +5,6 @@ import type {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-/**
- * Failure code of a turn the provider refused before running any of it. Sending the same
- * message again is safe, so the server does it (see PromptRetryReactor).
- */
-export const PROMPT_NOT_RUN_FAILURE_CODE = "prompt_not_run";
-
 type ErrorTurnItem = Extract<OrchestrationV2TurnItem, { type: "error" }>;
 /** Only error items are read, so callers may pass items stripped of other fields. */
 type FailureScanTurnItem =

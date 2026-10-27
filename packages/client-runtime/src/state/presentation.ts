@@ -8,11 +8,9 @@ import {
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 
-import type { ConnectionCatalogEntry } from "../connection/catalog.ts";
 import { AVAILABLE_CONNECTION_STATE, type SupervisorConnectionState } from "../connection/model.ts";
 import {
   connectionCatalogDisplayUrl,
-  presentCatalogEntry,
   presentEnvironmentConnection,
   type EnvironmentConnectionPhase,
   type EnvironmentConnectionPresentation,
@@ -66,20 +64,6 @@ export interface EnvironmentPresentationWithProviders extends Omit<
   readonly serverConfig: ServerConfig | null;
 }
 
-// presentCatalogEntry builds a new entry whenever the label differs; reuse it while the label holds.
-const presentedEntries = new WeakMap<ConnectionCatalogEntry, ConnectionCatalogEntry>();
-function presentEntry(
-  entry: ConnectionCatalogEntry,
-  serverConfig: ServerConfig | null,
-): ConnectionCatalogEntry {
-  const presented = presentCatalogEntry(entry, serverConfig);
-  if (presented === entry) return entry;
-  const cached = presentedEntries.get(entry);
-  if (cached !== undefined && cached.target.label === presented.target.label) return cached;
-  presentedEntries.set(entry, presented);
-  return presented;
-}
-
 export function createEnvironmentPresentationAtoms<E>(input: {
   readonly catalogValueAtom: Atom.Atom<EnvironmentCatalogState>;
   readonly stateAtom: (
@@ -102,15 +86,16 @@ export function createEnvironmentPresentationAtoms<E>(input: {
         entry.unsupportedReason === undefined
           ? presentEnvironmentConnection(state)
           : { phase: "unsupported", error: entry.unsupportedReason, traceId: null };
-      const serverConfig = get(input.serverConfigValueAtom(environmentId));
       const next = {
-        // Shows the server's live descriptor label rather than the stale saved one.
-        entry: presentEntry(entry, serverConfig),
+        entry,
         connection:
           previous !== null && sameConnection(previous.connection, connection)
             ? previous.connection
             : connection,
-        serverConfig: withoutProviders(serverConfig, previous?.serverConfig ?? null),
+        serverConfig: withoutProviders(
+          get(input.serverConfigValueAtom(environmentId)),
+          previous?.serverConfig ?? null,
+        ),
       } satisfies EnvironmentPresentation;
       return previous !== null &&
         previous.entry === next.entry &&
@@ -247,7 +232,7 @@ export function createEnvironmentSummaryAtoms(input: {
   const identitiesAtom = Atom.make((get) => {
     const next = [...get(input.catalogValueAtom).entries].map(([environmentId, entry]) => ({
       environmentId,
-      label: get(input.presentationAtom(environmentId))?.entry.target.label ?? entry.target.label,
+      label: entry.target.label,
     }));
     const previous = Option.getOrNull(
       get.self<ReadonlyArray<{ readonly environmentId: EnvironmentId; readonly label: string }>>(),
