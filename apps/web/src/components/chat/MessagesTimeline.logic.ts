@@ -606,6 +606,8 @@ type MessagesTimelineRowContent =
       tag: string;
       /** The props as JSON; null until the call has been accepted. */
       propsJson: string | null;
+      /** Markdown the agent put above the component, part of its reply. */
+      text: string | null;
     };
 
 export interface StableMessagesTimelineRowsState {
@@ -617,9 +619,11 @@ export interface StableMessagesTimelineRowsState {
  * The component a `render_component` call shows, or null for any other entry. A rejected call
  * stays an ordinary failed tool row: the agent saw the error and calls again.
  */
-export function componentCallOf(
-  entry: WorkLogEntry,
-): { readonly tag: string; readonly propsJson: string | null } | null {
+export function componentCallOf(entry: WorkLogEntry): {
+  readonly tag: string;
+  readonly propsJson: string | null;
+  readonly text: string | null;
+} | null {
   const item = entry.structuredPayload;
   if (item?.type !== "dynamic_tool" || !isT3RenderComponentTool(item.toolName)) return null;
   const status = entry.toolLifecycleStatus;
@@ -635,12 +639,14 @@ export function componentCallOf(
   const input = (typeof item.input === "object" && item.input !== null ? item.input : {}) as {
     readonly tag?: unknown;
     readonly props?: unknown;
+    readonly text?: unknown;
   };
   const tag = typeof input.tag === "string" ? input.tag.trim().replace(/^<|>$/g, "") : "";
   if (tag === "") return null;
   const accepted =
     status === "completed" && typeof input.props === "object" && input.props !== null;
-  return { tag, propsJson: accepted ? JSON.stringify(input.props) : null };
+  const text = typeof input.text === "string" && input.text.trim() !== "" ? input.text : null;
+  return { tag, propsJson: accepted ? JSON.stringify(input.props) : null, text };
 }
 
 const isComponentEntry = (entry: TimelineEntry) =>
@@ -2206,7 +2212,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return a.proposedPlan === (b as typeof a).proposedPlan;
 
     case "component":
-      return a.tag === (b as typeof a).tag && a.propsJson === (b as typeof a).propsJson;
+      return (
+        a.tag === (b as typeof a).tag &&
+        a.propsJson === (b as typeof a).propsJson &&
+        a.text === (b as typeof a).text
+      );
 
     case "event":
       return (

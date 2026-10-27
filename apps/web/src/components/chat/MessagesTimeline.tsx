@@ -2826,6 +2826,17 @@ function ComponentTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "comp
   const ctx = use(TimelineRowCtx);
   return (
     <div className="min-w-0 px-1">
+      {row.text !== null ? (
+        <div className="mb-3">
+          <ChatMarkdown
+            text={row.text}
+            cwd={ctx.markdownCwd}
+            threadRef={ctx.threadRef ?? undefined}
+            skills={ctx.skills}
+            headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          />
+        </div>
+      ) : null}
       <ElementSlot
         tag={row.tag}
         attributes={NO_ATTRIBUTES}

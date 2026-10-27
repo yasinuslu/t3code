@@ -635,6 +635,7 @@ describe("deriveMessagesTimelineRows", () => {
       status: "completed" | "failed",
       toolName = "mcp__t3-code__render_component",
       rejected = false,
+      lead?: string,
     ): TimelineEntry => ({
       kind: "work",
       id,
@@ -661,7 +662,7 @@ describe("deriveMessagesTimelineRows", () => {
           status,
           title: null,
           toolName,
-          input: { tag: "t3-decision", props },
+          input: { tag: "t3-decision", props, ...(lead ? { text: lead } : {}) },
           ...(rejected ? { output: { isError: true } } : {}),
           createdAt: DateTime.makeUnsafe(at),
           updatedAt: DateTime.makeUnsafe(at),
@@ -707,7 +708,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
         text("outro"),
-        call("asked", decision, "completed"),
+        call("asked", decision, "completed", undefined, false, "Rain is likely."),
       ],
       latestRun: { runId, status: "completed", startedAt: at, completedAt: at },
       isWorking: false,
@@ -724,10 +725,11 @@ describe("deriveMessagesTimelineRows", () => {
       "component",
       "assistant-meta",
     ]);
-    expect(rows.find((row) => row.kind === "component")).toMatchObject({
-      tag: "t3-decision",
-      propsJson: JSON.stringify(decision),
-    });
+    expect(rows.filter((row) => row.kind === "component")).toMatchObject([
+      { tag: "t3-decision", propsJson: JSON.stringify(decision), text: null },
+      // The call's text leads into its component, in the same place.
+      { tag: "t3-decision", text: "Rain is likely." },
+    ]);
   });
 
   it("stops stranded thinking after a steer and follows the next thought or tool", () => {
