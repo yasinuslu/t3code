@@ -12,7 +12,6 @@ import { codexAuthDeliveryUrl, readCodexAuthHandoff } from "@t3tools/shared/code
 import { receiveCodexAuthCallback, CodexAuthCallbackError } from "./CodexAuthCallback.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import { providerAuthReturnUrl } from "@t3tools/shared/providerAuthReturnUrl";
-import { parseThreadDeepLink } from "@t3tools/shared/threadLinks";
 import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
@@ -194,52 +193,13 @@ export const make = Effect.gen(function* () {
         );
         return true;
       };
-      // `t3code://threads/<env>/<thread>` clicked outside the app (or in a client that has no
-      // thread chips) arrives through the OS URL handler. The unlocked main window (never a
-      // profile window, which only shows its own profile's threads, and never the connecting
-      // splash) gets the thread's hash route once its first load is done. Setting the hash
-      // navigates in place, so composer drafts survive, and a window still on sign-in or
-      // first run keeps the hash for when its router mounts. A cold start has no window yet,
-      // so wait for it.
-      const openThreadLink = (value: string | undefined) => {
-        const target = value ? parseThreadDeepLink(value) : null;
-        if (!target) return false;
-        const hash = ElectronProtocol.getDesktopThreadHash(target);
-        void runPromise(
-          Effect.gen(function* () {
-            yield* electronApp.whenReady;
-            let mainWindow = yield* electronWindow.main;
-            for (let attempt = 0; Option.isNone(mainWindow) && attempt < 120; attempt += 1) {
-              yield* Effect.sleep("250 millis");
-              mainWindow = yield* electronWindow.main;
-            }
-            if (Option.isNone(mainWindow)) return;
-            const window = mainWindow.value;
-            if (window.webContents.isLoading() || window.webContents.getURL() === "") {
-              yield* Effect.callback<void>((resume) => {
-                window.webContents.once("did-stop-loading", () => resume(Effect.void));
-              }).pipe(Effect.timeout("15 seconds"), Effect.ignore);
-            }
-            yield* Effect.promise(() =>
-              // encodeURIComponent output never contains a double quote or backslash.
-              window.webContents.executeJavaScript(`window.location.hash = "${hash}"`),
-            );
-            yield* electronWindow.reveal(window);
-          }).pipe(
-            Effect.catchCause((cause) => Effect.logWarning("Could not open thread link", cause)),
-          ),
-        );
-        return true;
-      };
       const openAppLink = (value: string | undefined) => {
         if (!value || promptLinkAppPath(value) === null) return false;
         void runPromise(webLinks.receive(value));
         return true;
       };
       const args = yield* HostProcess.Arguments;
-      args.some(
-        (value) => startProviderAuthHandoff(value) || openThreadLink(value) || openAppLink(value),
-      );
+      args.some((value) => startProviderAuthHandoff(value) || openAppLink(value));
       const openWebLink = (url: string) => {
         if (!DesktopWebLinks.isWebLink(url)) return false;
         void runPromise(webLinks.receive(url));
@@ -249,7 +209,6 @@ export const make = Effect.gen(function* () {
         if (
           startProviderAuthHandoff(url) ||
           resumeProviderAuth(url) ||
-          openThreadLink(url) ||
           openWebLink(url) ||
           openAppLink(url)
         )
@@ -264,10 +223,7 @@ export const make = Effect.gen(function* () {
         if (
           argv?.some(
             (value) =>
-              startProviderAuthHandoff(value) ||
-              resumeProviderAuth(value) ||
-              openThreadLink(value) ||
-              openAppLink(value),
+              startProviderAuthHandoff(value) || resumeProviderAuth(value) || openAppLink(value),
           )
         )
           return;

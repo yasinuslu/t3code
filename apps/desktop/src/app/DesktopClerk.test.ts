@@ -7,7 +7,6 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import { beforeEach, vi } from "vite-plus/test";
 
 const { createClerkBridgeMock, requestSingleInstanceLockMock, storageAdapter, storageMock } =
@@ -66,7 +65,6 @@ const layerDesktopClerk = (
   } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]);
 
   const electronApp = {
-    whenReady: Effect.void,
     setPath: (name: string, value: string) =>
       Effect.sync(() => {
         events.push(`setPath:${name}:${value}`);
@@ -327,108 +325,6 @@ it.effect(
     );
   },
 );
-
-it.effect("thread deep links navigate the main window in place by hash", () => {
-  storageMock.mockReturnValue(storageAdapter);
-  createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
-  const listeners = new Map<string, (...args: unknown[]) => void>();
-  let revealed = Promise.withResolvers<void>();
-  const loadURL = vi.fn(async (_url: string) => undefined);
-  const executeJavaScript = vi.fn(async (_code: string) => undefined);
-  const window = {
-    loadURL,
-    webContents: { isLoading: () => false, getURL: () => "x", executeJavaScript },
-  };
-  const electronApp = {
-    whenReady: Effect.void,
-    on: (name: string, listener: (...args: unknown[]) => void) =>
-      Effect.sync(() => {
-        listeners.set(name, listener);
-      }),
-  } as unknown as ElectronApp.ElectronApp["Service"];
-  const electronWindow = {
-    main: Effect.succeedSome(window),
-    reveal: () => Effect.sync(() => revealed.resolve()),
-  } as unknown as ElectronWindow.ElectronWindow["Service"];
-  return Effect.gen(function* () {
-    const clerk = yield* DesktopClerk.DesktopClerk;
-    yield* clerk.configure;
-    const event = { preventDefault: vi.fn() };
-    listeners.get("open-url")!(event, "t3code://threads/env%201/mcp%3Aabc-123");
-    yield* Effect.promise(() => revealed.promise);
-    assert.equal(event.preventDefault.mock.calls.length, 1);
-    // The desktop renderer routes by hash: setting it navigates without a reload.
-    assert.deepEqual(executeJavaScript.mock.calls, [
-      [`window.location.hash = "#/env%201/mcp%3Aabc-123"`],
-    ]);
-    assert.equal(loadURL.mock.calls.length, 0);
-    revealed = Promise.withResolvers<void>();
-    // A hand-built link with the colon left unencoded still resolves to the same thread.
-    listeners.get("second-instance")!({}, ["t3", "t3code://threads/env%201/mcp:abc-123"]);
-    yield* Effect.promise(() => revealed.promise);
-    assert.equal(
-      executeJavaScript.mock.calls[1]?.[0],
-      `window.location.hash = "#/env%201/mcp%3Aabc-123"`,
-    );
-    assert.equal(loadURL.mock.calls.length, 0);
-  }).pipe(
-    Effect.scoped,
-    Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
-    Effect.provideService(ElectronApp.ElectronApp, electronApp),
-    Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
-    Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
-  );
-});
-
-it.effect("a thread deep link waits for the main window's first load", () => {
-  storageMock.mockReturnValue(storageAdapter);
-  createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
-  const listeners = new Map<string, (...args: unknown[]) => void>();
-  const revealed = Promise.withResolvers<void>();
-  const executeJavaScript = vi.fn(async (_code: string) => undefined);
-  let stopLoading: (() => void) | null = null;
-  const window = {
-    webContents: {
-      isLoading: () => true,
-      getURL: () => "",
-      executeJavaScript,
-      once: (_name: string, listener: () => void) => {
-        stopLoading = listener;
-      },
-    },
-  };
-  // A profile window or the connecting splash is never the target: only `main` counts.
-  const electronApp = {
-    whenReady: Effect.void,
-    on: (name: string, listener: (...args: unknown[]) => void) =>
-      Effect.sync(() => {
-        listeners.set(name, listener);
-      }),
-  } as unknown as ElectronApp.ElectronApp["Service"];
-  const electronWindow = {
-    main: Effect.succeedSome(window),
-    reveal: () => Effect.sync(() => revealed.resolve()),
-  } as unknown as ElectronWindow.ElectronWindow["Service"];
-  return Effect.gen(function* () {
-    const clerk = yield* DesktopClerk.DesktopClerk;
-    yield* clerk.configure;
-    listeners.get("open-url")!(
-      { preventDefault: vi.fn() },
-      "t3code://threads/env%201/mcp%3Aabc-123",
-    );
-    yield* Effect.yieldNow;
-    assert.equal(executeJavaScript.mock.calls.length, 0);
-    stopLoading!();
-    yield* Effect.promise(() => revealed.promise);
-    assert.equal(executeJavaScript.mock.calls.length, 1);
-  }).pipe(
-    Effect.scoped,
-    Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
-    Effect.provideService(ElectronApp.ElectronApp, electronApp),
-    Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
-    Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
-  );
-});
 
 it.effect.each(["startup", "open-url", "early-second-instance"] as const)(
   "receives hosted web sign-in through the desktop %s handler",

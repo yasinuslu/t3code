@@ -136,6 +136,8 @@ async function startupCleanupPattern(desktopDir) {
       NodeOS: { platform: () => "linux" },
       NodePath,
       desktopDir,
+      refuseAgentDesktopWindow: () => undefined,
+      setInterval: () => ({ unref: () => undefined }),
       resolveDevProtocolClient: () => null,
       resolveElectronLaunchCommand: (args) => ({ electronPath: "electron", args }),
       waitForResources: async () => undefined,

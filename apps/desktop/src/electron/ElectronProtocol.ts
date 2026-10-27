@@ -27,18 +27,6 @@ export function getDesktopUrl(isDevelopment: boolean): string {
   return `${getDesktopOrigin(isDevelopment)}/`;
 }
 
-/**
- * The in-app hash route of a thread, where a `t3code://threads/<env>/<thread>` deep link lands.
- * The desktop renderer routes by hash (web `main.tsx`), so setting it on a loaded page navigates
- * in place; a path form would reload the app and restore the last-opened thread instead.
- */
-export function getDesktopThreadHash(target: {
-  readonly environmentId: string;
-  readonly threadId: string;
-}): string {
-  return `#/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
-}
-
 export class ElectronProtocolRegistrationError extends Schema.TaggedError<ElectronProtocolRegistrationError>()(
   "ElectronProtocolRegistrationError",
   {
