@@ -14,6 +14,7 @@ import {
 import { Check, Copy } from "lucide";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
+import { useMouseHistoryButtons } from "../lib/mouseThumbButtons";
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
@@ -143,6 +144,11 @@ function RootRouteNotFoundView() {
 
 function RootRouteView() {
   useEffect(() => installDesktopPasteAsText(window.desktopBridge, window), []);
+  const router = useRouter();
+  // Sidebar and Home dashboard keep the thumb buttons for switching spaces/profiles.
+  useMouseHistoryButtons("[data-app-sidebar], [data-home-dashboard-root]", (direction) =>
+    direction === -1 ? router.history.back() : router.history.forward(),
+  );
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";

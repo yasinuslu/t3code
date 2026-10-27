@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useMouseThumbButtons } from "./mouseThumbButtons";
+import { useMouseHistoryButtons, useMouseThumbButtons } from "./mouseThumbButtons";
 
 describe("useMouseThumbButtons", () => {
   let root: Root;
@@ -41,6 +41,13 @@ describe("useMouseThumbButtons", () => {
     }
     await act(async () => root.render(createElement(Consumer)));
   };
+  const mountHistoryHook = async () => {
+    function Consumer() {
+      useMouseHistoryButtons("[data-region]", onStep);
+      return null;
+    }
+    await act(async () => root.render(createElement(Consumer)));
+  };
   const press = (target: Element, type: string, button: number) => {
     const event = new MouseEvent(type, { button, bubbles: true, cancelable: true });
     target.dispatchEvent(event);
@@ -66,5 +73,17 @@ describe("useMouseThumbButtons", () => {
     expect(press(outside, "mouseup", 3).defaultPrevented).toBe(false);
     expect(press(inside, "mouseup", 0).defaultPrevented).toBe(false);
     expect(onStep).not.toHaveBeenCalled();
+  });
+
+  it("history hook steps outside the claimed region only", async () => {
+    await mountHistoryHook();
+    expect(press(outside, "mousedown", 3).defaultPrevented).toBe(true);
+    expect(onStep).not.toHaveBeenCalled();
+    press(outside, "mouseup", 3);
+    expect(onStep).toHaveBeenLastCalledWith(-1);
+    press(outside, "mouseup", 4);
+    expect(onStep).toHaveBeenLastCalledWith(1);
+    expect(press(inside, "mouseup", 3).defaultPrevented).toBe(false);
+    expect(onStep).toHaveBeenCalledTimes(2);
   });
 });
