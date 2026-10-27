@@ -25,7 +25,7 @@ const ElementsDescribeTool = Tool.make("elements_describe", {
 
 const RenderComponentTool = Tool.make("render_component", {
   description:
-    "Show a web component to the user in your reply, at this point: text you wrote before the call appears above it, text after it below. The props are checked against the component's schema; a wrong shape returns an error naming what to fix, the schema and an example, and nothing is shown until a call succeeds, so fix it and call again. An interactive component sends the user's choice back as their next message: end your turn after showing one.",
+    "Show a web component to the user in your reply, at this point: text you wrote before the call appears above it, text after it below. Call it on its own, never in parallel with another tool call, so the text you write between components stays between them. The props are checked against the component's schema; a wrong shape returns an error naming what to fix, the schema and an example, and nothing is shown until a call succeeds, so fix it and call again. An interactive component sends the user's choice back as their next message: end your turn after showing one.",
   parameters: Schema.Struct({
     tag: Schema.String.annotate({ description: "The component tag, for example `t3-decision`." }),
     props: Schema.Record(Schema.String, Schema.Unknown).annotate({
