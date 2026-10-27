@@ -163,6 +163,7 @@ import type {
   KnownComposerContextRecord,
 } from "@t3tools/contracts";
 import { findComponentSourceRowId, flashComponent } from "../../elements/jumpToComponent";
+import { ElementSlot } from "../../elements/ElementSlot";
 import { Button, InlineButton } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -1886,6 +1887,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       ) : null}
       {row.kind === "assistant-meta" ? <AssistantMetaTimelineRow row={row} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
+      {row.kind === "component" ? <ComponentTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "worktree-setup" ? <WorktreeSetupTimelineRow row={row} /> : null}
       {row.kind === "event" ? <V2EventTimelineRow row={row} /> : null}
@@ -2819,6 +2821,36 @@ function ProposedPlanTimelineRow({
     </div>
   );
 }
+
+function ComponentTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "component" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1">
+      {row.text ? (
+        <div className="mb-3">
+          <ChatMarkdown
+            text={row.text}
+            cwd={ctx.markdownCwd}
+            threadRef={ctx.threadRef ?? undefined}
+            skills={ctx.skills}
+            headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          />
+        </div>
+      ) : null}
+      <ElementSlot
+        tag={row.tag}
+        attributes={NO_ATTRIBUTES}
+        body={row.propsJson ?? ""}
+        propsJson={row.propsJson}
+        environmentId={ctx.activeThreadEnvironmentId ?? ctx.threadRef?.environmentId ?? null}
+        threadRef={ctx.threadRef ?? undefined}
+        streaming={row.propsJson === null}
+      />
+    </div>
+  );
+}
+
+const NO_ATTRIBUTES: Readonly<Record<string, string>> = {};
 
 type V2EventTone = "muted" | "warning" | "danger" | "success";
 

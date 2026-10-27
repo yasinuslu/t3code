@@ -1,7 +1,7 @@
 import type { ElementManifest } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { elementBlocks, elementProblems } from "./elementProps.ts";
+import { elementBlocks, elementProblems, validateElementProps } from "./elementProps.ts";
 
 const poll: ElementManifest = {
   tag: "t3-poll",
@@ -33,6 +33,42 @@ describe("elementProblems", () => {
     expect(elementProblems(`Here:\n\n${block}\n\nThanks.`, library)).toEqual([
       { tag: "t3-poll", errors: ['"note" should be boolean, got string.'], source: block },
     ]);
+  });
+
+  it("checks fields inside array items, where components would draw a placeholder", () => {
+    const steps: ElementManifest = {
+      tag: "t3-steps",
+      description: "A timeline.",
+      props: {
+        type: "object",
+        properties: {
+          steps: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                state: { type: "string", enum: ["done", "todo"] },
+              },
+              required: ["title"],
+            },
+          },
+        },
+        required: ["steps"],
+      },
+    };
+    const reply = (body: string) =>
+      elementProblems(`<t3-steps>\n${body}\n</t3-steps>`, new Map([[steps.tag, steps]]));
+
+    expect(reply('{"steps":[{"label":"Merge","status":"done"}]}')[0]?.errors).toEqual([
+      'Missing "steps[0].title".',
+      'Unknown "steps[0].label"; the fields are title, state.',
+      'Unknown "steps[0].status"; the fields are title, state.',
+    ]);
+    expect(reply('{"steps":[{"title":"Merge","state":"later"}]}')[0]?.errors).toEqual([
+      '"steps[0].state" should be one of "done", "todo".',
+    ]);
+    expect(reply('{"steps":[{"title":"Merge","state":"done"}]}')).toEqual([]);
   });
 
   it("passes components the chat draws, including text bodies and entities", () => {
@@ -75,5 +111,26 @@ describe("elementProblems", () => {
       "```",
     ].join("\n");
     expect(elementProblems(text, library)).toEqual([]);
+  });
+});
+
+describe("validateElementProps", () => {
+  it("accepts props given as an object, the way render_component passes them", () => {
+    expect(validateElementProps(poll, { question: "Which?", options: ["a"] })).toEqual({
+      kind: "ok",
+      props: { question: "Which?", options: ["a"] },
+    });
+  });
+
+  it("names missing, mistyped and unknown props so the agent can fix the call", () => {
+    const result = validateElementProps(poll, { options: "a, b", choices: [] });
+    expect(result).toEqual({
+      kind: "invalid",
+      errors: [
+        'Missing "question".',
+        '"options" should be array, got string.',
+        'Unknown prop "choices"; the props are question, options, note.',
+      ],
+    });
   });
 });

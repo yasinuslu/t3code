@@ -402,6 +402,13 @@ export function summarizeT3ToolCalls(
         `the presentation${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
+    case "render-component":
+      label = phrase(
+        "Showed",
+        "show",
+        `${selected.length === 1 ? "a component" : `${selected.length} components`}`,
+      );
+      break;
     case "elements-describe":
       label = phrase("Described", "describe", "web components");
       break;
