@@ -667,15 +667,19 @@ function replyNotebookEntryIds(
 ): ReadonlySet<string> {
   const ids = new Set<string>();
   let hasComponent = false;
+  // Thinking between the parts still folds away, but does not end the reply.
+  const isThinking = (entry: TimelineEntry) =>
+    entry.kind === "work" && entry.entry.tone === "thinking";
   for (let index = terminalIndex + 1; index < entries.length; index += 1) {
-    if (!isRenderComponentCall(entries[index]!)) break;
-    ids.add(entries[index]!.id);
+    const entry = entries[index]!;
+    if (isThinking(entry)) continue;
+    if (!isRenderComponentCall(entry)) break;
+    ids.add(entry.id);
     hasComponent = true;
   }
   for (let index = terminalIndex - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
-    // Thinking between the parts still folds away, but does not end the reply.
-    if (entry.kind === "work" && entry.entry.tone === "thinking") continue;
+    if (isThinking(entry)) continue;
     const component = isRenderComponentCall(entry);
     if (!component && !(entry.kind === "message" && entry.message.role === "assistant")) break;
     ids.add(entry.id);

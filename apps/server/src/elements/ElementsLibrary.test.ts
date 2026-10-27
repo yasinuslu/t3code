@@ -106,5 +106,10 @@ it("accepts a render_component call whose props fit, and says what to fix when t
       ok: false,
       message: expect.stringContaining("Close names: t3-decision"),
     });
+    // Too big to reach the client whole: rejected rather than drawn cut off.
+    expect(renderComponent("t3-decision", { question: "x".repeat(300 * 1024) })).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("over the 200 KB limit"),
+    });
   });
 });

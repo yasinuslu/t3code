@@ -174,6 +174,9 @@ export function describeElements(tags: ReadonlyArray<string>): {
   };
 }
 
+/** Below the wire's whole-value bound, so a shown component always reaches the client intact. */
+const MAX_RENDER_COMPONENT_BYTES = 200 * 1024;
+
 export type RenderComponentResult =
   | { readonly ok: true; readonly tag: string; readonly interactive: boolean }
   | { readonly ok: false; readonly message: string };
@@ -200,6 +203,13 @@ export function renderComponent(
     return {
       ok: false,
       message: `Unknown component ${tag}.${close.length > 0 ? ` Close names: ${close.join(", ")}.` : " Call elements_describe with no tags for the catalog."}`,
+    };
+  }
+  const size = Buffer.byteLength(JSON.stringify(props), "utf8");
+  if (size > MAX_RENDER_COMPONENT_BYTES) {
+    return {
+      ok: false,
+      message: `${tag} was not shown: its props are ${Math.round(size / 1024)} KB, over the ${MAX_RENDER_COMPONENT_BYTES / 1024} KB limit. Show fewer rows or shorter values, and point to a file for the rest.`,
     };
   }
   const result = validateElementProps(manifest, props);

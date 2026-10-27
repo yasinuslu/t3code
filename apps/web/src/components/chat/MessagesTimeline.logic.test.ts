@@ -708,6 +708,21 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
         text("outro"),
+        // Reasoning before the closing component does not fold it away.
+        {
+          kind: "work",
+          id: "thought-2",
+          createdAt: at,
+          entry: {
+            id: "thought-2",
+            runId,
+            createdAt: at,
+            label: "Thinking",
+            tone: "thinking",
+            itemType: "reasoning",
+            toolLifecycleStatus: "completed",
+          },
+        },
         call("asked", decision, "completed", undefined, false, "Rain is likely."),
       ],
       latestRun: { runId, status: "completed", startedAt: at, completedAt: at },
