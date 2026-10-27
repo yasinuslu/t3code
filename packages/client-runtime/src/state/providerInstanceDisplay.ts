@@ -1,11 +1,8 @@
 import {
   defaultInstanceIdForDriver,
-  type OrchestrationV2ProviderSessionConfigDir,
   PROVIDER_DISPLAY_NAMES,
-  type ProviderConfigDir,
   type ProviderDriverKind,
   type ServerProvider,
-  type SessionConfigDirObservation,
 } from "@t3tools/contracts";
 
 function humanizeSlug(slug: string): string {
@@ -92,82 +89,4 @@ export function shouldShowInstanceBadge(
     if (++sharedProviderCount > 1) return true;
   }
   return false;
-}
-
-/**
- * The config-dir observation of a thread's provider session: the dir it was
- * launched with next to the dir the CLI reported using. `null` until the CLI
- * reported one (it does on each prompt), or when there is no session.
- */
-export function deriveSessionConfigDirObservation(
-  session:
-    | { readonly configDir?: OrchestrationV2ProviderSessionConfigDir | undefined }
-    | null
-    | undefined,
-): SessionConfigDirObservation | null {
-  const configDir = session?.configDir;
-  if (configDir?.effective === undefined) return null;
-  return { configured: configDir.configured, effective: configDir.effective };
-}
-
-export interface ProviderConfigDirIndicator {
-  /**
-   * The dir the thread runs on: observed when known, otherwise configured.
-   * `null` while the instance leaves the dir to the CLI and no session has
-   * reported one yet, since the server's default is only a guess then.
-   */
-  readonly current: ProviderConfigDir | null;
-  readonly configured: ProviderConfigDir;
-  /** A wrapper binary sent the CLI to a different dir than configured. */
-  readonly redirected: boolean;
-}
-
-function sameConfigDir(left: ProviderConfigDir, right: ProviderConfigDir): boolean {
-  const trim = (value: string) => value.replace(/(?<=.)[\\/]+$/u, "");
-  return trim(left.path) === trim(right.path);
-}
-
-/**
- * The config dir an instance launches sessions with in a workspace: a dir the
- * server resolved for that workspace wins, otherwise the instance-level dir,
- * which is only a guess when the instance leaves the dir to the CLI.
- */
-export function resolveProviderWorkspaceConfigDir(
-  provider: Pick<ServerProvider, "configDir" | "configDirInherited" | "workspaceSnapshots">,
-  cwd: string | null | undefined,
-): { readonly configured: ProviderConfigDir | undefined; readonly inherited: boolean } {
-  const workspaceConfigDir = cwd
-    ? provider.workspaceSnapshots?.find((snapshot) => snapshot.cwd === cwd)?.configDir
-    : undefined;
-  if (workspaceConfigDir) return { configured: workspaceConfigDir, inherited: false };
-  return { configured: provider.configDir, inherited: provider.configDirInherited === true };
-}
-
-/**
- * Combine an instance's configured dir with the latest session observation.
- * Instances without a configured dir (drivers that don't report one) get no
- * indicator. An observation made under a different configured dir (another
- * instance, or this instance's homePath changed since) is stale and ignored
- * until the next prompt reports again. When the dir is `inherited` (the
- * instance sets none), nothing was configured, so a differing observed dir is
- * not a redirect.
- */
-export function resolveProviderConfigDirIndicator(input: {
-  readonly configured: ProviderConfigDir | undefined;
-  readonly inherited?: boolean | undefined;
-  readonly observation: SessionConfigDirObservation | null;
-}): ProviderConfigDirIndicator | null {
-  const { configured, observation } = input;
-  const inherited = input.inherited === true;
-  if (!configured) return null;
-  if (observation && sameConfigDir(observation.configured, configured)) {
-    return {
-      current: observation.effective,
-      // The workspace's dir: same path, but it carries the current code profile label,
-      // which a session started before code profiles never recorded.
-      configured,
-      redirected: !inherited && !sameConfigDir(observation.effective, observation.configured),
-    };
-  }
-  return { current: inherited ? null : configured, configured, redirected: false };
 }

@@ -145,12 +145,6 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useIsManagerThread } from "../brainstormStore";
 import { useManagerMachineChoice } from "./brainstorm/ManagerMachineSwitcher";
 import { usePresentationUnseen } from "../presentationSeenStore";
-import { type ThreadProviderConfigDir } from "./chat/ProviderConfigDirIndicator";
-import {
-  deriveSessionConfigDirObservation,
-  resolveProviderConfigDirIndicator,
-  resolveProviderWorkspaceConfigDir,
-} from "@t3tools/client-runtime/state/provider-instance-display";
 import { FileMetadataThreadProvider } from "../hooks/FileMetadataThreadProvider";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { PopoverCreateHandle } from "./ui/popover";
@@ -1554,39 +1548,6 @@ export default function ChatView(props: ChatViewProps) {
         worktreePath: activeThread?.worktreePath ?? null,
       })
     : null;
-  // The provider profile the thread runs on: the session's reported config dir when its CLI
-  // has reported one, otherwise the dir resolved for the workspace (or the instance's).
-  const activeProviderSessionId = activeProviderThread?.providerSessionId ?? null;
-  const activeProviderSession =
-    serverProjection === null
-      ? null
-      : ((activeProviderSessionId === null
-          ? undefined
-          : serverProjection.providerSessions.find(
-              (session) => session.id === activeProviderSessionId,
-            )) ??
-        serverProjection.providerSessions.findLast(
-          (session) => session.providerInstanceId === serverProjection.thread.providerInstanceId,
-        ) ??
-        null);
-  const providerConfigDir = ((): ThreadProviderConfigDir | null => {
-    if (!selectedProviderEntry) return null;
-    const configDir = resolveProviderConfigDirIndicator({
-      ...resolveProviderWorkspaceConfigDir(selectedProviderEntry.snapshot, gitCwd),
-      observation:
-        activeProviderSession?.providerInstanceId === selectedProviderEntry.instanceId
-          ? deriveSessionConfigDirObservation(activeProviderSession)
-          : null,
-    });
-    return configDir
-      ? {
-          driverKind: selectedProviderEntry.driverKind,
-          displayName: selectedProviderEntry.displayName,
-          accentColor: selectedProviderEntry.accentColor,
-          configDir,
-        }
-      : null;
-  })();
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   const gitStatusQuery = useEnvironmentQuery(
     gitStatusCwd === null
@@ -3274,7 +3235,6 @@ export default function ChatView(props: ChatViewProps) {
             parentThreadLink={parentThreadLink}
             onOpenThread={onOpenRelatedThreadStable}
             rightPanelOpen={inlineRightPanelOwnsTitleBar}
-            providerConfigDir={providerConfigDir}
             onNewThreadInProject={handleNewThreadInActiveProjectStable}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
