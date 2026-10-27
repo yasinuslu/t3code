@@ -1,5 +1,3 @@
-"use client";
-
 import type { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
 import type { VariantProps } from "class-variance-authority";
@@ -16,19 +14,23 @@ const ToggleGroupContext = React.createContext<VariantProps<typeof toggleVariant
 function ToggleGroup({
   className,
   variant = "segmented",
-  size = variant === "segmented" ? "segmented" : "default",
+  size: sizeProp,
   orientation = "horizontal",
   children,
   ...props
 }: ToggleGroupPrimitive.Props & VariantProps<typeof toggleVariants>) {
-  const value = React.useMemo(() => ({ size, variant }), [size, variant]);
+  const size =
+    sizeProp === undefined ? (variant === "segmented" ? "segmented" : "default") : sizeProp;
+  const value = { size, variant };
   return (
     <ToggleGroupPrimitive
       className={cn(
         "flex w-fit *:focus-visible:z-10 dark:*:[[data-slot=separator]:has(+[data-slot=toggle]:hover)]:before:bg-input/64 dark:*:[[data-slot=separator]:has(+[data-slot=toggle][data-pressed])]:before:bg-input dark:*:[[data-slot=toggle]:hover+[data-slot=separator]]:before:bg-input/64 dark:*:[[data-slot=toggle][data-pressed]+[data-slot=separator]]:before:bg-input",
-        orientation === "horizontal" ? "*:touch:after:min-w-auto" : "*:touch:after:min-h-auto",
+        orientation === "horizontal"
+          ? "*:pointer-coarse:after:min-w-auto"
+          : "*:pointer-coarse:after:min-h-auto",
         variant === "segmented"
-          ? "rounded-lg bg-input/40 p-0.5"
+          ? "gap-0.5 rounded-lg bg-input/40 p-0.5"
           : variant === "default"
             ? "gap-0.5"
             : orientation === "horizontal"

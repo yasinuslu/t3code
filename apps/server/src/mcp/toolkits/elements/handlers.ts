@@ -2,12 +2,15 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { describeElements, renderComponent } from "../../../elements/ElementsLibrary.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { ElementsToolkit } from "./tools.ts";
 
-export const ElementsHandlersLive = ElementsToolkit.toLayer({
-  elements_describe: (input) => Effect.sync(() => describeElements(input.tags)),
+export const layer = McpToolAccess.toLayer(ElementsToolkit, {
+  elements_describe: McpToolAccess.reads((input) =>
+    Effect.sync(() => describeElements(input.tags)),
+  ),
   // The web draws the call's input in place; this only decides whether it may.
-  render_component: (input) =>
+  render_component: McpToolAccess.reads((input) =>
     Effect.suspend(() => {
       const result = renderComponent(input.tag, input.props);
       return result.ok
@@ -20,4 +23,5 @@ export const ElementsHandlersLive = ElementsToolkit.toLayer({
             new OrchestratorMcpFailure({ code: "invalid_request", message: result.message }),
           );
     }),
+  ),
 });

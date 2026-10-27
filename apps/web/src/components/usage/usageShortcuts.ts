@@ -1,7 +1,6 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import type { UsageChartMetric } from "./UsageProviderChart";
 import { resolveShortcutCommand, type ShortcutEventLike } from "../../keybindings";
-import { useHomeOverlayStore } from "../../homeOverlayStore";
 
 export type UsageMetric = UsageChartMetric | "limits";
 export const METRIC_OPTIONS = [
@@ -17,13 +16,10 @@ export const WINDOW_OPTIONS = [
   { days: 90, label: "90 days", command: "usage.period.quarter" },
 ] as const;
 
-/** Resolves page shortcuts without taking letters from fields or popup controls. */
 export function resolveUsageShortcut(
   event: ShortcutEventLike & { target: EventTarget | null },
   keybindings: ResolvedKeybindingsConfig,
 ) {
-  // Grow covers the page and holds the same Alt letters (Alt+C snoozes there).
-  if (useHomeOverlayStore.getState().open) return null;
   const target = event.target;
   if (
     target instanceof HTMLElement &&
@@ -31,7 +27,9 @@ export function resolveUsageShortcut(
       target.tagName === "TEXTAREA" ||
       target.tagName === "SELECT" ||
       target.isContentEditable ||
-      target.closest('[role="dialog"], [aria-modal="true"], [data-slot$="popup"]'))
+      target.closest(
+        '[role="dialog"]:not([data-app-modal]), [aria-modal="true"]:not([data-app-modal]), [data-slot$="popup"]:not([data-app-modal])',
+      ))
   ) {
     return null;
   }

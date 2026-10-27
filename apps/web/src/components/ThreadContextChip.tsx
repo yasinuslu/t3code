@@ -1,9 +1,10 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   threadRuntimeIsActive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadContextRecord } from "@t3tools/contracts";
-import { formatThreadLinkHref } from "@t3tools/shared/threadLinks";
+import { formatThreadDeepLink } from "@t3tools/shared/threadLinks";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -11,9 +12,10 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "~/localApi";
 import { useEnvironment, usePrimaryEnvironmentId } from "~/state/environments";
-import { useThreadShell } from "~/state/entities";
+import { useProject, useThreadShell } from "~/state/entities";
 import { cn } from "~/lib/utils";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
+import { ProjectFavicon } from "./ProjectFavicon";
 import { toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -57,6 +59,7 @@ export function ThreadContextChip(props: {
   copyMarkdown?: string;
   /** The environment the chip is shown in (default: the primary one). A thread anywhere else names its environment. */
   currentEnvironmentId?: EnvironmentId | null | undefined;
+  unreadable?: boolean;
 }) {
   const { environmentId, threadId } = props.record;
   const navigate = useNavigate();
@@ -64,13 +67,14 @@ export function ThreadContextChip(props: {
   const environment = useEnvironment(environmentId);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const currentEnvironmentId = props.currentEnvironmentId ?? primaryEnvironmentId;
+  const project = useProject(shell ? scopeProjectRef(environmentId, shell.projectId) : null);
   const title = shell?.title?.trim() || props.record.title;
   const status = shell ? THREAD_LINK_STATUS[resolveThreadLinkStatus(shell)] : null;
   const environmentLabel =
     currentEnvironmentId !== null && currentEnvironmentId !== environmentId
       ? (environment?.label ?? null)
       : null;
-  const href = formatThreadLinkHref({ environmentId, threadId });
+  const href = formatThreadDeepLink({ environmentId, threadId });
   const openThread = () =>
     void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
 
@@ -106,7 +110,11 @@ export function ThreadContextChip(props: {
         render={
           <ContextChip
             kind="thread"
-            {...(shell ? {} : { state: "unresolved" as const })}
+            {...(props.unreadable
+              ? { state: "invalid" as const }
+              : shell
+                ? {}
+                : { state: "unresolved" as const })}
             render={
               <Link
                 to="/$environmentId/$threadId"
@@ -117,9 +125,13 @@ export function ThreadContextChip(props: {
             }
             aria-label={`Thread, ${title}${status ? `, ${status.label}` : ""}`}
             data-markdown-copy={props.copyMarkdown}
-            className={cn("chat-markdown-chip no-underline", !shell && "text-muted-foreground")}
+            className={cn("no-underline", !shell && "text-muted-foreground")}
           >
-            <MessagesSquareIcon />
+            {project ? (
+              <ProjectFavicon project={project} className="size-[1.17em] self-center" />
+            ) : (
+              <MessagesSquareIcon />
+            )}
             <ContextChipLabel>{title}</ContextChipLabel>
             {environmentLabel ? (
               <span className="shrink-0 font-normal text-muted-foreground">{environmentLabel}</span>
@@ -135,11 +147,13 @@ export function ThreadContextChip(props: {
         }
       />
       <TooltipPopup side="top">
-        {shell
-          ? `Open thread · ${status?.label}`
-          : environment
-            ? "Thread not available"
-            : "Thread is on an environment that is not connected"}
+        {props.unreadable
+          ? "On another machine, so this machine's agent can't read it. Remove it or switch back to send."
+          : shell
+            ? `Open thread · ${status?.label}`
+            : environment
+              ? "Thread not available"
+              : "Thread is on an environment that is not connected"}
       </TooltipPopup>
     </Tooltip>
   );

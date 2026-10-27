@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import {
   PreviewLinkThreadNotFoundError,
   PreviewLinkUpdateFailedError,
@@ -19,7 +20,7 @@ const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
 
   const commandId = (tag: string, threadId: ThreadId) =>
-    crypto.randomUUIDv4.pipe(
+    crypto.randomUUIDv4().pipe(
       Effect.orDie,
       Effect.map((uuid) => CommandId.make(`server:${tag}:${threadId}:${uuid}`)),
     );
@@ -29,7 +30,11 @@ const make = Effect.gen(function* () {
     rawUrl: string,
     options: { readonly rejectLoopback: boolean },
   ) {
-    const scope = yield* McpInvocationContext.requireMcpCapability("orchestration");
+    const { thread: caller } = yield* McpInvocationContext.requireMcpCapability(
+      "orchestration",
+    ).pipe(
+      Effect.flatMap((scope) => McpInvocationContext.requireThreadScope(scope, "Preview links")),
+    );
     const url = normalizePreviewLinkUrl(rawUrl);
     if (url === null) return yield* new PreviewLinkUrlInvalidError({});
     // Unlinking stays open so a link made before this check can still be removed.
@@ -37,10 +42,10 @@ const make = Effect.gen(function* () {
       return yield* new PreviewLinkUrlLoopbackError({ url });
     }
     const thread = yield* engine
-      .getThreadShell(scope.threadId)
+      .getThreadShell(caller.threadId)
       .pipe(Effect.mapError((cause) => new PreviewLinkUpdateFailedError({ cause })));
     if (thread === null) {
-      return yield* new PreviewLinkThreadNotFoundError({ threadId: scope.threadId });
+      return yield* new PreviewLinkThreadNotFoundError({ threadId: caller.threadId });
     }
     const existing = (thread.previewLinks ?? []).find((link) => link.url === url);
     return { threadId: thread.id, url, existing };
@@ -51,8 +56,8 @@ const make = Effect.gen(function* () {
       ? Effect.failCause(cause as Cause.Cause<never>)
       : Effect.fail(new PreviewLinkUpdateFailedError({ cause }));
 
-  return PreviewLinksToolkit.of({
-    link_preview: (input) =>
+  return {
+    link_preview: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const { threadId, url, existing } = yield* resolve(input.url, {
           rejectLoopback: true,
@@ -69,7 +74,8 @@ const make = Effect.gen(function* () {
           .pipe(Effect.catchCause(dispatchFailure));
         return { url, alreadyLinked: existing !== undefined };
       }),
-    unlink_preview: (input) =>
+    ),
+    unlink_preview: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const { threadId, url, existing } = yield* resolve(input.url, {
           rejectLoopback: false,
@@ -85,7 +91,8 @@ const make = Effect.gen(function* () {
           .pipe(Effect.catchCause(dispatchFailure));
         return { url, wasLinked: true };
       }),
-  });
+    ),
+  } satisfies McpToolAccess.Handlers<typeof PreviewLinksToolkit.tools>;
 });
 
-export const PreviewLinksToolkitHandlersLive = PreviewLinksToolkit.toLayer(make);
+export const layer = McpToolAccess.toLayer(PreviewLinksToolkit, make);

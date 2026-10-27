@@ -1,8 +1,7 @@
 /**
- * The keyboard cheat sheet: Mod+/ or Mod+? anywhere, or the keyboard button beside the
- * notifications bell, opens it; the chord again or Esc closes it. It lists Grow's keys and the
- * app-wide ones from the real keymaps (see ShortcutsSheet.logic), Grow's first while Grow is
- * showing.
+ * The keyboard cheat sheet: Mod+/ or Mod+? anywhere, or the keyboard button in the chat header,
+ * opens it; the chord again or Esc closes it. It lists the keys from the real keymaps (see
+ * ShortcutsSheet.logic).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { KeyboardIcon } from "lucide-react";
@@ -10,10 +9,8 @@ import { Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { create } from "zustand";
 
-import { useForkFeatures } from "../hooks/useSettings";
-import { useHomeOverlayStore } from "../homeOverlayStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
-import { cn, isMacPlatform } from "../lib/utils";
+import { cn } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { buildShortcutSections, type ShortcutSection } from "./ShortcutsSheet.logic";
 import { Button } from "./ui/button";
@@ -25,11 +22,6 @@ const useShortcutsSheetStore = create<{
   readonly open: boolean;
   readonly setOpen: (open: boolean) => void;
 }>((set) => ({ open: false, setOpen: (open) => set({ open }) }));
-
-/** Whether the sheet is showing, so Grow's own keys stay off behind it. */
-export const useShortcutsSheetOpen = () => useShortcutsSheetStore((state) => state.open);
-
-const SCOPE_TITLE = { grow: "In Grow", app: "Everywhere" } as const;
 
 function Section({ section }: { readonly section: ShortcutSection }) {
   return (
@@ -56,8 +48,6 @@ function Section({ section }: { readonly section: ShortcutSection }) {
 export function ShortcutsSheet() {
   const open = useShortcutsSheetStore((state) => state.open);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const forkFeatures = useForkFeatures();
-  const homeOpen = useHomeOverlayStore((state) => state.open);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -78,18 +68,7 @@ export function ShortcutsSheet() {
   }, [keybindings]);
 
   if (!open) return null;
-  const platform = navigator.platform;
-  const sections = buildShortcutSections({
-    keybindings,
-    platform,
-    inGrow: homeOpen,
-    growAvailable: forkFeatures,
-  });
-  // One column per scope, in the order the sections come: Grow's on the left while Grow shows.
-  const columns = [...new Set(sections.map((section) => section.scope))].map((scope) => ({
-    scope,
-    sections: sections.filter((section) => section.scope === scope),
-  }));
+  const sections = buildShortcutSections({ keybindings, platform: navigator.platform });
   return (
     <Dialog open onOpenChange={(next) => useShortcutsSheetStore.getState().setOpen(next)}>
       <DialogPopup className="max-w-3xl" data-shortcuts-sheet="">
@@ -97,14 +76,9 @@ export function ShortcutsSheet() {
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>
         <DialogPanel>
-          <div className={cn("grid gap-x-10", columns.length > 1 && "sm:grid-cols-2")}>
-            {columns.map(({ scope, sections: group }) => (
-              <div key={scope}>
-                <p className="pb-2 font-semibold text-sm">{SCOPE_TITLE[scope]}</p>
-                {group.map((section) => (
-                  <Section key={section.id} section={section} />
-                ))}
-              </div>
+          <div className="grid gap-x-10 sm:grid-cols-2">
+            {sections.map((section) => (
+              <Section key={section.id} section={section} />
             ))}
           </div>
           <p className="pt-1 text-muted-foreground text-xs">
@@ -118,19 +92,13 @@ export function ShortcutsSheet() {
             </Link>
             .
           </p>
-          {columns.some(({ scope }) => scope === "grow") && isMacPlatform(platform) ? (
-            <p className="pt-1 text-muted-foreground text-xs">
-              On a Mac Grow's keys are held with <Kbd>⌃</Kbd>. While the caret is in a text box, the
-              ones a Mac text field uses itself (A, D, F, T) stay with the text.
-            </p>
-          ) : null}
         </DialogPanel>
       </DialogPopup>
     </Dialog>
   );
 }
 
-/** The keyboard button for the top-right corner, beside the notifications bell. */
+/** The keyboard button for the top-right corner of the chat header. */
 export function ShortcutsButton() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const shortcut = shortcutLabelForCommand(keybindings, "shortcuts.toggle");

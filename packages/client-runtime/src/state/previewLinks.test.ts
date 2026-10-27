@@ -1,5 +1,5 @@
 import { EnvironmentId, type ThreadPreviewLinkState } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 import { createPreviewLinkStatesWith, previewLinkLabel } from "./previewLinks.ts";

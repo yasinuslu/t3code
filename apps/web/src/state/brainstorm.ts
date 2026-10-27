@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createBrainstormEnvironmentAtoms } from "@t3tools/client-runtime/state/brainstorm";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { useBrainstormStore } from "../brainstormStore";

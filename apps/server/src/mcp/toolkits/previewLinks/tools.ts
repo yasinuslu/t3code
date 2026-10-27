@@ -1,12 +1,20 @@
-import { McpCapabilityUnavailableError, TrimmedNonEmptyString } from "@t3tools/contracts";
+import {
+  McpCapabilityUnavailableError,
+  OrchestratorMcpFailure,
+  TrimmedNonEmptyString,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as Tool from "effect/unstable/ai/Tool";
-import * as Toolkit from "effect/unstable/ai/Toolkit";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 
-const dependencies = [McpInvocationContext.McpInvocationContext, Orchestrator.OrchestratorV2];
+const dependencies = [
+  McpInvocationContext.McpInvocationContext,
+  ThreadManagementService.ThreadManagementService,
+  Orchestrator.OrchestratorV2,
+];
 
 const PreviewUrl = TrimmedNonEmptyString.annotate({
   description:
@@ -68,6 +76,8 @@ export const PreviewLinkToolError = Schema.Union([
   PreviewLinkUrlLoopbackError,
   PreviewLinkThreadNotFoundError,
   PreviewLinkUpdateFailedError,
+  // Access checks (caller, read-only client, live thread).
+  OrchestratorMcpFailure,
 ]);
 export type PreviewLinkToolError = typeof PreviewLinkToolError.Type;
 

@@ -3,9 +3,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as NodeTimersPromises from "node:timers/promises";
 import * as Path from "effect/Path";
-import * as Mime from "effect/unstable/http/Mime";
+import * as Mime from "effect/http/Mime";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -26,18 +25,6 @@ function getDesktopOrigin(isDevelopment: boolean): string {
 
 export function getDesktopUrl(isDevelopment: boolean): string {
   return `${getDesktopOrigin(isDevelopment)}/`;
-}
-
-/**
- * The in-app hash route of a thread, where a `t3code://threads/<env>/<thread>` deep link lands.
- * The desktop renderer routes by hash (web `main.tsx`), so setting it on a loaded page navigates
- * in place; a path form would reload the app and restore the last-opened thread instead.
- */
-export function getDesktopThreadHash(target: {
-  readonly environmentId: string;
-  readonly threadId: string;
-}): string {
-  return `#/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
 }
 
 export class ElectronProtocolRegistrationError extends Schema.TaggedError<ElectronProtocolRegistrationError>()(
@@ -64,8 +51,6 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<Elec
   }
 }
 
-// The scheme either proxies to a dev server (`targetOrigin`) or serves the
-// built client from disk (`assetDirectory`).
 export type DesktopProtocolRegistrationInput = {
   readonly scheme: string;
   readonly clerkFrontendApiHostname: string | undefined;
@@ -80,7 +65,7 @@ export class ElectronProtocol extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
-export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
+function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
   const clerkOrigin = input.clerkFrontendApiHostname
     ? `https://${input.clerkFrontendApiHostname}`
     : undefined;
@@ -94,11 +79,8 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
     "https://challenges.cloudflare.com",
   ];
 
-  // The renderer connects directly to user-configured environments in addition to
-  // the build-configured Clerk, relay, and OTLP endpoints. Those environment
-  // origins are not known when this response policy is created, so restrict
-  // connections by the network schemes the client supports instead of by host.
-  // GLTFLoader fetches embedded textures through blob URLs after parsing the model.
+  // User-configured environment origins are unknown here, so allow supported network schemes.
+  // GLTFLoader fetches embedded textures through blob URLs.
   const connectSources = ["'self'", "blob:", "http:", "https:", "ws:", "wss:"];
 
   return [
@@ -110,9 +92,8 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${input.scheme}: data:`,
     "worker-src 'self' blob:",
-    // Document viewers use local Blob URLs and signed assets from runtime environments.
-    // HTML viewers retain their own sandbox; the renderer's script policy stays unchanged.
     "frame-src 'self' blob: http: https:",
+    "object-src 'self' blob: http: https:",
     "form-action 'self'",
   ].join("; ");
 }
@@ -127,9 +108,7 @@ function withContentSecurityPolicy(response: Response, policy: string): Response
   });
 }
 
-/**
- * Must run synchronously during process bootstrap, before Electron emits `ready`.
- */
+// Must run synchronously before Electron emits ready.
 function registerDesktopSchemePrivilegesSync(): void {
   Electron.protocol.registerSchemesAsPrivileged([
     {
@@ -140,8 +119,7 @@ function registerDesktopSchemePrivilegesSync(): void {
         supportFetchAPI: true,
         corsEnabled: true,
         stream: true,
-        // Custom schemes skip Chromium's V8 code cache unless they opt in.
-        // Dev stays off: Vite serves changing code at stable URLs.
+        // Custom schemes must opt into V8 caching; dev URLs serve changing code.
         codeCache: true,
       },
     },
@@ -163,52 +141,6 @@ const registerDesktopSchemePrivileges = Effect.sync(registerDesktopSchemePrivile
 );
 
 export const layerSchemePrivileges = Layer.effectDiscard(registerDesktopSchemePrivileges);
-
-async function proxyRequest(
-  request: Request,
-  targetOrigin: URL,
-  contentSecurityPolicy: string,
-): Promise<Response> {
-  const requestUrl = new URL(request.url);
-  if (requestUrl.host !== DESKTOP_HOST) {
-    return new Response(null, { status: 404 });
-  }
-
-  const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, targetOrigin);
-  const headers = new Headers(request.headers);
-  const headersToRemove: string[] = [];
-  for (const name of headers.keys()) {
-    if (
-      name === "host" ||
-      name === "origin" ||
-      name === "referer" ||
-      name === "connection" ||
-      name === "content-length" ||
-      name === "accept-encoding" ||
-      name === "upgrade-insecure-requests" ||
-      name.startsWith("sec-fetch-")
-    ) {
-      headersToRemove.push(name);
-    }
-  }
-  for (const name of headersToRemove) {
-    headers.delete(name);
-  }
-  const init: RequestInit = {
-    method: request.method,
-    headers,
-  };
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-    (init as RequestInit & { duplex: "half" }).duplex = "half";
-  }
-  const response = await limitDevProxyFetch(() =>
-    request.method === "GET" || request.method === "HEAD"
-      ? fetchWithTransientRetry(targetUrl.toString(), init)
-      : Electron.net.fetch(targetUrl.toString(), init),
-  );
-  return withContentSecurityPolicy(response, contentSecurityPolicy);
-}
 
 /**
  * Runs at most `maxInFlight` tasks at once and queues the rest in arrival
@@ -254,14 +186,90 @@ const TRANSIENT_FETCH_RETRY_DELAYS_MS = [0, 50, 150] as const;
 const INSUFFICIENT_RESOURCES_RETRY_DELAYS_MS = [0, 100, 250, 500, 1_000, 2_000] as const;
 
 function isInsufficientResourcesError(error: unknown): boolean {
-  return String((error as { message?: unknown } | null)?.message ?? error).includes(
-    "ERR_INSUFFICIENT_RESOURCES",
-  );
+  return String(
+    (error as { cause?: { message?: unknown } } | null)?.cause?.message ?? error,
+  ).includes("ERR_INSUFFICIENT_RESOURCES");
 }
 
-// Serves the packaged web client without a backend: files resolve within the
-// asset directory, and any other path falls back to index.html so the SPA
-// router handles it, except for asset-shaped misses (`/missing.js`) which 404.
+class ElectronProtocolFetchError extends Schema.TaggedError<ElectronProtocolFetchError>()(
+  "ElectronProtocolFetchError",
+  { cause: Schema.Defect() },
+) {}
+
+const netFetch = (url: string, init: RequestInit) =>
+  Effect.tryPromise({
+    try: () => limitDevProxyFetch(() => Electron.net.fetch(url, init)),
+    catch: (cause) => new ElectronProtocolFetchError({ cause }),
+  });
+
+const fetchWithTransientRetry = Effect.fn("desktop.protocol.fetchWithTransientRetry")(function* (
+  url: string,
+  init: RequestInit,
+) {
+  let lastError: ElectronProtocolFetchError | undefined;
+  for (let attempt = 0; ; attempt += 1) {
+    const delays =
+      lastError !== undefined && isInsufficientResourcesError(lastError)
+        ? INSUFFICIENT_RESOURCES_RETRY_DELAYS_MS
+        : TRANSIENT_FETCH_RETRY_DELAYS_MS;
+    if (attempt >= delays.length) break;
+    const delayMs = delays[attempt] ?? 0;
+    if (delayMs > 0) yield* Effect.sleep(delayMs);
+    const result = yield* netFetch(url, init).pipe(
+      Effect.map((response) => ({ response })),
+      Effect.catch((error) => Effect.succeed({ error })),
+    );
+    if ("response" in result) return result.response;
+    lastError = result.error;
+  }
+  return yield* lastError!;
+});
+
+const proxyRequest = Effect.fn("desktop.protocol.proxyRequest")(function* (
+  request: Request,
+  targetOrigin: URL,
+  contentSecurityPolicy: string,
+) {
+  const requestUrl = new URL(request.url);
+  if (requestUrl.host !== DESKTOP_HOST) {
+    return new Response(null, { status: 404 });
+  }
+
+  const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, targetOrigin);
+  const headers = new Headers(request.headers);
+  const headersToRemove: string[] = [];
+  for (const name of headers.keys()) {
+    if (
+      name === "host" ||
+      name === "origin" ||
+      name === "referer" ||
+      name === "connection" ||
+      name === "content-length" ||
+      name === "accept-encoding" ||
+      name === "upgrade-insecure-requests" ||
+      name.startsWith("sec-fetch-")
+    ) {
+      headersToRemove.push(name);
+    }
+  }
+  for (const name of headersToRemove) {
+    headers.delete(name);
+  }
+  const init: RequestInit = {
+    method: request.method,
+    headers,
+  };
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    init.body = request.body;
+    (init as RequestInit & { duplex: "half" }).duplex = "half";
+  }
+  const response =
+    request.method === "GET" || request.method === "HEAD"
+      ? yield* fetchWithTransientRetry(targetUrl.toString(), init)
+      : yield* netFetch(targetUrl.toString(), init);
+  return withContentSecurityPolicy(response, contentSecurityPolicy);
+});
+
 const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   request: Request,
   assetDirectory: string,
@@ -300,30 +308,7 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   });
 });
 
-async function fetchWithTransientRetry(url: string, init: RequestInit): Promise<Response> {
-  let lastError: unknown;
-
-  for (let attempt = 0; ; attempt += 1) {
-    const delays = isInsufficientResourcesError(lastError)
-      ? INSUFFICIENT_RESOURCES_RETRY_DELAYS_MS
-      : TRANSIENT_FETCH_RETRY_DELAYS_MS;
-    if (attempt >= delays.length) break;
-    const delayMs = delays[attempt] ?? 0;
-    if (delayMs > 0) {
-      await NodeTimersPromises.setTimeout(delayMs);
-    }
-
-    try {
-      return await Electron.net.fetch(url, init);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError;
-}
-
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const registered = yield* Ref.make(false);
   const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
@@ -345,7 +330,13 @@ export const make = Effect.gen(function* () {
                   contentSecurityPolicy,
                 );
               }
-              return proxyRequest(request, input.targetOrigin, contentSecurityPolicy);
+              return runPromise(
+                proxyRequest(request, input.targetOrigin, contentSecurityPolicy).pipe(
+                  Effect.catchTags({
+                    ElectronProtocolFetchError: (error) => Effect.die(error.cause),
+                  }),
+                ),
+              );
             });
           },
           catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),

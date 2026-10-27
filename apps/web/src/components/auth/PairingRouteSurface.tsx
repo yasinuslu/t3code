@@ -1,14 +1,12 @@
 import { Alert, AlertDescription } from "../ui/alert";
 import type { AuthSessionState } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import React, { startTransition, useEffect, useRef, useState, useCallback } from "react";
+import React, { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { APP_DISPLAY_NAME } from "../../branding";
 import { connectPairing } from "../../connection/onboarding";
 import {
   peekPairingTokenFromUrl,
-  resolveInitialPrimaryEnvironmentDescriptor,
-  resolvePrimaryEnvironmentHttpUrl,
   stripPairingTokenFromUrl,
   submitServerAuthCredential,
 } from "../../environments/primary";
@@ -30,27 +28,6 @@ export function PairingPendingSurface() {
   );
 }
 
-/** The environment's own label and address, so a bare token prompt says whose code to paste. */
-function usePairingTargetLabel(): { readonly label: string | null; readonly host: string } {
-  const [label, setLabel] = useState<string | null>(null);
-  const [host] = useState(() => new URL(resolvePrimaryEnvironmentHttpUrl("/")).host);
-
-  useEffect(() => {
-    let cancelled = false;
-    resolveInitialPrimaryEnvironmentDescriptor().then(
-      (descriptor) => {
-        if (!cancelled) setLabel(descriptor.label);
-      },
-      () => undefined,
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { label, host };
-}
-
 export function PairingRouteSurface({
   auth,
   initialErrorMessage,
@@ -60,76 +37,59 @@ export function PairingRouteSurface({
   initialErrorMessage?: string;
   onAuthenticated: () => void;
 }) {
-  const autoPairTokenRef = useRef<string | null>(peekPairingTokenFromUrl());
-  const [credential, setCredential] = useState(() => autoPairTokenRef.current ?? "");
+  const [autoPairToken] = useState(peekPairingTokenFromUrl);
+  const [credential, setCredential] = useState(autoPairToken ?? "");
   const [errorMessage, setErrorMessage] = useState(initialErrorMessage ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const autoSubmitAttemptedRef = useRef(false);
-  const target = usePairingTargetLabel();
 
-  const submitCredential = useCallback(
-    async (nextCredential: string) => {
-      setIsSubmitting(true);
-      setErrorMessage("");
+  const submitCredential = async (nextCredential: string) => {
+    setIsSubmitting(true);
+    setErrorMessage("");
 
-      const submitError = await submitServerAuthCredential(nextCredential).then(
-        () => null,
-        (error) => errorMessageFromUnknown(error),
-      );
+    const submitError = await submitServerAuthCredential(nextCredential).then(
+      () => null,
+      (error) => errorMessageFromUnknown(error),
+    );
 
-      setIsSubmitting(false);
+    setIsSubmitting(false);
 
-      if (submitError) {
-        setErrorMessage(submitError);
-        return;
-      }
+    if (submitError) {
+      setErrorMessage(submitError);
+      return;
+    }
 
-      startTransition(() => {
-        onAuthenticated();
-      });
-    },
-    [onAuthenticated],
-  );
+    startTransition(() => {
+      onAuthenticated();
+    });
+  };
 
-  const handleSubmit = useCallback(
-    async (event?: React.SubmitEvent<HTMLFormElement>) => {
-      event?.preventDefault();
-      await submitCredential(credential);
-    },
-    [submitCredential, credential],
-  );
+  const handleSubmit = async (event?: React.SubmitEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    await submitCredential(credential);
+  };
+
+  const autoSubmit = useEffectEvent((token: string) => {
+    void submitCredential(token);
+  });
 
   useEffect(() => {
-    const token = autoPairTokenRef.current;
-    if (!token || autoSubmitAttemptedRef.current) {
+    if (!autoPairToken || autoSubmitAttemptedRef.current) {
       return;
     }
 
     autoSubmitAttemptedRef.current = true;
     stripPairingTokenFromUrl();
-    void submitCredential(token);
-  }, [submitCredential]);
+    autoSubmit(autoPairToken);
+  }, [autoPairToken]);
 
   return (
     <StandalonePage tone="pairing">
       <StandalonePageHeader
         eyebrow={APP_DISPLAY_NAME}
-        title={target.label ? `Pair with ${target.label}` : "Pair with this environment"}
+        title="Pair with this environment"
         description={describeAuthGate(auth.bootstrapMethods)}
       />
-
-      <dl className="mt-5 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-sm">
-        {target.label ? (
-          <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-xs text-muted-foreground">Environment</dt>
-            <dd className="min-w-0 font-medium break-words">{target.label}</dd>
-          </div>
-        ) : null}
-        <div className="mt-1.5 flex items-baseline justify-between gap-3 first:mt-0">
-          <dt className="text-xs text-muted-foreground">Address</dt>
-          <dd className="min-w-0 font-mono text-xs break-all text-foreground/80">{target.host}</dd>
-        </div>
-      </dl>
 
       <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
         <div className="space-y-2">
@@ -173,11 +133,6 @@ export function PairingRouteSurface({
 
       <div className="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
         {describeSupportedMethods(auth.bootstrapMethods)}
-        <p className="mt-2 text-foreground/80">
-          Get a code on {target.label ?? target.host}: open T3 Code there, go to Settings →
-          Connections and choose Create link, or run <code className="font-mono">t3 pair</code> in
-          its terminal and scan the QR code with this device.
-        </p>
       </div>
     </StandalonePage>
   );
@@ -187,12 +142,12 @@ export function HostedPairingRouteSurface() {
   const connectPairingEnvironment = useAtomCommand(connectPairing, {
     reportFailure: false,
   });
-  const hostedPairingRequestRef = useRef(readHostedPairingRequest());
-  const [status, setStatus] = useState<"pairing" | "paired" | "error">(() =>
-    hostedPairingRequestRef.current ? "pairing" : "error",
+  const [request] = useState(readHostedPairingRequest);
+  const [status, setStatus] = useState<"pairing" | "paired" | "error">(
+    request ? "pairing" : "error",
   );
-  const [message, setMessage] = useState(() =>
-    hostedPairingRequestRef.current
+  const [message, setMessage] = useState(
+    request
       ? "Connecting to this backend."
       : "This pairing link is missing its backend host or token.",
   );
@@ -200,9 +155,7 @@ export function HostedPairingRouteSurface() {
   const submitAttemptedRef = useRef(false);
   const tokenSubmittedRef = useRef(false);
 
-  const submitHostedPairingRequest = useCallback(async () => {
-    const request = hostedPairingRequestRef.current;
-
+  const submitHostedPairingRequest = async () => {
     if (!request) {
       setStatus("error");
       setMessage("This pairing link is missing its backend host or token.");
@@ -238,7 +191,11 @@ export function HostedPairingRouteSurface() {
     setMessage(
       `${errorMessageFromUnknown(squashAtomCommandFailure(result))} If the backend accepted this one-time token, request a new pairing link before retrying.`,
     );
-  }, [connectPairingEnvironment]);
+  };
+
+  const submitOnMount = useEffectEvent(() => {
+    void submitHostedPairingRequest();
+  });
 
   useEffect(() => {
     if (submitAttemptedRef.current) {
@@ -247,10 +204,8 @@ export function HostedPairingRouteSurface() {
     submitAttemptedRef.current = true;
 
     stripPairingTokenFromUrl();
-    void submitHostedPairingRequest();
-  }, [submitHostedPairingRequest]);
-
-  const request = hostedPairingRequestRef.current;
+    submitOnMount();
+  }, []);
 
   return (
     <StandalonePage tone="pairing">

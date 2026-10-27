@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stdio from "effect/Stdio";
 import * as Stream from "effect/Stream";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as CodexRpc from "./_generated/meta.gen.ts";
 import * as CodexSchema from "./_generated/schema.gen.ts";
@@ -240,24 +240,36 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     },
     request,
     notify,
-    handleServerRequest: (method, handler) =>
-      Effect.sync(() => {
-        requestHandlers.set(method, handler as ServerRequestHandler);
-      }),
-    handleServerNotification: (method, handler) =>
-      Effect.sync(() => {
-        const current = notificationHandlers.get(method) ?? [];
-        current.push(handler as ServerNotificationHandler);
-        notificationHandlers.set(method, current);
-      }),
-    handleUnknownServerRequest: (handler) =>
-      Effect.sync(() => {
-        unknownRequestHandler = handler;
-      }),
-    handleUnknownServerNotification: (handler) =>
-      Effect.sync(() => {
+    handleServerRequest: Effect.fn("CodexAppServerClient.handleServerRequest")(
+      function (method, handler) {
+        return Effect.sync(() => {
+          requestHandlers.set(method, handler as ServerRequestHandler);
+        });
+      },
+    ),
+    handleServerNotification: Effect.fn("CodexAppServerClient.handleServerNotification")(
+      function (method, handler) {
+        return Effect.sync(() => {
+          const current = notificationHandlers.get(method) ?? [];
+          current.push(handler as ServerNotificationHandler);
+          notificationHandlers.set(method, current);
+        });
+      },
+    ),
+    handleUnknownServerRequest: Effect.fn("CodexAppServerClient.handleUnknownServerRequest")(
+      function (handler) {
+        return Effect.sync(() => {
+          unknownRequestHandler = handler;
+        });
+      },
+    ),
+    handleUnknownServerNotification: Effect.fn(
+      "CodexAppServerClient.handleUnknownServerNotification",
+    )(function (handler) {
+      return Effect.sync(() => {
         unknownNotificationHandler = handler;
-      }),
+      });
+    }),
   });
 });
 

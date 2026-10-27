@@ -80,7 +80,7 @@ export const make = Effect.gen(function* () {
   const runner = yield* ProcessRunner.ProcessRunner;
   const crypto = yield* Crypto.Crypto;
   const newCommandId = () =>
-    crypto.randomUUIDv4.pipe(
+    crypto.randomUUIDv4().pipe(
       Effect.orDie,
       Effect.map((id) => CommandId.make(`preview-env:${id}`)),
     );

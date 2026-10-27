@@ -2,12 +2,16 @@ import type { ProjectionRecordField } from "../orchestration-v2/ProjectionStore.
 import {
   CommandId,
   OrchestratorMcpFailure,
+  type ProjectId,
+  type ProviderInteractionMode,
+  type RuntimeMode,
   type ThreadId,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 
+import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as OrchestrationMcp from "./OrchestratorMcpService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
@@ -19,6 +23,35 @@ export const unavailable = () =>
     message: "The operation could not be completed.",
   });
 
+export const dispatchFailure = (
+  error: OrchestratorV2Error | ThreadManagement.ThreadManagementProviderInstanceDisabledError,
+) =>
+  error._tag === "ThreadManagementProviderInstanceDisabledError"
+    ? new OrchestratorMcpFailure({ code: "invalid_request", message: error.message })
+    : (error._tag === "OrchestratorDispatchError" ||
+          error._tag === "OrchestratorCommandRejectedError") &&
+        typeof error.cause === "string" &&
+        error.cause.length > 0
+      ? new OrchestratorMcpFailure({
+          code: "orchestration_error",
+          message: Array.from(error.cause).slice(0, 1000).join(""),
+        })
+      : unavailable();
+
+export interface CallerLimits {
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+}
+
+export interface Caller {
+  readonly scope: McpInvocationContext.McpInvocationScope;
+  readonly threads: ThreadManagement.ThreadManagementService["Service"];
+  readonly caller: OrchestrationV2ThreadShell | undefined;
+  readonly limits: CallerLimits;
+  /** The projects a manager thread runs work across (see ManagerScope); null for any other caller. */
+  readonly reach: ReadonlySet<string> | null;
+}
+
 export const readCaller = Effect.fn("mcp.readCaller")(function* () {
   const scope = yield* McpInvocationContext.McpInvocationContext;
   if (!scope.capabilities.has("orchestration")) {
@@ -27,62 +60,110 @@ export const readCaller = Effect.fn("mcp.readCaller")(function* () {
       message: "This credential cannot control threads.",
     });
   }
+  return yield* loadCaller();
+});
+
+export const loadCaller = Effect.fn("mcp.loadCaller")(function* () {
+  const scope = yield* McpInvocationContext.McpInvocationContext;
   const threads = yield* ThreadManagement.ThreadManagementService;
-  const caller = yield* threads.getThreadShell(scope.threadId).pipe(Effect.mapError(unavailable));
+  if (scope.thread === undefined) {
+    return {
+      scope,
+      threads,
+      caller: undefined,
+      limits: {
+        runtimeMode: McpInvocationContext.clientRuntimeModeCeiling(scope.client),
+        interactionMode: "default",
+      },
+      reach: null,
+    } satisfies Caller;
+  }
+  const caller = yield* threads
+    .getThreadShell(scope.thread.threadId)
+    .pipe(Effect.mapError(unavailable));
   if (caller === null || caller.deletedAt !== null) {
     return yield* new OrchestratorMcpFailure({
       code: "thread_not_found",
       message: "The calling thread was not found.",
     });
   }
-  const managers = yield* ManagerScope.ManagerScope;
-  // A manager reaches its profile's projects, see ManagerScope.
-  const reach = yield* managers.reachableProjectIds(caller.id);
-  return { scope, threads, caller, reach };
+  return {
+    scope,
+    threads,
+    caller,
+    limits: { runtimeMode: caller.runtimeMode, interactionMode: caller.interactionMode },
+    reach: yield* (yield* ManagerScope.ManagerScope).reachableProjectIds(caller.id),
+  } satisfies Caller;
 });
 
-function assertLiveCaller({
-  caller,
-  scope,
-}: {
-  caller: OrchestrationV2ThreadShell;
-  scope: McpInvocationContext.McpInvocationScope;
-}) {
-  return caller.archivedAt !== null ||
-    caller.activeRunId === null ||
-    caller.providerInstanceId !== scope.providerInstanceId
-    ? Effect.fail(
+export const assertTargetWithinLimits = (
+  limits: CallerLimits,
+  target: { readonly runtimeMode: RuntimeMode; readonly interactionMode: ProviderInteractionMode },
+) =>
+  OrchestrationMcp.resolveRuntimeMode(limits.runtimeMode, target.runtimeMode).pipe(
+    Effect.andThen(
+      OrchestrationMcp.resolveInteractionMode(limits.interactionMode, target.interactionMode),
+    ),
+    Effect.asVoid,
+  );
+
+/** Thread callers need a live run or its background subagent in an unarchived thread. OAuth clients rely on their session and ceiling. */
+export function assertLiveCaller({ caller, scope }: Caller) {
+  if (caller === undefined) return Effect.void;
+  return OrchestrationMcp.isLiveCallerShell(caller, scope.thread?.providerInstanceId)
+    ? Effect.void
+    : Effect.fail(
         new OrchestratorMcpFailure({
           code: "parent_not_active",
           message: "The calling provider no longer owns an active thread run.",
         }),
-      )
-    : Effect.void;
+      );
 }
-export const readMutationCaller = Effect.fn("mcp.readMutationCaller")(function* () {
-  const context = yield* readCaller();
-  yield* assertLiveCaller(context);
-  return context;
-});
 
-/**
- * Resolve the credential's project before looking up a caller-supplied thread.
- * A manager thread reaches a thread in any project of its profile.
- */
+export const assertFullAccess = (context: Caller, message: string) =>
+  context.limits.runtimeMode === "full-access" && context.limits.interactionMode === "default"
+    ? Effect.void
+    : Effect.fail(new OrchestratorMcpFailure({ code: "capability_denied", message }));
+
+export const resolveProjectId = (context: Caller, projectId: ProjectId | undefined) =>
+  projectId !== undefined
+    ? Effect.succeed(projectId)
+    : context.caller !== undefined
+      ? Effect.succeed(context.caller.projectId)
+      : Effect.fail(
+          new OrchestratorMcpFailure({
+            code: "target_required",
+            message: "Pass projectId: this MCP client is not running inside a T3 thread.",
+          }),
+        );
+
+const resolveThreadId = (context: Caller, threadId: ThreadId | undefined) =>
+  threadId !== undefined
+    ? Effect.succeed(threadId)
+    : context.caller !== undefined
+      ? Effect.succeed(context.caller.id)
+      : Effect.fail(
+          new OrchestratorMcpFailure({
+            code: "target_required",
+            message: "Pass threadId: this MCP client is not running inside a T3 thread.",
+          }),
+        );
+
 export const readThread = Effect.fn("mcp.readThread")(function* <
   K extends ProjectionRecordField = never,
 >(threadId?: ThreadId, fields: ReadonlyArray<K> = []) {
-  const { scope, threads, caller, reach } = yield* readCaller();
-  const targetProjectId =
-    reach !== null && threadId !== undefined && threadId !== caller.id
-      ? (yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))?.projectId
-      : undefined;
-  const projectId =
-    targetProjectId !== undefined && reach?.has(targetProjectId)
-      ? targetProjectId
-      : caller.projectId;
-  const projection = yield* threads
-    .getProjectThreadRecords({ projectId, threadId: threadId ?? caller.id }, fields, {
+  const context = yield* readCaller();
+  const targetId = yield* resolveThreadId(context, threadId);
+  const shell = yield* context.threads.getThreadShell(targetId).pipe(Effect.mapError(unavailable));
+  if (shell === null || shell.deletedAt !== null) {
+    return yield* OrchestrationMcp.threadNotFound(
+      context.threads,
+      targetId,
+      "The thread was not found.",
+    );
+  }
+  const projection = yield* context.threads
+    .getProjectThreadRecords({ projectId: shell.projectId, threadId: targetId }, fields, {
       turnItemTypes: ["user_input_request"],
     })
     .pipe(
@@ -90,31 +171,25 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
         error._tag === "ThreadManagementThreadNotFoundError"
           ? new OrchestratorMcpFailure({
               code: "thread_not_found",
-              message: "The thread was not found in the calling project.",
+              message: "The thread was not found.",
             })
           : unavailable(),
       ),
     );
-  return { scope, threads, caller, reach, projection };
+  return { ...context, projection };
 });
 
+/** A thread the caller may change: a live caller, and a target within the caller's limits. */
 export const readWritableThread = Effect.fn("mcp.readWritableThread")(function* <
   K extends ProjectionRecordField = never,
 >(threadId?: ThreadId, fields: ReadonlyArray<K> = []) {
   const context = yield* readThread(threadId, fields);
   yield* assertLiveCaller(context);
-  yield* OrchestrationMcp.resolveRuntimeMode(
-    context.caller.runtimeMode,
-    context.projection.thread.runtimeMode,
-  );
-  yield* OrchestrationMcp.resolveInteractionMode(
-    context.caller.interactionMode,
-    context.projection.thread.interactionMode,
-  );
+  yield* assertTargetWithinLimits(context.limits, context.projection.thread);
   return context;
 });
 
 export const newCommandId = Effect.fn("mcp.newCommandId")(function* () {
   const crypto = yield* Crypto.Crypto;
-  return CommandId.make(`mcp:${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}`);
+  return CommandId.make(`mcp:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`);
 });

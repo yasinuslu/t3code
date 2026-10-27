@@ -9,7 +9,6 @@ import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-
 import { useEffect, useRef, useState } from "react";
 
 import { useIsManagerThread } from "../../brainstormStore";
-import { closeHomeOverlay, holdHomeOverlayOpen, useHomeOverlayStore } from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { returnFromManager } from "../../lib/goToManager";
 import { useManagerViewStore } from "../../managerViewStore";
@@ -119,29 +118,20 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
       }
       if (manager._tag !== "Ready") return;
       if (!shellKnown && !shellWaitedOut) return;
-      const grow = useHomeOverlayStore.getState().open;
       useManagerViewStore.setState((state) => ({
         request: null,
         // Asking again while it shows keeps the way back to the page before it.
-        returnTo: state.shown && !grow ? state.returnTo : { href, grow },
+        returnTo: state.shown ? state.returnTo : { href },
       }));
       if (props.currentKey !== key) {
-        // Grow stays over the page until the manager is there, so the page under it
-        // (Threads, a draft) never shows on the way.
-        const release = holdHomeOverlayOpen();
         void navigate({
           to: "/$environmentId/$threadId",
           params: { environmentId: manager.environmentId, threadId: manager.threadId },
         })
           .then(() => threadViewRendered(manager.threadId))
           .catch(() => undefined)
-          .finally(() => {
-            closeHomeOverlay();
-            release();
-          })
           .then(focusComposer);
       } else {
-        closeHomeOverlay();
         void focusComposer();
       }
       return;

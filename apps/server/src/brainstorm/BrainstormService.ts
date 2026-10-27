@@ -35,7 +35,6 @@ import {
   BrainstormState,
   type BrainstormSyncSpacesInput,
   type BrainstormTaskList,
-  type BrainstormThreadReport,
   BrainstormError,
   CommandId,
   COMMON_PROFILE,
@@ -87,8 +86,6 @@ import {
 export const ALL_SPACE_ID = "all";
 
 /** Enough for a final report's summary, links, screenshots and questions. */
-const THREAD_REPORT_MAX_CHARS = 12_000;
-const THREAD_REPORT_RUNS_BACK = 3;
 
 function allBrainstormThreadIds(state: {
   readonly threadIdsBySpaceId: Readonly<Record<string, string>>;
@@ -252,10 +249,6 @@ export class BrainstormService extends Context.Service<
     readonly open: (
       input: BrainstormOpenInput,
     ) => Effect.Effect<BrainstormOpenResult, BrainstormError>;
-    /** The last assistant message of a thread's latest run, for the home dashboard's cards. */
-    readonly threadReport: (
-      threadId: ThreadId,
-    ) => Effect.Effect<BrainstormThreadReport, BrainstormError>;
     readonly mutateTasks: (
       input: BrainstormMutateTasksInput,
     ) => Effect.Effect<void, BrainstormError>;
@@ -401,27 +394,28 @@ export const make = Effect.gen(function* () {
     };
   });
 
-  const readTaskList: BrainstormService["Service"]["readTaskList"] = (ctx, space) =>
-    Effect.gen(function* () {
-      const path = taskPathOf(ctx, space);
-      const text = path === null ? "" : yield* readTextOrEmpty(path);
-      const file = parseTaskMarkdown(text);
-      return {
-        spaceId: space.id,
-        spaceName: space.name,
-        path,
-        profile: space.kind === "profile" ? space.profile : null,
-        goals: file.goals.map(({ number, title, done, notes }) => ({ number, title, done, notes })),
-        tasks: file.tasks.map(({ number, title, done, notes, threadIds, goal }) => ({
-          number,
-          title,
-          done,
-          notes,
-          threadIds,
-          goal,
-        })),
-      };
-    });
+  const readTaskList: BrainstormService["Service"]["readTaskList"] = Effect.fn(
+    "BrainstormService.readTaskList",
+  )(function* (ctx, space) {
+    const path = taskPathOf(ctx, space);
+    const text = path === null ? "" : yield* readTextOrEmpty(path);
+    const file = parseTaskMarkdown(text);
+    return {
+      spaceId: space.id,
+      spaceName: space.name,
+      path,
+      profile: space.kind === "profile" ? space.profile : null,
+      goals: file.goals.map(({ number, title, done, notes }) => ({ number, title, done, notes })),
+      tasks: file.tasks.map(({ number, title, done, notes, threadIds, goal }) => ({
+        number,
+        title,
+        done,
+        notes,
+        threadIds,
+        goal,
+      })),
+    };
+  });
 
   const editTasks: BrainstormService["Service"]["editTasks"] = (ctx, space, edit) =>
     writeLock.withPermits(1)(
@@ -509,76 +503,74 @@ export const make = Effect.gen(function* () {
       : Effect.fail(new BrainstormError({ message: `Unknown space ${spaceId}.` }));
   };
 
-  const mutateTasks: BrainstormService["Service"]["mutateTasks"] = (input) =>
-    Effect.gen(function* () {
-      const ctx = yield* context;
-      let space = yield* requireSpace(ctx, input.spaceId);
-      if (space.kind === "all") {
-        // All adds to the default profile's list.
-        const fallback = ctx.spaces.find(
-          (candidate) =>
-            candidate.kind === "profile" && candidate.profile === ctx.defaultProfile?.name,
-        );
-        if (fallback) space = fallback;
+  const mutateTasks: BrainstormService["Service"]["mutateTasks"] = Effect.fn(
+    "BrainstormService.mutateTasks",
+  )(function* (input) {
+    const ctx = yield* context;
+    let space = yield* requireSpace(ctx, input.spaceId);
+    if (space.kind === "all") {
+      // All adds to the default profile's list.
+      const fallback = ctx.spaces.find(
+        (candidate) =>
+          candidate.kind === "profile" && candidate.profile === ctx.defaultProfile?.name,
+      );
+      if (fallback) space = fallback;
+    }
+    const mutation = input.mutation;
+    const guard = (text: string, number: number, title: string) => {
+      const task = parseTaskMarkdown(text).tasks[number - 1];
+      // The list may have changed since the client drew it; fall back to the title.
+      return task && task.title === title ? number : title;
+    };
+    yield* editTasks(ctx, space, (text) => {
+      switch (mutation.type) {
+        case "add":
+          return {
+            text: addTask(text, {
+              title: mutation.title,
+              ...(mutation.goal === undefined ? {} : { goal: mutation.goal }),
+            }).text,
+            result: undefined,
+          };
+        case "set-goal-done":
+          return {
+            text: updateGoal(text, mutation.goal, { done: mutation.done }).text,
+            result: undefined,
+          };
+        case "set-done":
+          return {
+            text: updateTask(text, guard(text, mutation.number, mutation.title), {
+              done: mutation.done,
+            }).text,
+            result: undefined,
+          };
+        case "delete":
+          return {
+            text: deleteTask(text, guard(text, mutation.number, mutation.title)).text,
+            result: undefined,
+          };
       }
-      const mutation = input.mutation;
-      const guard = (text: string, number: number, title: string) => {
-        const task = parseTaskMarkdown(text).tasks[number - 1];
-        // The list may have changed since the client drew it; fall back to the title.
-        return task && task.title === title ? number : title;
-      };
-      yield* editTasks(ctx, space, (text) => {
-        switch (mutation.type) {
-          case "add":
-            return {
-              text: addTask(text, {
-                title: mutation.title,
-                ...(mutation.goal === undefined ? {} : { goal: mutation.goal }),
-              }).text,
-              result: undefined,
-            };
-          case "set-goal-done":
-            return {
-              text: updateGoal(text, mutation.goal, { done: mutation.done }).text,
-              result: undefined,
-            };
-          case "set-done":
-            return {
-              text: updateTask(text, guard(text, mutation.number, mutation.title), {
-                done: mutation.done,
-              }).text,
-              result: undefined,
-            };
-          case "delete":
-            return {
-              text: deleteTask(text, guard(text, mutation.number, mutation.title)).text,
-              result: undefined,
-            };
-        }
-      });
     });
+  });
 
-  const syncSpaces: BrainstormService["Service"]["syncSpaces"] = (input) =>
-    Effect.gen(function* () {
-      const current = yield* Ref.get(stateRef);
-      const next: PersistedBrainstorm = {
-        ...current,
-        spaces: input.spaces,
-        customSpaceIdsByProjectId: input.customSpaceIdsByProjectId,
-        defaultProfile: input.defaultProfile ?? null,
-      };
-      if (encodePersisted(next) === encodePersisted(current)) return;
-      yield* Ref.set(stateRef, next);
-      yield* save;
-      yield* notify;
-    });
+  const syncSpaces: BrainstormService["Service"]["syncSpaces"] = Effect.fn(
+    "BrainstormService.syncSpaces",
+  )(function* (input) {
+    const current = yield* Ref.get(stateRef);
+    const next: PersistedBrainstorm = {
+      ...current,
+      spaces: input.spaces,
+      customSpaceIdsByProjectId: input.customSpaceIdsByProjectId,
+      defaultProfile: input.defaultProfile ?? null,
+    };
+    if (encodePersisted(next) === encodePersisted(current)) return;
+    yield* Ref.set(stateRef, next);
+    yield* save;
+    yield* notify;
+  });
 
-  const setProjectInCustomSpace: BrainstormService["Service"]["setProjectInCustomSpace"] = (
-    projectId,
-    spaceId,
-    member,
-  ) =>
-    Effect.gen(function* () {
+  const setProjectInCustomSpace: BrainstormService["Service"]["setProjectInCustomSpace"] =
+    Effect.fn("BrainstormService.setProjectInCustomSpace")(function* (projectId, spaceId, member) {
       const state = yield* Ref.get(stateRef);
       const space = state.spaces.find((candidate) => candidate.id === spaceId);
       if (!space || space.kind !== "custom") {
@@ -618,57 +610,57 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  const spaceOfThread: BrainstormService["Service"]["spaceOfThread"] = (threadId) =>
-    Effect.gen(function* () {
-      const manager = yield* managerOf(threadId);
-      if (manager?.profile != null) {
-        const ctx = yield* context.pipe(Effect.orElseSucceed(() => null));
-        return (
-          ctx?.spaces.find(
-            (space) => space.kind === "profile" && space.profile === manager.profile,
-          ) ?? null
-        );
-      }
-      return yield* Ref.get(stateRef).pipe(
-        Effect.map((state) => {
-          const spaceId =
-            Object.entries(state.threadIdsBySpaceId).find(
-              ([, candidate]) => candidate === threadId,
-            )?.[0] ??
-            Object.entries(state.threadIdsBySpaceBrain ?? {})
-              .find(([, candidate]) => candidate === threadId)?.[0]
-              .split("|")[0];
-          return state.spaces.find((space) => space.id === spaceId) ?? null;
-        }),
+  const spaceOfThread: BrainstormService["Service"]["spaceOfThread"] = Effect.fn(
+    "BrainstormService.spaceOfThread",
+  )(function* (threadId) {
+    const manager = yield* managerOf(threadId);
+    if (manager?.profile != null) {
+      const ctx = yield* context.pipe(Effect.orElseSucceed(() => null));
+      return (
+        ctx?.spaces.find(
+          (space) => space.kind === "profile" && space.profile === manager.profile,
+        ) ?? null
       );
-    });
+    }
+    return yield* Ref.get(stateRef).pipe(
+      Effect.map((state) => {
+        const spaceId =
+          Object.entries(state.threadIdsBySpaceId).find(
+            ([, candidate]) => candidate === threadId,
+          )?.[0] ??
+          Object.entries(state.threadIdsBySpaceBrain ?? {})
+            .find(([, candidate]) => candidate === threadId)?.[0]
+            .split("|")[0];
+        return state.spaces.find((space) => space.id === spaceId) ?? null;
+      }),
+    );
+  });
 
-  const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
   const failWith = (message: string) => () => new BrainstormError({ message });
 
-  const modelSelectionFor = (
+  const modelSelectionFor = Effect.fn("BrainstormService.modelSelectionFor")(function* (
     project: OrchestrationProjectShell,
     threads: ReadonlyArray<OrchestrationV2ThreadShell>,
-  ) =>
-    Effect.gen(function* () {
-      const settings = yield* serverSettings.getSettings.pipe(
-        Effect.mapError(failWith("Could not read the server settings.")),
-      );
-      const recent = threads
-        .filter((thread) => thread.projectId === project.id)
-        .toSorted(
-          (left, right) =>
-            DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
-        )[0];
-      const modelSelection: ModelSelection = resolveProjectSettings(settings, project.id, project)
-        .settings.defaultModelSelection ??
-        settings.defaultModelSelection ??
-        recent?.modelSelection ?? {
-          instanceId: ProviderInstanceId.make("codex"),
-          model: DEFAULT_MODEL,
-        };
-      return modelSelection;
-    });
+  ) {
+    const settings = yield* serverSettings.getSettings.pipe(
+      Effect.mapError(failWith("Could not read the server settings.")),
+    );
+    const recent = threads
+      .filter((thread) => thread.projectId === project.id)
+      .toSorted(
+        (left, right) =>
+          DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
+      )[0];
+    const modelSelection: ModelSelection = resolveProjectSettings(settings, project.id, project)
+      .settings.defaultModelSelection ??
+      settings.defaultModelSelection ??
+      recent?.modelSelection ?? {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: DEFAULT_MODEL,
+      };
+    return modelSelection;
+  });
 
   const realPath = (path: string) => Effect.promise(() => NodeFSP.realpath(path).catch(() => path));
 
@@ -676,159 +668,172 @@ export const make = Effect.gen(function* () {
    * A manager thread is pinned once, when it first becomes a manager, so it
    * sits at the top of the sidebar. An unpin by the user sticks.
    */
-  const pinManagerOnce = (threadId: ThreadId, alreadyPinned: boolean) =>
-    Effect.gen(function* () {
-      const state = yield* Ref.get(stateRef);
-      if (
-        state.pinnedManagerThreadId === threadId ||
-        state.pinnedManagerThreadIds?.includes(threadId)
-      ) {
-        return;
-      }
-      if (!alreadyPinned) {
-        yield* orchestrator
-          .dispatch({
-            type: "thread.pin",
-            commandId: CommandId.make(`server:manager-pin:${yield* uuid}`),
-            threadId,
-          })
-          .pipe(Effect.ignore);
-      }
-      yield* Ref.update(stateRef, (current) => ({
-        ...current,
-        pinnedManagerThreadIds: [...(current.pinnedManagerThreadIds ?? []), threadId],
-      }));
-      yield* save;
-    });
-
-  /** The project rooted at a brain, added as one when it is missing. */
-  const brainProject = (ctx: BrainstormContext, brainPath: string) =>
-    Effect.gen(function* () {
-      const brainReal = yield* realPath(brainPath);
-      for (const candidate of ctx.projects) {
-        if ((yield* realPath(candidate.workspaceRoot)) === brainReal) return candidate;
-      }
-      const projectId = ProjectId.make(yield* uuid);
-      yield* projectService
-        .create({
-          commandId: CommandId.make(`server:brainstorm-project:${yield* uuid}`),
-          projectId,
-          title: NodePath.basename(brainPath),
-          workspaceRoot: brainPath,
-        })
-        .pipe(Effect.mapError(failWith(`Could not add ${brainPath} as a project.`)));
-      const created = yield* projectService
-        .getShell(projectId)
-        .pipe(Effect.mapError(failWith("Could not read the new project.")));
-      if (Option.isNone(created)) {
-        return yield* new BrainstormError({ message: "The brain project did not appear." });
-      }
-      return created.value;
-    });
-
-  /** The first of these threads that is still a live thread of the project. */
-  const liveThreadIn = (projectId: string, ids: ReadonlyArray<string | undefined>) =>
-    Effect.gen(function* () {
-      for (const id of ids) {
-        if (!id) continue;
-        const thread = yield* orchestrator
-          .getThreadShell(ThreadId.make(id))
-          .pipe(Effect.orElseSucceed(() => null));
-        if (
-          thread !== null &&
-          thread.deletedAt === null &&
-          thread.archivedAt === null &&
-          thread.projectId === projectId
-        ) {
-          return thread;
-        }
-      }
-      return undefined;
-    });
-
-  /** An idle, long-lived thread in the brain's own checkout; the user sends the first message. */
-  const launchChat = (project: OrchestrationProjectShell, title: string) =>
-    Effect.gen(function* () {
-      const threadId = ThreadId.make(yield* uuid);
-      const settings = yield* serverSettings.getSettings.pipe(
-        Effect.mapError(failWith("Could not read the server settings.")),
-      );
-      const snapshot = yield* orchestrator
-        .getShellSnapshot({ location: "active" })
-        .pipe(Effect.mapError(failWith("Could not read the threads.")));
-      yield* launches
-        .launch({
-          commandId: CommandId.make(`server:brainstorm-thread:${yield* uuid}`),
-          threadId,
-          projectId: project.id,
-          title,
-          modelSelection: yield* modelSelectionFor(project, snapshot.threads),
-          // The user picks the account a manager chat runs on.
-          accountBalance: "off",
-          runtimeMode: resolveProjectSettings(settings, project.id).settings.defaultRuntimeMode,
-          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-          workspaceStrategy: { type: "root" },
-          createdBy: "user",
-          creationSource: "server",
-        })
-        .pipe(Effect.mapError(failWith("Could not create the brainstorm thread.")));
-      // A brainstorm is long-lived; inactivity must not settle it away.
+  const pinManagerOnce = Effect.fn("BrainstormService.pinManagerOnce")(function* (
+    threadId: ThreadId,
+    alreadyPinned: boolean,
+  ) {
+    const state = yield* Ref.get(stateRef);
+    if (
+      state.pinnedManagerThreadId === threadId ||
+      state.pinnedManagerThreadIds?.includes(threadId)
+    ) {
+      return;
+    }
+    if (!alreadyPinned) {
       yield* orchestrator
         .dispatch({
-          type: "thread.auto-settle.set",
-          commandId: CommandId.make(`server:brainstorm-autosettle:${yield* uuid}`),
+          type: "thread.pin",
+          commandId: CommandId.make(`server:manager-pin:${yield* uuid}`),
           threadId,
-          enabled: false,
         })
         .pipe(Effect.ignore);
-      return threadId;
-    });
+    }
+    yield* Ref.update(stateRef, (current) => ({
+      ...current,
+      pinnedManagerThreadIds: [...(current.pinnedManagerThreadIds ?? []), threadId],
+    }));
+    yield* save;
+  });
+
+  /** The project rooted at a brain, added as one when it is missing. */
+  const brainProject = Effect.fn("BrainstormService.brainProject")(function* (
+    ctx: BrainstormContext,
+    brainPath: string,
+  ) {
+    const brainReal = yield* realPath(brainPath);
+    for (const candidate of ctx.projects) {
+      if ((yield* realPath(candidate.workspaceRoot)) === brainReal) return candidate;
+    }
+    const projectId = ProjectId.make(yield* uuid);
+    yield* projectService
+      .create({
+        commandId: CommandId.make(`server:brainstorm-project:${yield* uuid}`),
+        projectId,
+        title: NodePath.basename(brainPath),
+        workspaceRoot: brainPath,
+      })
+      .pipe(Effect.mapError(failWith(`Could not add ${brainPath} as a project.`)));
+    const created = yield* projectService
+      .getShell(projectId)
+      .pipe(Effect.mapError(failWith("Could not read the new project.")));
+    if (Option.isNone(created)) {
+      return yield* new BrainstormError({ message: "The brain project did not appear." });
+    }
+    return created.value;
+  });
+
+  /** The first of these threads that is still a live thread of the project. */
+  const liveThreadIn = Effect.fn("BrainstormService.liveThreadIn")(function* (
+    projectId: string,
+    ids: ReadonlyArray<string | undefined>,
+  ) {
+    for (const id of ids) {
+      if (!id) continue;
+      const thread = yield* orchestrator
+        .getThreadShell(ThreadId.make(id))
+        .pipe(Effect.orElseSucceed(() => null));
+      if (
+        thread !== null &&
+        thread.deletedAt === null &&
+        thread.archivedAt === null &&
+        thread.projectId === projectId
+      ) {
+        return thread;
+      }
+    }
+    return undefined;
+  });
+
+  /** An idle, long-lived thread in the brain's own checkout; the user sends the first message. */
+  const launchChat = Effect.fn("BrainstormService.launchChat")(function* (
+    project: OrchestrationProjectShell,
+    title: string,
+  ) {
+    const threadId = ThreadId.make(yield* uuid);
+    const settings = yield* serverSettings.getSettings.pipe(
+      Effect.mapError(failWith("Could not read the server settings.")),
+    );
+    const snapshot = yield* orchestrator
+      .getShellSnapshot({ location: "active" })
+      .pipe(Effect.mapError(failWith("Could not read the threads.")));
+    yield* launches
+      .launch({
+        commandId: CommandId.make(`server:brainstorm-thread:${yield* uuid}`),
+        threadId,
+        projectId: project.id,
+        title,
+        modelSelection: yield* modelSelectionFor(project, snapshot.threads),
+        // The user picks the account a manager chat runs on.
+        accountBalance: "off",
+        runtimeMode: resolveProjectSettings(settings, project.id).settings.defaultRuntimeMode,
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        workspaceStrategy: { type: "root" },
+        createdBy: "user",
+        creationSource: "server",
+      })
+      .pipe(
+        Effect.tapError((cause) => Effect.logWarning("brainstorm thread launch failed", cause)),
+        Effect.mapError(failWith("Could not create the brainstorm thread.")),
+      );
+    // A brainstorm is long-lived; inactivity must not settle it away.
+    yield* orchestrator
+      .dispatch({
+        type: "thread.auto-settle.set",
+        commandId: CommandId.make(`server:brainstorm-autosettle:${yield* uuid}`),
+        threadId,
+        enabled: false,
+      })
+      .pipe(Effect.ignore);
+    return threadId;
+  });
 
   /**
    * A profile's manager, in its brain project. The manager from before there
    * was one per profile (the All space's chat) becomes the manager of the
    * profile whose brain it lives in.
    */
-  const openProfileManager = (ctx: BrainstormContext, profile: BrainstormProfile) =>
-    Effect.gen(function* () {
-      const project = yield* brainProject(ctx, profile.brainPath);
-      const space = ctx.spaces.find(
-        (candidate) => candidate.kind === "profile" && candidate.profile === profile.name,
-      );
-      const state = yield* Ref.get(stateRef);
-      const legacyId = state.threadIdsBySpaceId[ALL_SPACE_ID];
-      const existing = yield* liveThreadIn(project.id, [
-        state.managerThreadIdsByProfile?.[profile.name],
-        legacyId,
-      ]);
-      const threadId = existing?.id ?? (yield* launchChat(project, `Manager · ${profile.name}`));
-      if (state.managerThreadIdsByProfile?.[profile.name] !== threadId) {
-        yield* Ref.update(stateRef, (current) => {
-          const next = {
-            ...current,
-            managerThreadIdsByProfile: {
-              ...current.managerThreadIdsByProfile,
-              [profile.name]: threadId,
-            },
-          };
-          if (threadId !== legacyId) return next;
-          const { [ALL_SPACE_ID]: _legacy, ...threadIdsBySpaceId } = current.threadIdsBySpaceId;
-          const threadIdsBySpaceBrain = Object.fromEntries(
-            Object.entries(current.threadIdsBySpaceBrain ?? {}).filter(([, id]) => id !== threadId),
-          );
-          return { ...next, threadIdsBySpaceId, threadIdsBySpaceBrain };
-        });
-        yield* save;
-        yield* notify;
-      }
-      yield* pinManagerOnce(threadId, existing?.pinnedAt != null);
-      return {
-        spaceId: space?.id ?? ALL_SPACE_ID,
-        projectId: project.id,
-        threadId,
-        brainPath: profile.brainPath,
-      };
-    });
+  const openProfileManager = Effect.fn("BrainstormService.openProfileManager")(function* (
+    ctx: BrainstormContext,
+    profile: BrainstormProfile,
+  ) {
+    const project = yield* brainProject(ctx, profile.brainPath);
+    const space = ctx.spaces.find(
+      (candidate) => candidate.kind === "profile" && candidate.profile === profile.name,
+    );
+    const state = yield* Ref.get(stateRef);
+    const legacyId = state.threadIdsBySpaceId[ALL_SPACE_ID];
+    const existing = yield* liveThreadIn(project.id, [
+      state.managerThreadIdsByProfile?.[profile.name],
+      legacyId,
+    ]);
+    const threadId = existing?.id ?? (yield* launchChat(project, `Manager · ${profile.name}`));
+    if (state.managerThreadIdsByProfile?.[profile.name] !== threadId) {
+      yield* Ref.update(stateRef, (current) => {
+        const next = {
+          ...current,
+          managerThreadIdsByProfile: {
+            ...current.managerThreadIdsByProfile,
+            [profile.name]: threadId,
+          },
+        };
+        if (threadId !== legacyId) return next;
+        const { [ALL_SPACE_ID]: _legacy, ...threadIdsBySpaceId } = current.threadIdsBySpaceId;
+        const threadIdsBySpaceBrain = Object.fromEntries(
+          Object.entries(current.threadIdsBySpaceBrain ?? {}).filter(([, id]) => id !== threadId),
+        );
+        return { ...next, threadIdsBySpaceId, threadIdsBySpaceBrain };
+      });
+      yield* save;
+      yield* notify;
+    }
+    yield* pinManagerOnce(threadId, existing?.pinnedAt != null);
+    return {
+      spaceId: space?.id ?? ALL_SPACE_ID,
+      projectId: project.id,
+      threadId,
+      brainPath: profile.brainPath,
+    };
+  });
 
   const open: BrainstormService["Service"]["open"] = (input) =>
     openLock.withPermits(1)(
@@ -987,12 +992,18 @@ export const make = Effect.gen(function* () {
       ...Object.values(state.managerThreadIdsByProfile ?? {}),
       state.threadIdsBySpaceId[ALL_SPACE_ID],
     ]);
+    // A deleted manager is left out so the client opens (and the server recreates) it.
+    const managerThreadIdsByProfile: Record<string, ThreadId> = {};
+    for (const [profile, id] of Object.entries(state.managerThreadIdsByProfile ?? {})) {
+      const thread = yield* orchestrator
+        .getThreadShell(ThreadId.make(id))
+        .pipe(Effect.orElseSucceed(() => null));
+      if (thread !== null && thread.deletedAt === null)
+        managerThreadIdsByProfile[profile] = thread.id;
+    }
     return {
       threadIdsBySpaceId: state.threadIdsBySpaceId as Record<string, ThreadId>,
-      managerThreadIdsByProfile: (state.managerThreadIdsByProfile ?? {}) as Record<
-        string,
-        ThreadId
-      >,
+      managerThreadIdsByProfile,
       // Managers are ordinary threads in the lists; other brainstorm chats stay hidden.
       hiddenThreadIds: [...allBrainstormThreadIds(state)].filter(
         (threadId) => !managerIds.has(threadId),
@@ -1020,85 +1031,27 @@ export const make = Effect.gen(function* () {
     }),
   );
 
-  /**
-   * The newest run with an answer, looking back a few runs: a run that is
-   * still going, or ended without a word, should not blank the card.
-   */
-  const threadReport: BrainstormService["Service"]["threadReport"] = (threadId) =>
-    Effect.gen(function* () {
-      const readFailed = failWith("Could not read the thread.");
-      const { thread, runs } = yield* orchestrator
-        .getThreadRecords(threadId, ["runs"])
-        .pipe(Effect.mapError(readFailed));
-      const recentRuns = runs
-        .toSorted((left, right) => right.ordinal - left.ordinal)
-        .slice(0, THREAD_REPORT_RUNS_BACK);
-      // A status the agent set during a run, or after it, outranks that run's last answer.
-      const status = thread.statusReport;
-      const statusAt = status ? Date.parse(status.updatedAt) : Number.NaN;
-      // The presentation and the Grow requests ride along whichever text wins.
-      const attached = {
-        ...(thread.presentation ? { presentation: thread.presentation } : {}),
-        ...(thread.growRequests?.length ? { growRequests: thread.growRequests } : {}),
-      };
-      const statusReport = () => ({
-        threadId,
-        runId: recentRuns[0]?.id ?? null,
-        text: status?.text ?? null,
-        ...attached,
-      });
-      for (const run of recentRuns) {
-        if (status && statusAt >= DateTime.toEpochMillis(run.startedAt ?? run.requestedAt)) {
-          return statusReport();
-        }
-        const { messages } = yield* orchestrator
-          .getThreadRecords(threadId, ["messages"], {
-            messageRoles: ["assistant"],
-            messageRunIds: [run.id],
-          })
-          .pipe(Effect.mapError(readFailed));
-        const last = messages
-          .filter((message) => !message.streaming && message.text.trim().length > 0)
-          .toSorted(
-            (left, right) =>
-              DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt),
-          )
-          .at(-1);
-        if (last) {
-          return {
-            threadId,
-            runId: run.id,
-            text: last.text.slice(0, THREAD_REPORT_MAX_CHARS),
-            ...(status ? { statusText: status.text } : {}),
-            ...attached,
-          };
-        }
-      }
-      return status
-        ? statusReport()
-        : { threadId, runId: recentRuns[0]?.id ?? null, text: null, ...attached };
-    });
-
-  const managerInstructions: BrainstormService["Service"]["managerInstructions"] = (profile) =>
-    Effect.gen(function* () {
-      const ctx = yield* context.pipe(Effect.orElseSucceed(() => null));
-      const readRules = (brainPath: string | undefined) =>
-        brainPath === undefined
-          ? Effect.succeed("")
-          : readTextOrEmpty(NodePath.join(brainPath, ManagerRole.MANAGER_RULES_FILE)).pipe(
-              Effect.map((text) => text.trim()),
-            );
-      const own = ctx?.profiles.find((candidate) => candidate.name === profile);
-      const ownRules = yield* readRules(own?.brainPath);
-      const rules = ownRules !== "" ? ownRules : yield* readRules(ctx?.defaultProfile?.brainPath);
-      return [
-        ...ManagerRole.MANAGER_INSTRUCTIONS,
-        ...(profile === null ? [] : [ManagerRole.profileScopeInstruction(profile)]),
-        ...(rules === ""
-          ? []
-          : [`The user's own rules (${ManagerRole.MANAGER_RULES_FILE}):\n\n${rules}`]),
-      ];
-    });
+  const managerInstructions: BrainstormService["Service"]["managerInstructions"] = Effect.fn(
+    "BrainstormService.managerInstructions",
+  )(function* (profile) {
+    const ctx = yield* context.pipe(Effect.orElseSucceed(() => null));
+    const readRules = (brainPath: string | undefined) =>
+      brainPath === undefined
+        ? Effect.succeed("")
+        : readTextOrEmpty(NodePath.join(brainPath, ManagerRole.MANAGER_RULES_FILE)).pipe(
+            Effect.map((text) => text.trim()),
+          );
+    const own = ctx?.profiles.find((candidate) => candidate.name === profile);
+    const ownRules = yield* readRules(own?.brainPath);
+    const rules = ownRules !== "" ? ownRules : yield* readRules(ctx?.defaultProfile?.brainPath);
+    return [
+      ...ManagerRole.MANAGER_INSTRUCTIONS,
+      ...(profile === null ? [] : [ManagerRole.profileScopeInstruction(profile)]),
+      ...(rules === ""
+        ? []
+        : [`The user's own rules (${ManagerRole.MANAGER_RULES_FILE}):\n\n${rules}`]),
+    ];
+  });
   const managerRole = yield* ManagerRole.ManagerRole;
   yield* managerRole.register((threadId) =>
     managerOf(threadId).pipe(
@@ -1111,7 +1064,6 @@ export const make = Effect.gen(function* () {
   return BrainstormService.of({
     syncSpaces,
     open,
-    threadReport,
     mutateTasks,
     stateChanges,
     context,
@@ -1135,23 +1087,24 @@ export const managerScopeLayer = Layer.effect(
   Effect.gen(function* () {
     const brainstorm = yield* BrainstormService;
     return {
-      reachableProjectIds: (threadId: ThreadId) =>
-        Effect.gen(function* () {
-          const manager = yield* brainstorm.managerOf(threadId);
-          if (manager === null) return null;
-          const ctx = yield* brainstorm.context.pipe(Effect.orElseSucceed(() => null));
-          if (ctx === null) return null;
-          return new Set(
-            ctx.projects
-              .filter(
-                (project) =>
-                  manager.profile === null ||
-                  ctx.profileByProjectId.get(project.id) === manager.profile ||
-                  ctx.profileByProjectId.get(project.id) === COMMON_PROFILE,
-              )
-              .map((project) => project.id as string),
-          );
-        }),
+      reachableProjectIds: Effect.fn("ManagerScope.ManagerScope.reachableProjectIds")(function* (
+        threadId: ThreadId,
+      ) {
+        const manager = yield* brainstorm.managerOf(threadId);
+        if (manager === null) return null;
+        const ctx = yield* brainstorm.context.pipe(Effect.orElseSucceed(() => null));
+        if (ctx === null) return null;
+        return new Set(
+          ctx.projects
+            .filter(
+              (project) =>
+                manager.profile === null ||
+                ctx.profileByProjectId.get(project.id) === manager.profile ||
+                ctx.profileByProjectId.get(project.id) === COMMON_PROFILE,
+            )
+            .map((project) => project.id as string),
+        );
+      }),
     };
   }),
 );

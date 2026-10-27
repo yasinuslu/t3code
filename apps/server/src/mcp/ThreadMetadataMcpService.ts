@@ -16,7 +16,7 @@ import * as Layer from "effect/Layer";
 
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
-import * as ManagerScope from "./ManagerScope.ts";
+import { threadNotFound } from "./OrchestratorMcpService.ts";
 
 export class ThreadMetadataMcpService extends Context.Service<
   ThreadMetadataMcpService,
@@ -36,14 +36,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function threadLookupFailure(
-  error: ThreadManagementService.ThreadManagementError,
-): OrchestratorMcpFailure {
-  return error._tag === "ThreadManagementThreadNotFoundError"
-    ? failure("thread_not_found", error.message)
-    : failure("orchestration_error", error.message);
-}
-
 function stablePart(value: string): string {
   return encodeURIComponent(value);
 }
@@ -58,7 +50,7 @@ function commandId(input: {
     [
       "command",
       "mcp",
-      stablePart(input.scope.providerSessionId),
+      stablePart(input.scope.requestNamespace),
       "thread-update",
       stablePart(input.threadId),
       stablePart(input.action),
@@ -70,7 +62,6 @@ function commandId(input: {
 function metadataCommand(input: {
   readonly commandId: CommandId;
   readonly threadId: ThreadId;
-  readonly projectId: OrchestrationV2AppThread["projectId"];
   readonly update: ThreadMetadataMcpUpdateInput;
 }): Extract<OrchestrationV2Command, { readonly type: "thread.metadata.update" }> {
   switch (input.update.action) {
@@ -88,23 +79,6 @@ function metadataCommand(input: {
         threadId: input.threadId,
         regenerateTitle: true,
       };
-    case "link_pull_request":
-      return {
-        type: "thread.metadata.update",
-        commandId: input.commandId,
-        threadId: input.threadId,
-        linkedPullRequest: {
-          projectId: input.projectId,
-          ...input.update.pullRequest!,
-        },
-      };
-    case "unlink_pull_request":
-      return {
-        type: "thread.metadata.update",
-        commandId: input.commandId,
-        threadId: input.threadId,
-        linkedPullRequest: null,
-      };
   }
 }
 
@@ -112,7 +86,10 @@ function resultFromThread(input: {
   readonly action: ThreadMetadataMcpAction;
   readonly commandId: CommandId;
   readonly sequence: number;
-  readonly thread: OrchestrationV2AppThread;
+  readonly thread: Pick<
+    OrchestrationV2AppThread,
+    "id" | "title" | "titleRegeneration" | "linkedPullRequest" | "updatedAt"
+  >;
 }): ThreadMetadataMcpUpdateResult {
   return {
     threadId: input.thread.id,
@@ -135,7 +112,6 @@ function resultFromThread(input: {
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
-  const managers = yield* ManagerScope.ManagerScope;
 
   const update = Effect.fn("ThreadMetadataMcpService.update")(function* (
     scope: McpInvocationScope,
@@ -148,51 +124,29 @@ const make = Effect.gen(function* () {
       );
     }
 
-    const parentShell = yield* threadManagement
-      .getThreadShell(scope.threadId)
-      .pipe(
-        Effect.mapError((error) =>
-          failure(
-            "orchestration_error",
-            `Unable to locate calling thread ${scope.threadId}: ${errorMessage(error)}`,
-          ),
-        ),
+    const threadId = input.threadId ?? scope.thread?.threadId;
+    if (threadId === undefined) {
+      return yield* failure(
+        "target_required",
+        "Pass threadId: this MCP client is not running inside a T3 thread.",
       );
-    if (parentShell === null) {
-      return yield* failure("thread_not_found", `Calling thread ${scope.threadId} was not found.`);
     }
-    const parent = yield* threadManagement
-      .getThreadRecords(scope.threadId, [])
+    const shell = yield* threadManagement
+      .getThreadShell(threadId)
       .pipe(
         Effect.mapError((error) =>
           failure(
             "orchestration_error",
-            `Unable to read calling thread ${scope.threadId}: ${errorMessage(error)}`,
+            `Unable to locate thread ${threadId}: ${errorMessage(error)}`,
           ),
         ),
       );
-    const threadId = input.threadId ?? scope.threadId;
-    // A manager thread reaches threads in every project of its profile.
-    const reach =
-      threadId === scope.threadId ? null : yield* managers.reachableProjectIds(scope.threadId);
-    const targetProjectId =
-      reach === null
-        ? undefined
-        : (yield* threadManagement.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null)))
-            ?.projectId;
-    const projectId =
-      targetProjectId !== undefined && reach?.has(targetProjectId)
-        ? targetProjectId
-        : parent.thread.projectId;
-    const target =
-      threadId === scope.threadId
-        ? parent
-        : yield* threadManagement
-            .getProjectThreadRecords({ projectId, threadId }, [])
-            .pipe(Effect.mapError(threadLookupFailure));
+    if (shell === null || shell.deletedAt !== null) {
+      return yield* threadNotFound(threadManagement, threadId, `Thread ${threadId} was not found.`);
+    }
     const requestKey =
       input.clientRequestId === undefined
-        ? yield* crypto.randomUUIDv4.pipe(Effect.orDie)
+        ? yield* crypto.randomUUIDv4().pipe(Effect.orDie)
         : input.clientRequestId;
     const updateCommandId = commandId({
       scope,
@@ -205,7 +159,6 @@ const make = Effect.gen(function* () {
         metadataCommand({
           commandId: updateCommandId,
           threadId,
-          projectId: target.thread.projectId,
           update: input,
         }),
       )
@@ -220,7 +173,14 @@ const make = Effect.gen(function* () {
     const metadataEvent = dispatched.storedEvents.find(
       (stored) => stored.event.type === "thread.metadata-updated",
     );
-    if (metadataEvent === undefined || metadataEvent.event.type !== "thread.metadata-updated") {
+    // Retries may find stored events compacted away; answer from the projection.
+    const thread =
+      metadataEvent?.event.type === "thread.metadata-updated"
+        ? metadataEvent.event.payload
+        : yield* threadManagement
+            .getThreadShell(threadId)
+            .pipe(Effect.mapError((error) => failure("orchestration_error", errorMessage(error))));
+    if (thread === null) {
       return yield* failure(
         "orchestration_error",
         `Thread ${threadId} metadata update completed without a resultant state.`,
@@ -230,7 +190,7 @@ const make = Effect.gen(function* () {
       action: input.action,
       commandId: updateCommandId,
       sequence: dispatched.sequence,
-      thread: metadataEvent.event.payload,
+      thread,
     });
   });
 

@@ -11,8 +11,8 @@ import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as Stdio from "effect/Stdio";
 import * as Stream from "effect/Stream";
-import { Argument, Command, Flag, GlobalFlag } from "effect/unstable/cli";
-import { FetchHttpClient } from "effect/unstable/http";
+import { Argument, Command, Flag, GlobalFlag } from "effect/cli";
+import { FetchHttpClient } from "effect/http";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -27,25 +27,24 @@ class PeerCliInputError extends Schema.TaggedError<PeerCliInputError>()("PeerCli
   }
 }
 
-const runWithPeers = <A, E>(
+const runWithPeers = Effect.fn("peerCli.runWithPeers")(function* <A, E>(
   flags: CliAuthLocationFlags,
   run: (peers: PeerEnvironments.PeerEnvironments["Service"]) => Effect.Effect<A, E>,
-) =>
-  Effect.gen(function* () {
-    const config = yield* resolveCliAuthConfig(flags, yield* GlobalFlag.LogLevel);
-    return yield* Effect.gen(function* () {
-      return yield* run(yield* PeerEnvironments.PeerEnvironments);
-    }).pipe(
-      Effect.provide(
-        PeerEnvironments.layer.pipe(
-          Layer.provide(ServerSecretStore.layer),
-          Layer.provide(FetchHttpClient.layer),
-          Layer.provide(ServerConfig.layer(config)),
-          Layer.provide(Layer.succeed(References.MinimumLogLevel, "Error")),
-        ),
+) {
+  const config = yield* resolveCliAuthConfig(flags, yield* GlobalFlag.LogLevel);
+  return yield* Effect.gen(function* () {
+    return yield* run(yield* PeerEnvironments.PeerEnvironments);
+  }).pipe(
+    Effect.provide(
+      PeerEnvironments.layer.pipe(
+        Layer.provide(ServerSecretStore.layer),
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(ServerConfig.layer(config)),
+        Layer.provide(Layer.succeed(References.MinimumLogLevel, "Error")),
       ),
-    );
-  });
+    ),
+  );
+});
 
 const readTokenFromStdin = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio;

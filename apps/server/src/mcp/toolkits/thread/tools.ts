@@ -2,12 +2,11 @@ import {
   ScheduledTaskId,
   ScheduledTask,
   OrchestrationSearchThreadsInput,
-  OrchestrationSearchThreadsResult,
+  OrchestrationThreadSearchMatch,
   OrchestrationV2ThreadForkSourcePoint,
   OrchestrationV2ContextTransfer,
   TrimmedNonEmptyString,
   ModelSelection,
-  ThreadAutoCompact,
   RuntimeMode,
   ProviderInteractionMode,
   RuntimeRequestId,
@@ -18,10 +17,11 @@ import {
   ThreadId,
   RunId,
   NonNegativeInt,
+  ProjectId,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
@@ -30,7 +30,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, archive, or mark a thread unread in the calling project (the manager thread reaches every project). Omit threadId for this thread. snooze requires snoozedUntil. When consolidating threads, settle the old one with supersededBy (the thread that carries its work on) and a one-line note (why, and what carried over); both threads then show the link in Lineage. unsupersede removes that link. Existing thread lifecycle rules apply; this does not schedule a future action.",
+    "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`. Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     action: Schema.Literals([
@@ -40,18 +40,16 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
       "unsnooze",
       "settle",
       "unsettle",
-      "unsupersede",
       "archive",
       "unarchive",
       "mark_unread",
     ]),
     snoozedUntil: Schema.optional(IsoDateTime),
-    /** With settle: the thread that superseded this one. */
-    supersededBy: Schema.optional(ThreadId),
-    /** With supersededBy: one line on why, and what carried over. */
-    note: Schema.optional(Schema.String.check(Schema.isMaxLength(280))),
   }),
-  success: OrchestrationV2DispatchCommandResult,
+  success: Schema.Union([
+    OrchestrationV2DispatchCommandResult,
+    Schema.Struct({ settlesWhenTurnEnds: Schema.Literal(true) }),
+  ]),
   failure: OrchestratorMcpFailure,
   failureMode: "return" as const,
   dependencies: [
@@ -63,7 +61,6 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   .annotate(Tool.Title, "Organize a thread")
   .annotate(Tool.Destructive, true);
 
-const queueTarget = { threadId: Schema.optional(ThreadId), queuedRunId: RunId };
 const commandTool = {
   success: OrchestrationV2DispatchCommandResult,
   failure: OrchestratorMcpFailure,
@@ -79,57 +76,34 @@ const queueEntry = Schema.Struct({
   text: Schema.String,
   truncated: Schema.Boolean,
 });
-const QueueListTool = Tool.make("t3_queue_list", {
+const QUEUE_READ_ACTIONS = ["list", "read"] as const;
+const QueueTool = Tool.make("t3_queue", {
   ...commandTool,
   description:
-    "List queued messages in delivery order. Results are a live offset page; use t3_thread_read for full thread history.",
+    "Manage a thread's queued messages. Omit `threadId` for this thread. list: send order, paged by `cursor` and `limit`. read: up to 16,000 chars of one. edit: replace its `text`; attachments stay. cancel. reorder: before `beforeRunId`, or to the end with null. promote_to_steer: send it now as steering to active `targetRunId`. Writes fail once the run is no longer queued.",
   parameters: Schema.Struct({
+    action: Schema.Literals([
+      ...QUEUE_READ_ACTIONS,
+      "edit",
+      "cancel",
+      "reorder",
+      "promote_to_steer",
+    ]),
     threadId: Schema.optional(ThreadId),
+    queuedRunId: Schema.optional(RunId),
+    text: Schema.optional(Schema.String.check(Schema.isMaxLength(100000))),
+    beforeRunId: Schema.optional(Schema.NullOr(RunId)),
+    targetRunId: Schema.optional(RunId),
     cursor: Schema.optional(NonNegativeInt),
     limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
   }),
-  success: Schema.Struct({
-    items: Schema.Array(queueEntry),
-    nextCursor: Schema.NullOr(NonNegativeInt),
-  }),
-})
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
-const QueueReadTool = Tool.make("t3_queue_read", {
-  ...commandTool,
-  description: "Read up to 16,000 characters of a queued message in the calling project.",
-  parameters: Schema.Struct(queueTarget),
-  success: queueEntry,
-})
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
-const QueueEditTool = Tool.make("t3_queue_edit", {
-  ...commandTool,
-  description:
-    "Replace a queued message's text, preserving its attachments. The service rejects runs that are no longer queued.",
-  parameters: Schema.Struct({
-    ...queueTarget,
-    text: Schema.String.check(Schema.isMaxLength(100000)),
-  }),
-}).annotate(Tool.Destructive, true);
-const QueueCancelTool = Tool.make("t3_queue_cancel", {
-  ...commandTool,
-  description: "Cancel a queued run using the existing queue command.",
-  parameters: Schema.Struct(queueTarget),
-}).annotate(Tool.Destructive, true);
-const QueueReorderTool = Tool.make("t3_queue_reorder", {
-  ...commandTool,
-  description: "Move a queued run before another queued run, or to the end with beforeRunId=null.",
-  parameters: Schema.Struct({ ...queueTarget, beforeRunId: Schema.NullOr(RunId) }),
-}).annotate(Tool.Destructive, true);
-const QueuePromoteTool = Tool.make("t3_queue_promote_to_steer", {
-  ...commandTool,
-  description:
-    "Deliver a queued message as steering to the specified active run. Existing provider and run-state rules apply.",
-  parameters: Schema.Struct({ ...queueTarget, targetRunId: RunId }),
+  success: Schema.Union([
+    Schema.Struct({ items: Schema.Array(queueEntry), nextCursor: Schema.NullOr(NonNegativeInt) }),
+    queueEntry,
+    OrchestrationV2DispatchCommandResult,
+  ]),
 }).annotate(Tool.Destructive, true);
 
-const requestTarget = { threadId: Schema.optional(ThreadId), requestId: RuntimeRequestId };
 const question = Schema.Struct({
   id: Schema.String,
   header: Schema.String,
@@ -143,110 +117,92 @@ const question = Schema.Struct({
   ),
   multiSelect: Schema.optional(Schema.Boolean),
   allowCustomAnswer: Schema.optional(Schema.Boolean),
+  initialAnswer: Schema.optional(Schema.String),
   required: Schema.optional(Schema.Boolean),
 });
-const pendingRequest = Schema.Struct({
-  requestId: RuntimeRequestId,
-  questions: Schema.Array(question),
-});
-const PendingRequestListTool = Tool.make("t3_pending_request_list", {
+const PendingRequestTool = Tool.make("t3_pending_request", {
   ...commandTool,
   description:
-    "List pending user questions in a thread in the calling project (the manager thread reaches every project). Approval requests are not included.",
-  parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
-  success: Schema.Struct({ requestIds: Schema.Array(RuntimeRequestId) }),
-})
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
-const PendingRequestReadTool = Tool.make("t3_pending_request_read", {
-  ...commandTool,
-  description:
-    "Read a pending user question. Answer with t3_pending_request_respond; existing live or message response handling is used.",
-  parameters: Schema.Struct(requestTarget),
-  success: pendingRequest,
-})
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
-const PendingRequestRespondTool = Tool.make("t3_pending_request_respond", {
-  ...commandTool,
-  description:
-    "Answer a pending user-input request using the existing runtime response command. This cannot approve a permission request.",
-  parameters: Schema.Struct({ ...requestTarget, answers: ProviderUserInputAnswers }),
+    "Pending user questions in a thread. Omit `threadId` for this thread. list: their ids; approvals are not listed. read: one by `requestId`. respond: answer one with `answers`; this cannot approve a permission request.",
+  parameters: Schema.Struct({
+    action: Schema.Literals(["list", "read", "respond"]),
+    threadId: Schema.optional(ThreadId),
+    requestId: Schema.optional(RuntimeRequestId),
+    answers: Schema.optional(ProviderUserInputAnswers),
+  }),
+  success: Schema.Union([
+    Schema.Struct({ requestIds: Schema.Array(RuntimeRequestId) }),
+    Schema.Struct({ requestId: RuntimeRequestId, questions: Schema.Array(question) }),
+    OrchestrationV2DispatchCommandResult,
+  ]),
 })
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 
-const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
-  ...commandTool,
-  description:
-    "Read a thread's provider/model selection, modes and regular compaction in the calling project. orchestrator_capabilities lists available providers and models.",
-  parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
-  success: Schema.Struct({
-    threadId: ThreadId,
-    modelSelection: ModelSelection,
-    runtimeMode: RuntimeMode,
-    interactionMode: ProviderInteractionMode,
-    autoCompact: Schema.NullOr(ThreadAutoCompact),
-  }),
-})
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+const threadConfiguration = Schema.Struct({
+  threadId: ThreadId,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+});
 const ThreadConfigureTool = Tool.make("t3_thread_configure", {
   ...commandTool,
   description:
-    "Set a thread's provider, model and options with the existing selection command, and/or its regular compaction. Omit threadId for this calling thread; pass it to change another thread in the calling project (the manager thread reaches every project) in place: a different provider instance carries the conversation over with a context handoff on that thread's next turn, like switching it in the app, so follow with t3_thread_send to make it continue (for example a thread stopped by a usage limit, moved to an instance that has budget). A thread that is working keeps its current turn. autoCompact: { thresholdTokens, intervalHours? } makes the server send the provider's own /compact while the thread is idle (5+ minutes after its last run, never during a turn) once the context reaches thresholdTokens, or intervalHours after the last compaction when there was activity since; null turns it off. Use it on long-lived threads (e.g. a manager: { thresholdTokens: 150000, intervalHours: 24 }) with providers that support /compact (Claude, Codex, OpenCode). This does not change permission modes. Use orchestrator_capabilities to choose a selection.",
+    "Read a thread's provider, model, and modes, or set its provider, model, and options with `modelSelection`. Omit `threadId` for this thread. Moving another thread to a different provider instance hands its conversation over on its next turn; follow with `t3_thread_send` to continue it. Permission modes stay. Values from `orchestrator_capabilities`.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     modelSelection: Schema.optional(ModelSelection),
-    autoCompact: Schema.optional(Schema.NullOr(ThreadAutoCompact)),
   }),
+  success: Schema.Union([threadConfiguration, OrchestrationV2DispatchCommandResult]),
 }).annotate(Tool.Destructive, true);
 
-const transferResult = Schema.Struct({ sequence: NonNegativeInt, targetThreadId: ThreadId });
-const ThreadForkTool = Tool.make("t3_thread_fork", {
+const ThreadTransferTool = Tool.make("t3_thread_transfer", {
   ...commandTool,
   description:
-    "Fork this thread from a stable run or checkpoint using the existing fork command. The fork inherits the source configuration. Acceptance does not mean a provider turn has completed.",
+    "Move context between threads. Omit `threadId` for this thread. fork: copy it from `sourcePoint` (default latest stable run) into a new thread with the same setup; no turn runs yet. merge_back: merge it from `sourcePoint` into a related `targetThreadId` in the same project. status: its context transfers.",
   parameters: Schema.Struct({
-    sourcePoint: OrchestrationV2ThreadForkSourcePoint,
+    action: Schema.Literals(["fork", "merge_back", "status"]),
+    threadId: Schema.optional(ThreadId),
+    sourcePoint: Schema.optional(OrchestrationV2ThreadForkSourcePoint),
+    targetThreadId: Schema.optional(ThreadId),
     title: Schema.optional(TrimmedNonEmptyString),
   }),
-  success: transferResult,
+  success: Schema.Union([
+    Schema.Struct({ sequence: NonNegativeInt, targetThreadId: ThreadId }),
+    Schema.Struct({
+      transfers: Schema.Array(
+        Schema.Struct({
+          id: OrchestrationV2ContextTransfer.fields.id,
+          sourceThreadId: OrchestrationV2ContextTransfer.fields.sourceThreadId,
+          targetThreadId: OrchestrationV2ContextTransfer.fields.targetThreadId,
+          status: OrchestrationV2ContextTransfer.fields.status,
+        }),
+      ),
+    }),
+  ]),
 }).annotate(Tool.Destructive, true);
-const ThreadMergeBackTool = Tool.make("t3_thread_merge_back", {
-  ...commandTool,
-  description:
-    "Merge context from this thread back to a related thread in the same project. Existing lineage and transfer rules apply.",
-  parameters: Schema.Struct({
-    targetThreadId: ThreadId,
-    sourcePoint: OrchestrationV2ThreadForkSourcePoint,
-  }),
-  success: transferResult,
-}).annotate(Tool.Destructive, true);
-const ThreadTransfersTool = Tool.make("t3_thread_transfers", {
-  ...commandTool,
-  description: "Read context transfer status for a thread in the calling project.",
-  parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
-  success: Schema.Struct({
-    transfers: Schema.Array(
-      Schema.Struct({
-        id: OrchestrationV2ContextTransfer.fields.id,
-        sourceThreadId: OrchestrationV2ContextTransfer.fields.sourceThreadId,
-        targetThreadId: OrchestrationV2ContextTransfer.fields.targetThreadId,
-        status: OrchestrationV2ContextTransfer.fields.status,
-      }),
-    ),
-  }),
-})
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
 
 const ThreadSearchTool = Tool.make("t3_thread_search", {
   ...commandTool,
   description:
-    "Search active thread titles and content with the app's existing bounded search. Returns matches in the calling project from the global top matches; other-project matches are omitted, so this may return fewer than limit. No pagination or exhaustive-result guarantee.",
-  parameters: OrchestrationSearchThreadsInput,
-  success: OrchestrationSearchThreadsResult,
+    "Search active threads by title, branch, PR, project, then message text. Skips subagent threads. `projectId`: one project, else yours, else all outside a thread. Not exhaustive.",
+  parameters: Schema.Struct({
+    ...OrchestrationSearchThreadsInput.fields,
+    projectId: Schema.optional(ProjectId),
+  }),
+  success: Schema.Struct({
+    matches: Schema.Array(
+      Schema.Struct({
+        threadId: OrchestrationThreadSearchMatch.fields.threadId,
+        projectId: OrchestrationThreadSearchMatch.fields.projectId,
+        title: Schema.String,
+        link: Schema.optional(Schema.String),
+        source: Schema.Literals(["title", "user", "assistant"]),
+        snippet: Schema.optional(OrchestrationThreadSearchMatch.fields.snippet),
+        messageCreatedAt: Schema.optional(OrchestrationThreadSearchMatch.fields.messageCreatedAt),
+      }),
+    ),
+  }),
   dependencies: [...commandTool.dependencies, ThreadSearch.ThreadSearch],
 })
   .annotate(Tool.Readonly, true)
@@ -255,7 +211,7 @@ const ThreadSearchTool = Tool.make("t3_thread_search", {
 const ScheduledTaskRunTool = Tool.make("run_scheduled_task_now", {
   ...commandTool,
   description:
-    "Run a scheduled task in the calling project now through the existing scheduler. Requires a full-access/default caller. Each call is a new manual run; completion means dispatch/bookkeeping completed, not that the provider turn finished.",
+    "Run one scheduled task now. Needs a full-access or default caller. Returns its thread, or null if not started. Success means started, not finished.",
   parameters: Schema.Struct({ taskId: ScheduledTaskId }),
   success: Schema.Struct({
     taskId: ScheduledTaskId,
@@ -272,19 +228,9 @@ const ScheduledTaskRunTool = Tool.make("run_scheduled_task_now", {
 export const ThreadToolkit = Toolkit.make(
   ScheduledTaskRunTool,
   ThreadSearchTool,
-  ThreadForkTool,
-  ThreadMergeBackTool,
-  ThreadTransfersTool,
-  ThreadConfigurationTool,
   ThreadConfigureTool,
-  PendingRequestListTool,
-  PendingRequestReadTool,
-  PendingRequestRespondTool,
+  ThreadTransferTool,
   ThreadOrganizeTool,
-  QueueListTool,
-  QueueReadTool,
-  QueueEditTool,
-  QueueCancelTool,
-  QueueReorderTool,
-  QueuePromoteTool,
+  PendingRequestTool,
+  QueueTool,
 );

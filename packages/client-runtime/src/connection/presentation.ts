@@ -2,14 +2,8 @@ import type { ServerConfig } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import type { ConnectionCatalogEntry } from "./catalog.ts";
-import {
-  BearerConnectionTarget,
-  PrimaryConnectionTarget,
-  RelayConnectionTarget,
-  SshConnectionTarget,
-  type ConnectionTarget,
-  type SupervisorConnectionState,
-} from "./model.ts";
+import type { ConnectionTarget, SupervisorConnectionState } from "./model.ts";
+import { connectionRouteId, connectionRoutes, routeHttpBaseUrl } from "./routes.ts";
 
 export type EnvironmentConnectionPhase =
   | "available"
@@ -26,10 +20,17 @@ export interface EnvironmentConnectionPresentation {
   readonly traceId: string | null;
 }
 
+/**
+ * Provider statuses are pushed every few minutes with fresh `checkedAt` stamps, and every root
+ * coordinator reads environment presentations. Leaving them out keeps a presentation stable
+ * across those pushes; provider readers subscribe to the server's providers atom instead.
+ */
+export type EnvironmentServerConfig = Omit<ServerConfig, "providers">;
+
 export interface EnvironmentPresentation {
   readonly entry: ConnectionCatalogEntry;
   readonly connection: EnvironmentConnectionPresentation;
-  readonly serverConfig: ServerConfig | null;
+  readonly serverConfig: EnvironmentServerConfig | null;
 }
 
 export function presentConnectionState(
@@ -99,6 +100,44 @@ export function presentEnvironmentConnection(
   return presentConnectionState(state);
 }
 
+/**
+ * SSH connections ride a local forward that disappears with the client, so they have no stable
+ * address.
+ */
+export function environmentMcpUrl(input: {
+  readonly entry: ConnectionCatalogEntry;
+  readonly relayHttpBaseUrl?: string | undefined;
+  readonly connectedTarget?: ConnectionTarget | null | undefined;
+}): string | null {
+  const connectedRouteId = input.connectedTarget ? connectionRouteId(input.connectedTarget) : null;
+  const routes = connectionRoutes(input.entry);
+  const connectedRoute = routes.find(
+    (route) => connectionRouteId(route.target) === connectedRouteId,
+  );
+  for (const route of connectedRoute ? [connectedRoute, ...routes] : routes) {
+    const httpBaseUrl =
+      route.target._tag === "RelayConnectionTarget"
+        ? (input.relayHttpBaseUrl ?? null)
+        : routeHttpBaseUrl(route);
+    const mcpUrl = httpBaseUrl === null ? null : mcpUrlFromBase(httpBaseUrl);
+    if (mcpUrl !== null) return mcpUrl;
+  }
+  return null;
+}
+
+function mcpUrlFromBase(httpBaseUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(httpBaseUrl);
+  } catch {
+    return null;
+  }
+  url.pathname = "/mcp";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 export function connectionCatalogDisplayUrl(entry: ConnectionCatalogEntry): string | null {
   switch (entry.target._tag) {
     case "PrimaryConnectionTarget":
@@ -114,70 +153,4 @@ export function connectionCatalogDisplayUrl(entry: ConnectionCatalogEntry): stri
         ? `${entry.profile.value.target.username}@${entry.profile.value.target.hostname}`
         : null;
   }
-}
-
-/**
- * The name to show for a saved environment.
- *
- * The label saved at registration never refreshes, so it goes stale when the
- * host is renamed, and a T3 Connect record without a label carries the
- * environment id instead. The server's live descriptor label (from its config,
- * which is cached across restarts) is therefore the source of truth, except
- * when the saved label was chosen on purpose (`labelOverride`).
- */
-export function resolveEnvironmentDisplayLabel(
-  target: ConnectionTarget,
-  serverConfig: Pick<ServerConfig, "environment"> | null,
-): string {
-  if (target.labelOverride === true) {
-    return target.label;
-  }
-  // Defensive reads: cached configs are decoded loosely and may predate fields.
-  const environment = serverConfig?.environment;
-  const descriptorLabel = typeof environment?.label === "string" ? environment.label.trim() : "";
-  if (descriptorLabel !== "" && environment?.environmentId === target.environmentId) {
-    return descriptorLabel;
-  }
-  return target.label;
-}
-
-function withTargetLabel(target: ConnectionTarget, label: string): ConnectionTarget {
-  switch (target._tag) {
-    case "PrimaryConnectionTarget":
-      return new PrimaryConnectionTarget({
-        environmentId: target.environmentId,
-        label,
-        httpBaseUrl: target.httpBaseUrl,
-        wsBaseUrl: target.wsBaseUrl,
-      });
-    case "BearerConnectionTarget":
-      return new BearerConnectionTarget({
-        environmentId: target.environmentId,
-        label,
-        connectionId: target.connectionId,
-      });
-    case "RelayConnectionTarget":
-      return new RelayConnectionTarget({ environmentId: target.environmentId, label });
-    case "SshConnectionTarget":
-      return new SshConnectionTarget({
-        environmentId: target.environmentId,
-        label,
-        connectionId: target.connectionId,
-      });
-  }
-}
-
-/**
- * The catalog entry as presentation shows it: `target.label` is the display
- * label from {@link resolveEnvironmentDisplayLabel}. Returns the same entry when
- * nothing changes, so reference equality keeps holding.
- */
-export function presentCatalogEntry(
-  entry: ConnectionCatalogEntry,
-  serverConfig: Pick<ServerConfig, "environment"> | null,
-): ConnectionCatalogEntry {
-  const label = resolveEnvironmentDisplayLabel(entry.target, serverConfig);
-  return label === entry.target.label
-    ? entry
-    : { ...entry, target: withTargetLabel(entry.target, label) };
 }

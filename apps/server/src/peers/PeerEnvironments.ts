@@ -27,7 +27,7 @@ import {
   ThreadId,
   WsRpcGroup,
 } from "@t3tools/contracts";
-import { formatThreadMarkdownLink } from "@t3tools/shared/threadLinks";
+import { formatThreadMarkdownLink } from "../mcp/threadMarkdownLink.ts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -37,9 +37,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-import { RpcClient, RpcSerialization } from "effect/unstable/rpc";
-import * as Socket from "effect/unstable/socket/Socket";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { RpcClient, RpcSerialization } from "effect/rpc";
+import * as Socket from "effect/socket/Socket";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { lastActivityOf, threadStatusOf } from "../mcp/toolkits/brainstorm/handlers.ts";
@@ -459,7 +459,7 @@ const make = Effect.gen(function* () {
     snapshot.threads.find((thread) => thread.id === threadId) ??
     snapshot.archivedThreads.find((thread) => thread.id === threadId);
 
-  const newId = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const newId = crypto.randomUUIDv4().pipe(Effect.orDie);
 
   const validated = (peer: PeerEnvironment) => {
     const url = normalizePeerUrl(peer.url);
@@ -497,145 +497,137 @@ const make = Effect.gen(function* () {
         ),
       ),
     ),
-    verify: (input) =>
-      Effect.gen(function* () {
-        const peer = yield* validated(input);
-        const descriptor = yield* fetchDescriptor(peer);
-        const snapshot = yield* withClient(peer, (client) => shellSnapshot(peer, client));
-        return { descriptor, threadCount: snapshot.threads.filter(isTopLevel).length };
-      }),
-    add: (input) =>
-      Effect.gen(function* () {
-        const peer = yield* validated(input);
-        yield* writePeers(upsertPeer(yield* readPeers, peer));
-      }),
-    remove: (name) =>
-      Effect.gen(function* () {
-        const peers = yield* readPeers;
-        const remaining = peers.filter((peer) => peer.name !== name);
-        if (remaining.length === peers.length) return false;
-        yield* writePeers(remaining);
-        return true;
-      }),
-    threads: (name, { limit }) =>
-      Effect.gen(function* () {
-        const peer = yield* findPeer(name);
-        const descriptor = yield* fetchDescriptor(peer);
-        const snapshot = yield* withClient(peer, (client) => shellSnapshot(peer, client));
-        return peerThreadEntries(snapshot, descriptor.environmentId, limit);
-      }),
-    projects: (name) =>
-      Effect.gen(function* () {
-        const peer = yield* findPeer(name);
-        yield* fetchDescriptor(peer);
-        const snapshot = yield* withClient(peer, (client) => shellSnapshot(peer, client));
-        return snapshot.projects.map((project) => ({
-          projectId: project.id,
-          title: project.title,
-          workspaceRoot: project.workspaceRoot,
-        }));
-      }),
-    readThread: (name, threadId, { messages }) =>
-      Effect.gen(function* () {
-        const peer = yield* findPeer(name);
-        const descriptor = yield* fetchDescriptor(peer);
-        const { snapshot, projection } = yield* withClient(peer, (client) =>
-          Effect.all({
-            snapshot: shellSnapshot(peer, client),
-            projection: client[ORCHESTRATION_V2_WS_METHODS.getThreadProjection]({
-              threadId: ThreadId.make(threadId),
-            }).pipe(Effect.mapError(rpcFailure(peer, `Reading thread ${threadId}`))),
-          }),
-        );
-        const title = projection.thread.title;
-        return {
-          threadId,
+    verify: Effect.fn("PeerEnvironments.verify")(function* (input) {
+      const peer = yield* validated(input);
+      const descriptor = yield* fetchDescriptor(peer);
+      const snapshot = yield* withClient(peer, (client) => shellSnapshot(peer, client));
+      return { descriptor, threadCount: snapshot.threads.filter(isTopLevel).length };
+    }),
+    add: Effect.fn("PeerEnvironments.add")(function* (input) {
+      const peer = yield* validated(input);
+      yield* writePeers(upsertPeer(yield* readPeers, peer));
+    }),
+    remove: Effect.fn("PeerEnvironments.remove")(function* (name) {
+      const peers = yield* readPeers;
+      const remaining = peers.filter((peer) => peer.name !== name);
+      if (remaining.length === peers.length) return false;
+      yield* writePeers(remaining);
+      return true;
+    }),
+    threads: Effect.fn("PeerEnvironments.threads")(function* (name, { limit }) {
+      const peer = yield* findPeer(name);
+      const descriptor = yield* fetchDescriptor(peer);
+      const snapshot = yield* withClient(peer, (client) => shellSnapshot(peer, client));
+      return peerThreadEntries(snapshot, descriptor.environmentId, limit);
+    }),
+    projects: Effect.fn("PeerEnvironments.projects")(function* (name) {
+      const peer = yield* findPeer(name);
+      yield* fetchDescriptor(peer);
+      const snapshot = yield* withClient(peer, (client) => shellSnapshot(peer, client));
+      return snapshot.projects.map((project) => ({
+        projectId: project.id,
+        title: project.title,
+        workspaceRoot: project.workspaceRoot,
+      }));
+    }),
+    readThread: Effect.fn("PeerEnvironments.readThread")(function* (name, threadId, { messages }) {
+      const peer = yield* findPeer(name);
+      const descriptor = yield* fetchDescriptor(peer);
+      const { snapshot, projection } = yield* withClient(peer, (client) =>
+        Effect.all({
+          snapshot: shellSnapshot(peer, client),
+          projection: client[ORCHESTRATION_V2_WS_METHODS.getThreadProjection]({
+            threadId: ThreadId.make(threadId),
+          }).pipe(Effect.mapError(rpcFailure(peer, `Reading thread ${threadId}`))),
+        }),
+      );
+      const title = projection.thread.title;
+      return {
+        threadId,
+        title,
+        link: formatThreadMarkdownLink({
+          environmentId: descriptor.environmentId,
+          threadId: ThreadId.make(threadId),
           title,
-          link: formatThreadMarkdownLink({
-            environmentId: descriptor.environmentId,
-            threadId: ThreadId.make(threadId),
-            title,
-          }),
-          status: threadStatusOf(threadShell(snapshot, threadId)),
-          messages: peerMessages(projection, messages),
-        };
-      }),
-    launch: (name, input) =>
-      Effect.gen(function* () {
-        const peer = yield* findPeer(name);
-        const workspaceStrategy = launchWorkspaceStrategy(input);
-        if (workspaceStrategy === null) {
-          return yield* new PeerRequestError({
-            name,
-            detail: "A worktree launch needs baseRef (for example main).",
-          });
-        }
-        const descriptor = yield* fetchDescriptor(peer);
-        const commandId = CommandId.make(yield* newId);
-        const threadId = ThreadId.make(yield* newId);
-        const launched = yield* withClient(peer, (client) =>
-          Effect.gen(function* () {
-            const snapshot = yield* shellSnapshot(peer, client);
-            if (!snapshot.projects.some((project) => project.id === input.projectId)) {
-              return yield* new PeerRequestError({
-                name,
-                detail: `No project ${input.projectId}; list them with t3_peer_project_list.`,
-              });
-            }
-            const modelSelection =
-              input.modelSelection ?? defaultLaunchModel(snapshot, input.projectId);
-            if (modelSelection === null) {
-              return yield* new PeerRequestError({
-                name,
-                detail:
-                  "The project has no default model and no threads to copy one from; pass modelSelection.",
-              });
-            }
-            return yield* client[ORCHESTRATION_V2_WS_METHODS.launchThread]({
-              commandId,
-              creationSource: "mcp",
-              threadId,
-              projectId: ProjectId.make(input.projectId),
-              title: input.title,
-              generateTitle: true,
-              modelSelection,
-              runtimeMode: input.runtimeMode ?? "full-access",
-              interactionMode: input.interactionMode ?? "default",
-              workspaceStrategy,
-              initialMessage: { text: input.text, attachments: [] },
-            }).pipe(Effect.mapError(rpcFailure(peer, "Launching the thread")));
-          }),
-        );
-        return {
-          threadId: launched.threadId,
-          link: formatThreadMarkdownLink({
-            environmentId: descriptor.environmentId,
-            threadId: launched.threadId,
-            title: launched.projection.thread.title,
-          }),
-        };
-      }),
-    send: (name, threadId, text) =>
-      Effect.gen(function* () {
-        const peer = yield* findPeer(name);
-        yield* fetchDescriptor(peer);
-        const commandId = CommandId.make(yield* newId);
-        const messageId = MessageId.make(yield* newId);
-        yield* withClient(peer, (client) =>
-          client[ORCHESTRATION_V2_WS_METHODS.dispatchCommand]({
-            type: "message.dispatch",
-            createdBy: "user",
-            creationSource: "mcp",
+        }),
+        status: threadStatusOf(threadShell(snapshot, threadId)),
+        messages: peerMessages(projection, messages),
+      };
+    }),
+    launch: Effect.fn("PeerEnvironments.launch")(function* (name, input) {
+      const peer = yield* findPeer(name);
+      const workspaceStrategy = launchWorkspaceStrategy(input);
+      if (workspaceStrategy === null) {
+        return yield* new PeerRequestError({
+          name,
+          detail: "A worktree launch needs baseRef (for example main).",
+        });
+      }
+      const descriptor = yield* fetchDescriptor(peer);
+      const commandId = CommandId.make(yield* newId);
+      const threadId = ThreadId.make(yield* newId);
+      const launched = yield* withClient(peer, (client) =>
+        Effect.gen(function* () {
+          const snapshot = yield* shellSnapshot(peer, client);
+          if (!snapshot.projects.some((project) => project.id === input.projectId)) {
+            return yield* new PeerRequestError({
+              name,
+              detail: `No project ${input.projectId}; list them with t3_peer_project_list.`,
+            });
+          }
+          const modelSelection =
+            input.modelSelection ?? defaultLaunchModel(snapshot, input.projectId);
+          if (modelSelection === null) {
+            return yield* new PeerRequestError({
+              name,
+              detail:
+                "The project has no default model and no threads to copy one from; pass modelSelection.",
+            });
+          }
+          return yield* client[ORCHESTRATION_V2_WS_METHODS.launchThread]({
             commandId,
-            threadId: ThreadId.make(threadId),
-            messageId,
-            text,
-            attachments: [],
-            dispatchMode: { type: "queue_after_active" },
-          }).pipe(Effect.mapError(rpcFailure(peer, `Sending to thread ${threadId}`))),
-        );
-        return { threadId };
-      }),
+            creationSource: "mcp",
+            threadId,
+            projectId: ProjectId.make(input.projectId),
+            title: input.title,
+            generateTitle: true,
+            modelSelection,
+            runtimeMode: input.runtimeMode ?? "full-access",
+            interactionMode: input.interactionMode ?? "default",
+            workspaceStrategy,
+            initialMessage: { text: input.text, attachments: [] },
+          }).pipe(Effect.mapError(rpcFailure(peer, "Launching the thread")));
+        }),
+      );
+      return {
+        threadId: launched.threadId,
+        link: formatThreadMarkdownLink({
+          environmentId: descriptor.environmentId,
+          threadId: launched.threadId,
+          title: launched.projection.thread.title,
+        }),
+      };
+    }),
+    send: Effect.fn("PeerEnvironments.send")(function* (name, threadId, text) {
+      const peer = yield* findPeer(name);
+      yield* fetchDescriptor(peer);
+      const commandId = CommandId.make(yield* newId);
+      const messageId = MessageId.make(yield* newId);
+      yield* withClient(peer, (client) =>
+        client[ORCHESTRATION_V2_WS_METHODS.dispatchCommand]({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "mcp",
+          commandId,
+          threadId: ThreadId.make(threadId),
+          messageId,
+          text,
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+        }).pipe(Effect.mapError(rpcFailure(peer, `Sending to thread ${threadId}`))),
+      );
+      return { threadId };
+    }),
   });
 });
 

@@ -15,8 +15,9 @@ import {
   startsNewVersion,
 } from "../../../orchestration-v2/presentationVersions.ts";
 import { newCommandId, readThread, readWritableThread, unavailable } from "../../threadAccess.ts";
-import { invalid, storeImageFile, storeThreadFile } from "../threadStatus/storeFile.ts";
-import { storePresentationPages, withGrowKeys } from "./pages.ts";
+import { invalid, storeImageFile, storeThreadFile } from "./storeFile.ts";
+import { storePresentationPages } from "./pages.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { PresentationToolkit } from "./tools.ts";
 
 const PageList = Schema.Array(PresentationPage);
@@ -24,24 +25,25 @@ const encodePages = Schema.encodeSync(Schema.fromJsonString(PageList));
 const decodePages = Schema.decodeUnknownEffect(Schema.fromJsonString(PageList));
 
 /** Copies the files an agent's pages point at into T3 storage. */
-const storePages = (threadId: ThreadId, input: Parameters<typeof storePresentationPages>[0]) =>
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem.FileSystem;
-    return yield* storePresentationPages(input, {
-      image: (path) => storeImageFile(threadId, path),
-      html: (source) =>
-        Effect.gen(function* () {
-          const html =
-            "html" in source
-              ? source.html
-              : yield* fileSystem
-                  .readFileString(source.path)
-                  .pipe(Effect.mapError(() => invalid(`Could not read ${source.path}.`)));
-          const bytes = new TextEncoder().encode(withGrowKeys(html));
-          return yield* storeThreadFile({ threadId, bytes, extension: ".html", generic: true });
-        }),
-    });
+const storePages = Effect.fn("PresentationHandlers.storePages")(function* (
+  threadId: ThreadId,
+  input: Parameters<typeof storePresentationPages>[0],
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  return yield* storePresentationPages(input, {
+    image: (path) => storeImageFile(threadId, path),
+    html: Effect.fn("PresentationHandlers.html")(function* (source) {
+      const html =
+        "html" in source
+          ? source.html
+          : yield* fileSystem
+              .readFileString(source.path)
+              .pipe(Effect.mapError(() => invalid(`Could not read ${source.path}.`)));
+      const bytes = new TextEncoder().encode(html);
+      return yield* storeThreadFile({ threadId, bytes, extension: ".html", generic: true });
+    }),
   });
+});
 
 /**
  * Writes the thread's next pages as one version step: within the thread's latest run they amend
@@ -96,14 +98,15 @@ export const writePresentationPages = Effect.fn("mcp.presentation.write")(functi
   };
 });
 
-export const PresentationHandlersLive = PresentationToolkit.toLayer({
-  presentation_set: (input) =>
+export const layer = McpToolAccess.toLayer(PresentationToolkit, {
+  presentation_set: McpToolAccess.writes((input) =>
     Effect.gen(function* () {
       const context = yield* readWritableThread(input.threadId);
       const pages = yield* storePages(context.projection.thread.id, input.pages);
       return yield* writePresentationPages(context, pages);
     }),
-  presentation_edit: (input) =>
+  ),
+  presentation_edit: McpToolAccess.writes((input) =>
     Effect.gen(function* () {
       const context = yield* readWritableThread(input.threadId);
       const put = yield* storePages(context.projection.thread.id, input.put ?? []);
@@ -121,7 +124,8 @@ export const PresentationHandlersLive = PresentationToolkit.toLayer({
       }
       return yield* writePresentationPages(context, pages);
     }),
-  presentation_get: (input) =>
+  ),
+  presentation_get: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       const { projection } = yield* readThread(input.threadId);
       const threadId = projection.thread.id;
@@ -154,4 +158,5 @@ export const PresentationHandlersLive = PresentationToolkit.toLayer({
       );
       return { threadId, version: input.version, pages, versions };
     }),
+  ),
 });

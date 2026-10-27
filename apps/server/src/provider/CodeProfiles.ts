@@ -18,9 +18,10 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 
-import { expandHomePathWith } from "../pathExpansion.ts";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveMainCheckoutRoot } from "./Drivers/ClaudeConfigDirCommand.ts";
 
@@ -67,10 +68,11 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const home = yield* HostProcess.HomeDirectory;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
   const physical = (folder: string) => {
-    const absolute = path.resolve(expandHomePathWith(folder, path));
+    const absolute = path.resolve(expandHomePath(folder, home));
     return fileSystem.realPath(absolute).pipe(Effect.orElseSucceed(() => absolute));
   };
 
@@ -81,7 +83,7 @@ const make = Effect.gen(function* () {
     timeToLive: Duration.infinity,
     lookup: (folder: string) =>
       resolveMainCheckoutRoot(folder).pipe(
-        Effect.flatMap((root) => (root === undefined ? Effect.succeed(undefined) : physical(root))),
+        Effect.flatMap((root) => (root === undefined ? Effect.void : physical(root))),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(Path.Path, path),
       ),
@@ -117,7 +119,7 @@ const make = Effect.gen(function* () {
     profile.claude === undefined
       ? []
       : [profile.claude.configDir, ...profile.claude.extraConfigDirs].map((dir) =>
-          path.resolve(expandHomePathWith(dir, path)),
+          path.resolve(expandHomePath(dir, home)),
         );
 
   const resolve = Effect.fn("CodeProfiles.resolve")(function* (
@@ -168,7 +170,7 @@ const make = Effect.gen(function* () {
     Effect.map((entries) =>
       entries.map(([name, profile]): ListedCodeProfile => ({
         name,
-        root: path.resolve(expandHomePathWith(profile.root, path)),
+        root: path.resolve(expandHomePath(profile.root, home)),
         claudeConfigDir: claudeDirs(profile)[0],
       })),
     ),

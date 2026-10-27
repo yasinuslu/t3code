@@ -1,14 +1,22 @@
-import { BrainstormError, OrchestratorMcpThreadLink } from "@t3tools/contracts";
+import {
+  BrainstormError,
+  OrchestratorMcpFailure,
+  OrchestratorMcpThreadLink,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as Tool from "effect/unstable/ai/Tool";
-import * as Toolkit from "effect/unstable/ai/Toolkit";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as BrainstormService from "../../../brainstorm/BrainstormService.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+
+// Access checks fail with OrchestratorMcpFailure, so every tool declares it.
+const BrainstormToolFailure = Schema.Union([BrainstormError, OrchestratorMcpFailure]);
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
+  ThreadManagementService.ThreadManagementService,
   BrainstormService.BrainstormService,
   Orchestrator.OrchestratorV2,
 ];
@@ -133,7 +141,7 @@ const ManagerOverviewTool = readonlyTool(
         }),
       ),
     }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Manager overview"),
 );
@@ -143,7 +151,7 @@ const ListTasksTool = readonlyTool(
     description: `List goals and their tasks, with the status of the threads each task links to: for a profile's manager its profile's list, in a regular thread its project's space, unless space is given. Tasks above every goal are under Inbox. Done goals are left out unless includeDone. ${SCOPE}`,
     parameters: Schema.Struct({ space: SpaceInput, includeDone: Schema.optional(Schema.Boolean) }),
     success: Schema.Struct({ lists: Schema.Array(TaskListEntry) }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "List tasks"),
 );
@@ -161,7 +169,7 @@ const AddTaskTool = writeTool(
       space: SpaceInput,
     }),
     success: Schema.Struct({ space: Schema.String, number: Schema.Int, path: Schema.String }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Add task"),
 );
@@ -177,7 +185,7 @@ const AddGoalTool = writeTool(
       space: SpaceInput,
     }),
     success: Schema.Struct({ space: Schema.String, number: Schema.Int, path: Schema.String }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Add goal"),
 );
@@ -198,7 +206,7 @@ const UpdateGoalTool = writeTool(
       done: Schema.Boolean,
       notes: Schema.Array(Schema.String),
     }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Update goal"),
 );
@@ -208,7 +216,7 @@ const DeleteGoalTool = writeTool(
     description: `Remove an empty goal. A goal with tasks stays; mark finished goals done with update_goal instead. ${SCOPE}`,
     parameters: Schema.Struct({ goal: GoalReferenceInput, space: SpaceInput }),
     success: Schema.Struct({ title: Schema.String }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Delete goal"),
   true,
@@ -228,7 +236,7 @@ const UpdateTaskTool = writeTool(
       unlinkThreadIds: Schema.optional(Schema.Array(Schema.String)),
     }),
     success: TaskEntry,
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Update task"),
 );
@@ -242,7 +250,7 @@ const CompleteTaskTool = writeTool(
       done: Schema.optional(Schema.Boolean),
     }),
     success: TaskEntry,
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Complete task"),
 );
@@ -252,7 +260,7 @@ const DeleteTaskTool = writeTool(
     description: `Remove a task and its notes from the list. Prefer complete_task for finished work. ${SCOPE}`,
     parameters: Schema.Struct({ task: TaskReferenceInput, space: SpaceInput }),
     success: Schema.Struct({ title: Schema.String }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Delete task"),
   true,
@@ -271,7 +279,7 @@ const ListThreadsTool = readonlyTool(
       limit: Schema.optional(Schema.Int.annotate({ description: "Default 40." })),
     }),
     success: Schema.Struct({ threads: Schema.Array(ThreadEntry), total: Schema.Int }),
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "List threads"),
 );
@@ -285,7 +293,7 @@ const SetThreadSpaceTool = writeTool(
       member: Schema.optional(Schema.Boolean),
     }),
     success: ThreadEntry,
-    failure: BrainstormError,
+    failure: BrainstormToolFailure,
     dependencies,
   }).annotate(Tool.Title, "Set thread space"),
 );

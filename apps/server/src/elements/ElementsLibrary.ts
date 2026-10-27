@@ -11,6 +11,7 @@
  * @module ElementsLibrary
  */
 import type { ElementManifest, ElementsLibraryState } from "@t3tools/contracts";
+import { setElementsInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import { validateElementProps } from "@t3tools/shared/elementProps";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -287,3 +288,7 @@ export function elementComponents(): ReadonlyMap<string, ElementManifest> {
   const { state } = load(elementsLibraryDir());
   return new Map(state.components.map((component) => [component.tag, component]));
 }
+
+// Provider adapters live in packages that cannot import the server app, so the catalog is
+// handed to their shared runtime instructions here.
+setElementsInstructions(elementsInstructions);

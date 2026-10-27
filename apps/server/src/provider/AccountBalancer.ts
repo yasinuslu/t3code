@@ -39,7 +39,7 @@ import * as ServerConfig from "../config.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { CodeProfiles } from "./CodeProfiles.ts";
-import * as ProviderRegistry from "./Services/ProviderRegistry.ts";
+import * as ProviderRegistry from "./ProviderRegistry.ts";
 
 /** A limit a turn hit: when it was seen and when it resets, in epoch milliseconds. */
 const ObservedLimit = Schema.Struct({ since: Schema.Number, until: Schema.Number });
