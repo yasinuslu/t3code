@@ -1,3 +1,5 @@
+# No CI on pull requests or work branches (his call 2026-10-27, until he says otherwise): only the
+# release branch builds and deploys.
 # The x86_64-linux leg of the desktop Nix build, on the forge (git.burmese-shiner.ts.net, nika's
 # host runner). The aarch64-darwin leg stays in .github/workflows/nix-desktop.yml on GitHub's
 # macOS runners until the forge has a macOS runner (joyboy, forge phase 2).
@@ -11,13 +13,12 @@
 # forge-ci). The build runs on nika's own nix daemon, so nika gets the path straight away.
 name: Nix desktop build (linux)
 
-# dev is the integration branch: feature PRs target it and self-merge once this build is green,
-# and a dev push rebuilds the dev instance (nep t3 dev, nepjua flake). Only yu-v2 pushes ship.
+# dev is the integration branch: feature PRs target it and self-merge after review, with no forge CI
+# (2026-10-27). The dev instance follows origin/dev on nika (nep t3 dev, nepjua flake). Only a yu-v2
+# push builds, pins and ships.
 on:
   push:
-    branches: [yu-v2, dev]
-  pull_request:
-    branches: [dev]
+    branches: [yu-v2]
   workflow_dispatch:
 
 concurrency:
