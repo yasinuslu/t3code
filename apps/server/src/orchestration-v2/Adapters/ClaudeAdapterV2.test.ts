@@ -2699,6 +2699,17 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-claude-v2-wake-",
       });
+      // The wake session has a saved transcript, so resumeThread accepts it.
+      const claudeConfigDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-claude-v2-wake-home-",
+      });
+      yield* fileSystem.makeDirectory(`${claudeConfigDir}/projects/-workspace`, {
+        recursive: true,
+      });
+      yield* fileSystem.writeFileString(
+        `${claudeConfigDir}/projects/-workspace/${WAKE_NATIVE_SESSION}.jsonl`,
+        `{"type":"user","message":{"role":"user","content":"hello"},"sessionId":"${WAKE_NATIVE_SESSION}"}\n`,
+      );
       const sdkMessages = yield* Queue.unbounded<SDKMessage>();
       const processQueues: Array<Queue.Queue<SDKMessage>> = [];
       const processedMessages = new WeakMap<SDKMessage, Deferred.Deferred<void>>();
@@ -2748,7 +2759,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
         settings: options?.settings ?? DEFAULT_CLAUDE_SETTINGS,
-        environment: options?.environment ?? {},
+        environment: options?.environment ?? { CLAUDE_CONFIG_DIR: claudeConfigDir },
         attachmentsDir,
         fileSystem,
         path: yield* Path.Path,
@@ -8312,6 +8323,67 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           }),
         );
         yield* changes.until(() => continuationRequests.length === 1);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("marks a session Claude cannot find as lost so it is not resumed again", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-lost-session"),
+            text: "Continue.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "result",
+            subtype: "error_during_execution",
+            duration_ms: 0,
+            duration_api_ms: 0,
+            is_error: true,
+            num_turns: 0,
+            stop_reason: null,
+            total_cost_usd: 0,
+            usage: {
+              input_tokens: 0,
+              output_tokens: 0,
+              cache_creation_input_tokens: 0,
+              cache_read_input_tokens: 0,
+            },
+            modelUsage: {},
+            permission_denials: [],
+            errors: [`No conversation found with session ID: ${WAKE_NATIVE_SESSION}`],
+            uuid: "00000000-0000-4000-8000-000000000301",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* harness.awaitTerminal(1);
+        assert.equal(harness.terminalEvents()[0]?.status, "failed");
+        assert.isTrue(yield* harness.runtime.isNativeThreadLost!(harness.providerThread));
+
+        // The next turn must start a fresh session instead of resuming this one.
+        const resumed = yield* Effect.exit(
+          harness.runtime.resumeThread({
+            providerThread: { ...harness.providerThread, lastRunOrdinal: 1 },
+            threadId: harness.threadId,
+            modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+            runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+          }),
+        );
+        assert.isTrue(Exit.isFailure(resumed));
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),

@@ -191,6 +191,7 @@ import {
 import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
 import { providerMessageTextWithAttachmentPaths } from "@t3tools/provider-core/server/attachmentPrompt";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { ensureClaudeResumeTranscript } from "./ClaudeResumeTranscript.ts";
 import {
   ProviderAdapterDriverCreateError,
   type ProviderAdapterDriverCreateInput,
@@ -3442,6 +3443,17 @@ function terminalResultError(
   }
 }
 
+/** The CLI could not load the session it was asked to resume, so it ran nothing. */
+function isClaudeSessionNotFoundResult(result: SDKResultMessage): boolean {
+  return (
+    result.subtype !== "success" &&
+    result.num_turns === 0 &&
+    result.errors.some(
+      (error) => typeof error === "string" && error.startsWith("No conversation found"),
+    )
+  );
+}
+
 function isOverloadedResult(result: SDKResultMessage): boolean {
   return result.subtype === "success" && result.api_error_status === 529;
 }
@@ -4310,6 +4322,8 @@ export interface ClaudeAdapterV2Options {
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
   /** Resolves CLAUDE_CONFIG_DIR per project from code profiles or `homePathCommand`. */
   readonly configDirResolver?: ClaudeConfigDirResolver;
+  /** Other Claude config dirs a session's transcript may have been written to. */
+  readonly transcriptSearchConfigDirs?: Effect.Effect<ReadonlyArray<string>>;
   /**
    * Receives the full command list whenever a session reloads it
    * (`/reload-skills`, `/reload-plugins`, skills found mid-session), so the
@@ -4634,6 +4648,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         });
         const openedNativeThreads = yield* Ref.make(new Set<string>());
         const pdfBudgets = new Map<string, ReturnType<typeof makeClaudeAttachmentBudget>>();
+        // Sessions the CLI said it could not find ("No conversation found").
+        // Resuming them again fails the same way, so T3 starts a fresh one.
+        const lostNativeThreads = yield* Ref.make(new Set<string>());
         const latestPlanByKind = yield* Ref.make(new Map<string, OrchestrationV2PlanArtifact>());
         // Claude 5 task tools edit one list per native session, across turns.
         const taskListsByNativeThread = yield* Ref.make(
@@ -9218,6 +9235,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                 ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                 : null;
+            const sessionLost = !interrupted && isClaudeSessionNotFoundResult(message);
+            if (sessionLost) {
+              yield* Ref.update(lostNativeThreads, (current) =>
+                new Set(current).add(message.session_id),
+              );
+            }
             const resultFailure = interrupted
               ? null
               : limitedCompaction !== null
@@ -10060,6 +10083,57 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           return context;
         });
 
+        // Fails when the CLI could not resume this provider thread's session,
+        // so T3 starts a fresh one seeded with the thread's history instead of
+        // failing the turn with "No conversation found". A transcript written
+        // under another cwd or config dir is copied to where the CLI looks.
+        const assertResumableNativeThread = Effect.fnUntraced(function* (
+          providerThread: OrchestrationV2ProviderThread,
+        ) {
+          const nativeThreadId = providerThread.nativeThreadRef?.nativeId;
+          const cwd = input.runtimePolicy.cwd;
+          if (nativeThreadId == null) return;
+          const lost = (yield* Ref.get(lostNativeThreads)).has(nativeThreadId);
+          if (
+            !lost &&
+            (cwd === null ||
+              providerThread.lastRunOrdinal === null ||
+              (yield* Ref.get(queryContext))?.nativeThreadId === nativeThreadId)
+          ) {
+            return;
+          }
+          const transcript =
+            lost || cwd === null
+              ? ({ _tag: "missing" } as const)
+              : yield* ensureClaudeResumeTranscript({
+                  configDir: sessionConfigDir,
+                  cwd,
+                  sessionId: nativeThreadId,
+                  searchConfigDirs: adapterOptions.transcriptSearchConfigDirs
+                    ? yield* adapterOptions.transcriptSearchConfigDirs
+                    : [],
+                }).pipe(
+                  Effect.provideService(FileSystem.FileSystem, fileSystem),
+                  Effect.provideService(Path.Path, path),
+                );
+          if (transcript._tag === "copied") {
+            yield* Effect.logInfo("Copied a Claude transcript so its session can resume", {
+              nativeThreadId,
+              from: transcript.from,
+              configDir: sessionConfigDir,
+              cwd,
+            });
+          }
+          if (transcript._tag === "missing") {
+            return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+              driver: CLAUDE_PROVIDER,
+              detail: lost
+                ? `Claude could not find session ${nativeThreadId}.`
+                : `Claude session ${nativeThreadId} has no transcript under ${sessionConfigDir}.`,
+            });
+          }
+        });
+
         const startTurn = Effect.fn("ClaudeAdapterV2.startTurn")(
           function* (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) {
             const startedAt = yield* DateTime.now;
@@ -10752,6 +10826,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }
             return false;
           }),
+          isNativeThreadLost: (providerThread) =>
+            Ref.get(lostNativeThreads).pipe(
+              Effect.map((lost) => lost.has(providerThread.nativeThreadRef?.nativeId ?? "")),
+            ),
           hasPendingBackgroundWorkForThread: Effect.fn(
             "ClaudeAdapterV2.hasPendingBackgroundWorkForThread",
           )(function* (providerThread, options) {
@@ -10802,6 +10880,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ),
           resumeThread: Effect.fn("ClaudeAdapterV2.resumeThread")(
             function* (threadInput: { readonly providerThread: OrchestrationV2ProviderThread }) {
+              yield* assertResumableNativeThread(threadInput.providerThread);
               const nativeThreadId = threadInput.providerThread.nativeThreadRef?.nativeId;
               if (
                 nativeThreadId !== undefined &&
@@ -11211,7 +11290,11 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
     hooks: Pick<
       ClaudeAdapterV2Options,
-      "scopedLimitNames" | "onUsageLimits" | "configDirResolver" | "onCommandsChanged"
+      | "scopedLimitNames"
+      | "onUsageLimits"
+      | "configDirResolver"
+      | "transcriptSearchConfigDirs"
+      | "onCommandsChanged"
     > = {},
   ) {
     const { instanceId, environment, enabled, config } = input;

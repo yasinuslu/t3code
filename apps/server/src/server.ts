@@ -642,7 +642,6 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
   Layer.provideMerge(layerServerSettings),
-  Layer.provideMerge(layerCodeProfiles),
   Layer.provideMerge(layerSourceControlProviderRegistry),
   Layer.provideMerge(layerGit),
   Layer.provideMerge(layerVcs),
@@ -662,6 +661,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       CodexInstallation.CodexInstallation.layer,
     ),
   ),
+  // Below the instance registry, so Claude drivers resolve config dirs per profile.
+  Layer.provideMerge(layerCodeProfiles),
 );
 
 const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(

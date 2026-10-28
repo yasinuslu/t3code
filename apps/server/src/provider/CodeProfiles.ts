@@ -1,14 +1,6 @@
 /**
- * CodeProfiles - which code profile (`settings.codeProfiles`) a folder belongs
- * to, and the Claude config dir sessions there use.
- *
- * A folder belongs to the profile whose `root` contains its physical path
- * (symlinks resolved; the deepest root wins). A git worktree outside every
- * root, such as T3's own under `~/.t3/worktrees`, belongs to the profile of
- * its main checkout. A folder that matches no profile resolves to
- * `undefined`, which leaves the dir to the instance as before.
- *
- * @module provider/CodeProfiles
+ * The code profile a folder belongs to: the deepest `root` holding its physical
+ * path, else its main checkout's. No match leaves the Claude dir to the instance.
  */
 import type { CodeProfile } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
@@ -180,3 +172,15 @@ const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(CodeProfiles, make);
+
+/** No profiles: every folder runs from the instance's own Claude dir. */
+export const layerEmpty = Layer.succeed(
+  CodeProfiles,
+  CodeProfiles.of({
+    resolve: Effect.fn("CodeProfiles.resolve")(function* () {
+      return undefined;
+    }),
+    list: Effect.succeed([]),
+    claudeConfigDirs: Effect.succeed([]),
+  }),
+);
