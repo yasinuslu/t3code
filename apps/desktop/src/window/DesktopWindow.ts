@@ -687,7 +687,6 @@ export const make = Effect.gen(function* () {
       }
     });
 
-    // Terminal-close repeats can outlive the terminal; reject them before the native close-window accelerator.
     const quitShortcutHandler = makeQuitShortcutHandler({
       platform: environment.platform,
       getMode: () =>
@@ -732,6 +731,7 @@ export const make = Effect.gen(function* () {
           return;
         }
       }
+      // A held Cmd/Ctrl+W closes one tab or terminal, not each one behind it.
       if (input.type !== "keyDown" || !input.isAutoRepeat) return;
       const modifier = environment.platform === "darwin" ? input.meta : input.control;
       if (modifier && !input.alt && !input.shift && input.key.toLowerCase() === "w") {

@@ -74,6 +74,11 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
 import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
+import * as PeerForwarding from "./peer/PeerForwarding.ts";
+import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
+import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
+import * as PeerLinks from "./peer/PeerLinks.ts";
+import * as PeerMcpClient from "./peer/PeerMcpClient.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
@@ -172,6 +177,7 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import * as TriageService from "./triage/TriageService.ts";
 import * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryReceiver.ts";
 import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClient.ts";
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
@@ -647,6 +653,9 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ),
   Layer.provideMerge(ProviderRegistry.layer),
   Layer.provideMerge(ProviderInstanceRegistryHydration.layer),
+  // Provider hydration builds the Claude runner, which reports agents to the same scanner the
+  // terminal and preview layers share.
+  Layer.provideMerge(layerPortScanner),
   Layer.provideMerge(
     Layer.mergeAll(
       AntigravityInstallation.AntigravityInstallation.layer,
@@ -703,6 +712,7 @@ const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
   Layer.provideMerge(layerBackground),
   Layer.provideMerge(layerResourceDiagnostics),
   Layer.provideMerge(TraceDiagnostics.layer),
+  Layer.provideMerge(TriageService.layer.pipe(Layer.provide(GitVcsDriver.layer))),
   Layer.provideMerge(AnalyticsService.layer),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
@@ -759,10 +769,18 @@ const layerMakeRoutes = Layer.mergeAll(
       yield* service.start();
     }),
   ).pipe(Layer.provide(ComponentRepairReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
+  // Follows delegated tasks running in linked environments, including after a restart.
+  Layer.effectDiscard(
+    RemoteDelegation.RemoteDelegation.pipe(Effect.flatMap((remote) => remote.start())),
+  ),
 ).pipe(
   Layer.provide(
     PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
   ),
+  // delegate_task to a linked environment, from /mcp and the follower above.
+  Layer.provide(RemoteDelegation.layer.pipe(Layer.provide(ProjectionStoreV2.layer))),
+  // Links agents ask for: shown in a thread from /mcp, answered over WebSocket.
+  Layer.provide(PeerLinkRequests.layer),
   // Share the service so HTTP/WS clients single-flight reads and invalidate each other's cached patches.
   Layer.provide(layerPullRequestService),
   // The same activity instance RunExecutionService reports to, by layer memoization.
@@ -777,6 +795,13 @@ const layerMakeRoutes = Layer.mergeAll(
     PreviewEnvironmentService.layer.pipe(
       Layer.provide(T3ProjectFileLoader.layer),
       Layer.provide(ProcessRunner.layer),
+    ),
+  ),
+  // Links to other environments, shared by Settings (WebSocket) and agents (/mcp).
+  Layer.provide(
+    PeerForwarding.layer.pipe(
+      Layer.provideMerge(PeerMcpClient.layer),
+      Layer.provideMerge(PeerLinks.layer),
     ),
   ),
   Layer.provide(PreviewAutomationBroker.layer),

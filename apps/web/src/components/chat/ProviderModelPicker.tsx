@@ -16,11 +16,7 @@ import { ChatGptSharingControl } from "./ChatGptSharingControl";
 import type { AccountBalancePicker, AccountSelection } from "./accountBalance.logic";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { providerLimitHint } from "./providerLimitHint";
-import {
-  ModelEsque,
-  getTriggerDisplayModelLabel,
-  getTriggerDisplayModelName,
-} from "./providerIconUtils";
+import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import {
   ComposerControl,
@@ -133,12 +129,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       ? undefined
       : selectedInstanceOptions[0]);
   const triggerTitle = selectedModel
-    ? getTriggerDisplayModelName(selectedModel)
+    ? getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
     : props.model === ANTIGRAVITY_DEFAULT_MODEL
       ? "Choose model"
       : props.model || "Choose model";
   const triggerLabel = selectedModel
-    ? `${getTriggerDisplayModelLabel(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
+    ? `${getDisplayModelName(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
     : triggerTitle;
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
@@ -172,12 +168,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       model: selection.model,
       options: props.modelOptionsByInstance.get(selection.instanceId) ?? [],
     });
+    const unavailable = model?.isUnavailable ? " (Unavailable)" : "";
     return {
       ...selection,
       entry,
       label: model
-        ? `${getTriggerDisplayModelName(model)}${model.isUnavailable ? " (Unavailable)" : ""}`
+        ? `${getTriggerDisplayModelName(model, entry?.driverKind)}${unavailable}`
         : selection.model,
+      fullLabel: model ? `${getDisplayModelName(model)}${unavailable}` : selection.model,
     };
   });
   const multipleLabel = selectedEntries
@@ -189,7 +187,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           .join(", ")}${selectedEntries.length > 2 ? `, ${selectedEntries.length - 2} more` : ""}`
     : undefined;
   const allModelNames = selectedEntries
-    ? selectedEntries.map((selection) => selection.label).join(", ") || "Choose models"
+    ? selectedEntries.map((selection) => selection.fullLabel).join(", ") || "Choose models"
     : undefined;
   // Single-selection triggers only; the multi-select aggregate has no one account to blame.
   const isAutoBalanced =
@@ -233,7 +231,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       <PopoverTrigger
         render={
           <ComposerControl
-            aria-label={props.triggerAriaLabel ?? allModelNames}
+            aria-label={
+              props.triggerAriaLabel ?? props.triggerLabel ?? allModelNames ?? triggerLabel
+            }
             size={size}
             data-chat-provider-model-picker="true"
             className={cn(
