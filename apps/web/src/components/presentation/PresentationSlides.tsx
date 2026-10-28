@@ -77,7 +77,7 @@ export function usePresentationVersion(
     readonly snapshot: string;
     readonly pages: ThreadPresentation["pages"];
   } | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- fetches an older version's pages
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches an older version's pages
   useEffect(() => {
     if (url === null || snapshot === undefined) return;
     let live = true;
@@ -340,7 +340,7 @@ export function MarkOverlay(props: {
   // Strokes and labels keep one on-screen size however small or zoomed the image shows.
   const [scale, setScale] = useState(1);
   const ref = useRef<SVGSVGElement>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- follows the rendered size of the svg
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows the rendered size of the svg
   useLayoutEffect(() => {
     const svg = ref.current;
     if (!svg) return;

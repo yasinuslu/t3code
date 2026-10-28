@@ -180,6 +180,7 @@ function LiveElement(props: {
   const closePortal = useCallback(() => setPortal(null), []);
 
   // One element per tag for the slot's life; new props are set on it, so it keeps its state.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- creates the custom element in the host DOM node
   useEffect(() => {
     const container = host.current;
     if (container === null) return;
@@ -204,6 +205,7 @@ function LiveElement(props: {
     };
   }, [props.tag]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sets props on the custom element DOM node
   useEffect(() => {
     const current = element.current as (HTMLElement & Record<string, unknown>) | null;
     if (current === null) return;
@@ -216,6 +218,7 @@ function LiveElement(props: {
 
   // An answered component stays on screen but takes no second answer.
   const answered = answer !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sets readOnly on the custom element DOM node
   useEffect(() => {
     const current = element.current as (HTMLElement & Record<string, unknown>) | null;
     if (current !== null) current.readOnly = answered;

@@ -111,6 +111,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
   // navigates right after changing the active space) and removing the open
   // project from a space never bounce the active space back.
   const handledRouteKeyRef = useRef<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- switches the space store to match the opened route
   useEffect(() => {
     if (routeTarget === null || routeKey === null || routeSpaces === null) return;
     if (handledRouteKeyRef.current === routeKey) return;
@@ -134,11 +135,13 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
     store.rememberRoute(homeSpaceId, route);
   }, [routeKey, routeSpaces, routeTarget, setProjectScopeKey]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- remembers the project scope in the space store
   useEffect(() => {
     useSpaceStore.getState().rememberProjectScope(activeSpaceId, projectScopeKey);
   }, [activeSpaceId, projectScopeKey]);
 
   const threadsRef = useRef(threads);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors threads into a ref read by callbacks
   useEffect(() => {
     threadsRef.current = threads;
   }, [threads]);

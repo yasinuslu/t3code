@@ -597,6 +597,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const dropStaleProviderPick = useComposerDraftStore((store) => store.dropStaleProviderPick);
   const startedOnInstanceId = serverThread?.modelSelection.instanceId;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drops a stale provider pick from the composer draft store
   useEffect(() => {
     if (startedOnInstanceId !== undefined) {
       dropStaleProviderPick(composerDraftTarget, startedOnInstanceId);

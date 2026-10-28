@@ -54,6 +54,7 @@ export function useElementsLibrary(
   const library = useSyncExternalStore(subscribe, () => libraries.get(key)?.library ?? null);
   const missing = library !== null && !library.components.has(wanted);
   const [attempt, setAttempt] = useState(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches the element library from the server into a module cache
   useEffect(() => {
     if (environmentId === null) return;
     const cached = libraries.get(key);

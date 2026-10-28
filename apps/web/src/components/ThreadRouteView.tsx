@@ -105,7 +105,7 @@ export function ThreadRouteView({
     !catalog.entries.has(target.threadRef.environmentId)
       ? target.threadRef.environmentId
       : null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- a timer that gives up on an unknown environment
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a timer that gives up on an unknown environment
   useEffect(() => {
     if (unknownEnvironmentId === null || background) return;
     const timer = setTimeout(() => {

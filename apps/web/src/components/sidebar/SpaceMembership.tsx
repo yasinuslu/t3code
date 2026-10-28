@@ -37,6 +37,7 @@ function setOptionHeld(held: boolean) {
  * loses focus so it never sticks.
  */
 export function useOptionKeyTracking() {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens on window for Option key state
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => setOptionHeld(event.key === "Alt" || event.altKey);
     const onKeyUp = (event: KeyboardEvent) =>
@@ -117,10 +118,12 @@ export function SpaceMembershipPopoverLayer() {
   const [open, setOpen] = useState<OpenPopover | null>(null);
   const openRef = useRef(open);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors open into a ref read by document listeners
   useEffect(() => {
     openRef.current = open;
   }, [open]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens on document for Option-click on thread rows
   useEffect(() => {
     const rowOf = (target: EventTarget | null) =>
       target instanceof Element ? target.closest(`[${THREAD_PROJECT_KEY_ATTRIBUTE}]`) : null;
@@ -170,6 +173,7 @@ export function SpaceMembershipPopoverLayer() {
 
   // The row can scroll away or unmount (space switch, settle); follow or close.
   const [, setTick] = useState(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens to document scroll while the popover is open
   useEffect(() => {
     if (!open) return;
     const onScroll = () => setTick((tick) => tick + 1);

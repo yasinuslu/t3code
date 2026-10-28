@@ -713,6 +713,7 @@ function ManagerProfilesInput({
 }) {
   const text = value.join(", ");
   const [draft, setDraft] = useState(text);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- resets the draft input when the saved value changes
   useEffect(() => {
     setDraft(text);
   }, [text]);
