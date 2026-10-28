@@ -1109,15 +1109,22 @@ export const layer: Layer.Layer<
             handoff.delivery?.nativeThreadId === providerThread.nativeThreadRef?.nativeId &&
             handoff.delivery?.status === "pending",
         );
+        // A session the provider already could not find is not resumed again,
+        // even while the thread still counts as loaded in its live session.
+        const nativeThreadLost = yield* (
+          session.isNativeThreadLost?.(providerThread) ?? Effect.succeed(false)
+        );
         const resumed = yield* Effect.result(
-          uncertainDelivery
+          uncertainDelivery || nativeThreadLost
             ? Effect.fail(
                 new ProviderAdapter.ProviderAdapterTurnStartError({
                   driver: session.driver,
                   threadId: projection.thread.id,
                   providerThreadId: providerThread.id,
                   runId,
-                  cause: "Uncertain native history injection",
+                  cause: uncertainDelivery
+                    ? "Uncertain native history injection"
+                    : "Provider lost the native session",
                 }),
               )
             : session.resumeThread({

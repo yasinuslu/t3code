@@ -274,6 +274,8 @@ function makeLocalCommandHarness(input: {
   readonly openFailure?: unknown;
   readonly ensureThreadFailure?: unknown;
   readonly historyReadFailureAfterFallback?: unknown;
+  /** The fallback session resumes fine but reports its native session lost. */
+  readonly nativeThreadLost?: boolean;
   readonly interruptOpen?: boolean;
   readonly interruptRunBeforeOpenFailure?: boolean;
   readonly writeFailure?: unknown;
@@ -565,17 +567,21 @@ function makeLocalCommandHarness(input: {
       ),
     ),
   );
+  const fallbackEnsureThread = vi.fn(() => Effect.succeed(providerThread));
   const resumeFallbackSession = {
     driver: providerThread.driver,
     resumeThread: () =>
-      Effect.fail(
-        new ProviderAdapter.ProviderAdapterEventStreamError({
-          driver: providerThread.driver,
-          providerSessionId,
-          cause: "native thread is gone",
-        }),
-      ),
-    ensureThread: () => Effect.succeed(providerThread),
+      input.nativeThreadLost === true
+        ? Effect.succeed(projection.providerThreads[0])
+        : Effect.fail(
+            new ProviderAdapter.ProviderAdapterEventStreamError({
+              driver: providerThread.driver,
+              providerSessionId,
+              cause: "native thread is gone",
+            }),
+          ),
+    ...(input.nativeThreadLost === true ? { isNativeThreadLost: () => Effect.succeed(true) } : {}),
+    ensureThread: fallbackEnsureThread,
   };
   const open = vi.fn(() =>
     input.interruptOpen === true
@@ -765,6 +771,7 @@ function makeLocalCommandHarness(input: {
     resolveRuntimePolicy,
     createWorktree,
     open,
+    fallbackEnsureThread,
     writeIfRunCurrent,
     startRootRun,
     interruptTurn,
@@ -1286,6 +1293,25 @@ effectIt.effect("terminalizes a starting run when its provider session cannot op
         },
       },
     ]);
+  }),
+);
+
+effectIt.effect("starts a fresh native session when the provider lost the old one", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "Continue",
+      historyReadFailureAfterFallback: new Error("history unavailable"),
+      nativeThreadLost: true,
+    });
+
+    yield* Effect.exit(harness.start);
+
+    expect(harness.fallbackEnsureThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        forceNewNativeThread: true,
+        existingProviderThread: expect.objectContaining({ nativeThreadRef: null }),
+      }),
+    );
   }),
 );
 

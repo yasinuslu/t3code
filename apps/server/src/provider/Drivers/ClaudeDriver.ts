@@ -7,7 +7,6 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -116,7 +115,10 @@ export type ClaudeDriverEnv =
   | ModelCatalog.ModelCatalog
   | Path.Path
   | ProviderEventLoggers.ProviderEventLoggers
-  | ServerConfig.ServerConfig;
+  | ServerConfig.ServerConfig
+  // Required so a layer order that hides it fails typecheck instead of
+  // silently running every session from the default ~/.claude.
+  | CodeProfiles;
 
 export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.Path> = {
   driverKind: DRIVER_KIND,
@@ -175,9 +177,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         ? configDir
         : undefined,
     );
-    const codeProfiles = yield* Effect.serviceOption(CodeProfiles);
+    const codeProfiles = yield* CodeProfiles;
     const configDirResolver = yield* makeClaudeConfigDirResolver(effectiveConfig, processEnv, {
-      codeProfiles: Option.getOrUndefined(codeProfiles),
+      codeProfiles,
     }).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       Effect.provideService(Path.Path, path),
@@ -235,13 +237,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
         onCommandsChanged,
         ...(configDirResolver ? { configDirResolver } : {}),
-        ...(Option.isSome(codeProfiles)
-          ? {
-              transcriptSearchConfigDirs: codeProfiles.value.claudeConfigDirs.pipe(
-                Effect.map((dirs) => [configDir, ...dirs.map((entry) => entry.dir)]),
-              ),
-            }
-          : {}),
+        transcriptSearchConfigDirs: codeProfiles.claudeConfigDirs.pipe(
+          Effect.map((dirs) => [configDir, ...dirs.map((entry) => entry.dir)]),
+        ),
       },
     ).pipe(
       Effect.mapError(
@@ -321,10 +319,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
 
     // An instance without its own config dir picks one per thread from the
     // code profiles, so its snapshot also reports each profile's account.
-    const folderProfiles =
-      effectiveConfig.homePath.trim().length === 0
-        ? Option.getOrUndefined(codeProfiles)
-        : undefined;
+    const folderProfiles = effectiveConfig.homePath.trim().length === 0 ? codeProfiles : undefined;
     const attachCodeProfiles = <Snapshot extends { readonly installed: boolean }>(
       snapshot: Snapshot,
     ) =>
