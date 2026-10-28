@@ -40,6 +40,7 @@ export function ProfileShortcuts() {
   const profiles = useBrainstormStore((state) => state.profiles);
   const strip = useProfileStrip((state) => state.strip);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for window keydown for profile shortcuts
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) return;
@@ -67,6 +68,7 @@ export function ProfileShortcuts() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [keybindings]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- times out the profile strip display
   useEffect(() => {
     if (strip === null) return;
     const timer = window.setTimeout(() => useProfileStrip.setState({ strip: null }), STRIP_MS);

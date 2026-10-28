@@ -15,9 +15,7 @@ const slugSchema = TrimmedNonEmptyString.check(
 export const ProviderDriverKind = slugSchema.pipe(Schema.brand("ProviderDriverKind"));
 export type ProviderDriverKind = typeof ProviderDriverKind.Type;
 
-const isProviderDriverKindValue = Schema.is(ProviderDriverKind);
-export const isProviderDriverKind = (value: unknown): value is ProviderDriverKind =>
-  isProviderDriverKindValue(value);
+export const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
 export const ProviderInstanceId = slugSchema.pipe(Schema.brand("ProviderInstanceId"));
 export type ProviderInstanceId = typeof ProviderInstanceId.Type;

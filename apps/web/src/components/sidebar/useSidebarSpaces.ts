@@ -40,11 +40,11 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
   readonly threads: ReadonlyArray<SpaceThread>;
   readonly routeTarget: ThreadRouteTarget | null;
   readonly routeDraftProjectKey: string | null;
-  readonly projectScopeKey: string | null;
-  readonly setProjectScopeKey: (projectKey: string | null) => void;
+  readonly projectScopeKeys: readonly string[];
+  readonly setProjectScopeKeys: (projectKeys: readonly string[]) => void;
 }) {
-  const { projectGroups, threads, routeTarget, routeDraftProjectKey, projectScopeKey } = input;
-  const { setProjectScopeKey } = input;
+  const { projectGroups, threads, routeTarget, routeDraftProjectKey, projectScopeKeys } = input;
+  const { setProjectScopeKeys } = input;
   const router = useRouter();
   const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
   const spaces = useSpaceStore((store) => store.spaces);
@@ -111,6 +111,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
   // navigates right after changing the active space) and removing the open
   // project from a space never bounce the active space back.
   const handledRouteKeyRef = useRef<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- switches the space store to match the opened route
   useEffect(() => {
     if (routeTarget === null || routeKey === null || routeSpaces === null) return;
     if (handledRouteKeyRef.current === routeKey) return;
@@ -130,15 +131,17 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
     }
     const homeSpaceId = routeSpaces.homeSpaceId;
     store.setActiveSpace(homeSpaceId);
-    setProjectScopeKey(store.projectScopeKeyBySpaceId[homeSpaceId] ?? null);
+    setProjectScopeKeys(store.projectScopeKeyBySpaceId[homeSpaceId] ?? []);
     store.rememberRoute(homeSpaceId, route);
-  }, [routeKey, routeSpaces, routeTarget, setProjectScopeKey]);
+  }, [routeKey, routeSpaces, routeTarget, setProjectScopeKeys]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- remembers the project scope in the space store
   useEffect(() => {
-    useSpaceStore.getState().rememberProjectScope(activeSpaceId, projectScopeKey);
-  }, [activeSpaceId, projectScopeKey]);
+    useSpaceStore.getState().rememberProjectScope(activeSpaceId, projectScopeKeys);
+  }, [activeSpaceId, projectScopeKeys]);
 
   const threadsRef = useRef(threads);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors threads into a ref read by callbacks
   useEffect(() => {
     threadsRef.current = threads;
   }, [threads]);
@@ -147,7 +150,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       const store = useSpaceStore.getState();
       if (spaceId === store.activeSpaceId) return;
       store.setActiveSpace(spaceId);
-      setProjectScopeKey(store.projectScopeKeyBySpaceId[spaceId] ?? null);
+      setProjectScopeKeys(store.projectScopeKeyBySpaceId[spaceId] ?? []);
       // While the manager shows, it stays: the new space's profile manager takes its place.
       if (useManagerViewStore.getState().shown) {
         requestManagerShown();
@@ -186,7 +189,7 @@ export function useSidebarSpaces<TGroup extends SpaceProjectGroup>(input: {
       // The index opens a draft in the space's most recent project.
       void router.navigate({ to: "/" });
     },
-    [projectSpaces, router, setProjectScopeKey],
+    [projectSpaces, router, setProjectScopeKeys],
   );
 
   const setProjectInSpace = useCallback(

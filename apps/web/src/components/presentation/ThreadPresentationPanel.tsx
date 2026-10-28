@@ -49,7 +49,7 @@ export function ThreadPresentationPanel(props: { readonly threadRef: ScopedThrea
 
   // Being open is looking: the version that is on screen counts as seen.
   const updatedAt = presentation?.updatedAt;
-  // oxlint-disable-next-line t3code/react-effect-budget -- records what is on screen in the seen store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records what is on screen in the seen store
   useEffect(() => {
     if (updatedAt !== undefined && !versions.past) markSeen(threadRef, updatedAt);
   }, [markSeen, threadRef, updatedAt, versions.past]);

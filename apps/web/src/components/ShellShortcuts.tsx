@@ -21,6 +21,7 @@ const isShellCommand = (command: string) =>
 export function ShellShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes the shell chords to the desktop shell
   useEffect(() => {
     const setShellChords = window.desktopBridge?.setShellChords;
     if (!setShellChords) return;

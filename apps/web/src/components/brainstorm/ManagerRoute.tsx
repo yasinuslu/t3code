@@ -50,11 +50,13 @@ export function ManagerRoute() {
   const request = useManagerViewStore((state) => state.request);
   const router = useRouter();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes whether the manager is shown to the view store
   useEffect(() => {
     useManagerViewStore.setState({ shown: onManager });
   }, [onManager]);
 
   // Hiding goes back to where the manager was opened from.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- navigates the router back when the manager is hidden
   useEffect(() => {
     if (request !== "hide") return;
     const { returnTo } = useManagerViewStore.getState();
@@ -84,6 +86,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
     ) !== null;
   const [shellWaitedOut, setShellWaitedOut] = useState(false);
   const waitingForShell = key !== null && !shellKnown;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- times out the wait for the thread shell
   useEffect(() => {
     if (!waitingForShell) return;
     const timer = setTimeout(() => setShellWaitedOut(true), THREAD_SHELL_WAIT_MS);
@@ -95,6 +98,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
   // The manager in view before; a change (another space or machine) is followed.
   const previousKey = useRef(key);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- navigates the router to follow the manager thread
   useEffect(() => {
     const previous = previousKey.current;
     // A switch passes through loading; the last manager shown stays the one to compare with.

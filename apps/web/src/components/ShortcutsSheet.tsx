@@ -49,6 +49,7 @@ export function ShortcutsSheet() {
   const open = useShortcutsSheetStore((state) => state.open);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for document keydown to toggle the shortcuts sheet
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.isComposing) return;

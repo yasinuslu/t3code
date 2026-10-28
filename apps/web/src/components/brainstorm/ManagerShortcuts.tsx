@@ -14,7 +14,7 @@ import { primaryServerKeybindingsAtom } from "../../state/server";
 export function ManagerShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- global keydown listener
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- global keydown listener
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) return;
@@ -38,7 +38,7 @@ export function ManagerShortcuts() {
   }, [keybindings]);
 
   // The desktop app registers the chord system-wide and follows keybindings.json.
-  // oxlint-disable-next-line t3code/react-effect-budget -- desktop global shortcut registration
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- desktop global shortcut registration
   useEffect(() => {
     const setManagerShortcut = window.desktopBridge?.setManagerShortcut;
     if (!setManagerShortcut) return;
@@ -59,7 +59,7 @@ export function ManagerShortcuts() {
   }, [keybindings]);
 
   // The desktop shell catches the chord below the page, where an iframe cannot swallow it.
-  // oxlint-disable-next-line t3code/react-effect-budget -- desktop menu action subscription
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- desktop menu action subscription
   useEffect(
     () =>
       window.desktopBridge?.onMenuAction?.((action) => {

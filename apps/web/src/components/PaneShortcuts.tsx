@@ -21,8 +21,10 @@ export function PaneShortcuts() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { isMobile, state, setOpen } = useSidebar();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- installs the global pane focus handling
   useEffect(() => installPaneFocus(), []);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for window keydown to move focus between panes
   useEffect(() => {
     // The sidebar slides in over a few frames; it takes focus once it is on screen.
     const openSidebar = () => {

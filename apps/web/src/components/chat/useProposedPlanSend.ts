@@ -55,7 +55,6 @@ interface PlanSendBase {
   readonly activeProposedPlan: LatestProposedPlanState | null;
   readonly isServerThread: boolean;
   readonly isSendBusy: boolean;
-  readonly isConnecting: boolean;
   readonly composerRef: ComposerHandleRef;
   /** Names the account a message moved to when the picked one is at its usage limit. */
   readonly providerInstanceEntries: ReadonlyArray<ProviderInstanceEntry>;
@@ -90,7 +89,6 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
     activeProposedPlan,
     isServerThread,
     isSendBusy,
-    isConnecting,
     composerRef,
     providerInstanceEntries,
     beginLocalDispatch,
@@ -124,7 +122,6 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
       !activeThread ||
       !isServerThread ||
       isSendBusy ||
-      isConnecting ||
       sendInFlightRef.current
     ) {
       return false;
@@ -261,7 +258,6 @@ export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput
     activeProposedPlan,
     isServerThread,
     isSendBusy,
-    isConnecting,
     composerRef,
     providerInstanceEntries,
     beginLocalDispatch,
@@ -286,7 +282,6 @@ export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput
       !activeProposedPlan ||
       !isServerThread ||
       isSendBusy ||
-      isConnecting ||
       activeEnvironmentUnavailable ||
       sendInFlightRef.current
     ) {

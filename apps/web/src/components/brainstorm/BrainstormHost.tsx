@@ -33,6 +33,7 @@ export function BrainstormHost() {
   const activeSpaceProfile = useActiveSpaceProfile();
   const setLastManagerProfile = useBrainstormStore((store) => store.setLastManagerProfile);
   const profiles = useBrainstormStore((store) => store.profiles);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- remembers the active space's profile in the manager store
   useEffect(() => {
     if (activeSpaceProfile !== null && profiles?.includes(activeSpaceProfile)) {
       setLastManagerProfile(activeSpaceProfile);
@@ -53,6 +54,7 @@ function ManagerEnvironmentSync({ environmentId }: { readonly environmentId: Env
   const memberships = useSpaceStore((store) => store.customSpaceIdsByProjectKey);
   const defaultProfile = useBrainstormStore((store) => store.defaultProfile);
   const syncSpaces = useAtomCommand(brainstormEnvironment.syncSpaces, { reportFailure: false });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- debounces syncing spaces to the server environment
   useEffect(() => {
     if (!connected) return;
     const timer = window.setTimeout(() => {
@@ -73,6 +75,7 @@ function ManagerEnvironmentSync({ environmentId }: { readonly environmentId: Env
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const setEnvironmentManagers = useBrainstormStore((store) => store.setEnvironmentManagers);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this environment's managers in the manager store while mounted
   useEffect(() => {
     if (state === null) return;
     // Only the managers this environment runs: another machine may run a profile's now.
@@ -102,6 +105,7 @@ function ManagerEnvironmentSync({ environmentId }: { readonly environmentId: Env
       ),
     });
   }, [environmentId, primaryEnvironmentId, serverConfigs, setEnvironmentManagers, state]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- unregisters this environment's managers from the manager store on unmount
   useEffect(
     () => () => setEnvironmentManagers(environmentId, null),
     [environmentId, setEnvironmentManagers],
@@ -109,6 +113,7 @@ function ManagerEnvironmentSync({ environmentId }: { readonly environmentId: Env
 
   // The agent changed a custom space's projects: adopt the server's view.
   const adoptedRevision = useRef(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- adopts server-side custom space membership changes into the space store
   useEffect(() => {
     if (state === null) return;
     if (state.membershipRevision <= adoptedRevision.current) return;
