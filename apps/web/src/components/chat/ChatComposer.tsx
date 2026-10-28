@@ -3263,7 +3263,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           threadContexts: composerThreadContexts,
           environmentContexts: composerEnvironmentContexts,
           selectedPromptEffort,
-          selectedModelOptionsForDispatch,
           selectedModelSelection: limitGuard.selection,
           limitSwitchedFrom: limitGuard.from?.displayName ?? limitGuard.from?.instanceId ?? null,
           limitStuckOn: limitGuard.stuckOn?.displayName ?? limitGuard.stuckOn?.instanceId ?? null,

@@ -1022,9 +1022,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     routeDraftProjectKey: routeDraftThread
       ? `${routeDraftThread.environmentId}:${routeDraftThread.projectId}`
       : null,
-    // Spaces remember one project scope each; a multi-project filter keeps its first.
-    projectScopeKey: persistedProjectScopeKeys[0] ?? null,
-    setProjectScopeKey: (key) => setProjectScopeKeys(key === null ? [] : [key]),
+    projectScopeKeys: persistedProjectScopeKeys,
+    setProjectScopeKeys,
   });
   const activeSpace = spaces.find((space) => space.id === activeSpaceId) ?? null;
   const handleSpaceSwipe = useSpaceSwipe(switchSpace);
