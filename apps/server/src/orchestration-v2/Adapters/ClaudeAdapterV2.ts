@@ -9238,7 +9238,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const sessionLost = !interrupted && isClaudeSessionNotFoundResult(message);
             if (sessionLost) {
               yield* Ref.update(lostNativeThreads, (current) =>
-                new Set(current).add(message.session_id),
+                new Set(current).add(context.nativeThreadId),
               );
             }
             const resultFailure = interrupted
