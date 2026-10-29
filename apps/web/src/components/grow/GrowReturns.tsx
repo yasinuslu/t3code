@@ -31,6 +31,7 @@ import {
   ImageOffIcon,
   ListIcon,
   MessageSquareIcon,
+  MessagesSquareIcon,
   PlayIcon,
   ReplyIcon,
   RocketIcon,
@@ -43,7 +44,16 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 
-import { useEveryManagerThreadKey } from "../../brainstormStore";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
+import {
+  useEveryManagerThreadKey,
+  useManagerProfile,
+  useManagerThreadKeys,
+  useThreadShellsWithoutBrainstorms,
+} from "../../brainstormStore";
+import { openManager } from "../../lib/goToManager";
+import { useEnsureManagerThread } from "../brainstorm/useOpenManagerThread";
+import { Badge } from "../ui/badge";
 import { closeHomeOverlay } from "../../homeOverlayStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn, newMessageId } from "../../lib/utils";
@@ -102,6 +112,8 @@ const useReturnsStore = create<{
   readonly expandAll: boolean;
   /** How the list is laid out: by project (default), or flat with the last thread touched on top. */
   readonly listMode: "projects" | "recent";
+  /** The manager's chat is open in place of the item. */
+  readonly manager: boolean;
 }>(() => ({
   selected: null,
   phoneView: "card",
@@ -110,10 +122,45 @@ const useReturnsStore = create<{
   thread: null,
   expandAll: false,
   listMode: "projects",
+  manager: false,
 }));
 
 const select = (key: string | null) =>
-  useReturnsStore.setState({ selected: key, phoneView: "card", playing: null, thread: null });
+  useReturnsStore.setState({
+    selected: key,
+    phoneView: "card",
+    playing: null,
+    thread: null,
+    manager: false,
+  });
+
+/** What had focus when the manager came up, so Esc can give it back. */
+let managerFocusReturn: HTMLElement | null = null;
+
+const managerComposer = () =>
+  document.querySelector<HTMLElement>('[data-grow-manager] [contenteditable="true"]');
+
+/** Shows the manager's chat in place of the item (M), or focuses its message box when it shows. */
+function showManager() {
+  if (useReturnsStore.getState().manager) {
+    managerComposer()?.focus();
+    return;
+  }
+  const active = document.activeElement;
+  managerFocusReturn = active instanceof HTMLElement && active !== document.body ? active : null;
+  useReturnsStore.setState({ manager: true, thread: null, playing: null, phoneView: "card" });
+}
+
+/** Back to the item, with focus where it was before the manager came up. */
+function hideManager() {
+  const target = managerFocusReturn;
+  managerFocusReturn = null;
+  useReturnsStore.setState({ manager: false });
+  window.requestAnimationFrame(() => {
+    if (target?.isConnected) target.focus({ preventScroll: true });
+    else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+}
 
 const proofAsksInFlight = new Set<string>();
 
@@ -249,7 +296,7 @@ export function GrowReturns(props: {
   const loaded = useGrowLoaded();
   const managers = useEveryManagerThreadKey();
   const pending = usePendingDecisions((state) => state.keys);
-  const { selected, phoneView, query, playing, thread, listMode } = useReturnsStore();
+  const { selected, phoneView, query, playing, thread, listMode, manager } = useReturnsStore();
   const wide = useMediaQuery("md");
   const [whatIfOpen, setWhatIfOpen] = useState(false);
 
@@ -291,12 +338,19 @@ export function GrowReturns(props: {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (isTyping(event.target)) return;
-      const action = growKeyAction(event, { conversationOpen, item: current });
+      const action = growKeyAction(event, {
+        conversationOpen,
+        managerOpen: manager,
+        item: current,
+      });
       if (action === null) return;
       const item = current;
       switch (action.type) {
         case "closeThread":
           useReturnsStore.setState({ thread: null });
+          break;
+        case "manager":
+          showManager();
           break;
         case "toggleProjects":
           useReturnsStore.setState((state) => ({ expandAll: !state.expandAll }));
@@ -338,10 +392,22 @@ export function GrowReturns(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [actions, conversationOpen, current, playing, shown, wide]);
+  }, [actions, conversationOpen, current, manager, playing, shown, wide]);
 
-  // Esc leaves an open conversation even from its message box, which keeps Esc
-  // from bubbling; caught before it, and left alone while a menu or dialog is open.
+  // Esc leaves the manager or an open conversation even from its message box, which keeps
+  // Esc from bubbling; caught before it, and left alone while a menu or dialog is open.
+  useEffect(() => {
+    if (!manager) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      hideManager();
+    };
+    window.addEventListener("keydown", onEscape, true);
+    return () => window.removeEventListener("keydown", onEscape, true);
+  }, [manager]);
   useEffect(() => {
     if (!conversationOpen) return;
     const onEscape = (event: KeyboardEvent) => {
@@ -374,7 +440,9 @@ export function GrowReturns(props: {
     else useReturnsStore.setState({ thread: key });
   };
   const threadShell = thread === null ? undefined : relations.byKey.get(thread);
-  const hero = threadShell ? (
+  const hero = manager ? (
+    <ManagerPane wide={wide} />
+  ) : threadShell ? (
     <ThreadPane
       thread={threadShell}
       title={current?.key === thread ? current.headline : cleanLabel(threadShell.title)}
@@ -415,7 +483,7 @@ export function GrowReturns(props: {
               </Button>
             </div>
             <div className="px-3 pb-2">{header}</div>
-            <ReturnsList deck={shown} current={currentKey} />
+            <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
           </div>
         ) : (
           <>
@@ -434,7 +502,7 @@ export function GrowReturns(props: {
     >
       <div className="flex min-h-0 flex-col border-e ps-(--workspace-gutter-start) pe-3 pt-3">
         {header}
-        <ReturnsList deck={shown} current={currentKey} />
+        <ReturnsList deck={shown} current={currentKey} managerOpen={manager} />
       </div>
       <div className="flex min-h-0 min-w-0 flex-col">{hero}</div>
     </div>
@@ -519,7 +587,11 @@ function ReturnsHeader(props: {
 }
 
 /** What is being worked on, the queue by project, then the older ones, what shipped and what was let go (folded). */
-function ReturnsList(props: { readonly deck: GrowDeck; readonly current: string | null }) {
+function ReturnsList(props: {
+  readonly deck: GrowDeck;
+  readonly current: string | null;
+  readonly managerOpen: boolean;
+}) {
   const { deck } = props;
   const projectTitle = useProjectTitle();
   const expandAll = useReturnsStore((state) => state.expandAll);
@@ -545,6 +617,7 @@ function ReturnsList(props: { readonly deck: GrowDeck; readonly current: string 
   );
   return (
     <nav aria-label="Returns" className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-6">
+      <ManagerRow open={props.managerOpen} />
       <div className="flex items-center justify-between gap-2">
         <ToggleGroup
           aria-label="List"
@@ -734,6 +807,118 @@ function ProofMark(props: { readonly item: GrowReturn }) {
     <ImageIcon aria-label="Has proof" className="size-3.5 shrink-0 text-success" />
   ) : (
     <ImageOffIcon aria-label="No proof" className="size-3.5 shrink-0 text-warning" />
+  );
+}
+
+/**
+ * The manager, pinned above the list in every view and search. It is not an
+ * item: j and k step past it, and M (or a click) brings it up.
+ */
+function ManagerRow(props: { readonly open: boolean }) {
+  const profile = useManagerProfile();
+  const managerKeys = useManagerThreadKeys();
+  const threads = useThreadShellsWithoutBrainstorms();
+  const working = useMemo(
+    () =>
+      threads.some(
+        (thread) =>
+          managerKeys.has(`${thread.environmentId}:${thread.id}`) &&
+          threadRuntimeIsActive(thread.runtime),
+      ),
+    [managerKeys, threads],
+  );
+  return (
+    <button
+      type="button"
+      data-grow-manager-row=""
+      aria-current={props.open ? "true" : undefined}
+      className={cn(
+        "mb-2 flex h-10 w-full items-center gap-2 rounded-md px-2 text-start text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        props.open
+          ? "bg-primary/25 ring-1 ring-primary/70 ring-inset"
+          : "bg-primary/6 hover:bg-primary/12",
+      )}
+      onClick={() => (props.open ? hideManager() : showManager())}
+    >
+      <MessagesSquareIcon aria-hidden className="size-4 shrink-0 text-primary" />
+      <span className="font-medium">Manager</span>
+      {profile ? (
+        <span className="min-w-0 truncate text-muted-foreground text-xs">{profile}</span>
+      ) : null}
+      <span className="flex-1" />
+      {working ? (
+        <span aria-label="Manager is working" className="size-1.5 shrink-0 rounded-full bg-info" />
+      ) : null}
+      <span className="hidden md:contents">
+        <Kbd>M</Kbd>
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The manager's chat in place of the item: the same thread the manager
+ * shortcut opens, without leaving Grow. Esc gives focus back.
+ */
+function ManagerPane(props: { readonly wide: boolean }) {
+  const manager = useEnsureManagerThread();
+  const profile = useManagerProfile();
+  return (
+    <section
+      aria-label="Manager"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-primary/10"
+      data-grow-manager=""
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-30 ring-2 ring-primary/80 ring-inset"
+      />
+      <div className="flex items-center gap-2 border-primary/50 border-b bg-primary/20 px-3 py-2">
+        <Button variant="ghost" size="sm" onClick={hideManager}>
+          <ArrowLeftIcon />
+          Back
+          {props.wide ? <Kbd>Esc</Kbd> : null}
+        </Button>
+        <Badge size="lg">
+          <MessagesSquareIcon aria-hidden />
+          Manager
+        </Badge>
+        {profile ? (
+          <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">{profile}</span>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Open the manager page"
+          title="Open the manager page"
+          onClick={() => void openManager()}
+        >
+          <ExternalLinkIcon />
+        </Button>
+      </div>
+      {manager._tag === "Ready" ? (
+        <ChatView
+          key={`${manager.environmentId}:${manager.threadId}`}
+          environmentId={manager.environmentId}
+          threadId={manager.threadId}
+          routeKind="server"
+          reserveTitleBarControlInset={false}
+          autoFocusComposer
+          embedded
+        />
+      ) : manager._tag === "Failed" ? (
+        <div className="m-auto flex max-w-sm flex-col gap-1 p-6 text-center">
+          <p className="font-medium">
+            {manager.offline ? "Manager host offline" : "The manager could not open"}
+          </p>
+          <p className="text-muted-foreground text-sm">{manager.message}</p>
+        </div>
+      ) : (
+        <div className="m-auto text-muted-foreground text-sm">Opening the manager…</div>
+      )}
+    </section>
   );
 }
 
