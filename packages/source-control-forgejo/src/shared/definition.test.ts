@@ -129,3 +129,31 @@ describe("Forgejo change request host", () => {
     ).toBe("forge.example");
   });
 });
+
+describe("Forgejo media", () => {
+  const uuid = "b83ecd50-40d3-4a61-bc9a-88535f7a75a9";
+  it.each([
+    [
+      `https://git.example.test/attachments/${uuid}`,
+      `https://git.example.test/attachments/${uuid}`,
+    ],
+    [
+      `http://git.example.test:3000/attachments/${uuid}?x=1#a`,
+      `http://git.example.test:3000/attachments/${uuid}`,
+    ],
+    [
+      `https://example.test/forge/attachments/${uuid}`,
+      `https://example.test/forge/attachments/${uuid}`,
+    ],
+  ])("claims the upload link %s", (url, fetchUrl) => {
+    expect(definition.mediaUrl?.(new URL(url))).toEqual({ fetchUrl, fileName: uuid });
+  });
+
+  it.each([
+    "https://git.example.test/attachments/not-a-uuid",
+    `https://git.example.test/user-attachments/${uuid}`,
+    `https://git.example.test/owner/repo/raw/branch/${uuid}.png`,
+  ])("leaves %s to the browser", (url) => {
+    expect(definition.mediaUrl?.(new URL(url))).toBeNull();
+  });
+});
