@@ -250,7 +250,8 @@ With Codex and Claude, send `/goal` followed by what "done" means, for example
 `/goal all tests in packages/api pass`. The agent keeps working across turns
 until it judges the goal met. The thread shows **Goal** while it works, and a
 line at the end of the thread (above the composer on mobile) shows the goal and
-its progress.
+its progress. Click it to read the goal and, with Claude, what each check found
+and why it was not met yet.
 
 - `/goal` alone shows the current goal. `/goal clear` removes it.
 - Codex also supports `/goal pause` and `/goal resume`. Stopping a Codex goal
@@ -261,6 +262,15 @@ its progress.
   turn and starts the goal, unless you queue it. `/goal clear` and `/goal pause`
   stop the turn only when it is working on the goal. Other goal commands wait for
   the turn to end.
+
+## Background commands
+
+When the agent starts a command or monitor in the background, the thread details
+panel lists it under **Background commands**, running and finished, newest
+first. Click one to see its command, how long it ran, and its output, which
+updates while it runs. Finished commands are listed with Claude; with
+other providers only running ones are. **Stop
+background work** ends all background work in the thread, not just that command.
 
 ## Context in your message
 

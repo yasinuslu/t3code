@@ -14869,6 +14869,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             status: "active",
             checks: 1,
             lastCheck: "One test still fails.",
+            checkLog: ["One test still fails."],
           },
           { objective: condition, status: "complete", checks: 1 },
         ]);

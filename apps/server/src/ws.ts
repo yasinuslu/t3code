@@ -2045,6 +2045,17 @@ export const layerWsRpc = (
                 }),
             ),
           ),
+        [ORCHESTRATION_V2_WS_METHODS.getBackgroundTaskOutput]: (input) =>
+          threadManagement.getBackgroundTaskOutput(input).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationV2GetThreadProjectionError({
+                  threadId: input.threadId,
+                  message: "Failed to read background task output",
+                  cause,
+                }),
+            ),
+          ),
         [ORCHESTRATION_V2_WS_METHODS.getTurnDiff]: (input) =>
           checkpointDiffQuery.getTurnDiff(input).pipe(
             Effect.mapError(

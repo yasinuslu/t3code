@@ -1748,6 +1748,7 @@ function claudeWritesUpdatesAsThinking(model: string): boolean {
 
 // In SDK mode, /goal appears only in transcripts: command output names it and Stop hooks report unmet checks.
 const CLAUDE_GOAL_SET_PREFIX = "Goal set: ";
+const GOAL_CHECK_LOG_LIMIT = 20;
 const CLAUDE_GOAL_ACTIVE = /^Goal active: ([\s\S]+?) \((?:not yet evaluated|(\d+) turns?)\)/u;
 
 function nextClaudeGoal(
@@ -1788,11 +1789,13 @@ function nextClaudeGoal(
       ? content
       : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
   if (!text.startsWith(prefix)) return undefined;
+  const lastCheck = text.slice(prefix.length).trim();
   return {
     ...current,
     status: "active",
     checks: (current.checks ?? 0) + 1,
-    lastCheck: text.slice(prefix.length).trim(),
+    lastCheck,
+    checkLog: [...(current.checkLog ?? []), lastCheck].slice(-GOAL_CHECK_LOG_LIMIT),
   };
 }
 
@@ -2950,6 +2953,27 @@ function claudeNativeToolOutputValue(output: ClaudeNativeToolOutput): unknown | 
 function claudeNativeToolOutputText(output: ClaudeNativeToolOutput): string {
   const value = claudeNativeToolOutputValue(output);
   return typeof value === "string" ? value : value === undefined ? "" : jsonStringifyForTool(value);
+}
+
+/**
+ * The task a backgrounded tool keeps running as: Bash with run_in_background
+ * reports `backgroundTaskId`, Monitor reports `taskId`.
+ */
+function claudeBackgroundTaskIdFromToolOutput(
+  normalizedToolName: string,
+  output: ClaudeNativeToolOutput,
+): string | undefined {
+  if (output.type !== "structured_tool_use_result") return undefined;
+  const value = output.value;
+  if (typeof value !== "object" || value === null) return undefined;
+  const key =
+    normalizedToolName === "bash"
+      ? "backgroundTaskId"
+      : normalizedToolName === "monitor"
+        ? "taskId"
+        : undefined;
+  const taskId = key === undefined ? undefined : Reflect.get(value, key);
+  return typeof taskId === "string" && taskId.trim().length > 0 ? taskId.trim() : undefined;
 }
 
 function claudeCommandOutputText(output: ClaudeNativeToolOutput): string {
@@ -5595,6 +5619,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             itemType === "command_execution"
               ? claudeCommandOutputText(input.output)
               : claudeNativeToolOutputText(input.output);
+          const backgroundTaskId = claudeBackgroundTaskIdFromToolOutput(
+            input.classification.normalizedName,
+            input.output,
+          );
           const turnItem: OrchestrationV2TurnItem =
             itemType === "command_execution"
               ? {
@@ -5602,6 +5630,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   type: "command_execution",
                   input: commandInputFromClaudeTool(input.toolName, input.toolInput),
                   ...(outputText.length === 0 ? {} : { output: outputText }),
+                  ...(backgroundTaskId === undefined ? {} : { backgroundTaskId }),
                 }
               : itemType === "file_change"
                 ? {
@@ -5644,6 +5673,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                       ...(viewedImagePath === undefined ? {} : { viewedImagePath }),
                       input: claudeNativeToolInputValue(input.toolInput),
                       ...(outputValue === undefined ? {} : { output: outputValue }),
+                      ...(backgroundTaskId === undefined ? {} : { backgroundTaskId }),
                     };
           return { node, turnItem };
         };

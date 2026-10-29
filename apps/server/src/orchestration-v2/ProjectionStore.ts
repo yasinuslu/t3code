@@ -1567,7 +1567,11 @@ function activeProviderGoalForShell(
   providerThreads: ReadonlyArray<OrchestrationV2ThreadProjection["providerThreads"][number]>,
   activeProviderThreadId: OrchestrationV2ThreadProjection["thread"]["activeProviderThreadId"],
 ): OrchestrationV2ThreadShell["goal"] {
-  return providerThreads.find((thread) => thread.id === activeProviderThreadId)?.goal ?? null;
+  const goal = providerThreads.find((thread) => thread.id === activeProviderThreadId)?.goal;
+  if (goal === undefined || goal === null) return null;
+  // Shells reach every client; the check log reaches only the thread that opens the goal.
+  const { checkLog: _checkLog, ...shellGoal } = goal;
+  return shellGoal;
 }
 
 function isSilentRunForShell(

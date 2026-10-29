@@ -287,6 +287,13 @@ export function derivePendingBackgroundWork(input: {
   return Array.from(byTaskId.values());
 }
 
+const PULL_REQUEST_WATCH_TASK_PREFIX = "pull-request-watch:";
+
+/** Watch tasks are pending work with no command behind them. */
+export function isPullRequestWatchTaskId(taskId: string): boolean {
+  return taskId.startsWith(PULL_REQUEST_WATCH_TASK_PREFIX);
+}
+
 function pullRequestWatchTasks(
   pullRequests: ReadonlyArray<PendingBackgroundWorkPullRequest> | undefined,
 ): Array<PendingBackgroundWorkTask> {
@@ -297,7 +304,7 @@ function pullRequestWatchTasks(
           {
             // Links store their normalized identity, and this id only has to be unique within the
             // thread, so it reads those fields instead of parsing the URL.
-            taskId: `pull-request-watch:${link.host.toLowerCase()}/${link.repository.toLowerCase()}#${link.number}`,
+            taskId: `${PULL_REQUEST_WATCH_TASK_PREFIX}${link.host.toLowerCase()}/${link.repository.toLowerCase()}#${link.number}`,
             description: `Watching pull request #${link.number}`,
             kind: "monitor" as const,
             awaited: true as const,

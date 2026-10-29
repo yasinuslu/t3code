@@ -89,6 +89,14 @@ export function assertClaudeBackgroundTaskWakeOutput(
     },
   ]);
 
+  // The Bash row names its task, so the panel can pair the command with its output.
+  assert.isDefined(
+    projection.turnItems.find(
+      (item) => item.type === "command_execution" && item.backgroundTaskId === BACKGROUND_TASK_ID,
+    ),
+    "the background Bash row must carry its task id",
+  );
+
   assert.lengthOf(projection.subagents, 0);
   assert.isFalse(projection.nodes.some((node) => node.kind === "subagent"));
 }

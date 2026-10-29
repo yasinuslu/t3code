@@ -1,4 +1,5 @@
 import type {
+  EnvironmentId,
   OrchestrationV2PendingBackgroundTask,
   OrchestrationV2ProviderGoal,
   ThreadId,
@@ -8,6 +9,7 @@ import {
   presentPendingBackgroundWork,
   presentProviderGoal,
 } from "@t3tools/client-runtime/state/thread-execution";
+import { openBackgroundCommand } from "../../backgroundCommandDialogStore";
 import { childThreadInputsTitle } from "@t3tools/client-runtime/state/threads";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import * as DateTime from "effect/DateTime";
@@ -21,10 +23,10 @@ import {
 } from "lucide-react";
 import { Fragment } from "react";
 import { tickTextContent } from "~/lib/tickTextContent";
-import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
+import { ThreadGoalDetails } from "./ThreadGoalDetails";
 import type { ThreadNowItem } from "./ThreadNow";
 
 /** Subagents waiting on the user, unless the parent is itself waiting on them. */
@@ -66,6 +68,7 @@ export function childInputNowItem(input: {
 
 /** The thread's goal, for the end of the timeline. */
 export function goalNowItem(input: {
+  readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly goal: OrchestrationV2ProviderGoal;
   readonly isWorking: boolean;
@@ -76,10 +79,15 @@ export function goalNowItem(input: {
   return {
     id: `goal:${input.threadId}`,
     icon: <TargetIcon />,
-    title:
-      presentation.usage === null
-        ? presentation.title
-        : `${presentation.title} · ${presentation.usage}`,
+    title: (
+      <ThreadGoalDetails
+        environmentId={input.environmentId}
+        threadId={input.threadId}
+        goal={input.goal}
+        isWorking={isWorking}
+        onSendCommand={onSendCommand}
+      />
+    ),
     description: presentation.objective,
     // Clear stops goal work; Resume would stop unrelated work, so it waits.
     actions: (
@@ -107,6 +115,7 @@ export function goalNowItem(input: {
 
 /** Background commands and subagents, for the end of the timeline. */
 export function backgroundWorkNowItem(input: {
+  readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly tasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>;
   readonly turnItems: ThreadStructure["turnItems"];
@@ -145,7 +154,24 @@ export function backgroundWorkNowItem(input: {
     icon: rows.every(isCommand) ? <TerminalIcon /> : <CircleDashedIcon />,
     title: only ? (
       <>
-        {verb} <span className={cn(isCommand(only) && "font-mono")}>{only.task.label}</span>
+        {verb}{" "}
+        {isCommand(only) ? (
+          <InlineButton
+            tone="muted"
+            aria-label={`Show output of ${only.task.label}`}
+            onClick={() =>
+              openBackgroundCommand({
+                environmentId: input.environmentId,
+                threadId: input.threadId,
+                taskId: only.task.taskId,
+              })
+            }
+          >
+            <span className="font-mono">{only.task.label}</span>
+          </InlineButton>
+        ) : (
+          <span>{only.task.label}</span>
+        )}
       </>
     ) : (
       presentation.title

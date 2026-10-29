@@ -20,6 +20,7 @@ import { memo, type ComponentProps } from "react";
 import { ThreadDetailsCard } from "./ThreadDetailsCard";
 import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
+import { BackgroundCommandsPanel } from "./BackgroundCommandsPanel";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadServersPanel } from "./ThreadServersPanel";
@@ -187,6 +188,13 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
 
           {density === "full" && !props.draftId ? (
             <ThreadAutomationsPanel environmentId={props.environmentId} threadId={props.threadId} />
+          ) : null}
+
+          {density === "full" && !props.draftId ? (
+            <BackgroundCommandsPanel
+              environmentId={props.environmentId}
+              threadId={props.threadId}
+            />
           ) : null}
 
           {density === "full" && !props.draftId ? (

@@ -475,3 +475,25 @@ export function useTurnItemDetail(
         : orchestrationEnvironment.turnItem({ environmentId: target.environmentId, input }),
   );
 }
+
+/** A background task's command and output tail; re-read every second while `live`. */
+export function useBackgroundTaskOutput(
+  target: {
+    readonly environmentId: EnvironmentId;
+    readonly threadId: ThreadId;
+    readonly taskId: string;
+  } | null,
+  live: boolean,
+) {
+  const family = live
+    ? orchestrationEnvironment.liveBackgroundTaskOutput
+    : orchestrationEnvironment.backgroundTaskOutput;
+  return useEnvironmentQuery(
+    target === null
+      ? null
+      : family({
+          environmentId: target.environmentId,
+          input: { threadId: target.threadId, taskId: target.taskId },
+        }),
+  );
+}

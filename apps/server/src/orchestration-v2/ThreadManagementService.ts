@@ -17,6 +17,7 @@ import {
   type ModelSelection,
   type OrchestrationV2Actor,
   type OrchestrationV2Command,
+  type OrchestrationV2GetBackgroundTaskOutputResult,
   type OrchestrationV2GetTurnItemResult,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ConversationMessage,
@@ -56,6 +57,12 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimit.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
+import {
+  backgroundTaskCommand,
+  findBackgroundTaskItem,
+  readBackgroundTaskOutputTail,
+  resolveBackgroundTaskOutputPath,
+} from "./backgroundTaskOutput.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -370,6 +377,17 @@ export interface ThreadManagementServiceShape {
     readonly threadId: ThreadId;
     readonly itemId: TurnItemId;
   }) => Effect.Effect<OrchestrationV2GetTurnItemResult, Orchestrator.OrchestratorV2Error>;
+  /**
+   * The command a background task runs and the tail of its output. Clients
+   * poll it while a running command's details are open.
+   */
+  readonly getBackgroundTaskOutput: (input: {
+    readonly threadId: ThreadId;
+    readonly taskId: string;
+  }) => Effect.Effect<
+    OrchestrationV2GetBackgroundTaskOutputResult,
+    Orchestrator.OrchestratorV2Error
+  >;
   readonly getThreadRecords: Orchestrator.OrchestratorV2["Service"]["getThreadRecords"];
   readonly getThreadProjection: (
     threadId: ThreadId,
@@ -584,6 +602,42 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => Option.none()),
       Effect.map(Option.isSome),
     );
+
+  // A running task is polled every second; remember where its item and file are.
+  const backgroundTaskSources = new Map<
+    string,
+    { readonly command: string | null; readonly path: string }
+  >();
+  const getBackgroundTaskOutput = Effect.fn("ThreadManagementService.getBackgroundTaskOutput")(
+    function* (input: { readonly threadId: ThreadId; readonly taskId: string }) {
+      const key = `${input.threadId}\u0000${input.taskId}`;
+      let source = backgroundTaskSources.get(key);
+      if (source === undefined) {
+        const records = yield* orchestrator.getThreadRecords(input.threadId, ["turnItems"], {
+          turnItemTypes: ["command_execution", "dynamic_tool"],
+        });
+        const item = findBackgroundTaskItem(records.turnItems, input.taskId);
+        if (item === undefined) {
+          return { command: null, output: null, outputBytes: 0, truncated: false };
+        }
+        const command = backgroundTaskCommand(item);
+        const path = yield* Effect.promise(() =>
+          resolveBackgroundTaskOutputPath(item, input.taskId),
+        );
+        if (path === undefined) return { command, output: null, outputBytes: 0, truncated: false };
+        source = { command, path };
+        backgroundTaskSources.set(key, source);
+        for (const oldest of backgroundTaskSources.keys()) {
+          if (backgroundTaskSources.size <= 256) break;
+          backgroundTaskSources.delete(oldest);
+        }
+      }
+      const { path, command } = source;
+      const tail = yield* Effect.promise(() => readBackgroundTaskOutputTail(path));
+      if (tail.output === null) backgroundTaskSources.delete(key);
+      return { command, ...tail };
+    },
+  );
 
   const ensureLegacyTranscript = Effect.fn(
     "orchestrationV2.threadManagement.ensureLegacyTranscript",
@@ -1304,6 +1358,7 @@ const make = Effect.gen(function* () {
         Effect.map((item) => ({ item: item === null ? null : projectTurnItemForDetail(item) })),
       );
     }),
+    getBackgroundTaskOutput,
     getThreadRecords: Effect.fn("ThreadManagementService.getThreadRecords")(
       function (threadId, fields, filter) {
         return ensureProjectionTranscript(threadId).pipe(

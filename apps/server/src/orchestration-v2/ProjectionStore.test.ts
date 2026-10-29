@@ -2662,8 +2662,9 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       );
       const goal = { objective: "Ship it", status: "active" as const, tokensUsed: 10 };
 
-      yield* applyProviderThread("first", goal, 0);
-      assert.deepEqual(yield* shellGoal, goal);
+      // The check log reaches only the thread's own projection, not every client's shell.
+      yield* applyProviderThread("first", { ...goal, checks: 1, checkLog: ["One test fails."] }, 0);
+      assert.deepEqual(yield* shellGoal, { ...goal, checks: 1 });
       yield* applyProviderThread("second", null, 1);
       assert.isNull(yield* shellGoal);
     }),
