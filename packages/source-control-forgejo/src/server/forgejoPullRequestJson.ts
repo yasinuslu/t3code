@@ -221,8 +221,6 @@ function forgejoCheckStatus(state: string): PullRequestCheckStatus {
       return "failure";
     case "skipped":
       return "skipped";
-    case "cancelled":
-      return "cancelled";
     case "warning":
       return "neutral";
     default:
@@ -234,17 +232,8 @@ export function forgejoChecks(
   statuses: ReadonlyArray<typeof ForgejoStatus.Type>,
   pullRequestUrl: string,
 ): ReadonlyArray<PullRequestCheck> {
-  // The API lists newest first and times are per second, so on a same-second tie (a "pending"
-  // then "skipped") only list order says which is newer: keep the first status per context.
-  const seen = new Set<string>();
-  const newest = statuses.filter((status) => {
-    const name = status.context || "check";
-    if (seen.has(name)) return false;
-    seen.add(name);
-    return true;
-  });
   return dedupeChecks(
-    newest.map((status) => ({
+    statuses.map((status) => ({
       workflowName: null,
       at: status.updated_at,
       check: {

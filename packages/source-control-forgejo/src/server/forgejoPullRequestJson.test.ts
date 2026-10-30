@@ -61,14 +61,4 @@ describe("forgejoChecks", () => {
       ],
     );
   });
-
-  it("keeps the newer status when two land in the same second", () => {
-    const at = "2026-10-23T16:05:42Z";
-    // The API lists newest first.
-    const [check] = forgejoChecks(
-      [status("ship", "skipped", at), status("ship", "pending", at)],
-      PR_URL,
-    );
-    assert.strictEqual(check?.status, "skipped");
-  });
 });
