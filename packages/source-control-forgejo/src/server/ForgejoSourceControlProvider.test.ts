@@ -182,6 +182,37 @@ it("treats a required pattern's `*` as a wildcard even when the check name has o
   );
 });
 
+const tiedStatuses = [
+  { id: 15, status: "success" },
+  { id: 14, status: "pending" },
+].map(({ id, status }) => ({
+  id,
+  context: "ci/required-build",
+  status,
+  description: null,
+  target_url: null,
+  updated_at: "2026-10-12T10:14:29Z",
+}));
+
+it.effect.each([
+  ["newest first", tiedStatuses],
+  ["oldest first", tiedStatuses.toReversed()],
+] as const)("reads the status created last when two share a second, listed %s", ([, statuses]) =>
+  Effect.gen(function* () {
+    const provider = yield* ForgejoPullRequestProvider.make;
+    const readChecks = provider.getChangeRequestChecks;
+    if (readChecks === undefined) return yield* Effect.die("checks read missing");
+    const summary = yield* readChecks(requiredChecksInput);
+    const detail = yield* provider.getChangeRequest(requiredChecksInput);
+    for (const checks of [summary.checks, detail.checks]) {
+      assert.deepStrictEqual(
+        checks.map((check) => [check.name, check.status]),
+        [["ci/required-build", "success"]],
+      );
+    }
+  }).pipe(Effect.provide(requiredChecksLayer(Effect.succeed({}), statuses))),
+);
+
 const forgejoMergeProvider = (repository: Effect.Effect<string, ForgejoCli.ForgejoCliError>) => {
   const writes: Array<ForgejoCli.ForgejoApiInput> = [];
   const provider = ForgejoPullRequestProvider.make.pipe(
@@ -1730,4 +1761,77 @@ it.effect(
         );
       }
     }),
+);
+
+it.effect.each(["fj", "tea"] as const)(
+  "uses %s credentials only for configured media origins",
+  (command) => {
+    const commands: string[][] = [];
+    return Effect.gen(function* () {
+      const cli = yield* ForgejoCli.make;
+      assert.strictEqual(
+        yield* cli.mediaToken("https://forgejo.test/attachments/upload"),
+        "media-token",
+      );
+      const count = commands.length;
+      for (const url of [
+        "https://unknown.test/attachments/upload",
+        "https://forgejo.test:444/attachments/upload",
+        "http://forgejo.test/attachments/upload",
+        "https://user@forgejo.test/attachments/upload",
+      ]) {
+        assert.isNull(yield* cli.mediaToken(url));
+      }
+      assert.strictEqual(
+        commands.filter((args) => args.includes("whoami") || args.includes("helper")).length,
+        1,
+      );
+      assert.isAtLeast(count, 1);
+    }).pipe(
+      Effect.provideService(
+        FileSystem.FileSystem,
+        FileSystem.makeNoop({
+          exists: () => Effect.succeed(command === "fj"),
+          readFileString: () =>
+            Effect.succeed(
+              encodeJson({ hosts: { "forgejo.test": { type: "OAuth", token: "media-token" } } }),
+            ),
+        }),
+      ),
+      Effect.provideService(
+        HttpClient.HttpClient,
+        HttpClient.make(() => Effect.die("No HTTP during credential lookup")),
+      ),
+      Effect.provide(
+        TestSourceControlHost.layer({
+          process: {
+            run: (input) => {
+              commands.push([...input.args]);
+              if (input.command === "fj") {
+                assert.deepStrictEqual(input.args, ["--host", "https://forgejo.test", "whoami"]);
+                return Effect.succeed(processOutput(""));
+              }
+              if (input.args.includes("helper")) {
+                assert.deepStrictEqual(input.args, ["login", "helper", "get", "--login", "work"]);
+                assert.strictEqual(input.stdin, "protocol=https\nhost=forgejo.test\n\n");
+                return Effect.succeed(
+                  processOutput(
+                    "protocol=https\nhost=forgejo.test\nusername=maria\npassword=media-token\n",
+                  ),
+                );
+              }
+              assert.deepStrictEqual(input.args, ["login", "list", "--output", "json"]);
+              return Effect.succeed(
+                processOutput(
+                  encodeJson([
+                    { name: "work", url: "https://forgejo.test", user: "maria", default: "true" },
+                  ]),
+                ),
+              );
+            },
+          },
+        }),
+      ),
+    );
+  },
 );

@@ -17,25 +17,21 @@ export const make = Effect.gen(function* () {
   const httpClient = HttpClient.withScope(yield* HttpClient.HttpClient);
 
   return Effect.fn("ForgejoMediaFetch.fetchMedia")(function* (request: SourceControlMediaRequest) {
-    const origin = new URL(request.url);
-    // Attachment URLs are claimed on any host, so only a server fj holds a token for is fetched:
-    // anything else would make this server fetch whatever a pull request body names.
-    const token = yield* (cli.tokenForHost?.(origin.host) ?? Effect.succeed(null)).pipe(
-      Effect.orElseSucceed(() => null),
-    );
-    if (token === null) return null;
-    let target = request.url;
+    const server = URL.parse(request.url);
+    if (!server || server.protocol !== "https:" || server.username || server.password) return null;
+    // Read on every fetch, so media loads as soon as the user signs in.
+    const token = yield* cli.mediaToken(server.href);
+    if (!token) return null;
+    let target = server;
     for (let hop = 0; ; hop += 1) {
-      // Where a redirect leads, such as an object store, authorizes with its own signature.
-      const sameOrigin = new URL(target).origin === origin.origin;
       const response: HttpClientResponse.HttpClientResponse = yield* httpClient
         .execute(
-          HttpClientRequest.get(target).pipe(
+          HttpClientRequest.get(target.toString()).pipe(
             HttpClientRequest.setHeaders({
               ...request.headers,
               // The bytes are streamed straight through, so never let an encoding layer in.
               "accept-encoding": "identity",
-              ...(sameOrigin ? { authorization: `token ${token}` } : {}),
+              authorization: `token ${token}`,
             }),
           ),
         )
@@ -43,9 +39,9 @@ export const make = Effect.gen(function* () {
       const location = response.headers.location;
       if (response.status < 300 || response.status >= 400) return response;
       if (!location || hop >= MAX_REDIRECTS) return null;
-      const next = new URL(location, target);
-      if (next.protocol !== "https:" && next.origin !== origin.origin) return null;
-      target = next.toString();
+      const next = URL.parse(location, target.href);
+      if (!next || next.origin !== server.origin || next.username || next.password) return null;
+      target = next;
     }
   });
 });
