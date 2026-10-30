@@ -11,7 +11,6 @@ import {
   projectChangeRequestHost,
   remoteWebOrigin,
 } from "@t3tools/source-control-core/shared/definition";
-import { forgejoMediaUrl } from "./forgejoMedia.ts";
 import { icon } from "./icon.ts";
 
 const CHECKOUT_COMMAND = /^tea\s+(?:pr|pulls)\s+checkout\s+(.+)$/i;
@@ -108,7 +107,6 @@ export const definition = defineSourceControl({
         }
       : null,
   changeRequestHost,
-  mediaUrl: forgejoMediaUrl,
   isChangeRequestInRepository: (identity, link) => {
     if (!isChangeRequestAuthorityOfProject(identity, link)) return false;
     const web = resolvedWebUrl(identity);

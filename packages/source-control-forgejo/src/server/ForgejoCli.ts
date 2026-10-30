@@ -141,8 +141,6 @@ export class ForgejoCli extends Context.Service<
       readonly cwd: string;
       readonly baseUrl: string;
     }) => Effect.Effect<string, ForgejoCliError>;
-    /** The fj token for a server's `host` (with its port), or null when fj has none for it. */
-    readonly tokenForHost?: (host: string) => Effect.Effect<string | null, ForgejoCliError>;
     readonly resolveRepository: (
       input: ForgejoRepositoryInput,
     ) => Effect.Effect<ForgejoRepository, ForgejoCliError>;
@@ -481,19 +479,6 @@ export const make = Effect.gen(function* () {
     return user.success.login;
   });
 
-  const tokenForHost: NonNullable<ForgejoCli["Service"]["tokenForHost"]> = Effect.fn(
-    "ForgejoCli.tokenForHost",
-  )(function* (host) {
-    const cwd = yield* HostProcess.HomeDirectory;
-    const name = host.toLowerCase();
-    const key = (yield* readKeys(cwd)).hosts[name];
-    if (!key) return null;
-    // An OAuth token expires; fj renews it.
-    return key.type === "OAuth"
-      ? yield* authenticateFj(cwd, { name, url: `https://${name}`, user: "", default: "false" })
-      : key.token;
-  });
-
   const resolveTarget = Effect.fn("ForgejoCli.resolveTarget")(function* (
     input: ForgejoRepositoryInput,
     hostOnly = false,
@@ -734,7 +719,7 @@ export const make = Effect.gen(function* () {
       });
     return result;
   });
-  return ForgejoCli.of({ execute, listLogins, getAccount, tokenForHost, resolveRepository, api });
+  return ForgejoCli.of({ execute, listLogins, getAccount, resolveRepository, api });
 });
 
 export const layer = Layer.effect(ForgejoCli, make);
