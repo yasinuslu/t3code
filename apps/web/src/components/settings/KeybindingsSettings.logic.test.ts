@@ -271,12 +271,49 @@ describe("KeybindingsSettings.logic", () => {
       }),
     ).toEqual(["Chat: New Local"]);
   });
+
+  it.each([
+    { platform: "Linux x86_64", ctrl: ["Chat: New"], meta: [] },
+    { platform: "Win32", ctrl: ["Chat: New"], meta: [] },
+    { platform: "MacIntel", ctrl: [], meta: ["Chat: New"] },
+  ])("resolves mod to the $platform modifier when reporting conflicts", (expected) => {
+    const rows = buildKeybindingRows(
+      compileResolvedKeybindingsConfig([
+        { command: "chat.new", key: "mod+k" },
+        { command: "chat.newLocal", key: "ctrl+k" },
+        { command: "thread.copyReference", key: "meta+k" },
+      ]),
+      expected.platform,
+    );
+    const conflictsFor = (key: string) => rows.find((row) => row.key === key)?.conflicts;
+
+    expect(conflictsFor("ctrl+k")).toEqual(expected.ctrl);
+    expect(conflictsFor("meta+k")).toEqual(expected.meta);
+    expect(
+      keybindingConflictLabels(rows, { rowId: "new", key: "ctrl+k", when: "" }, expected.platform),
+    ).toEqual(["Chat: New Local", ...expected.ctrl].toSorted());
+  });
+
+  it("keeps mod and ctrl shortcuts apart when their when contexts differ", () => {
+    const rows = buildKeybindingRows(
+      compileResolvedKeybindingsConfig([
+        { command: "chat.new", key: "mod+k", when: "!terminalFocus" },
+        { command: "chat.newLocal", key: "ctrl+k", when: "terminalFocus" },
+      ]),
+      "Linux x86_64",
+    );
+
+    expect(rows.map((row) => row.conflicts)).toEqual([[], []]);
+  });
 });
 
 describe("platform rules", () => {
   it("lists only the rule for this platform, so a key shows once", () => {
     const sidebarRows = (mac: boolean) =>
-      filterKeybindingRows(buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, mac), "pane.sidebar");
+      filterKeybindingRows(
+        buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, mac ? "MacIntel" : "Win32"),
+        "pane.sidebar",
+      );
     expect(sidebarRows(false).map((row) => row.key)).toEqual(["ctrl+s"]);
     expect(sidebarRows(true).map((row) => row.key)).toEqual(["ctrl+b"]);
   });
@@ -285,13 +322,13 @@ describe("platform rules", () => {
     // The Mac-only profile rule is hidden on a PC; the shared one stays.
     expect(
       filterKeybindingRows(
-        buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, false),
+        buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "Win32"),
         "profile.next",
       ).map((r) => r.key),
     ).toEqual(["alt+v"]);
     expect(
       filterKeybindingRows(
-        buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, true),
+        buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "MacIntel"),
         "profile.next",
       ).map((r) => r.key),
     ).toEqual(["alt+v", "ctrl+v"]);

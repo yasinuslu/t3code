@@ -21,9 +21,3 @@ export function remarkThreadLinks() {
     );
   };
 }
-
-/** The chip label for a thread link: its text, unless that is just the link itself. */
-export function threadLinkLabel(text: string, href: string): string {
-  const label = text.trim();
-  return label && label !== href ? label : "Thread";
-}

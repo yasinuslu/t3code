@@ -46,6 +46,7 @@ const AutolinksContext = createContext<((text: string) => ReadonlyArray<Referenc
   null,
 );
 const LinkResolverContext = createContext<((url: string) => string) | null>(null);
+const LineBreaksContext = createContext(false);
 
 export function PullRequestMarkdownRepository(props: {
   /** The change request the markdown belongs to, whose host decides what its text links. */
@@ -60,6 +61,7 @@ export function PullRequestMarkdownRepository(props: {
       ? null
       : changeRequestReferenceAutolinker({ provider, url });
   const resolveUrl = changeRequestLinkResolver(props.changeRequest);
+  const lineBreaks = sourceControlClients.find(provider ?? "")?.hardLineBreaks ?? false;
   const target = pullRequestTarget(props.params);
   const project = useProject({
     environmentId: target.environmentId,
@@ -70,7 +72,9 @@ export function PullRequestMarkdownRepository(props: {
   return (
     <AutolinksContext value={autolinks}>
       <LinkResolverContext value={resolveUrl}>
-        <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
+        <LineBreaksContext value={lineBreaks}>
+          <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
+        </LineBreaksContext>
       </LinkResolverContext>
     </AutolinksContext>
   );
@@ -129,6 +133,7 @@ function MarkdownImage(props: {
 export function PullRequestMarkdown(props: {
   readonly markdown: string;
   readonly imageGroupMarkdown?: string;
+  readonly lineBreaks?: boolean;
 }) {
   const segments = useMemo(() => splitPullRequestBody(props.markdown), [props.markdown]);
   return (
@@ -139,6 +144,7 @@ export function PullRequestMarkdown(props: {
             key={segment.id}
             markdown={segment.text}
             imageGroupMarkdown={props.imageGroupMarkdown ?? props.markdown}
+            lineBreaks={props.lineBreaks}
           />
         ) : (
           <PullRequestMedia key={segment.id} url={segment.url} kind={segment.media} />
@@ -151,7 +157,9 @@ export function PullRequestMarkdown(props: {
 function PullRequestMarkdownContent(props: {
   readonly markdown: string;
   readonly imageGroupMarkdown?: string;
+  readonly lineBreaks: boolean | undefined;
 }) {
+  const hostLineBreaks = useContext(LineBreaksContext);
   const autolinks = useContext(AutolinksContext);
   const resolveUrl = useContext(LinkResolverContext);
   const mediaContext = useContext(PullRequestMediaContext);
@@ -181,6 +189,7 @@ function PullRequestMarkdownContent(props: {
     <FilePreviewGallery value={gallery}>
       <SelectableMarkdownText
         markdown={markdown}
+        preserveSoftBreaks={props.lineBreaks ?? hostLineBreaks}
         textStyle={styles.nativeTextStyle}
         onLinkPress={openLink}
         renderImage={renderImage}

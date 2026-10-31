@@ -10,8 +10,8 @@ import {
 import * as Effect from "effect/Effect";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
 
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { formatThreadMarkdownLink } from "../../threadMarkdownLink.ts";
 import {
   dispatchFailure,
   newCommandId,
@@ -103,9 +103,15 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       const { task, threadId } = yield* scheduler
         .runNow({ id: input.taskId })
         .pipe(Effect.mapError(unavailable));
+      const scope = yield* McpInvocationContext.McpInvocationContext;
       return {
         taskId: task.id,
         threadId,
+        ...(threadId === null
+          ? {}
+          : {
+              link: McpInvocationContext.threadLinkFor(scope, threadId),
+            }),
         lastRunStatus: task.lastRunStatus,
         runCount: task.runCount,
         nextRunAt: task.nextRunAt,
@@ -114,7 +120,8 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   ),
   t3_thread_search: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
-      const { caller, scope } = yield* readCaller();
+      const { caller } = yield* readCaller();
+      const scope = yield* McpInvocationContext.McpInvocationContext;
       const threadSearch = yield* ThreadSearch.ThreadSearch;
       const { matches } = yield* threadSearch
         .searchThreads({ ...input, projectId: input.projectId ?? caller?.projectId })
@@ -122,11 +129,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       return {
         matches: matches.map((match) => ({
           ...match,
-          link: formatThreadMarkdownLink({
-            environmentId: scope.environmentId,
-            threadId: match.threadId,
-            title: match.title,
-          }),
+          link: McpInvocationContext.threadLinkFor(scope, match.threadId),
         })),
       };
     }),
