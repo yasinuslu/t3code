@@ -26,6 +26,8 @@ describe("surface shortcuts", () => {
   const actions = [
     { shortcut: "B", available: true, label: "Browser" },
     { shortcut: "D", available: false, label: "Diff" },
+    { shortcut: "T", available: true, label: "Terminal" },
+    { shortcut: "M", available: true, label: "Device" },
   ] as const;
 
   it("matches available surface shortcuts only with Alt", () => {

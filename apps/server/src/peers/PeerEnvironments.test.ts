@@ -130,7 +130,7 @@ describe("peer snapshot views", () => {
       ["lost", "ready", "p-gone"],
       ["old", "ready", "app"],
     ]);
-    expect(entries[0]?.link).toBe("[Thread busy](t3code://threads/peer-env/busy)");
+    expect(entries[0]?.link).toBe("[Thread busy](t3-thread://v2/peer-env/busy)");
     expect(PeerEnvironments.peerThreadEntries(snapshot, ENVIRONMENT, 1)).toHaveLength(1);
   });
 
