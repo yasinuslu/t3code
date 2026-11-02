@@ -68,15 +68,6 @@ describe("shortcut resolution inside inline components", () => {
 });
 
 describe("default keybindings", () => {
-  it("has no modifier-less binding", () => {
-    const bare = DEFAULT_RESOLVED_KEYBINDINGS.filter(({ shortcut }) => {
-      const hasModifier =
-        shortcut.modKey || shortcut.ctrlKey || shortcut.metaKey || shortcut.altKey;
-      return !hasModifier && shortcut.key !== "escape";
-    });
-    expect(bare.map(({ command }) => command)).toEqual([]);
-  });
-
   it("scopes every Escape binding to a dialog-like context", () => {
     const escapes = DEFAULT_RESOLVED_KEYBINDINGS.filter(
       ({ shortcut }) => shortcut.key === "escape",

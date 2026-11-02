@@ -36,6 +36,7 @@ export function PortalHost(props: PortalHostProps) {
   const imageCount = request.kind === "image" ? request.images.length : 0;
 
   // Focus moves in, is trapped while open, and returns to the opener on close.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves focus into the overlay, traps it, and restores it on close
   useLayoutEffect(() => {
     const opener = deepActiveElement();
     const node = root.current;
@@ -52,6 +53,7 @@ export function PortalHost(props: PortalHostProps) {
   }, []);
 
   // Keys stay inside the overlay: only the handled ones act, and nothing reaches app shortcuts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for keydown on the overlay node
   useEffect(() => {
     const node = root.current;
     if (!node) return;
@@ -71,6 +73,7 @@ export function PortalHost(props: PortalHostProps) {
     return () => node.removeEventListener("keydown", onKeyDown);
   }, [imageCount, onClose]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for document fullscreenchange
   useEffect(() => {
     const onChange = () => setTrueFullscreen(document.fullscreenElement === root.current);
     document.addEventListener("fullscreenchange", onChange);
@@ -268,10 +271,12 @@ function ElementMount(props: {
   const { tag, props: elementProps } = props.request;
   const host = useRef<HTMLDivElement>(null);
   const handlers = useRef(props);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest handlers in a ref for the element listeners
   useEffect(() => {
     handlers.current = props;
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mounts the custom element into the host node and wires its events
   useEffect(() => {
     const container = host.current;
     if (!container) return;

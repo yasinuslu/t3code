@@ -4,7 +4,7 @@ import * as NodeOS from "node:os";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -17,7 +17,7 @@ import {
 
 // Commands run through the POSIX shell; Windows runs them through cmd.exe,
 // where these fixtures do not apply.
-const isWindows = HostProcessPlatform.defaultValue() === "win32";
+const isWindows = HostProcess.Platform.defaultValue() === "win32";
 
 it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
   describe("runClaudeConfigDirCommand", () => {

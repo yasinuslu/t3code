@@ -6,7 +6,6 @@ import {
   type OrchestrationV2ThreadShell,
   ThreadId,
 } from "@t3tools/contracts";
-import { formatThreadMarkdownLink } from "@t3tools/shared/threadLinks";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
@@ -34,6 +33,8 @@ import {
 } from "../../../brainstorm/taskMarkdown.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
+import { formatThreadMarkdownLink } from "../../threadMarkdownLink.ts";
 import { BrainstormToolkit, type TaskEntry, type ThreadEntry, type ThreadStatus } from "./tools.ts";
 
 const fail = (message: string) => new BrainstormError({ message });
@@ -128,9 +129,11 @@ const make = Effect.gen(function* () {
    */
   const scope = Effect.gen(function* () {
     const invocation = yield* McpInvocationContext.McpInvocationContext;
+    const threadId = invocation.thread?.threadId;
+    if (threadId === undefined) return yield* fail("Brainstorm tools act as the calling thread.");
     const context = yield* brainstorm.context;
-    const brainstormSpace = yield* brainstorm.spaceOfThread(invocation.threadId);
-    const manager = yield* brainstorm.managerOf(invocation.threadId);
+    const brainstormSpace = yield* brainstorm.spaceOfThread(threadId);
+    const manager = yield* brainstorm.managerOf(threadId);
     if (brainstormSpace !== null) {
       return {
         space: brainstormSpace,
@@ -138,15 +141,13 @@ const make = Effect.gen(function* () {
         context,
         isManager: manager !== null,
         managerProfile: manager?.profile ?? null,
-        threadId: invocation.threadId,
+        threadId,
         environmentId: invocation.environmentId,
       };
     }
     const all = context.spaces.find((candidate) => candidate.id === ALL_SPACE_ID);
     if (!all) return yield* fail("The All space is missing.");
-    const own = yield* orchestrator
-      .getThreadShell(invocation.threadId)
-      .pipe(Effect.orElseSucceed(() => null));
+    const own = yield* orchestrator.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
     const homeId = own === null ? null : homeSpaceIdOf(context, own.projectId);
     const taskHome = context.spaces.find((candidate) => candidate.id === homeId) ?? null;
     return {
@@ -155,20 +156,22 @@ const make = Effect.gen(function* () {
       context,
       isManager: false,
       managerProfile: null,
-      threadId: invocation.threadId,
+      threadId,
       environmentId: invocation.environmentId,
     };
   });
 
   /** Active and (optionally) archived thread shells, without subagent children. */
-  const allThreads = (includeArchived: boolean) =>
-    Effect.gen(function* () {
+  const allThreads = Effect.fn("BrainstormHandlers.allThreads")(
+    function* (includeArchived: boolean) {
       const active = yield* orchestrator.getShellSnapshot({ location: "active" });
       const archived = includeArchived
         ? (yield* orchestrator.getShellSnapshot({ location: "archive" })).archivedThreads
         : [];
       return [...active.threads, ...archived].filter(isTopLevel);
-    }).pipe(Effect.mapError(() => fail("Could not read the threads.")));
+    },
+    Effect.mapError(() => fail("Could not read the threads.")),
+  );
 
   const inScope = (context: BrainstormContext, space: BrainstormSpace, projectId: string) =>
     isProjectInSpace(context, projectId, space.id);
@@ -215,33 +218,31 @@ const make = Effect.gen(function* () {
     return Effect.succeed(space);
   };
 
-  const requireThread = (
+  const requireThread = Effect.fn("BrainstormHandlers.requireThread")(function* (
     context: BrainstormContext,
     space: BrainstormSpace,
     threadId: string,
     includeArchived = true,
-  ) =>
-    Effect.gen(function* () {
-      const threads = yield* allThreads(includeArchived);
-      const thread = threads.find((candidate) => candidate.id === threadId);
-      if (!thread || !inScope(context, space, thread.projectId)) {
-        return yield* fail(`Thread ${threadId} is not in ${space.name}.`);
-      }
-      if (context.brainstormThreadIds.has(thread.id)) {
-        return yield* fail("That is a brainstorm chat, not a work thread.");
-      }
-      return thread;
-    });
+  ) {
+    const threads = yield* allThreads(includeArchived);
+    const thread = threads.find((candidate) => candidate.id === threadId);
+    if (!thread || !inScope(context, space, thread.projectId)) {
+      return yield* fail(`Thread ${threadId} is not in ${space.name}.`);
+    }
+    if (context.brainstormThreadIds.has(thread.id)) {
+      return yield* fail("That is a brainstorm chat, not a work thread.");
+    }
+    return thread;
+  });
 
-  const refreshed = (threadId: string) =>
-    Effect.gen(function* () {
-      const { context, environmentId } = yield* scope;
-      const shell = yield* orchestrator
-        .getThreadShell(ThreadId.make(threadId))
-        .pipe(Effect.mapError(() => fail("Could not read the thread.")));
-      if (shell === null) return yield* fail(`Thread ${threadId} is gone.`);
-      return describeThread(context, shell, environmentId);
-    });
+  const refreshed = Effect.fn("BrainstormHandlers.refreshed")(function* (threadId: string) {
+    const { context, environmentId } = yield* scope;
+    const shell = yield* orchestrator
+      .getThreadShell(ThreadId.make(threadId))
+      .pipe(Effect.mapError(() => fail("Could not read the thread.")));
+    if (shell === null) return yield* fail(`Thread ${threadId} is gone.`);
+    return describeThread(context, shell, environmentId);
+  });
 
   const findProject = (
     context: BrainstormContext,
@@ -271,8 +272,8 @@ const make = Effect.gen(function* () {
     return { number: goal.number, title: goal.title, done: goal.done, notes: goal.notes };
   };
 
-  return BrainstormToolkit.of({
-    manager_overview: () =>
+  return {
+    manager_overview: McpToolAccess.readsAsCaller(() =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const { space, context } = scoped;
@@ -315,8 +316,9 @@ const make = Effect.gen(function* () {
             })),
         };
       }),
+    ),
 
-    list_tasks: (input) =>
+    list_tasks: McpToolAccess.readsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const { space, taskHome, context } = scoped;
@@ -348,8 +350,9 @@ const make = Effect.gen(function* () {
         }
         return { lists };
       }),
+    ),
 
-    add_goal: (input) =>
+    add_goal: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const target = yield* taskSpace(scoped, input.space, true);
@@ -359,8 +362,9 @@ const make = Effect.gen(function* () {
         });
         return { space: target.name, number, path: taskPathOf(scoped.context, target) ?? "" };
       }),
+    ),
 
-    update_goal: (input) =>
+    update_goal: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const target = yield* taskSpace(scoped, input.space, true);
@@ -373,8 +377,9 @@ const make = Effect.gen(function* () {
           return { text: updated.text, result: goalOf(updated.text, updated.goal.number) };
         });
       }),
+    ),
 
-    delete_goal: (input) =>
+    delete_goal: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const target = yield* taskSpace(scoped, input.space, true);
@@ -384,8 +389,9 @@ const make = Effect.gen(function* () {
         });
         return { title: removed.title };
       }),
+    ),
 
-    add_task: (input) =>
+    add_task: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const target = yield* taskSpace(scoped, input.space, true);
@@ -401,8 +407,9 @@ const make = Effect.gen(function* () {
         });
         return { space: target.name, number, path: taskPathOf(scoped.context, target) ?? "" };
       }),
+    ),
 
-    update_task: (input) =>
+    update_task: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const target = yield* taskSpace(scoped, input.space, true);
@@ -421,8 +428,9 @@ const make = Effect.gen(function* () {
         });
         return describeTask(task, yield* allThreads(true));
       }),
+    ),
 
-    complete_task: (input) =>
+    complete_task: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const target = yield* taskSpace(scoped, input.space, true);
@@ -432,8 +440,9 @@ const make = Effect.gen(function* () {
         });
         return describeTask(task, yield* allThreads(true));
       }),
+    ),
 
-    delete_task: (input) =>
+    delete_task: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const scoped = yield* scope;
         const target = yield* taskSpace(scoped, input.space, true);
@@ -443,8 +452,9 @@ const make = Effect.gen(function* () {
         });
         return { title: removed.title };
       }),
+    ),
 
-    list_threads: (input) =>
+    list_threads: McpToolAccess.readsAsCaller((input) =>
       Effect.gen(function* () {
         const { space, context, environmentId } = yield* scope;
         let filterSpace = space;
@@ -471,8 +481,9 @@ const make = Effect.gen(function* () {
         const limit = Math.max(1, Math.min(input.limit ?? 40, 200));
         return { threads: threads.slice(0, limit), total: threads.length };
       }),
+    ),
 
-    set_thread_space: (input) =>
+    set_thread_space: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const { space, context } = yield* scope;
         const thread = yield* requireThread(context, space, input.threadId, false);
@@ -485,7 +496,8 @@ const make = Effect.gen(function* () {
         );
         return yield* refreshed(thread.id);
       }),
-  });
+    ),
+  } satisfies McpToolAccess.Handlers<typeof BrainstormToolkit.tools>;
 });
 
-export const BrainstormToolkitHandlersLive = BrainstormToolkit.toLayer(make);
+export const layer = McpToolAccess.toLayer(BrainstormToolkit, make);

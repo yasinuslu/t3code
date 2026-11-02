@@ -13,7 +13,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as PeerEnvironments from "./PeerEnvironments.ts";
@@ -130,7 +130,7 @@ describe("peer snapshot views", () => {
       ["lost", "ready", "p-gone"],
       ["old", "ready", "app"],
     ]);
-    expect(entries[0]?.link).toBe("[Thread busy](t3code://threads/peer-env/busy)");
+    expect(entries[0]?.link).toBe("[Thread busy](t3-thread://v2/peer-env/busy)");
     expect(PeerEnvironments.peerThreadEntries(snapshot, ENVIRONMENT, 1)).toHaveLength(1);
   });
 

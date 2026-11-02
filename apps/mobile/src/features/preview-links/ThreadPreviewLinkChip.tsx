@@ -3,9 +3,9 @@ import type { EnvironmentId, ThreadId, ThreadPreviewLink } from "@t3tools/contra
 import { useCallback, useMemo } from "react";
 import { Pressable, View } from "react-native";
 
-import { SymbolView } from "../../components/AppSymbol";
-import { AppText as Text } from "../../components/AppText";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
+import { Menu } from "../../components/ui/Menu";
 import { cn } from "../../lib/cn";
 import { usePreviewLinkStates } from "../../state/preview-links";
 import { presentThreadPreviewChip, previewLinkMenuActions } from "./threadPreviewLinkPresentation";
@@ -54,7 +54,7 @@ export function ThreadPreviewLinkChip(props: {
   const row = props.variant === "row";
   const removed = chip.status.removed;
   return (
-    <ControlPillMenu
+    <Menu
       actions={actions}
       onPressAction={handleMenuAction}
       shouldOpenOnLongPress={single}
@@ -106,6 +106,6 @@ export function ThreadPreviewLinkChip(props: {
           <View className={cn("h-1.5 w-1.5 shrink-0 rounded-full", chip.status.dotClassName)} />
         ) : null}
       </Pressable>
-    </ControlPillMenu>
+    </Menu>
   );
 }

@@ -263,6 +263,22 @@ describe("BrainstormService managers", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("a deleted manager is not reported, and opening starts a new one", () =>
+    Effect.gen(function* () {
+      const { projects } = twoProfiles();
+      const harness = yield* makeHarness({ projects, threads: [] });
+      const gone = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      yield* Ref.update(harness.threads, (current) =>
+        current.filter((candidate) => candidate.id !== gone.threadId),
+      );
+
+      const state = Option.getOrThrow(yield* Stream.runHead(harness.brainstorm.stateChanges));
+      expect(state.managerThreadIdsByProfile).toEqual({});
+      const fresh = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      expect(fresh.threadId).not.toBe(gone.threadId);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("the manager from before per-profile managers stays its brain profile's manager", () =>
     Effect.gen(function* () {
       const brain = NodePath.join(home, "code", "home", "home-brain");
@@ -442,70 +458,6 @@ describe("BrainstormService managers", () => {
       // That manager reaches every project.
       const reach = yield* (yield* harness.managerScope).reachableProjectIds(first.threadId);
       expect([...(reach ?? [])].toSorted()).toEqual(["p-new", "p-old"]);
-    }).pipe(Effect.scoped),
-  );
-});
-
-describe("BrainstormService threadReport", () => {
-  it.effect("returns the newest answer, looking past a run that has none yet", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({
-        projects: [],
-        threads: [],
-        answersByRun: [
-          [{ text: "old report" }],
-          [{ text: "progress" }, { text: "## Done\n- final report" }],
-          [{ text: "" }, { text: "still typing", streaming: true }],
-        ],
-      });
-      const report = yield* harness.brainstorm.threadReport(ThreadId.make("t"));
-      expect(report).toEqual({
-        threadId: "t",
-        runId: "run-2",
-        text: "## Done\n- final report",
-      });
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("prefers the status the agent set during or after the reporting run", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({
-        projects: [],
-        threads: [],
-        answersByRun: [[{ text: "first report" }], [{ text: "second report" }]],
-        statusReport: { text: "## Status\n- set in run 2", updatedAt: "2026-10-06T02:30:00.000Z" },
-      });
-      expect(yield* harness.brainstorm.threadReport(ThreadId.make("t"))).toEqual({
-        threadId: "t",
-        runId: "run-2",
-        text: "## Status\n- set in run 2",
-      });
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("lets a newer run's answer replace an older status", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({
-        projects: [],
-        threads: [],
-        answersByRun: [[{ text: "first report" }], [{ text: "second report" }]],
-        statusReport: { text: "set in run 1", updatedAt: "2026-10-06T01:30:00.000Z" },
-      });
-      const report = yield* harness.brainstorm.threadReport(ThreadId.make("t"));
-      expect(report.text).toBe("second report");
-      // The older status still travels, so its proof images are not lost.
-      expect(report.statusText).toBe("set in run 1");
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("has no text before the first answer", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ projects: [], threads: [], answersByRun: [] });
-      expect(yield* harness.brainstorm.threadReport(ThreadId.make("t"))).toEqual({
-        threadId: "t",
-        runId: null,
-        text: null,
-      });
     }).pipe(Effect.scoped),
   );
 });

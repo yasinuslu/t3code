@@ -1,28 +1,18 @@
 import type * as Electron from "electron";
-import { isMacTextEditingChord } from "@t3tools/shared/keybindings";
 
 import { acceleratorKeyName, type ManagerChord } from "./ManagerShortcut.ts";
 
 /**
- * The keys the shell itself acts on, below the page: the Window menu's profile windows, the
- * menu's Settings and zoom, and Grow's keys when they must reach Grow from a preview page that
- * swallows every key. The web app owns the keybindings (Settings › Keyboard); it reports the
+ * The keys the shell itself acts on, below the page: the Window menu's profile windows and the
+ * menu's Settings and zoom. The web app owns the keybindings (Settings › Keyboard); it reports the
  * chords it resolved and the shell works from that list. Until it does, the defaults stand.
  */
 export interface ShellChord extends ManagerChord {
-  /** The keybinding command, e.g. `window.profile.2` or `grow.step.next`. */
+  /** The keybinding command, e.g. `window.profile.2`. */
   readonly command: string;
 }
 
 const PROFILE_WINDOW_PREFIX = "window.profile.";
-
-/**
- * The commands handed to the renderer from a preview page that swallows every key: Grow's keys
- * and the profile step, which also works from Grow. They depend on the window's screen (Grow
- * open or not), so each window reports its own.
- */
-const isForwardedCommand = (command: string): boolean =>
-  command.startsWith("grow.") || command === "profile.next" || command === "profile.previous";
 
 /** The 1-based profile window a command opens, or null for any other command. */
 export function profileWindowIndexOfCommand(command: string): number | null {
@@ -60,42 +50,19 @@ export function defaultShellChords(platform: NodeJS.Platform): ReadonlyArray<She
   ];
 }
 
-/** The chords every window shares (menu, profile windows), as the renderer last reported them. */
+/** The chords as the renderer last reported them. */
 let reported: ReadonlyArray<ShellChord> | null = null;
-/** The forwarded chords of each window (by webContents id), which follow its screen. */
-const forwardedByWindow = new Map<number, ReadonlyArray<ShellChord>>();
 const listeners = new Set<() => void>();
 
-/**
- * Takes the chords a renderer resolved. The shared ones replace the last report (every window
- * resolves the same keybindings); the forwarded ones are kept per window, so one window's Grow
- * does not decide another window's keys.
- */
-export function setShellChords(next: ReadonlyArray<ShellChord>, windowId?: number): void {
-  const shared = next.filter((candidate) => !isForwardedCommand(candidate.command));
-  const menuChanged = JSON.stringify(shared) !== JSON.stringify(reported ?? []);
-  reported = shared;
-  if (windowId !== undefined) {
-    forwardedByWindow.set(
-      windowId,
-      next.filter((candidate) => isForwardedCommand(candidate.command)),
-    );
-  }
-  if (menuChanged) for (const listener of listeners) listener();
+/** Takes the chords a renderer resolved; every window resolves the same keybindings. */
+export function setShellChords(next: ReadonlyArray<ShellChord>): void {
+  const changed = JSON.stringify(next) !== JSON.stringify(reported ?? []);
+  reported = next;
+  if (changed) for (const listener of listeners) listener();
 }
 
-/** Drops what a closed window reported. */
-export function forgetShellChordsOf(windowId: number): void {
-  forwardedByWindow.delete(windowId);
-}
-
-export function shellChords(
-  platform: NodeJS.Platform,
-  windowId?: number,
-): ReadonlyArray<ShellChord> {
-  const shared = reported ?? defaultShellChords(platform);
-  const forwarded = windowId === undefined ? undefined : forwardedByWindow.get(windowId);
-  return forwarded ? [...shared, ...forwarded] : shared;
+export function shellChords(platform: NodeJS.Platform): ReadonlyArray<ShellChord> {
+  return reported ?? defaultShellChords(platform);
 }
 
 /** Runs `listener` after the chords change, so the menu can show the new ones. */
@@ -125,11 +92,10 @@ export function shellCommandsOfInput(
     "type" | "key" | "code" | "meta" | "control" | "alt" | "shift" | "isAutoRepeat"
   >,
   platform: NodeJS.Platform,
-  windowId?: number,
 ): ReadonlyArray<string> {
   if (input.type !== "keyDown" || input.isAutoRepeat) return [];
   const key = inputKey(input);
-  return shellChords(platform, windowId)
+  return shellChords(platform)
     .filter(
       (candidate) =>
         candidate.key === key &&
@@ -152,40 +118,6 @@ export function profileWindowShortcutIndex(
   }
   return null;
 }
-
-/**
- * The command a key press below the page is, when it must be taken from the page and handed to
- * the renderer of `windowId` (a Grow key, or the profile step). A Mac Control+letter a text
- * field uses for editing (Ctrl+A, ...) stays with the page: a form in a preview would lose it.
- */
-export function growCommandOfInput(
-  input: Parameters<typeof shellCommandsOfInput>[0],
-  platform: NodeJS.Platform,
-  windowId: number,
-): string | null {
-  if (
-    platform === "darwin" &&
-    isMacTextEditingChord({
-      key: inputKey(input),
-      control: input.control,
-      alt: input.alt,
-      meta: input.meta,
-      shift: input.shift,
-    })
-  ) {
-    return null;
-  }
-  return shellCommandsOfInput(input, platform, windowId).find(isForwardedCommand) ?? null;
-}
-
-/** The Grow commands that take focus out of the page (to a place, search, the manager). */
-export const growCommandLeavesPage = (command: string): boolean =>
-  command === "grow.zone.threads" ||
-  command === "grow.zone.presentation" ||
-  command === "grow.zone.chat" ||
-  command === "grow.back" ||
-  command === "grow.search" ||
-  command === "grow.manager";
 
 /**
  * A menu accelerator for the chord, with `CmdOrCtrl` for the platform's primary key. Null for a

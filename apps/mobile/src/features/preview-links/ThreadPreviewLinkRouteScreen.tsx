@@ -7,9 +7,9 @@ import { ActivityIndicator, BackHandler, Platform, Pressable, View } from "react
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
-import { SymbolView } from "../../components/AppSymbol";
-import { AppText as Text } from "../../components/AppText";
-import { LoadingStrip } from "../../components/LoadingStrip";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
+import { LoadingStrip } from "../../components/ui/LoadingStrip";
 import { cn } from "../../lib/cn";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useThreadShell } from "../../state/entities";
@@ -45,6 +45,7 @@ export function ThreadPreviewLinkRouteScreen({ route }: ThreadPreviewLinkRouteSc
   const [navigationState, setNavigationState] = useState({ canGoBack: false, canGoForward: false });
 
   // Opening wakes a stopped preview; refresh so the dot follows it up.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes the preview link state in the shared store when opened
   useEffect(() => {
     refreshPreviewLinkStates(environmentId, [url]);
   }, [environmentId, url]);
@@ -52,6 +53,7 @@ export function ThreadPreviewLinkRouteScreen({ route }: ThreadPreviewLinkRouteSc
   const close = useCallback(() => navigation.goBack(), [navigation]);
 
   // Android back walks the page history before leaving the preview.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes the Android hardware back handler
   useEffect(() => {
     if (Platform.OS !== "android" || !navigationState.canGoBack) return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {

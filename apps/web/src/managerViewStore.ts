@@ -6,10 +6,9 @@
  */
 import { create } from "zustand";
 
-/** Where hiding the manager goes back to: the page and whether Grow was over it. */
+/** Where hiding the manager goes back to. */
 export interface ManagerReturn {
   readonly href: string;
-  readonly grow: boolean;
 }
 
 interface ManagerViewStore {

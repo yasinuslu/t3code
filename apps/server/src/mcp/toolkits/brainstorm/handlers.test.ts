@@ -18,7 +18,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import type { Tool } from "effect/unstable/ai";
+import type { Tool } from "effect/ai";
 
 import {
   type BrainstormContext,
@@ -29,7 +29,10 @@ import { MANAGER_INSTRUCTIONS, profileScopeInstruction } from "../../../brainsto
 import { parseTaskMarkdown } from "../../../brainstorm/taskMarkdown.ts";
 import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import { BrainstormToolkitHandlersLive, threadStatusOf } from "./handlers.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
+import { liveThreadsLayer } from "../../McpToolAccess.testkit.ts";
+import * as BrainstormHandlers from "./handlers.ts";
+import { threadStatusOf } from "./handlers.ts";
 import { BrainstormToolkit } from "./tools.ts";
 
 const SPACES: ReadonlyArray<BrainstormSpace> = [
@@ -240,9 +243,12 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
       streamDomainEvents: Stream.empty,
     }),
     Layer.succeed(Crypto.Crypto, testCrypto),
+    liveThreadsLayer,
   );
   const toolkit = yield* BrainstormToolkit.pipe(
-    Effect.provide(BrainstormToolkitHandlersLive.pipe(Layer.provide(dependencies))),
+    Effect.provide(
+      McpToolAccess.HandlersLayer.layer(BrainstormHandlers.layer).pipe(Layer.provide(dependencies)),
+    ),
   );
   const call = <Name extends keyof typeof BrainstormToolkit.tools>(
     name: Name,
@@ -257,9 +263,13 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
       ),
       Effect.provideService(McpInvocationContext.McpInvocationContext, {
         environmentId: EnvironmentId.make("environment-1"),
-        threadId,
-        providerSessionId: "provider-session-1",
-        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        requestNamespace: "provider:brainstorm",
+        thread: {
+          threadId,
+          providerSessionId: "provider-session-1",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+        },
+        client: undefined,
         capabilities: new Set(["pull-requests"] as const),
         issuedAt: 1,
       }),

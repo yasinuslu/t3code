@@ -1,7 +1,6 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 
 import { shortcutLabelForCommand } from "../keybindings";
-import { GROW_KEY_HELP } from "./grow/grow.keys";
 
 export interface ShortcutRow {
   readonly label: string;
@@ -10,8 +9,6 @@ export interface ShortcutRow {
 
 export interface ShortcutSection {
   readonly id: string;
-  /** Grow's own keys, or the ones that work in the whole app. */
-  readonly scope: "grow" | "app";
   readonly title: string;
   readonly rows: ReadonlyArray<ShortcutRow>;
 }
@@ -31,7 +28,6 @@ const GLOBAL_ROWS: ReadonlyArray<{
   {
     title: "Go",
     rows: [
-      { label: "Grow / Full view", commands: ["mode.cycle"] },
       { label: "Manager", commands: ["manager.toggle"] },
       { label: "Focus the sidebar", commands: ["pane.sidebar"] },
       { label: "Previous / next pane", commands: ["pane.left", "pane.right"] },
@@ -64,50 +60,22 @@ const GLOBAL_ROWS: ReadonlyArray<{
   },
 ];
 
-/**
- * The sheet's sections, in the order they show: Grow's keys first while Grow is open, the
- * app-wide ones first everywhere else. Grow's come from the table beside its key mapper and
- * the rest from the live keybindings, so neither is a second copy of a key.
- */
+/** The sheet's sections, with keys from the live keybindings so none is a second copy. */
 export function buildShortcutSections(options: {
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly platform: string;
-  readonly inGrow: boolean;
-  /** Grow ships with the fork features; without them its keys are not listed. */
-  readonly growAvailable: boolean;
 }): ReadonlyArray<ShortcutSection> {
-  const grow: ShortcutSection[] = options.growAvailable
-    ? GROW_KEY_HELP.map(({ group, entries }) => ({
-        id: `grow-${group}`,
-        scope: "grow" as const,
-        title: group,
-        rows: entries.flatMap(({ label, commands }) => {
-          const keys = commands.flatMap((command) => {
-            // Grow's keys only exist while Grow shows; the sheet lists them as they act there.
-            const shortcut = shortcutLabelForCommand(options.keybindings, command, {
-              platform: options.platform,
-              context: { growOpen: true },
-            });
-            return shortcut === null ? [] : [shortcut];
-          });
-          return keys.length === 0 ? [] : [{ label, keys }];
-        }),
-      })).filter((section) => section.rows.length > 0)
-    : [];
-  const global: ShortcutSection[] = GLOBAL_ROWS.map(({ title, rows }) => ({
+  return GLOBAL_ROWS.map(({ title, rows }) => ({
     id: `app-${title}`,
-    scope: "app" as const,
     title,
     rows: rows.flatMap(({ label, commands }) => {
       const keys = commands.flatMap((command) => {
         const shortcut = shortcutLabelForCommand(options.keybindings, command, {
           platform: options.platform,
-          context: { growOpen: options.inGrow },
         });
         return shortcut === null ? [] : [shortcut];
       });
       return keys.length === 0 ? [] : [{ label, keys }];
     }),
   })).filter((section) => section.rows.length > 0);
-  return options.inGrow ? [...grow, ...global] : [...global, ...grow];
 }

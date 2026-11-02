@@ -5,7 +5,7 @@ import {
   type PreviewLinkStatusResult,
   type ThreadPreviewLinkState,
 } from "@t3tools/contracts";
-import { AsyncResult, Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { createEnvironmentRpcCommand } from "./runtime.ts";

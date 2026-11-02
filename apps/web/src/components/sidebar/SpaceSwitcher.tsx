@@ -125,6 +125,7 @@ function CodeProfileProbe({
       : null,
   );
   const data = query.data;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records server-detected code profiles into the local store
   useEffect(() => {
     if (!data) return;
     const detected: Record<string, string | null> = {};

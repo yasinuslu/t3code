@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { storePresentationPages, withGrowKeys } from "./pages.ts";
+import { storePresentationPages } from "./pages.ts";
 
 const recorder = () => {
   const stored: string[] = [];
@@ -108,16 +108,4 @@ describe("storePresentationPages", () => {
       }
     }),
   );
-});
-
-describe("withGrowKeys", () => {
-  it("puts the key script after the doctype, so the page keeps standards mode", () => {
-    const page = withGrowKeys("<!DOCTYPE html><html><body>x</body></html>");
-    expect(page.startsWith("<!DOCTYPE html><script>")).toBe(true);
-    expect(page.endsWith("<html><body>x</body></html>")).toBe(true);
-  });
-
-  it("puts it first in a page without a doctype", () => {
-    expect(withGrowKeys("<p>x</p>")).toMatch(/^<script>.*t3-grow-key.*<\/script><p>x<\/p>$/);
-  });
 });

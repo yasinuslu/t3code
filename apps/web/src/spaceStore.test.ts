@@ -212,6 +212,17 @@ describe("parsePersistedSpaceState", () => {
     expect(parsed.customSpaceIdsByProjectKey).toEqual({ "env:a": ["s1"] });
     expect(parsed.lastRouteBySpaceId).toEqual({ s1: { kind: "draft", draftId: "d1" } });
   });
+
+  it("keeps several project scopes per space and reads an older single key as one", () => {
+    const parsed = parsePersistedSpaceState({
+      projectScopeKeyBySpaceId: { a: "env:p1", b: null, c: ["env:p1", "env:p2"], d: 3 },
+    });
+    expect(parsed.projectScopeKeyBySpaceId).toEqual({
+      a: ["env:p1"],
+      b: [],
+      c: ["env:p1", "env:p2"],
+    });
+  });
 });
 
 describe("migrateSpaceStateFromV1", () => {

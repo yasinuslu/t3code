@@ -114,19 +114,20 @@ export const make = Effect.gen(function* () {
           Effect.orElseSucceed((): Readonly<Record<string, string>> => ({})),
         );
 
-  const profilesOf: ProfileVisibility["Service"]["profilesOf"] = (projects) =>
-    Effect.gen(function* () {
-      const folders = yield* overrides;
-      const profiles = yield* Effect.promise(() =>
-        resolveProjectProfiles(
-          projects.map((project) => project.workspaceRoot),
-          folders,
-        ),
-      );
-      return new Map(
-        projects.map((project, index) => [project.id as string, profiles[index] ?? null]),
-      );
-    });
+  const profilesOf: ProfileVisibility["Service"]["profilesOf"] = Effect.fn(
+    "ProfileVisibility.profilesOf",
+  )(function* (projects) {
+    const folders = yield* overrides;
+    const profiles = yield* Effect.promise(() =>
+      resolveProjectProfiles(
+        projects.map((project) => project.workspaceRoot),
+        folders,
+      ),
+    );
+    return new Map(
+      projects.map((project, index) => [project.id as string, profiles[index] ?? null]),
+    );
+  });
 
   const visibleProjectIds: ProfileVisibility["Service"]["visibleProjectIds"] = (lock, projects) =>
     lock === null

@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { expect, it } from "@effect/vitest";
 
-import { describeElements, elementsInstructions } from "./ElementsLibrary.ts";
+import { describeElements, elementsInstructions, renderComponent } from "./ElementsLibrary.ts";
 
 const components = [
   {
@@ -82,9 +82,34 @@ it("tells the agent when to reach for a component and when to stay plain", () =>
     expect(text).toContain("opens with t3-headline");
     expect(text).toContain('Never ask the user to "reply with a number"');
     expect(text).toContain("Stay plain for a short conversational reply");
-    expect(text).toContain("never attributes");
-    expect(text).toContain("There are no child tags");
-    expect(text).toContain("Before the first time you use a component in a thread");
-    expect(text).toContain(`<t3-decision>\n{"question":"Which?"}\n</t3-decision>`);
+    expect(text).toContain("Call the `render_component` tool");
+    expect(text).toContain("Only if you have no render_component tool");
+    expect(text).toContain("before the first time you use a component in a thread");
+    expect(text).toContain(`render_component({"tag":"t3-decision","props":{"question":"Which?"}})`);
+  });
+});
+
+it("accepts a render_component call whose props fit, and says what to fix when they do not", () => {
+  withLibrary(() => {
+    expect(renderComponent("t3-decision", { question: "Which?" })).toEqual({
+      ok: true,
+      tag: "t3-decision",
+      interactive: true,
+    });
+    const wrong = renderComponent("t3-decision", { title: "Which?" });
+    expect(wrong.ok).toBe(false);
+    if (wrong.ok) return;
+    expect(wrong.message).toContain('Missing "question".');
+    expect(wrong.message).toContain('Unknown prop "title"');
+    expect(wrong.message).toContain('Example props: {"question":"Which?"}');
+    expect(renderComponent("t3-decisio", {})).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("Close names: t3-decision"),
+    });
+    // Too big to reach the client whole: rejected rather than drawn cut off.
+    expect(renderComponent("t3-decision", { question: "x".repeat(300 * 1024) })).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("over the 200 KB limit"),
+    });
   });
 });

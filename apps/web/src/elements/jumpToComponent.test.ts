@@ -52,3 +52,18 @@ describe("elementQuestion", () => {
     expect(elementQuestion({ options: [] })).toBe("");
   });
 });
+
+describe("findComponentSourceRowId with render_component rows", () => {
+  it("finds the component row a reply answers", () => {
+    const rows = [
+      assistant("a1", "Two ways to go."),
+      {
+        id: "c1",
+        kind: "component",
+        propsJson: JSON.stringify({ question: "Which layout?", options: [] }),
+      },
+      user("u1", '[Answer to: "Which layout?"] Stacked'),
+    ];
+    expect(findComponentSourceRowId(rows, "u1", "Which layout?")).toBe("c1");
+  });
+});

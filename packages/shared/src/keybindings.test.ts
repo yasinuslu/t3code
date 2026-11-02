@@ -51,8 +51,6 @@ const INTENDED_OVERLAPS: ReadonlyArray<readonly [string, string]> = [
 const EXCLUSIVE_CONTEXTS: ReadonlyArray<readonly [string, string]> = [
   // A draft thread has not started a turn yet.
   ["draftThreadRoute", "turnRunning"],
-  // The usage page's keys stand down while Grow covers it (usageShortcuts.ts).
-  ["growOpen", "usagePageOpen"],
 ];
 
 const possible = (context: Record<string, boolean>) =>

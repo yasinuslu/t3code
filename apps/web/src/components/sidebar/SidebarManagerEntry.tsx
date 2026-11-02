@@ -8,7 +8,6 @@ import {
   useManagerThreadKeys,
   useThreadShellsWithoutBrainstorms,
 } from "../../brainstormStore";
-import { useForkFeatures } from "../../hooks/useSettings";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { openManager } from "../../lib/goToManager";
 import { cn } from "../../lib/utils";
@@ -23,7 +22,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  * profile in view in the main column; switching spaces switches the manager.
  */
 export const SidebarManagerEntry = memo(function SidebarManagerEntry() {
-  return useForkFeatures() ? <ManagerEntry /> : null;
+  return <ManagerEntry />;
 });
 
 function ManagerEntry() {

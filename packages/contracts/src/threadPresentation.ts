@@ -87,7 +87,7 @@ export const PresentationPage = Schema.Union([
     ...PageMeta,
     file: Schema.String,
   }),
-  /** A page composed from the workspace's widget pool, which Grow's writer keeps current. */
+  /** A page of blocks from a workspace widget pool; kept so presentations that have one still load. */
   Schema.Struct({
     kind: Schema.Literal("widgets"),
     ...PageMeta,
@@ -123,7 +123,7 @@ export type PresentationVersion = typeof PresentationVersion.Type;
 /**
  * The thread's presentation: the idea in a glanceable form, a few pages of marked screenshots,
  * short docs, interactive pages and forms. It is a living artifact the agent edits along the way
- * (`presentation_edit`, `presentation_set`), versioned per prompt like commits; Grow shows the
+ * (`presentation_edit`, `presentation_set`), versioned per prompt like commits; the right panel shows the
  * current pages first and steps back through earlier versions. An empty set removes it.
  */
 export const ThreadPresentation = Schema.Struct({

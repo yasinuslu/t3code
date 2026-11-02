@@ -9,7 +9,6 @@ import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-
 import { useEffect, useRef, useState } from "react";
 
 import { useIsManagerThread } from "../../brainstormStore";
-import { closeHomeOverlay, holdHomeOverlayOpen, useHomeOverlayStore } from "../../homeOverlayStore";
 import { dispatchSnapShotComposerFocus } from "../../lib/desktopSnapShot";
 import { returnFromManager } from "../../lib/goToManager";
 import { useManagerViewStore } from "../../managerViewStore";
@@ -51,11 +50,13 @@ export function ManagerRoute() {
   const request = useManagerViewStore((state) => state.request);
   const router = useRouter();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes whether the manager is shown to the view store
   useEffect(() => {
     useManagerViewStore.setState({ shown: onManager });
   }, [onManager]);
 
   // Hiding goes back to where the manager was opened from.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- navigates the router back when the manager is hidden
   useEffect(() => {
     if (request !== "hide") return;
     const { returnTo } = useManagerViewStore.getState();
@@ -85,6 +86,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
     ) !== null;
   const [shellWaitedOut, setShellWaitedOut] = useState(false);
   const waitingForShell = key !== null && !shellKnown;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- times out the wait for the thread shell
   useEffect(() => {
     if (!waitingForShell) return;
     const timer = setTimeout(() => setShellWaitedOut(true), THREAD_SHELL_WAIT_MS);
@@ -96,6 +98,7 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
   // The manager in view before; a change (another space or machine) is followed.
   const previousKey = useRef(key);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- navigates the router to follow the manager thread
   useEffect(() => {
     const previous = previousKey.current;
     // A switch passes through loading; the last manager shown stays the one to compare with.
@@ -119,29 +122,20 @@ function ManagerFollower(props: { readonly currentKey: string | null }) {
       }
       if (manager._tag !== "Ready") return;
       if (!shellKnown && !shellWaitedOut) return;
-      const grow = useHomeOverlayStore.getState().open;
       useManagerViewStore.setState((state) => ({
         request: null,
         // Asking again while it shows keeps the way back to the page before it.
-        returnTo: state.shown && !grow ? state.returnTo : { href, grow },
+        returnTo: state.shown ? state.returnTo : { href },
       }));
       if (props.currentKey !== key) {
-        // Grow stays over the page until the manager is there, so the page under it
-        // (Threads, a draft) never shows on the way.
-        const release = holdHomeOverlayOpen();
         void navigate({
           to: "/$environmentId/$threadId",
           params: { environmentId: manager.environmentId, threadId: manager.threadId },
         })
           .then(() => threadViewRendered(manager.threadId))
           .catch(() => undefined)
-          .finally(() => {
-            closeHomeOverlay();
-            release();
-          })
           .then(focusComposer);
       } else {
-        closeHomeOverlay();
         void focusComposer();
       }
       return;

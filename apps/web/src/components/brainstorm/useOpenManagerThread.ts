@@ -77,6 +77,7 @@ export function useEnsureManagerThread(): ManagerThreadState {
   const connected = phase === "connected";
   const openManager = useOpenManagerCommand();
   const [failure, setFailure] = useState<{ profile: string | null; message: string } | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- asks the server to open the manager thread when none is known
   useEffect(() => {
     if (environmentId === null || managerThreadKey !== null || !connected || !profilesKnown) {
       return;

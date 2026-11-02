@@ -17,7 +17,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AccountBalancer from "./AccountBalancer.ts";
 import { CodeProfiles } from "./CodeProfiles.ts";
-import { makeProviderRegistryLayer } from "./testUtils/providerRegistryMock.ts";
+import * as ProviderRegistryMock from "./testUtils/providerRegistryMock.ts";
 
 const NOW = Date.parse("2026-10-13T12:00:00.000Z");
 const HOUR = 3_600_000;
@@ -86,7 +86,7 @@ function dependencies(
             }),
       },
     }),
-    makeProviderRegistryLayer([
+    ProviderRegistryMock.layer([
       provider(first, usedPercent.first),
       provider(second, usedPercent.second),
     ]),

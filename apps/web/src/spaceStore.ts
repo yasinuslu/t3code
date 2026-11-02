@@ -51,7 +51,7 @@ export interface SpaceState {
   /** Last known code profile by `${environmentId}:${projectId}`. */
   readonly detectedProfileByProjectKey: Readonly<Record<string, string | null>>;
   readonly lastRouteBySpaceId: Readonly<Record<string, SpaceRoute>>;
-  readonly projectScopeKeyBySpaceId: Readonly<Record<string, string | null>>;
+  readonly projectScopeKeyBySpaceId: Readonly<Record<string, readonly string[]>>;
 }
 
 /** Where a project group shows up besides All. */
@@ -388,9 +388,18 @@ export function parsePersistedSpaceState(value: unknown): SpaceState {
       (entry): entry is string | null => entry === null || typeof entry === "string",
     ),
     lastRouteBySpaceId: sanitizeRecord(persisted.lastRouteBySpaceId, isSpaceRoute),
-    projectScopeKeyBySpaceId: sanitizeRecord(
-      persisted.projectScopeKeyBySpaceId,
-      (entry): entry is string | null => entry === null || typeof entry === "string",
+    // Older builds stored one key or null per space.
+    projectScopeKeyBySpaceId: Object.fromEntries(
+      Object.entries(
+        sanitizeRecord(
+          persisted.projectScopeKeyBySpaceId,
+          (entry): entry is string | null | string[] =>
+            entry === null || typeof entry === "string" || isStringList(entry),
+        ),
+      ).map(([spaceId, entry]) => [
+        spaceId,
+        entry === null ? [] : typeof entry === "string" ? [entry] : entry,
+      ]),
     ),
   };
 }
@@ -435,7 +444,7 @@ interface SpaceStore extends SpaceState {
     detected: Readonly<Record<string, string | null>>,
   ) => void;
   rememberRoute: (spaceId: string, route: SpaceRoute) => void;
-  rememberProjectScope: (spaceId: string, projectKey: string | null) => void;
+  rememberProjectScope: (spaceId: string, projectKeys: readonly string[]) => void;
 }
 
 export const useSpaceStore = create<SpaceStore>()(
@@ -494,17 +503,19 @@ export const useSpaceStore = create<SpaceStore>()(
           }
           return { lastRouteBySpaceId: { ...state.lastRouteBySpaceId, [spaceId]: route } };
         }),
-      rememberProjectScope: (spaceId, projectKey) =>
-        set((state) =>
-          (state.projectScopeKeyBySpaceId[spaceId] ?? null) === projectKey
+      rememberProjectScope: (spaceId, projectKeys) =>
+        set((state) => {
+          const current = state.projectScopeKeyBySpaceId[spaceId] ?? [];
+          return current.length === projectKeys.length &&
+            current.every((key, index) => key === projectKeys[index])
             ? state
             : {
                 projectScopeKeyBySpaceId: {
                   ...state.projectScopeKeyBySpaceId,
-                  [spaceId]: projectKey,
+                  [spaceId]: projectKeys,
                 },
-              },
-        ),
+              };
+        }),
     }),
     {
       name: SPACE_STORAGE_KEY,

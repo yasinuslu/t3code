@@ -6,17 +6,21 @@ import {
   RuntimeMode,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as Tool from "effect/unstable/ai/Tool";
-import * as Toolkit from "effect/unstable/ai/Toolkit";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as PeerEnvironments from "../../../peers/PeerEnvironments.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { ThreadStatus } from "../brainstorm/tools.ts";
 
 const shared = {
   failure: OrchestratorMcpFailure,
   failureMode: "return" as const,
-  dependencies: [McpInvocationContext.McpInvocationContext, PeerEnvironments.PeerEnvironments],
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    PeerEnvironments.PeerEnvironments,
+  ],
 };
 
 const REACH =

@@ -14,7 +14,7 @@ import * as Crypto from "effect/Crypto";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as ServerConfig from "../../../config.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
@@ -106,7 +106,7 @@ const Written = Schema.Struct({
 });
 
 const LIVING = [
-  "The presentation is this thread's living artifact: the idea in a form the user grasps at a glance, shown first in Grow beside the conversation and the live preview. It is not a final report. Create it early, as soon as there is an idea to show, and edit it as the work changes, the way you edit code.",
+  "The presentation is this thread's living artifact: the idea in a form the user grasps at a glance, kept open in the thread's right panel beside the conversation. It is not a final report. Create it early, as soon as there is an idea to show, and edit it as the work changes, the way you edit code.",
   "It is versioned per prompt like commits: every write while you answer one message lands in one version, the next message starts the next, and the user can step back through earlier versions.",
 ].join(" ");
 

@@ -12,9 +12,11 @@ export function useMouseThumbButtons(
   onStep: (direction: 1 | -1) => void,
 ): void {
   const onStepRef = useRef(onStep);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors onStep into a ref read by the document listener
   useEffect(() => {
     onStepRef.current = onStep;
   }, [onStep]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens on document for mouse thumb buttons
   useEffect(() => {
     const handle = (event: MouseEvent) => {
       if (event.button !== 3 && event.button !== 4) return;
