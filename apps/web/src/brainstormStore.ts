@@ -12,7 +12,7 @@ import { resolveManagerProfile } from "./components/brainstorm/brainstorm.logic"
 import { resolveStorage } from "./lib/storage";
 import { profileLockNow } from "./profileLock";
 import { useSpaceStore } from "./spaceStore";
-import { useQuietThreadShells, useThreadShells } from "./state/entities";
+import { useQuietThreadShells, useVisibleThreadShells } from "./state/entities";
 
 /** What one manager-hosting environment reports. */
 export interface EnvironmentManagers {
@@ -225,7 +225,7 @@ export function managerProfileNow(): string | null {
 
 /** Every thread shell except brainstorm chats, for the normal thread lists. */
 export function useThreadShellsWithoutBrainstorms(): ReadonlyArray<EnvironmentThreadShell> {
-  const threads = useThreadShells();
+  const threads = useVisibleThreadShells();
   const hidden = useBrainstormStore((state) => state.hiddenThreadKeys);
   return useMemo(
     () =>

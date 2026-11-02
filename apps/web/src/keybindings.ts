@@ -19,17 +19,17 @@ import {
   type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
-import { isInlineComponentEvent } from "./lib/editableFocus";
+import { isEditableFocused, isInlineComponentEvent } from "./lib/editableFocus";
 import { projectScriptIdFromCommand } from "./projectScripts";
 
 export type { ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
 export { shortcutKeyFromEvent } from "@t3tools/shared/keybindings";
 
 /** The event's origin lets inline components keep their bare keys. */
-export type ShortcutEventLike = SharedShortcutEventLike & {
+export interface ShortcutEventLike extends SharedShortcutEventLike {
   target?: EventTarget | null;
   composedPath?: () => ReadonlyArray<unknown>;
-};
+}
 
 export interface ShortcutMatchContext {
   terminalFocus: boolean;
@@ -222,6 +222,9 @@ export function resolveShortcutCommand(
   }
   const platform = resolvePlatform(options);
   const context = resolveContext(options);
+  if (options?.context?.editableFocus === undefined && typeof document !== "undefined") {
+    context.editableFocus = isEditableFocused(event.target ?? document.activeElement);
+  }
 
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];

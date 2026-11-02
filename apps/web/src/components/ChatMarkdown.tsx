@@ -245,6 +245,7 @@ interface ChatMarkdownProps {
   imageBaseDir?: string | undefined;
   workspaceMutationId?: string | null | undefined;
   onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
+  /** Keep one list per configuration (a module constant): it keys the shared parse cache. */
   extraRemarkPlugins?: NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
   renderContextReference?: ((reference: ChatMarkdownContextReference) => ReactNode) | undefined;
   /** Loads media a source control host keeps behind a credential through the server, which holds
@@ -1413,6 +1414,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       workspaceMutationId,
       renderContextReference,
       fileLinkChip,
+      resolvedTheme,
     } = use(ChatMarkdownRendererContext);
     const imageExpand = use(MarkdownLinkContext) ? undefined : expandMedia;
     const contextReference = typeof src === "string" ? parseComposerContextHref(src) : null;
@@ -1424,10 +1426,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
         <span>{label}</span>
       );
     }
-    const localSrc = node?.properties?.dataLocalSrc;
+    // A `<picture>`'s source for this theme, resolved like any other image.
+    const themeSrc = node?.properties?.[resolvedTheme === "dark" ? "dataDarkSrc" : "dataLightSrc"];
+    const localSrc = typeof themeSrc === "string" ? undefined : node?.properties?.dataLocalSrc;
     const markdownTitle = node?.properties?.dataMarkdownTitle;
     const standalone = node?.properties?.dataStandalone === true;
-    const authoredSrc = typeof localSrc === "string" ? localSrc : src;
+    const authoredSrc =
+      typeof themeSrc === "string" ? themeSrc : typeof localSrc === "string" ? localSrc : src;
     const authoredTitle = typeof markdownTitle === "string" ? markdownTitle : title;
     const srcString =
       typeof authoredSrc === "string" ? normalizeMarkdownLinkDestination(authoredSrc) : "";
@@ -1647,7 +1652,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
           fenceTitle={fenceTitle}
           theme={resolvedTheme}
           isStreaming={isStreaming && !isClosedCodeFence(node, text, codeBlock.code)}
-          onExpand={(src) => expandMedia({ images: [{ src, name: "Mermaid diagram" }], index: 0 })}
+          onExpand={(src) =>
+            expandMedia({
+              images: [{ src, name: "Mermaid diagram", mimeType: "image/svg+xml" }],
+              index: 0,
+            })
+          }
         >
           {highlightedCode}
         </MarkdownMermaidCodeBlock>
@@ -1680,6 +1690,18 @@ const CHAT_MARKDOWN_REMARK_PLUGIN_SETS = {
   math: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS, remarkThreadLinks],
   mathBreaks: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, remarkThreadLinks],
 } satisfies Record<string, PluggableList>;
+
+const combinedPlugins = new WeakMap<PluggableList, WeakMap<PluggableList, PluggableList>>();
+
+// One combined list per pair, so a stable extra list shares a renderer and its parse cache.
+function withExtraPlugins(shared: PluggableList, extra: PluggableList): PluggableList {
+  if (extra.length === 0) return shared;
+  let byShared = combinedPlugins.get(extra);
+  if (!byShared) combinedPlugins.set(extra, (byShared = new WeakMap()));
+  let combined = byShared.get(shared);
+  if (!combined) byShared.set(shared, (combined = [...shared, ...extra]));
+  return combined;
+}
 
 const markdownRenderers = new WeakMap<
   PluggableList,
@@ -1771,15 +1793,11 @@ function ChatMarkdown({
           ? "breaks"
           : "plain"
     ];
-  // Extra and incremental plugins are per instance, so their output is not shared.
-  const uncachedPlugins = extraRemarkPlugins.length > 0 || incrementalParsing;
-  const remarkPlugins = uncachedPlugins
-    ? [
-        ...sharedRemarkPlugins,
-        ...extraRemarkPlugins,
-        ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
-      ]
-    : sharedRemarkPlugins;
+  // The incremental parser keeps per-instance state, so its output is not shared.
+  const uncachedPlugins = incrementalParsing;
+  const remarkPlugins = incrementalParsing
+    ? [...sharedRemarkPlugins, ...extraRemarkPlugins, createIncrementalMarkdownPlugin()]
+    : withExtraPlugins(sharedRemarkPlugins, extraRemarkPlugins);
   const blocks = streamingBlocks ?? [renderedText];
 
   return (
