@@ -568,6 +568,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
   const goalNow =
     activeThread && activeGoal !== null
       ? goalNowItem({
+          environmentId,
           threadId: activeThread.id,
           goal: activeGoal,
           isWorking,
@@ -593,6 +594,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       : null;
   const backgroundWorkNow = activeThread
     ? backgroundWorkNowItem({
+        environmentId,
         threadId: activeThread.id,
         tasks: activeBackgroundTasks,
         turnItems,

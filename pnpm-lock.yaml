@@ -895,9 +895,6 @@ importers:
       '@t3tools/source-control-gitcafe':
         specifier: workspace:*
         version: link:../../packages/source-control-gitcafe
-      '@t3tools/source-control-gitcode':
-        specifier: workspace:*
-        version: link:../../packages/source-control-gitcode
       '@t3tools/source-control-github':
         specifier: workspace:*
         version: link:../../packages/source-control-github
