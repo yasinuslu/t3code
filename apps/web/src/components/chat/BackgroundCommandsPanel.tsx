@@ -36,7 +36,7 @@ export function useBackgroundCommands(
   });
 }
 
-export function BackgroundCommandIcon(props: {
+function BackgroundCommandIcon(props: {
   readonly kind: BackgroundCommand["kind"];
   readonly className?: string;
 }) {
