@@ -1,4 +1,12 @@
-import type { ReferenceAutolink } from "@t3tools/client-runtime/source-control-clients";
+import {
+  changeRequestLinkResolver,
+  changeRequestReferenceAutolinker,
+} from "@t3tools/client-runtime/pull-request-markdown";
+import {
+  sourceControlClients,
+  type ReferenceAutolink,
+} from "@t3tools/client-runtime/source-control-clients";
+import type { PluggableList } from "unified";
 
 export {
   splitPullRequestBody,
@@ -75,4 +83,32 @@ export function remarkPullRequestRelativeUrls(options: {
     node.children?.forEach(visit);
   };
   return (tree: MarkdownNode) => visit(tree);
+}
+
+const NO_AUTOLINK_PLUGINS: PluggableList = [];
+const autolinkPlugins = new Map<string, PluggableList>();
+
+/**
+ * One plugin list per repository, so every comment of a pull request shares one markdown
+ * renderer and its parse cache instead of parsing again on each render.
+ */
+export function pullRequestAutolinkPlugins(
+  changeRequest: { readonly provider: string; readonly url: string } | null,
+): PluggableList {
+  if (changeRequest === null) return NO_AUTOLINK_PLUGINS;
+  const repositoryUrl = sourceControlClients.parseChangeRequestUrl(changeRequest.url)?.link
+    .repositoryUrl;
+  if (repositoryUrl === undefined) return NO_AUTOLINK_PLUGINS;
+  const key = `${changeRequest.provider}\u0000${repositoryUrl}`;
+  let plugins = autolinkPlugins.get(key);
+  if (plugins === undefined) {
+    const autolinks = changeRequestReferenceAutolinker(changeRequest);
+    const resolveUrl = changeRequestLinkResolver(changeRequest);
+    const list: PluggableList = [];
+    if (autolinks) list.push([remarkPullRequestAutolinks, { autolinks }]);
+    if (resolveUrl) list.push([remarkPullRequestRelativeUrls, { resolveUrl }]);
+    plugins = list.length > 0 ? list : NO_AUTOLINK_PLUGINS;
+    autolinkPlugins.set(key, plugins);
+  }
+  return plugins;
 }
