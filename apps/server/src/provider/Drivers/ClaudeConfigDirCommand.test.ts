@@ -98,6 +98,7 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
           ]);
           const codeProfiles = {
             resolve: (folder: string) => Effect.succeed(profiles.get(folder)),
+            profileOf: (folder: string) => Effect.succeed(profiles.get(folder)?.name),
             list: Effect.succeed([]),
             claudeConfigDirs: Effect.succeed([]),
           };
@@ -128,6 +129,55 @@ it.layer(NodeServices.layer)("ClaudeConfigDirCommand", (it) => {
           expect(yield* profilesOnly(work!)).toEqual({ path: "/profiles/work", profile: "work" });
           expect(yield* profilesOnly(plain!)).toBe(undefined);
         }).pipe(Effect.scoped),
+    );
+
+    it.effect("flags an explicit homePath of another code profile", () =>
+      Effect.gen(function* () {
+        const profileOf = (folder: string) =>
+          Effect.succeed(
+            folder.startsWith("/code/yu")
+              ? "yu"
+              : folder.startsWith("/code/sn")
+                ? "sn"
+                : folder === "/code/shared"
+                  ? "common"
+                  : undefined,
+          );
+        const codeProfiles = {
+          resolve: (folder: string) =>
+            Effect.succeed(
+              folder.startsWith("/code/sn")
+                ? { name: "sn", claudeConfigDir: "/code/sn/home/claude" }
+                : folder.startsWith("/code/yu")
+                  ? { name: "yu", claudeConfigDir: "/code/yu/home/claude" }
+                  : undefined,
+            ),
+          profileOf,
+          list: Effect.succeed([]),
+          claudeConfigDirs: Effect.succeed([]),
+        };
+        const resolver = yield* makeClaudeConfigDirResolver(
+          { homePath: "/code/yu/home/claude-2", homePathCommand: "" },
+          {},
+          { codeProfiles },
+        );
+        if (!resolver) throw new Error("resolver expected");
+        expect(yield* resolver.resolveForWorkspace("/code/sn/app", "/code/sn/app")).toEqual({
+          path: "/code/yu/home/claude-2",
+          profile: "sn",
+          profileMismatch: { instanceProfile: "yu", workspaceProfile: "sn" },
+          workspaceProfileDir: "/code/sn/home/claude",
+        });
+        expect(yield* resolver.resolveForWorkspace("/code/yu/app", "/code/yu/app")).toEqual({
+          path: "/code/yu/home/claude-2",
+          profile: "yu",
+        });
+        // A common project and a folder outside every profile are open to it.
+        expect(
+          (yield* resolver.resolveForWorkspace("/code/shared", "/code/shared"))?.profileMismatch,
+        ).toBe(undefined);
+        expect(yield* resolver.resolveForWorkspace("/tmp/else", "/tmp/else")).toBe(undefined);
+      }),
     );
 
     it.effect("is absent without a command or when homePath is set", () =>

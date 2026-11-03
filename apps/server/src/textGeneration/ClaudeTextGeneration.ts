@@ -7,6 +7,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { type ClaudeSettings, TextGenerationError } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { profileMismatchMessage } from "@t3tools/shared/profileGuard";
 
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import {
@@ -194,8 +195,19 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       const projectConfigDir = configDirResolver
         ? yield* configDirResolver.resolveForWorkspace(cwd)
         : undefined;
-      const environment = projectConfigDir
-        ? { ...claudeEnvironment, CLAUDE_CONFIG_DIR: projectConfigDir.path }
+      // An instance of another code profile never sees this workspace's text:
+      // it runs from the workspace profile's own dir instead, or not at all.
+      const mismatch = projectConfigDir?.profileMismatch;
+      if (mismatch !== undefined && projectConfigDir?.workspaceProfileDir === undefined) {
+        return yield* new TextGenerationError({
+          operation,
+          detail: profileMismatchMessage(mismatch),
+        });
+      }
+      const configDirPath =
+        mismatch !== undefined ? projectConfigDir?.workspaceProfileDir : projectConfigDir?.path;
+      const environment = configDirPath
+        ? { ...claudeEnvironment, CLAUDE_CONFIG_DIR: configDirPath }
         : claudeEnvironment;
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =

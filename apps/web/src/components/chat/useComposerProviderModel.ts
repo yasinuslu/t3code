@@ -31,6 +31,8 @@ export function useComposerProviderModel(
     readonly providerStatuses: ReadonlyArray<ServerProvider>;
     readonly settings: UnifiedSettings;
     readonly activeProjectId: ProjectId | null;
+    /** The project's code profile; instances pinned to another profile are left out. */
+    readonly projectProfile?: string | null;
     readonly threadRef: ScopedThreadRef | DraftId;
     readonly threadModelSelection: ModelSelection | null | undefined;
     readonly projectModelSelection: ModelSelection | null | undefined;
@@ -41,6 +43,7 @@ export function useComposerProviderModel(
     providerStatuses,
     settings,
     activeProjectId,
+    projectProfile,
     threadRef,
     threadModelSelection,
     projectModelSelection,
@@ -54,6 +57,7 @@ export function useComposerProviderModel(
     providerStatuses,
     settings,
     activeProjectId,
+    projectProfile,
   );
   const selection = resolveComposerProviderSelection({
     entries: providerInstanceEntries,

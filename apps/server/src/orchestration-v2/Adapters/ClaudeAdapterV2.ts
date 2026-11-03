@@ -67,6 +67,7 @@ import type {
 import * as NodeChildProcess from "node:child_process";
 import * as NodeUtil from "node:util";
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
+import { profileMismatchMessage } from "@t3tools/shared/profileGuard";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -4817,6 +4818,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 input.runtimePolicy.projectRoot,
               )
             : undefined;
+        // An instance pinned to another code profile's dir never runs this
+        // workspace: refused here, so the model picker, account balancing,
+        // reroutes and delegated threads all hit the same wall.
+        if (projectConfigDir?.profileMismatch !== undefined) {
+          return yield* new ProviderAdapter.ProviderAdapterOpenSessionError({
+            driver: CLAUDE_PROVIDER,
+            providerSessionId: input.providerSessionId,
+            cause: new Error(
+              profileMismatchMessage(projectConfigDir.profileMismatch, adapterOptions.instanceId),
+            ),
+          });
+        }
         const sessionEnvironment: NodeJS.ProcessEnv =
           projectConfigDir === undefined
             ? adapterOptions.environment

@@ -1,14 +1,7 @@
 /**
- * Per-workspace Claude config dir, from the workspace's code profile
- * (`settings.codeProfiles`) or a user command (`homePathCommand`).
- *
- * Some setups pick CLAUDE_CONFIG_DIR per project (a wrapper binary, a direnv
- * rule). Instead of guessing, the instance can name a shell command that
- * prints the dir for a project; T3 runs it in the project's workspace root and
- * launches the CLI with that dir as an explicit CLAUDE_CONFIG_DIR, so the
- * header, transcripts, skills and resume all agree on one dir. A code profile
- * names the dir directly and wins over the command.
- *
+ * Per-workspace Claude config dir: the workspace's code profile dir, else the
+ * output of `homePathCommand` run in the project root, passed to the CLI as
+ * an explicit CLAUDE_CONFIG_DIR.
  * @module ClaudeConfigDirCommand
  */
 import * as NodeOS from "node:os";
@@ -24,6 +17,7 @@ import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import { type ProfileMismatch, profileMismatch } from "@t3tools/shared/profileGuard";
 import type { CodeProfiles } from "../CodeProfiles.ts";
 import { spawnAndCollect } from "@t3tools/provider-core/server/snapshotProbe";
 
@@ -88,11 +82,9 @@ export const runClaudeConfigDirCommand = Effect.fn("runClaudeConfigDirCommand")(
 });
 
 /**
- * The main checkout of the repository `cwd` belongs to, when `cwd` is inside a
- * linked worktree or the main checkout itself. Worktrees usually live outside
- * the project (`~/.t3/worktrees/...`), so a command that picks the dir from
- * the path must run in the main checkout to see the project's location.
- * `undefined` for anything else (no repository, a submodule, git missing).
+ * The main checkout of the repository `cwd` is in (worktrees live outside the
+ * project, so path-based commands must run in the main checkout). `undefined`
+ * without a repository, in a submodule, or without git.
  */
 export const resolveMainCheckoutRoot = Effect.fn("resolveMainCheckoutRoot")(function* (
   cwd: string,
@@ -118,16 +110,21 @@ export interface ResolvedClaudeConfigDir {
   readonly path: string;
   /** The code profile the workspace belongs to, when one matched. */
   readonly profile?: string;
+  /**
+   * Set when the instance's own `homePath` belongs to another code profile
+   * than the workspace: a session there would run on the wrong profile's
+   * login, settings and memory, so callers refuse it.
+   */
+  readonly profileMismatch?: ProfileMismatch;
+  /** With `profileMismatch`: the workspace profile's own Claude dir, if it names one. */
+  readonly workspaceProfileDir?: string;
 }
 
 export interface ClaudeConfigDirResolver {
   /**
-   * The dir for a session or workspace in `cwd`, or `undefined` to keep the
-   * instance's own dir. In order: the instance's `homePath` (still labelled
-   * with the workspace's code profile), the code profile's Claude dir, then
-   * the `homePathCommand` output. The command runs in `projectRoot` when
-   * given, otherwise in the main checkout of the repository `cwd` is in (so a
-   * worktree resolves like its project), otherwise in `cwd`.
+   * The dir for `cwd`, or `undefined` to keep the instance's own: its
+   * `homePath` (flagged when it belongs to another profile), the code profile
+   * dir, then the command output (run in `projectRoot` or the main checkout).
    */
   readonly resolveForWorkspace: (
     cwd: string,
@@ -137,11 +134,9 @@ export interface ClaudeConfigDirResolver {
 }
 
 /**
- * Build the per-instance resolver, or `undefined` when nothing can pick a dir
- * per workspace (no code profiles service and no command, or an explicit
- * `homePath` without profiles). Command results are cached per project root
- * for the life of the instance, which is rebuilt whenever its settings
- * change; failures are logged and retried next time.
+ * The per-instance resolver, or `undefined` when nothing picks a dir per
+ * workspace. Command results are cached per project root until the instance
+ * is rebuilt; failures are retried next time.
  */
 export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolver")(function* (
   config: Pick<ClaudeSettings, "homePath" | "homePathCommand">,
@@ -207,9 +202,24 @@ export const makeClaudeConfigDirResolver = Effect.fn("makeClaudeConfigDirResolve
         : undefined;
       const label = profile ? { profile: profile.name } : {};
       if (homePath.length > 0) {
-        return profile
-          ? { path: path.resolve(expandHomePath(homePath, NodeOS.homedir())), ...label }
+        const instanceDir = path.resolve(expandHomePath(homePath, NodeOS.homedir()));
+        const mismatch = codeProfiles
+          ? profileMismatch(
+              yield* codeProfiles.profileOf(instanceDir),
+              yield* codeProfiles.profileOf(projectRoot ?? cwd),
+            )
           : undefined;
+        if (mismatch !== undefined) {
+          return {
+            path: instanceDir,
+            profile: mismatch.workspaceProfile,
+            profileMismatch: mismatch,
+            ...(profile?.name === mismatch.workspaceProfile && profile.claudeConfigDir
+              ? { workspaceProfileDir: profile.claudeConfigDir }
+              : {}),
+          };
+        }
+        return profile ? { path: instanceDir, ...label } : undefined;
       }
       if (profile?.claudeConfigDir !== undefined) {
         return { path: profile.claudeConfigDir, ...label };
