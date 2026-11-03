@@ -130,6 +130,7 @@ import type {
 } from "@t3tools/client-runtime/state/shell";
 import type { ServerProvider, UnifiedSettings } from "@t3tools/contracts";
 import { accountBalanceForLaunch } from "./accountBalance.logic";
+import { forkFeatureNow } from "../../forkFeatures";
 import { announceLimitSwitch } from "./announceLimitSwitch";
 import type { Dispatch } from "react";
 import type { ComposerThreadTarget } from "../../composerDraftStore";
@@ -1265,13 +1266,15 @@ export function useComposerSend(input: ComposerSendInput) {
       ctxSelectedModelSelection.options,
     );
     // Auto balance: the server picks between the profile's accounts of this provider.
-    const accountBalance = accountBalanceForLaunch({
-      isNewThread: isLocalDraftThread,
-      accountSelection: draftThread?.accountSelection,
-      codeProfiles,
-      providers: providerStatuses,
-      instanceId: threadCreateModelSelection.instanceId,
-    });
+    const accountBalance = !forkFeatureNow("accountBalancing")
+      ? undefined
+      : accountBalanceForLaunch({
+          isNewThread: isLocalDraftThread,
+          accountSelection: draftThread?.accountSelection,
+          codeProfiles,
+          providers: providerStatuses,
+          instanceId: threadCreateModelSelection.instanceId,
+        });
 
     let failure: AtomCommandResult<unknown, unknown> | null = null;
 

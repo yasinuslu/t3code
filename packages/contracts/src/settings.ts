@@ -24,6 +24,7 @@ import { UsageModelFilter } from "./usage.ts";
 import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
+import { ForkFeatures, ForkFeaturesPatch } from "./forkFeatures.ts";
 import {
   CustomModelSetting,
   DEFAULT_TEXT_GENERATION_MODEL,
@@ -1210,11 +1211,9 @@ export const CodeProfileClaudeSettings = Schema.Struct({
 export type CodeProfileClaudeSettings = typeof CodeProfileClaudeSettings.Type;
 
 /**
- * One provider instance a profile's threads may run on. `weight` is how often
- * it receives threads, on the scale machine load balancing uses (0 never, 50
- * normal, 100 preferred). A thread keeps its model on an instance of the same
- * driver (another account of the same provider); on another driver it takes
- * `model`, or that instance's default model.
+ * One instance a profile's threads may run on. `weight` uses machine load balancing's scale
+ * (0 never, 50 normal, 100 preferred). On the same driver a thread keeps its model; on another
+ * driver it takes `model`, or that instance's default.
  */
 export const CodeProfileBalancedAccount = Schema.Struct({
   instanceId: ProviderInstanceId,
@@ -1224,13 +1223,9 @@ export const CodeProfileBalancedAccount = Schema.Struct({
 export type CodeProfileBalancedAccount = typeof CodeProfileBalancedAccount.Type;
 
 /**
- * Account balancing for a profile's threads. A new thread starts on the listed
- * account of its provider with the most quota left, and a thread that stops on
- * a usage limit moves to the next usable account and continues. Accounts of
- * other providers are fallbacks, used in list order once every account of the
- * thread's own provider is limited. Only listed instances are ever chosen.
- * The profile's manager thread stays where the user put it unless
- * `includeManager` is set.
+ * A new thread starts on the listed account of its provider with the most quota left; one that
+ * hits a usage limit moves to the next usable account. Other providers' accounts are fallbacks,
+ * in list order. Only listed instances are chosen; the manager moves only with `includeManager`.
  */
 export const CodeProfileAccountBalancing = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1464,6 +1459,8 @@ export const ServerSettings = Schema.Struct({
   usageModelAliases: Schema.Record(TrimmedNonEmptyString, TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** One switch per fork feature; all off behaves like upstream T3 Code. */
+  forkFeatures: ForkFeatures.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** Code profiles keyed by name. */
   codeProfiles: Schema.Record(TrimmedNonEmptyString, CodeProfile).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1820,6 +1817,7 @@ export const ServerSettingsPatch = Schema.Struct({
   usageModelAliases: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(TrimmedNonEmptyString)),
   ),
+  forkFeatures: Schema.optionalKey(ForkFeaturesPatch),
   /** Each entry replaces one profile; `null` removes it. */
   codeProfiles: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(CodeProfile)),

@@ -1,5 +1,5 @@
 import type { V2TurnStartParams__AdditionalContextEntry } from "effect-codex-app-server/schema";
-import { elementsInstructions } from "../elements/ElementsLibrary.ts";
+import { forkElementsInstructions } from "../forkInstructions.ts";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 
 import {
@@ -44,7 +44,7 @@ export function buildCodexAdditionalContext(
   toolsAvailable: boolean | T3CodeToolAvailability = true,
 ): Record<string, V2TurnStartParams__AdditionalContextEntry> {
   const tools = toolInstructions(toolsAvailable);
-  const elements = elementsInstructions();
+  const elements = forkElementsInstructions();
   // Split values to fit per-entry caps; number keys because Codex emits them in key order.
   return {
     ...Object.fromEntries(

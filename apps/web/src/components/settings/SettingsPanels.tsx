@@ -1,10 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
 import { NotificationSettings } from "./NotificationSettings";
 import { changeProfileLock, isWindowProfileLock, profileLockNow } from "../../profileLock";
+import { useForkFeature } from "../../forkFeatures";
+import { ForkFeaturesSection } from "./ForkFeaturesSettings";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
 import { CheckIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   type DesktopUpdateChannel,
   IDLE_COMPACTION_MODES,
@@ -754,11 +756,8 @@ function ManagerProfilesInput({
   onCommit: (profiles: string[]) => void;
 }) {
   const text = value.join(", ");
+  // Keyed by the saved value, so a new value starts a fresh draft.
   const [draft, setDraft] = useState(text);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- resets the draft input when the saved value changes
-  useEffect(() => {
-    setDraft(text);
-  }, [text]);
   const commit = () => {
     const profiles = [
       ...new Set(
@@ -865,6 +864,8 @@ export function LegacyFeaturesSection() {
 }
 
 export function GeneralSettingsPanel() {
+  const managerOn = useForkFeature("manager");
+  const codeProfilesOn = useForkFeature("codeProfiles");
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
@@ -996,37 +997,44 @@ export function GeneralSettingsPanel() {
             />
           }
         />
-        <SettingsRow
-          serverScoped
-          {...searchableSetting("host-manager")}
-          description="Run the manager conversation on this machine for every device connected to it. Turn on for an always-on machine."
-          settingKeys={["hostsManager"]}
-          control={
-            <ScopedSwitch
+        {managerOn ? (
+          <>
+            <SettingsRow
+              serverScoped
+              {...searchableSetting("host-manager")}
+              description="Run the manager conversation on this machine for every device connected to it. Turn on for an always-on machine."
               settingKeys={["hostsManager"]}
-              checked={settings.hostsManager}
-              onCheckedChange={(checked) => updateSettings({ hostsManager: Boolean(checked) })}
-              aria-label="Host the manager"
+              control={
+                <ScopedSwitch
+                  settingKeys={["hostsManager"]}
+                  checked={settings.hostsManager}
+                  onCheckedChange={(checked) => updateSettings({ hostsManager: Boolean(checked) })}
+                  aria-label="Host the manager"
+                />
+              }
             />
-          }
-        />
-        <SettingsRow
-          serverScoped
-          {...searchableSetting("manager-profiles")}
-          description="Code profiles whose managers run on this machine, comma separated. Put each profile's manager on the machine that does its work; when set, this machine runs only these."
-          settingKeys={["managerProfiles"]}
-          control={
-            <ManagerProfilesInput
-              value={settings.managerProfiles}
-              onCommit={(managerProfiles) => updateSettings({ managerProfiles })}
+            <SettingsRow
+              serverScoped
+              {...searchableSetting("manager-profiles")}
+              description="Code profiles whose managers run on this machine, comma separated. Put each profile's manager on the machine that does its work; when set, this machine runs only these."
+              settingKeys={["managerProfiles"]}
+              control={
+                <ManagerProfilesInput
+                  key={settings.managerProfiles.join(", ")}
+                  value={settings.managerProfiles}
+                  onCommit={(managerProfiles) => updateSettings({ managerProfiles })}
+                />
+              }
             />
-          }
-        />
-        <SettingsRow
-          {...searchableSetting("profile-lock")}
-          description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes. In the desktop app, Window > <profile> Window (Alt+Shift+1, Alt+Shift+2, ..., Ctrl+Shift+N on a Mac) opens a window locked to one profile next to this one."
-          control={<ProfileLockInput />}
-        />
+          </>
+        ) : null}
+        {codeProfilesOn ? (
+          <SettingsRow
+            {...searchableSetting("profile-lock")}
+            description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes. In the desktop app, Window > <profile> Window (Alt+Shift+1, Alt+Shift+2, ..., Ctrl+Shift+N on a Mac) opens a window locked to one profile next to this one."
+            control={<ProfileLockInput />}
+          />
+        ) : null}
 
         <SettingsRow
           {...searchableSetting("working-shelf")}
@@ -1218,6 +1226,7 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+      <ForkFeaturesSection />
     </SettingsPageContainer>
   );
 }

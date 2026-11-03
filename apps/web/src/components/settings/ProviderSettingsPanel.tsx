@@ -99,6 +99,7 @@ import {
   CodeProfileEditor,
   CodeProfileListRow,
 } from "./CodeProfileSettings";
+import { useForkFeature } from "../../forkFeatures";
 import { useManagedPolicy } from "~/state/managedPolicy";
 import { ExpandableText } from "./ExpandableText";
 import { IntervalSecondsField } from "./IntervalSecondsField";
@@ -785,11 +786,14 @@ export function EnvironmentProviderSettings({
 
   // Code profiles group under the Claude instance that picks its account by
   // folder; only a server that probes them reports `codeProfiles`.
-  const routingProvider = serverProviders.find(
-    (provider) =>
-      provider.codeProfiles !== undefined &&
-      rows.some((row) => row.instanceId === provider.instanceId),
-  );
+  const codeProfilesOn = useForkFeature("codeProfiles");
+  const routingProvider = codeProfilesOn
+    ? serverProviders.find(
+        (provider) =>
+          provider.codeProfiles !== undefined &&
+          rows.some((row) => row.instanceId === provider.instanceId),
+      )
+    : undefined;
   const codeProfiles = routingProvider ? Object.entries(settings.codeProfiles ?? {}) : [];
   const codeProfileNames = codeProfiles.map(([name]) => name);
   const providerInstanceEntries = applyProviderInstanceSettings(

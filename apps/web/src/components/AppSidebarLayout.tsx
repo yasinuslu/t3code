@@ -37,13 +37,7 @@ import {
   usePanelAnimationSettings,
   usePanelNavigationSuppression,
 } from "../panelAnimations";
-import { BrainstormHost } from "./brainstorm/BrainstormHost";
-import { ManagerRoute } from "./brainstorm/ManagerRoute";
-import { ManagerShortcuts } from "./brainstorm/ManagerShortcuts";
-import { PaneShortcuts } from "./PaneShortcuts";
-import { ProfileShortcuts } from "./ProfileShortcuts";
-import { ShellShortcuts } from "./ShellShortcuts";
-import { ShortcutsSheet } from "./ShortcutsSheet";
+import { ForkAppShell } from "./ForkAppShell";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
 import ThreadSidebar from "./Sidebar";
@@ -458,7 +452,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
-        <BrainstormHost />
         <Sidebar
           side="left"
           collapsible="offcanvas"
@@ -483,13 +476,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         </Sidebar>
         {children}
         <BackgroundThreadAnnouncer />
-        <ManagerRoute />
-        <ManagerShortcuts />
         <SidebarControl />
-        <ProfileShortcuts />
-        <PaneShortcuts />
-        <ShellShortcuts />
-        <ShortcutsSheet />
+        <ForkAppShell />
         {isElectron ? <HistorySwipeNavigation /> : null}
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>

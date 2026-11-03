@@ -21,6 +21,7 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { elementComponents } from "../elements/ElementsLibrary.ts";
+import { forkFeatureOn } from "../forkFeatures.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -151,6 +152,7 @@ const make = Effect.gen(function* () {
     threadId,
     runId,
   }: FinishedRun) {
+    if (!forkFeatureOn("webComponents")) return;
     const components = elementComponents();
     if (components.size === 0) return;
     const { thread, runs, messages } = yield* projections.getThreadRecords(

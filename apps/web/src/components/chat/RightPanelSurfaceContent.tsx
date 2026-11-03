@@ -25,6 +25,7 @@ import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
 import { ThreadPullRequestsPanel } from "../pullRequest/ThreadPullRequestsPanel";
 import { ThreadPresentationPanel } from "../presentation/ThreadPresentationPanel";
+import { useForkFeature } from "../../forkFeatures";
 
 const PreviewPanel = lazy(() =>
   import("../preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
@@ -81,6 +82,7 @@ export function RightPanelSurfaceContent(props: {
   readonly sideChatParentPanel: SideChatParentPanel;
 }) {
   const { surface, threadRef, visible, onCloseSurface } = props;
+  const presentationOn = useForkFeature("presentation");
   if (surface === null) return null;
   switch (surface.kind) {
     case "preview":
@@ -170,7 +172,10 @@ export function RightPanelSurfaceContent(props: {
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "presentation":
-      return <ThreadPresentationPanel key={scopedThreadKey(threadRef)} threadRef={threadRef} />;
+      // A tab left open while presentations are off stays empty until it is closed.
+      return presentationOn ? (
+        <ThreadPresentationPanel key={scopedThreadKey(threadRef)} threadRef={threadRef} />
+      ) : null;
     case "side-chat":
       // Not lazy: revealing a suspended tiptap editor tears down its view and crashes the composer.
       return (

@@ -16,6 +16,7 @@ import {
 import {
   CHAT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
+  CHAT_MARKDOWN_REHYPE_PLUGINS,
   chatMarkdownRehypePluginsWith,
 } from "@t3tools/shared/markdownPipeline";
 import { useAtomValue } from "@effect/atom-react";
@@ -97,6 +98,7 @@ import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import { MarkdownThreadLink } from "./chat/MarkdownThreadLink";
 import { remarkThreadLinks } from "./chat/threadLinkMarkdown";
 import { ElementSlot } from "../elements/ElementSlot";
+import { useForkFeature } from "../forkFeatures";
 import { trimPartialElementTag } from "../elements/elementProps";
 import { ELEMENT_SLOT_PROPERTIES, rehypeElements } from "../elements/rehypeElements";
 import { mathKind } from "@t3tools/shared/markdownMath";
@@ -398,6 +400,13 @@ const CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS = [
     beforeSanitize: [rehypeElements],
     spanProperties: ELEMENT_SLOT_PROPERTIES,
   }),
+  rehypeHeadingIds,
+  rehypeTextDirection,
+  rehypeChipPunctuation,
+] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+
+const CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITHOUT_ELEMENTS = [
+  ...CHAT_MARKDOWN_REHYPE_PLUGINS,
   rehypeHeadingIds,
   rehypeTextDirection,
   rehypeChipPunctuation,
@@ -1764,8 +1773,10 @@ function ChatMarkdown({
 }: ChatMarkdownProps) {
   const { componentState, handleCopy, markdownRef, localMediaPreview, closeLocalMediaPreview } =
     useChatMarkdownState({ text, inline, ...props });
+  const elementsOn = useForkFeature("webComponents");
   // A half-written inline component tag stays hidden until its closing `>` streams in.
-  const renderedText = props.isStreaming === true ? trimPartialElementTag(text) : text;
+  const renderedText =
+    elementsOn && props.isStreaming === true ? trimPartialElementTag(text) : text;
   // Streaming re-renders only the last block; offsets for task edits need the whole text.
   const streamingBlocks =
     props.isStreaming === true &&
@@ -1820,9 +1831,11 @@ function ChatMarkdown({
             text={source}
             remarkPlugins={remarkPlugins}
             rehypePlugins={
-              parseRawHtml
-                ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
-                : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
+              !parseRawHtml
+                ? CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
+                : elementsOn
+                  ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
+                  : CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITHOUT_ELEMENTS
             }
             shared={!uncachedPlugins}
             // Every block before the last is finished, so its parse can be reused.

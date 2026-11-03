@@ -149,6 +149,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useIsManagerThread } from "../brainstormStore";
 import { useManagerMachineChoice } from "./brainstorm/ManagerMachineSwitcher";
 import { usePresentationUnseen } from "../presentationSeenStore";
+import { useForkFeature } from "../forkFeatures";
 import { FileMetadataThreadProvider } from "../hooks/FileMetadataThreadProvider";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { PopoverCreateHandle } from "./ui/popover";
@@ -2376,9 +2377,10 @@ export default function ChatView(props: ChatViewProps) {
         branchPullRequest: activeThreadShell?.branchPullRequest ?? activeThread.branchPullRequest,
       })
     : null;
-  const presentationAvailable = isServerThread && activeThreadRef !== null;
+  const presentationOn = useForkFeature("presentation");
+  const presentationAvailable = presentationOn && isServerThread && activeThreadRef !== null;
   const presentationUnseen = usePresentationUnseen(
-    isServerThread ? activeThreadRef : null,
+    presentationAvailable ? activeThreadRef : null,
     activeThreadShell?.presentationUpdatedAt,
   );
   const {

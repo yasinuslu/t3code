@@ -1,17 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off
 // Read synchronously: the provider instructions that embed the catalog are built synchronously.
 /**
- * ElementsLibrary - the web-component library assistant markdown may use (yasinuslu/t3-elements).
- *
- * The library is a folder whose `dist/` holds `t3-elements.js` (ESM that defines every custom
- * element) and `manifest.json` (every component's tag, description, props schema and example).
- * `T3CODE_ELEMENTS_LIBRARY` names the folder. It is read again whenever the manifest changes, so
- * a component an agent adds shows up without a restart.
- *
- * @module ElementsLibrary
+ * The web-component library assistant markdown may use (yasinuslu/t3-elements), named by
+ * `T3CODE_ELEMENTS_LIBRARY`: `dist/t3-elements.js` defines the elements and `dist/manifest.json`
+ * describes them. It is reread when the manifest changes, so new components need no restart.
  */
 import type { ElementManifest, ElementsLibraryState } from "@t3tools/contracts";
-import { setElementsInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import { validateElementProps } from "@t3tools/shared/elementProps";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -288,7 +282,3 @@ export function elementComponents(): ReadonlyMap<string, ElementManifest> {
   const { state } = load(elementsLibraryDir());
   return new Map(state.components.map((component) => [component.tag, component]));
 }
-
-// Provider adapters live in packages that cannot import the server app, so the catalog is
-// handed to their shared runtime instructions here.
-setElementsInstructions(elementsInstructions);

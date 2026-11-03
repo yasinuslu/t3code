@@ -254,6 +254,7 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { SidebarManagerEntry } from "./sidebar/SidebarManagerEntry";
+import { useForkFeature } from "../forkFeatures";
 import {
   CodeProfileProbes,
   SpaceSwitcher,
@@ -3054,6 +3055,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   useOptionKeyTracking();
+  const managerOn = useForkFeature("manager");
+  const codeProfilesOn = useForkFeature("codeProfiles");
+  const spacesOn = useForkFeature("spaces");
   const resolveSpaceRowProject = (projectKey: string) => ({
     memberKeys: projectMemberKeys(projectKey),
     spaces: projectSpaces(projectKey),
@@ -3063,10 +3067,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   return (
     <SpaceRowProjectContext.Provider value={resolveSpaceRowProject}>
       <ThreadContextDragGhost />
-      <SpaceMembershipPopoverLayer />
+      {spacesOn ? <SpaceMembershipPopoverLayer /> : null}
       <SidebarChromeHeader isElectron={isElectron} />
-      <SidebarManagerEntry />
-      <CodeProfileProbes projects={projects} />
+      {managerOn ? <SidebarManagerEntry /> : null}
+      {codeProfilesOn ? <CodeProfileProbes projects={projects} /> : null}
       <SidebarContent
         ref={sidebarContentRef}
         className="min-h-full"
@@ -3729,7 +3733,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      <SidebarChromeFooter spaces={<SpaceSwitcher onSwitch={switchSpace} />} />
+      <SidebarChromeFooter
+        spaces={spacesOn ? <SpaceSwitcher onSwitch={switchSpace} /> : undefined}
+      />
     </SpaceRowProjectContext.Provider>
   );
 }

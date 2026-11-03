@@ -57,6 +57,7 @@ export * from "./editor.ts";
 export * from "./project.ts";
 export * from "./filesystem.ts";
 export * from "./brainstorm.ts";
+export * from "./forkFeatures.ts";
 export * from "./agentSessions.ts";
 export * from "./assets.ts";
 export * from "./review.ts";

@@ -35,7 +35,8 @@ import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ActiveSpaceLabel } from "../sidebar/SpaceSwitcher";
-import { ALL_SPACE_ID, useSpaceStore } from "~/spaceStore";
+import { ALL_SPACE_ID, useActiveSpaceId } from "~/spaceStore";
+import { useForkFeature } from "~/forkFeatures";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -95,7 +96,9 @@ export const ChatHeader = memo(function ChatHeader({
 }: ChatHeaderProps) {
   const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
-  const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
+  const activeSpaceId = useActiveSpaceId();
+  const previewsOn = useForkFeature("previews");
+  const keybindingsOn = useForkFeature("keybindings");
   const isManager = useIsManagerThread(activeThreadEnvironmentId, activeThreadId);
   // The update button widens the titlebar controls this header stops short of.
   const updateButtonVisible = useDesktopUpdateTitlebarVisible();
@@ -467,11 +470,13 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {isServerThread ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
+      {isServerThread && previewsOn ? <ChatHeaderPreviewLinks threadRef={activeThreadRef} /> : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      <div className="flex shrink-0 items-center">
-        <ShortcutsButton />
-      </div>
+      {keybindingsOn ? (
+        <div className="flex shrink-0 items-center">
+          <ShortcutsButton />
+        </div>
+      ) : null}
     </div>
   );
 });

@@ -197,6 +197,7 @@ import {
   newThreadAccountGroup,
   sendSelectionAvoidingLimit,
 } from "./accountBalance.logic";
+import { useForkFeature } from "../../forkFeatures";
 import {
   type ComposerCommandItem,
   ComposerCommandMenu,
@@ -940,8 +941,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providers: providerStatuses,
     instanceId: selectedInstanceId,
   });
+  const accountBalancingOn = useForkFeature("accountBalancing");
   const accountBalance: AccountBalancePicker | undefined =
-    accountGroup && draftId
+    accountBalancingOn && accountGroup && draftId
       ? {
           instanceIds: accountGroup.map((provider) => provider.instanceId),
           auto: draftAccountSelection !== "manual",

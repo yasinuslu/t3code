@@ -13,6 +13,8 @@ import * as BrainstormService from "./brainstorm/BrainstormService.ts";
 import * as PreviewEnvironmentService from "./previewEnvironment/PreviewEnvironmentService.ts";
 import * as PreviewLinkStatus from "./preview/PreviewLinkStatus.ts";
 import * as CodeProfiles from "./provider/CodeProfiles.ts";
+import * as ForkFeatures from "./forkFeatures.ts";
+import "./forkInstructions.ts";
 // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
@@ -77,6 +79,7 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
 import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
+import * as ForkMcpToolkits from "./mcp/ForkMcpToolkits.ts";
 import * as PeerForwarding from "./peer/PeerForwarding.ts";
 import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
 import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
@@ -291,6 +294,7 @@ const layerBackground = BackgroundPolicy.layer.pipe(
 );
 
 const layerCodeProfiles = CodeProfiles.layer.pipe(Layer.provide(layerServerSettings));
+const layerForkFeatures = ForkFeatures.layer.pipe(Layer.provide(layerServerSettings));
 
 const layerUsage = UsageService.layer.pipe(
   Layer.provide(layerCodeProfiles),
@@ -708,6 +712,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ),
   // Below the instance registry, so Claude drivers resolve config dirs per profile.
   Layer.provideMerge(layerCodeProfiles),
+  Layer.provideMerge(layerForkFeatures),
 );
 
 const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
@@ -798,7 +803,7 @@ const layerMakeRoutes = Layer.mergeAll(
     ServerHttp.layerStaticAndDevRoute,
     Ws.layer,
   ),
-  McpHttpServer.layer.pipe(
+  Layer.mergeAll(McpHttpServer.layer, ForkMcpToolkits.layer).pipe(
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
   ),

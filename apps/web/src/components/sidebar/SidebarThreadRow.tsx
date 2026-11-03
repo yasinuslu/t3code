@@ -115,6 +115,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
 import { ThreadPreviewLinks } from "../preview/ThreadPreviewLinkChip";
+import { useForkFeature } from "../../forkFeatures";
 import { THREAD_PROJECT_KEY_ATTRIBUTE, ThreadSpaceBadges } from "./SpaceMembership";
 
 // The fields thread rows show. Provider status pushes refresh `checkedAt`,
@@ -1068,8 +1069,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         onOpenPullRequest={handlePrClick}
       />
     ) : null;
+  const previewsOn = useForkFeature("previews");
   const previewLinksChip =
-    thread.previewLinks && thread.previewLinks.length > 0 ? (
+    previewsOn && thread.previewLinks && thread.previewLinks.length > 0 ? (
       <ThreadPreviewLinks
         threadRef={threadRef}
         links={thread.previewLinks}

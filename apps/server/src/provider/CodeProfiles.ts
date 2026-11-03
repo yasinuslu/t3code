@@ -2,7 +2,7 @@
  * The code profile a folder belongs to: the deepest `root` holding its physical
  * path, else its main checkout's. No match leaves the Claude dir to the instance.
  */
-import type { CodeProfile } from "@t3tools/contracts";
+import { type CodeProfile, isForkFeatureOn } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -89,12 +89,16 @@ const make = Effect.gen(function* () {
   });
 
   const profiles = serverSettings.getSettings.pipe(
-    Effect.map((settings) => Object.entries(settings.codeProfiles)),
+    Effect.map((settings) =>
+      isForkFeatureOn(settings, "codeProfiles") ? Object.entries(settings.codeProfiles) : [],
+    ),
     Effect.orElseSucceed((): ReadonlyArray<readonly [string, CodeProfile]> => []),
   );
 
   const overrides = serverSettings.getSettings.pipe(
-    Effect.map((settings) => Object.entries(settings.projectProfiles)),
+    Effect.map((settings) =>
+      isForkFeatureOn(settings, "codeProfiles") ? Object.entries(settings.projectProfiles) : [],
+    ),
     Effect.orElseSucceed((): ReadonlyArray<readonly [string, string]> => []),
   );
 

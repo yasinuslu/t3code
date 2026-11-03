@@ -191,6 +191,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ProfileVisibility from "./workspace/ProfileVisibility.ts";
+import { readForkFeature } from "./forkFeatures.ts";
 import { invalidateSettingsSecrets } from "./sourceControl/sourceControlHostSecrets.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
@@ -3617,9 +3618,11 @@ export const layer = Layer.unwrap(
             failEnvironmentInternal("internal_error", error),
           ),
         );
-        const profileLock = ProfileVisibility.parseProfileLock(
-          requestUrl.value.searchParams.get(CLIENT_PROFILE_QUERY_PARAM),
-        );
+        const profileLock = (yield* readForkFeature("codeProfiles"))
+          ? ProfileVisibility.parseProfileLock(
+              requestUrl.value.searchParams.get(CLIENT_PROFILE_QUERY_PARAM),
+            )
+          : null;
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* analytics.recordOwners(readClientOwners(request), "client");
         const reportProfiles = yield* serverBrowser.profileReporter;

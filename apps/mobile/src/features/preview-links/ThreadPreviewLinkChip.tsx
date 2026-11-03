@@ -1,5 +1,10 @@
 import { previewLinkLabel } from "@t3tools/client-runtime/state/preview-links";
-import type { EnvironmentId, ThreadId, ThreadPreviewLink } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  isForkFeatureOn,
+  type ThreadId,
+  type ThreadPreviewLink,
+} from "@t3tools/contracts";
 import { useCallback, useMemo } from "react";
 import { Pressable, View } from "react-native";
 
@@ -7,17 +12,15 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Menu } from "../../components/ui/Menu";
 import { cn } from "../../lib/cn";
+import { useEnvironmentServerConfig } from "../../state/entities";
 import { usePreviewLinkStates } from "../../state/preview-links";
 import { presentThreadPreviewChip, previewLinkMenuActions } from "./threadPreviewLinkPresentation";
 import { usePreviewLinkActions } from "./usePreviewLinkActions";
 
 /**
- * A thread's preview links as one chip: the newest link's label, "+N" for the
- * rest, and a status dot. Mounted only for threads that have links, so only
- * those subscribe to preview status.
- *
- * One link: tap opens it, long-press offers open / open externally / copy /
- * remove. Several: tap lists them, each with the same actions.
+ * A thread's preview links as one chip: newest label, "+N" and a status dot. Mounted only for
+ * threads with links, so only those subscribe to preview status. One link opens on tap; several
+ * list on tap, each with open / open externally / copy / remove.
  */
 export function ThreadPreviewLinkChip(props: {
   readonly environmentId: EnvironmentId;
@@ -49,7 +52,12 @@ export function ThreadPreviewLinkChip(props: {
     if (chip !== null && single) open(chip.link, chip.state);
   }, [chip, open, single]);
 
-  if (chip === null) return null;
+  // Hidden while the environment has preview links turned off (Settings, Fork features).
+  const previewsOn = isForkFeatureOn(
+    useEnvironmentServerConfig(props.environmentId)?.settings,
+    "previews",
+  );
+  if (chip === null || !previewsOn) return null;
 
   const row = props.variant === "row";
   const removed = chip.status.removed;
