@@ -38,3 +38,28 @@ export function elementQuestion(props: Readonly<Record<string, unknown>>): strin
   }
   return "";
 }
+
+const LOCAL_IMAGE_PATH = /^(?:\/(?!\/)|~\/|[A-Za-z]:[\\/]).*\.(?:png|jpe?g|gif|webp|avif|svg)$/i;
+const MAX_LOCAL_IMAGES = 48;
+
+/**
+ * Every prop string that names an image file on the environment's disk (absolute or `~/`), in
+ * order, once each. The host serves them through signed asset URLs, so a component may name a
+ * screenshot by path and still show it in a browser on another machine.
+ */
+export function localImageRefs(props: Readonly<Record<string, unknown>>): string[] {
+  const found = new Set<string>();
+  const visit = (value: unknown, depth: number) => {
+    if (found.size >= MAX_LOCAL_IMAGES || depth > 6) return;
+    if (typeof value === "string") {
+      const ref = value.trim();
+      if (LOCAL_IMAGE_PATH.test(ref)) found.add(ref);
+    } else if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+    } else if (typeof value === "object" && value !== null) {
+      for (const item of Object.values(value)) visit(item, depth + 1);
+    }
+  };
+  visit(props, 0);
+  return [...found];
+}
