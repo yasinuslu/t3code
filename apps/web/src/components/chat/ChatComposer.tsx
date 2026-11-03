@@ -980,20 +980,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? undefined
       : clampManagedRuntimeMode(managedPolicy, compatibleRuntimeMode, compatibleRuntimeModes);
 
-  // A thread already on an instance of another code profile cannot continue
-  // there; the server refuses the turn, so say why before sending.
-  const pinnedInstanceId =
-    activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId;
-  const pinnedProvider =
-    pinnedInstanceId === undefined
-      ? undefined
-      : providerStatuses.find((provider) => provider.instanceId === pinnedInstanceId);
-  const pinnedProfileMismatch =
-    pinnedProvider && _isServerThread
-      ? providerProfileMismatch(pinnedProvider, activeProjectProfile)
+  // The server refuses a turn on an instance of another code profile (e.g. a
+  // thread still pinned to one), so say why before sending.
+  const sendProvider = providerStatuses.find(
+    (provider) => provider.instanceId === selectedInstanceId,
+  );
+  const sendProfileMismatch =
+    sendProvider && _isServerThread
+      ? providerProfileMismatch(sendProvider, activeProjectProfile)
       : undefined;
-  const profileSendBlockReason = pinnedProfileMismatch
-    ? profileMismatchMessage(pinnedProfileMismatch, pinnedProvider?.displayName)
+  const profileSendBlockReason = sendProfileMismatch
+    ? `${profileMismatchMessage(sendProfileMismatch, sendProvider?.displayName)} If the picker cannot switch, start a new thread.`
     : null;
   const providerSendBlockReason = getAntigravitySendBlockReason(
     selectedProviderEntry?.snapshot,

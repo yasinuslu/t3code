@@ -3095,7 +3095,25 @@ export const layerWsRpc = (
             ),
           ),
         [WS_METHODS.filesystemCodeProfiles]: (input) =>
-          Effect.promise(() => resolveCodeProfiles(input)),
+          serverSettings.getSettings.pipe(
+            Effect.map((settings) => settings.projectProfiles),
+            Effect.orElseSucceed(() => ({})),
+            Effect.flatMap((overrides) =>
+              Effect.promise(async () => {
+                const [result, effective] = await Promise.all([
+                  resolveCodeProfiles(input),
+                  ProfileVisibility.resolveProjectProfiles(input.paths, overrides),
+                ]);
+                return {
+                  ...result,
+                  assignments: result.assignments.map((assignment, index) => ({
+                    ...assignment,
+                    effectiveProfile: effective[index] ?? null,
+                  })),
+                };
+              }),
+            ),
+          ),
         [WS_METHODS.attachmentsCreateUploadUrl]: (input) => issueAttachmentUploadUrl(input),
         [WS_METHODS.attachmentsDelete]: (input) => deletePendingAttachment(input.attachmentId),
         [WS_METHODS.agentSessionsScan]: () => agentSessionScanner.scan,

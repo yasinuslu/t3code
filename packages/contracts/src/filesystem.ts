@@ -116,6 +116,8 @@ export const FilesystemCodeProfilesResult = Schema.Struct({
     Schema.Struct({
       path: TrimmedNonEmptyString,
       profile: Schema.NullOr(TrimmedNonEmptyString),
+      /** With `settings.projectProfiles` applied (may be `common`); the profile guard uses it. */
+      effectiveProfile: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     }),
   ),
 });
