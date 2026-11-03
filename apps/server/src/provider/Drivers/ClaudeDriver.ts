@@ -184,13 +184,18 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       Effect.provideService(Path.Path, path),
     );
+    // The profile an explicit homePath belongs to, so clients can keep the
+    // instance out of other profiles' projects (see profileGuard).
+    const instanceProfile = isClaudeConfigDirInherited(effectiveConfig)
+      ? undefined
+      : yield* codeProfiles.profileOf(configDir);
     const stampIdentity = withInstanceIdentity({
       instanceId,
       driverKind: DRIVER_KIND,
       displayName,
       accentColor,
       continuationGroupKey,
-      configDir: describeClaudeConfigDir(configDir),
+      configDir: describeClaudeConfigDir(configDir, instanceProfile),
       configDirInherited: isClaudeConfigDirInherited(effectiveConfig),
     });
 

@@ -1,3 +1,4 @@
+import { providerProfileMismatch } from "./profileGuard.logic";
 import { pipe } from "effect/Function";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
@@ -158,11 +159,29 @@ export function providerInstanceEntriesFor(
   providers: ReadonlyArray<ServerProvider>,
   settings: Pick<ServerSettings, "providerInstances" | "projectSettingsOverrides">,
   projectId: ProjectId | null,
+  projectProfile?: string | null,
 ): ReadonlyArray<ProviderInstanceEntry> {
   return pipe(
     deriveProviderInstanceEntries(providers),
     (entries) => applyProviderInstanceSettings(entries, settings, projectId),
+    (entries) => applyProfileGuard(entries, projectProfile),
     sortProviderInstanceEntries,
+  );
+}
+
+/**
+ * Instances pinned to another code profile's config dir are switched off for
+ * the project, so the picker never offers them (the server refuses them too).
+ */
+function applyProfileGuard(
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+  projectProfile: string | null | undefined,
+): ReadonlyArray<ProviderInstanceEntry> {
+  if (!projectProfile) return entries;
+  return entries.map((entry) =>
+    entry.enabled && providerProfileMismatch(entry.snapshot, projectProfile) !== undefined
+      ? { ...entry, enabled: false }
+      : entry,
   );
 }
 

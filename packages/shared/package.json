@@ -383,6 +383,10 @@
       "types": "./src/accountBalancing.ts",
       "import": "./src/accountBalancing.ts"
     },
+    "./profileGuard": {
+      "types": "./src/profileGuard.ts",
+      "import": "./src/profileGuard.ts"
+    },
     "./usageLimits": {
       "types": "./src/usageLimits.ts",
       "import": "./src/usageLimits.ts"

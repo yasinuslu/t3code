@@ -1,3 +1,5 @@
+import { profileMismatchMessage } from "@t3tools/shared/profileGuard";
+import { providerProfileMismatch } from "../../profileGuard.logic";
 import { useIsManagerThread } from "../../brainstormStore";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
@@ -440,6 +442,8 @@ export interface ChatComposerProps {
   activeThreadModelSelection: ModelSelection | null | undefined;
   reportedModelSelection?: ModelSelection | null;
   activeProjectId: ProjectId | null;
+  /** The active project's code profile, when known. */
+  activeProjectProfile?: string | null;
 
   contextWindowEntries: Parameters<typeof deriveLatestContextWindowSnapshot>[0];
   contextWindowLiveUsage: Parameters<typeof deriveLatestContextWindowSnapshot>[1];
@@ -571,6 +575,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadModelSelection,
     reportedModelSelection,
     activeProjectId,
+    activeProjectProfile,
     contextWindowEntries,
     contextWindowLiveUsage,
     contextWindowProviderThread,
@@ -582,7 +587,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     keybindings,
     terminalOpen,
     gitCwd,
-    projectRoot,
     pullRequestProjectId,
     pullRequestRepository,
     threadPullRequests,
@@ -906,6 +910,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerStatuses,
     settings,
     activeProjectId,
+    projectProfile: activeProjectProfile ?? null,
     threadRef: composerDraftTarget,
     threadModelSelection: activeThreadModelSelection,
     projectModelSelection: activeProjectDefaultModelSelection,
@@ -975,6 +980,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? undefined
       : clampManagedRuntimeMode(managedPolicy, compatibleRuntimeMode, compatibleRuntimeModes);
 
+  // A thread already on an instance of another code profile cannot continue
+  // there; the server refuses the turn, so say why before sending.
+  const pinnedInstanceId =
+    activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId;
+  const pinnedProvider =
+    pinnedInstanceId === undefined
+      ? undefined
+      : providerStatuses.find((provider) => provider.instanceId === pinnedInstanceId);
+  const pinnedProfileMismatch =
+    pinnedProvider && _isServerThread
+      ? providerProfileMismatch(pinnedProvider, activeProjectProfile)
+      : undefined;
+  const profileSendBlockReason = pinnedProfileMismatch
+    ? profileMismatchMessage(pinnedProfileMismatch, pinnedProvider?.displayName)
+    : null;
   const providerSendBlockReason = getAntigravitySendBlockReason(
     selectedProviderEntry?.snapshot,
     selectedModel,
@@ -986,6 +1006,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? attachmentBlockReason
       : (attachmentBlockReason ??
         runtimeModeCeilingDenial ??
+        profileSendBlockReason ??
         (multipleModelSelections === null ? providerSendBlockReason : null)));
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;

@@ -1,3 +1,4 @@
+import { useProjectCodeProfile } from "../hooks/useProjectCodeProfile";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -1261,6 +1262,13 @@ export default function ChatView(props: ChatViewProps) {
     providers: providerStatuses,
   });
   const modelPickerLockedProvider = supportsProviderSwitchingViaHandoff ? null : lockedProvider;
+  const activeProjectProfile = useProjectCodeProfile({
+    environmentId: activeThreadEnvironmentId,
+    projectId: activeThreadProjectId,
+    workspaceRoot: activeProject?.workspaceRoot,
+    projectProfiles: settings.projectProfiles,
+    providers: providerStatuses,
+  });
   const pullRequestsCapabilityKnown = serverConfig !== null;
   const supportsPullRequests = serverConfig !== null;
   const attachmentEnvironmentConfig = environmentById.get(environmentId)?.serverConfig ?? null;
@@ -3748,6 +3756,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               activeThreadModelSelection={activeThread?.modelSelection}
                               activeProjectId={activeProject?.id ?? null}
+                              activeProjectProfile={activeProjectProfile}
                               contextWindowEntries={serverVisibleTurnItems}
                               contextWindowLiveUsage={activeThreadLiveTokenUsage}
                               contextWindowProviderThread={activeProviderThread}

@@ -1411,6 +1411,7 @@ describe("UsageService", () => {
           CodeProfiles,
           CodeProfiles.of({
             resolve: () => Effect.undefined,
+            profileOf: () => Effect.undefined,
             list: Effect.succeed([]),
             // "yu" is a valid profile name; `claudeAgent:yu` is not a valid
             // provider instance id, and building one used to kill the request.
