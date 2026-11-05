@@ -1368,9 +1368,9 @@ export const layerWsRpc = (
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
+  settingsClient: { readonly secretReferences: boolean },
   // Set when the client connected with a profile lock; see ProfileVisibility.
   profileLock: string | null = null,
-  settingsClient: { readonly secretReferences: boolean },
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -3688,7 +3688,7 @@ export const layer = Layer.unwrap(
           ),
         );
         const profileLock = ProfileVisibility.parseProfileLock(
-          requestUrl.value.searchParams.get(CLIENT_PROFILE_QUERY_PARAM),
+          url.value.searchParams.get(CLIENT_PROFILE_QUERY_PARAM),
         );
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* analytics.recordOwners(readClientOwners(request), "client");
@@ -3727,8 +3727,8 @@ export const layer = Layer.unwrap(
               clientAnalyticsProps,
               serverBrowser,
               reportProfiles,
-              profileLock,
               readSettingsClient(url.value),
+              profileLock,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.

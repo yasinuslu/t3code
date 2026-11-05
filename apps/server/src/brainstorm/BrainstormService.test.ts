@@ -106,7 +106,9 @@ afterEach(() => {
 });
 
 let uuidCounter = 0;
-const testCrypto = SecureRandom.make((size) => new Uint8Array(size).map((_, index) => (index + uuidCounter++) % 256));
+const testCrypto = SecureRandom.make((size) =>
+  new Uint8Array(size).map((_, index) => (index + uuidCounter++) % 256),
+);
 
 /** A service on in-memory projects and threads that records every launch and command. */
 const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: {

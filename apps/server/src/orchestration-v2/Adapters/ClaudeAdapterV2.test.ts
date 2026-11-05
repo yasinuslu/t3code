@@ -6682,7 +6682,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       assert.equal(env?.KEEP, "1");
     }).pipe(
       Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
       ),
     ),
   );
@@ -6709,7 +6714,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       assert.equal(harness.getOpenedOptions()?.env?.CLAUDE_CONFIG_DIR, "/instance/claude");
     }).pipe(
       Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
       ),
     ),
   );
@@ -6770,7 +6780,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       );
     }).pipe(
       Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
       ),
     ),
   );
@@ -6830,7 +6845,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ]);
     }).pipe(
       Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
       ),
     ),
   );
@@ -10797,7 +10817,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         assert.isTrue(Exit.isFailure(resumed));
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
         ),
       ),
     ),

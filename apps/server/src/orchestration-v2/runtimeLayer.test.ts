@@ -2863,7 +2863,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
   it.effect("links preview URLs by normalized URL, keeps the newest ten, and unlinks", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const maintenance = yield* ProjectionReplay.ProjectionReplay;
       const threadId = ThreadId.make("runtime-preview-links");
       yield* orchestrator.dispatch({
         type: "thread.create",

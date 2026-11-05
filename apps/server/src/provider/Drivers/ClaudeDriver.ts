@@ -325,8 +325,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
                         Effect.provideService(FileSystem.FileSystem, fileSystem),
                         Effect.provideService(Path.Path, path),
                       )
-                    : // @effect-diagnostics-next-line effectSucceedWithVoid:off
-                      Effect.succeed(undefined),
+                    : Effect.undefined,
                 processEnv,
               ),
             ),

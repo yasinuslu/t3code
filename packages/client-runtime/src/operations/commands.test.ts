@@ -293,7 +293,7 @@ describe("V2 environment commands", () => {
 
       expect(launches[0]?.accountBalance).toBe("auto");
       expect(launches[1] !== undefined && "accountBalance" in launches[1]).toBe(false);
-    }).pipe(Effect.provide(layerTestCrypto)),
+    }).pipe(Effect.provide(layerTestRandom)),
   );
 
   it.effect("uses server-resolved delivery intent without fetching the full projection", () =>

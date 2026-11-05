@@ -4,7 +4,7 @@ import { changeProfileLock, isWindowProfileLock, profileLockNow } from "../../pr
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
 import { CheckIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   type DesktopUpdateChannel,
   IDLE_COMPACTION_MODES,
@@ -759,10 +759,11 @@ function ManagerProfilesInput({
 }) {
   const text = value.join(", ");
   const [draft, setDraft] = useState(text);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- resets the draft input when the saved value changes
-  useEffect(() => {
+  const [savedText, setSavedText] = useState(text);
+  if (savedText !== text) {
+    setSavedText(text);
     setDraft(text);
-  }, [text]);
+  }
   const commit = () => {
     const profiles = [
       ...new Set(
