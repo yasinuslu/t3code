@@ -238,6 +238,18 @@ export function isSameOriginRendererNavigation(input: {
   }
 }
 
+/**
+ * The main window only shows the app. Checked on every main-frame navigation start, because a
+ * debugger-driven navigation (remote-debugging port) skips will-navigate. data: is the splash.
+ */
+export function isAllowedMainWindowNavigation(input: {
+  readonly applicationUrl: string;
+  readonly navigationUrl: string;
+}): boolean {
+  if (isSameOriginRendererNavigation(input)) return true;
+  return input.navigationUrl.startsWith("data:") || input.navigationUrl === "about:blank";
+}
+
 function isRetryableDevelopmentRendererLoadFailure(input: {
   readonly applicationUrl: string;
   readonly errorCode: number;
@@ -352,11 +364,8 @@ export const make = Effect.gen(function* () {
   // Bounds flushers of every open window, run before quit.
   const boundsFlushers = new Set<Effect.Effect<void>>();
   const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
-  // Window-side latch for the primary backend's readiness. Set by
-  // handleBackendReady (driven by the pool's onReady callback), cleared
-  // by handleBackendNotReady (driven by onShutdown). Only consumed by
-  // createMainIfBackendReady, which gates the post-readiness window
-  // open in development and the macOS "activate without windows" path.
+  // Latch for the primary backend's readiness (set by handleBackendReady, cleared by
+  // handleBackendNotReady). Only createMainIfBackendReady reads it.
   const backendReadyRef = yield* Ref.make(false);
   let backendHasStarted = false;
   let mainClosedDuringStartup = false;
@@ -839,6 +848,17 @@ export const make = Effect.gen(function* () {
       return retryInMs;
     };
 
+    window.webContents.on("did-start-navigation", (details) => {
+      if (!details.isMainFrame || details.isSameDocument) return;
+      if (isAllowedMainWindowNavigation({ applicationUrl, navigationUrl: details.url })) return;
+      runFork(
+        Effect.logWarning("Blocked a foreign main-window navigation; reloading the app", {
+          url: details.url,
+        }),
+      );
+      window.webContents.stop();
+      loadApplication();
+    });
     window.webContents.on("did-finish-load", () => {
       if (
         environment.isDevelopment &&
