@@ -6,7 +6,7 @@ import {
 } from "@t3tools/shared/threadPreviewLinks";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -46,7 +46,7 @@ const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const previews = yield* PreviewLinkStatus.PreviewLinkStatus;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const detect = Effect.fn("PreviewLinkReportReactor.detect")(function* ({
     threadId,
@@ -77,7 +77,7 @@ const make = Effect.gen(function* () {
           Effect.flatMap((state) =>
             state === "unknown" || state === "gone"
               ? Effect.void
-              : crypto.randomUUIDv4().pipe(
+              : crypto.uuidV4().pipe(
                   Effect.flatMap((uuid) =>
                     engine.dispatch({
                       type: "thread.preview-link.link",
