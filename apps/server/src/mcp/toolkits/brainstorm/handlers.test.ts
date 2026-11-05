@@ -12,7 +12,7 @@ import {
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -132,10 +132,7 @@ const THREADS = [
   }),
 ];
 
-const testCrypto = Crypto.make({
-  randomBytes: (size) => new Uint8Array(size).fill(7),
-  digest: (_algorithm, data) => Effect.succeed(data),
-});
+const testCrypto = SecureRandom.make((size) => new Uint8Array(size).fill(7));
 
 const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
   initialFiles: Record<string, string> = {},
@@ -242,7 +239,7 @@ const makeHarness = Effect.fn("makeBrainstormHarness")(function* (
         ),
       streamDomainEvents: Stream.empty,
     }),
-    Layer.succeed(Crypto.Crypto, testCrypto),
+    Layer.succeed(SecureRandom.SecureRandom, testCrypto),
     liveThreadsLayer,
   );
   const toolkit = yield* BrainstormToolkit.pipe(

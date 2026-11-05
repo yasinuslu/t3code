@@ -29,7 +29,7 @@ import {
 } from "@t3tools/contracts";
 import { formatThreadMarkdownLink } from "../mcp/threadMarkdownLink.ts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -339,7 +339,7 @@ type PeerRpcClient = Effect.Success<typeof makeRpcClient>;
 const make = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const httpClient = yield* HttpClient.HttpClient;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const readPeers = Effect.suspend(() => secrets.get(PEER_ENVIRONMENTS_SECRET)).pipe(
     Effect.flatMap(
@@ -459,7 +459,7 @@ const make = Effect.gen(function* () {
     snapshot.threads.find((thread) => thread.id === threadId) ??
     snapshot.archivedThreads.find((thread) => thread.id === threadId);
 
-  const newId = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const newId = crypto.uuidV4().pipe(Effect.orDie);
 
   const validated = (peer: PeerEnvironment) => {
     const url = normalizePeerUrl(peer.url);

@@ -16,7 +16,7 @@ import {
   type ThreadPreviewEnvironmentStatus,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -78,9 +78,9 @@ export const make = Effect.gen(function* () {
   const projects = yield* ProjectStore.ProjectStoreV2;
   const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
   const runner = yield* ProcessRunner.ProcessRunner;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const newCommandId = () =>
-    crypto.randomUUIDv4().pipe(
+    crypto.uuidV4().pipe(
       Effect.orDie,
       Effect.map((id) => CommandId.make(`preview-env:${id}`)),
     );

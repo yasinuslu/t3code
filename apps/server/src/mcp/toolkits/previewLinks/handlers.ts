@@ -1,7 +1,7 @@
 import { CommandId, type ThreadId } from "@t3tools/contracts";
 import { isLoopbackPreviewUrl, normalizePreviewLinkUrl } from "@t3tools/shared/threadPreviewLinks";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
@@ -17,10 +17,10 @@ import {
 
 const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const commandId = (tag: string, threadId: ThreadId) =>
-    crypto.randomUUIDv4().pipe(
+    crypto.uuidV4().pipe(
       Effect.orDie,
       Effect.map((uuid) => CommandId.make(`server:${tag}:${threadId}:${uuid}`)),
     );

@@ -49,7 +49,7 @@ import {
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -300,7 +300,7 @@ export const make = Effect.gen(function* () {
   const projectService = yield* ProjectService.ProjectService;
   const launches = yield* ThreadLaunchService.ThreadLaunchService;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const statePath = NodePath.join(config.stateDir, "brainstorm.json");
 
   const persistedText = yield* readTextOrEmpty(statePath);
@@ -636,7 +636,7 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const uuid = crypto.uuidV4().pipe(Effect.orDie);
   const failWith = (message: string) => () => new BrainstormError({ message });
 
   const modelSelectionFor = Effect.fn("BrainstormService.modelSelectionFor")(function* (

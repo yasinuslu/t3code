@@ -25,6 +25,10 @@ export const CLIENT_PROFILE_QUERY_PARAM = "clientProfile";
 export const CLIENT_PROFILE_HEADER = "x-t3-client-profile";
 /** Pseudo profile for projects every profile sees (shared tooling). */
 export const COMMON_PROFILE = "common";
+/** Wire shapes a client understands, comma-separated; a client that omits one gets the older shape. */
+export const CLIENT_CAPABILITIES_QUERY_PARAM = "clientCapabilities";
+/** Secret fields may hold a secret provider reference instead of a string. */
+export const SETTINGS_SECRET_REFERENCES_CAPABILITY = "settingsSecretReferences";
 
 export const ExecutionEnvironmentPlatformOs = Schema.Literals([
   "darwin",
