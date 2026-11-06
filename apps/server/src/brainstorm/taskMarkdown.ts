@@ -1,3 +1,5 @@
+// @effect-diagnostics extendsNativeError:off - plain errors thrown by the markdown parser, mapped at the service.
+
 /**
  * A task list kept as a plain markdown checklist that people also edit by hand
  * (in an editor or Obsidian):

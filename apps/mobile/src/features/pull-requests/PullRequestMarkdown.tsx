@@ -14,6 +14,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 import {
   changeRequestLinkResolver,
   changeRequestReferenceAutolinker,
+  resolveChangeRequestMediaUrl,
 } from "@t3tools/client-runtime/pull-request-markdown";
 import {
   sourceControlClients,
@@ -49,6 +50,7 @@ const AutolinksContext = createContext<((text: string) => ReadonlyArray<Referenc
 );
 const LinkResolverContext = createContext<((url: string) => string) | null>(null);
 const LineBreaksContext = createContext(false);
+const ChangeRequestUrlContext = createContext<string | null>(null);
 
 export function PullRequestMarkdownRepository(props: {
   /** The change request the markdown belongs to, whose host decides what its text links. */
@@ -70,14 +72,18 @@ export function PullRequestMarkdownRepository(props: {
     projectId: target.input.projectId,
   });
   const cwd = project?.workspaceRoot;
-  const media = cwd ? { environmentId: target.environmentId, cwd } : null;
+  const media = cwd
+    ? { environmentId: target.environmentId, cwd, repository: target.input.repository }
+    : null;
   return (
     <AutolinksContext value={autolinks}>
-      <LinkResolverContext value={resolveUrl}>
-        <LineBreaksContext value={lineBreaks}>
-          <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
-        </LineBreaksContext>
-      </LinkResolverContext>
+      <LineBreaksContext value={lineBreaks}>
+        <ChangeRequestUrlContext value={url ?? null}>
+          <LinkResolverContext value={resolveUrl}>
+            <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
+          </LinkResolverContext>
+        </ChangeRequestUrlContext>
+      </LineBreaksContext>
     </AutolinksContext>
   );
 }
@@ -196,9 +202,12 @@ function PullRequestMarkdownContent(props: {
   const autolinks = useContext(AutolinksContext);
   const resolveUrl = useContext(LinkResolverContext);
   const mediaContext = useContext(PullRequestMediaContext);
+  const changeRequestUrl = useContext(ChangeRequestUrlContext);
+  const resolveMediaUrl = (href: string) =>
+    changeRequestUrl ? resolveChangeRequestMediaUrl(href, changeRequestUrl) : href;
   const markdown = linkReferenceAutolinks(props.markdown, autolinks);
   const openPullRequest = useOpenPullRequest();
-  const resolve = (href: string) => resolveUrl?.(href) ?? href;
+  const resolve = (href: string) => resolveMediaUrl(resolveUrl?.(href) ?? href);
   const openLink = (href: string) => {
     void openPullRequest(resolve(href));
   };
