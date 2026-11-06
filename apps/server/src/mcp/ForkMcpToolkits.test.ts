@@ -73,7 +73,7 @@ it.effect("lists and runs a gated toolkit only while its fork feature is on", ()
     Effect.gen(function* () {
       const settingsContext = yield* Layer.build(ServerSettings.layerTest());
       const settings = Context.get(settingsContext, ServerSettings.ServerSettingsService);
-      const serverLayer = Layer.mergeAll(
+      const serverLayer = McpHttpServer.layerMcpTransport(
         McpHttpServer.toolkitRegistration(
           gateToolkit("presentation", ProbeToolkit),
           McpToolAccess.toLayer(ProbeToolkit, {
@@ -81,9 +81,8 @@ it.effect("lists and runs a gated toolkit only while its fork feature is on", ()
             probe_linked: McpToolAccess.reads(() => Effect.succeed({ value: 2 })),
           }),
         ),
-        ForkFeatures.layer,
       ).pipe(
-        Layer.provideMerge(McpHttpServer.layerMcpTransport),
+        Layer.provideMerge(ForkFeatures.layer),
         Layer.provide(Layer.succeedContext(settingsContext)),
         Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
         Layer.provide(

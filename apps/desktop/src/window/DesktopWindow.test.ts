@@ -520,6 +520,31 @@ describe("DesktopWindow", () => {
     );
   });
 
+  it("locks the main window to the app origin, allowing only splash data: pages", () => {
+    const applicationUrl = "t3code://app/";
+    for (const navigationUrl of [
+      "t3code://app/#/draft/1",
+      "data:text/html;charset=utf-8,splash",
+      "about:blank",
+    ]) {
+      assert.isTrue(
+        DesktopWindow.isAllowedMainWindowNavigation({ applicationUrl, navigationUrl }),
+        navigationUrl,
+      );
+    }
+    for (const navigationUrl of [
+      "http://127.0.0.1:7790/#/cases/FLOW-first-launch-privacy",
+      "https://example.com/",
+      "t3code-dev://app/",
+      "file:///etc/passwd",
+    ]) {
+      assert.isFalse(
+        DesktopWindow.isAllowedMainWindowNavigation({ applicationUrl, navigationUrl }),
+        navigationUrl,
+      );
+    }
+  });
+
   it.effect(
     "opens and reopens the window without backend readiness when local execution is disabled",
     () =>

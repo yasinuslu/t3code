@@ -300,7 +300,16 @@ export const ChatHeader = memo(function ChatHeader({
       ref={breadcrumbContainerRef}
       className={cn(
         "@container flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : updateButtonVisible ? "pr-56" : "pr-24",
+        // Keep clear of the fixed panel toggles; a server thread also shows the presentation one.
+        rightPanelOpen
+          ? "pr-10"
+          : updateButtonVisible
+            ? isServerThread
+              ? "pr-64"
+              : "pr-56"
+            : isServerThread
+              ? "pr-32"
+              : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >

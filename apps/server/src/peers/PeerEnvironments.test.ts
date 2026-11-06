@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
@@ -207,7 +208,9 @@ describe("peer store", () => {
     return {
       stored: () => (stored === null ? null : new TextDecoder().decode(stored)),
       layer: PeerEnvironments.layer.pipe(
-        Layer.provide(Layer.mergeAll(secrets, FetchHttpClient.layer, NodeServices.layer)),
+        Layer.provide(
+          Layer.mergeAll(secrets, FetchHttpClient.layer, NodeServices.layer, NodeCrypto.layer),
+        ),
       ),
     };
   };

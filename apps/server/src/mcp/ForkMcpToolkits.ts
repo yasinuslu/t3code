@@ -5,7 +5,7 @@ import { McpSchema, type Tool, Toolkit } from "effect/ai";
 
 import { whenForkFeature } from "../forkFeatures.ts";
 import * as PeerEnvironments from "../peers/PeerEnvironments.ts";
-import { layerMcpTransport, toolkitRegistration } from "./McpHttpServer.ts";
+import { toolkitRegistration } from "./McpHttpServer.ts";
 import * as BrainstormHandlers from "./toolkits/brainstorm/handlers.ts";
 import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
 import * as ElementsHandlers from "./toolkits/elements/handlers.ts";
@@ -52,4 +52,4 @@ export const layer = Layer.mergeAll(
   toolkitRegistration(gateToolkit("peers", PeersToolkit), PeersHandlers.layer).pipe(
     Layer.provide(PeerEnvironments.layer),
   ),
-).pipe(Layer.provideMerge(layerMcpTransport));
+);
