@@ -221,6 +221,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         transcriptSearchConfigDirs: codeProfiles.claudeConfigDirs.pipe(
           Effect.map((dirs) => [configDir, ...dirs.map((entry) => entry.dir)]),
         ),
+        modelCatalog,
       },
     ).pipe(
       Effect.mapError(

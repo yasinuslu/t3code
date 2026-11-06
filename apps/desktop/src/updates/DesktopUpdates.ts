@@ -25,6 +25,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
+import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -830,7 +831,8 @@ export const make = Effect.gen(function* () {
           yield* Ref.set(installRunningBackendsRef, runningInstances);
           yield* Effect.forEach(
             instances,
-            (instance) => instance.stop({ timeout: Duration.seconds(5) }),
+            (instance) =>
+              instance.stop({ timeout: DesktopBackendManager.BACKEND_QUIT_STOP_TIMEOUT }),
             { concurrency: "unbounded" },
           );
           yield* electronUpdater.quitAndInstall({
@@ -912,11 +914,13 @@ export const make = Effect.gen(function* () {
     yield* writeUpdateRestartMarker;
     yield* logUpdaterInfo("switching to staged build", { version: state.downloadedVersion });
     const context = yield* Effect.context<never>();
-    const spawned = yield* Effect.try(() =>
-      spawnStagedBuildSwitch(command, (message) => {
-        void Effect.runPromiseWith(context)(fail(message));
-      }),
-    ).pipe(Effect.exit);
+    const spawned = yield* Effect.try({
+      try: () =>
+        spawnStagedBuildSwitch(command, (message) => {
+          void Effect.runPromiseWith(context)(fail(message));
+        }),
+      catch: () => "spawn-failed" as const,
+    }).pipe(Effect.exit);
     if (Exit.isFailure(spawned)) {
       yield* fail("Could not run the switch command.");
       return { accepted: true, completed: false, failed: true };

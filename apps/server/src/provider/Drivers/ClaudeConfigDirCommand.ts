@@ -26,6 +26,7 @@ const quote = Schema.encodeSync(Schema.fromJsonString(Schema.String));
 const DEFAULT_TIMEOUT = Duration.seconds(3);
 const MAX_CACHED_PROJECTS = 64;
 
+// @effect-diagnostics-next-line preferSchemaTaggedError:off - never crosses the wire.
 export class ClaudeConfigDirCommandError extends Data.TaggedError("ClaudeConfigDirCommandError")<{
   readonly command: string;
   readonly cwd: string;

@@ -1,6 +1,7 @@
 import {
   changeRequestLinkResolver,
   changeRequestReferenceAutolinker,
+  resolveChangeRequestMediaUrl,
 } from "@t3tools/client-runtime/pull-request-markdown";
 import {
   sourceControlClients,
@@ -85,30 +86,40 @@ export function remarkPullRequestRelativeUrls(options: {
   return (tree: MarkdownNode) => visit(tree);
 }
 
-const NO_AUTOLINK_PLUGINS: PluggableList = [];
-const autolinkPlugins = new Map<string, PluggableList>();
+function remarkChangeRequestMediaUrls(options: { readonly changeRequestUrl: string }) {
+  const visit = (node: MarkdownNode): void => {
+    if ((node.type === "image" || node.type === "definition") && node.url !== undefined) {
+      node.url = resolveChangeRequestMediaUrl(node.url, options.changeRequestUrl);
+    }
+    node.children?.forEach(visit);
+  };
+  return (tree: MarkdownNode) => visit(tree);
+}
+
+const NO_PLUGINS: PluggableList = [];
+const markdownPlugins = new Map<string, PluggableList>();
 
 /**
  * One plugin list per repository, so every comment of a pull request shares one markdown
  * renderer and its parse cache instead of parsing again on each render.
  */
-export function pullRequestAutolinkPlugins(
+export function pullRequestMarkdownPlugins(
   changeRequest: { readonly provider: string; readonly url: string } | null,
 ): PluggableList {
-  if (changeRequest === null) return NO_AUTOLINK_PLUGINS;
+  if (changeRequest === null) return NO_PLUGINS;
   const repositoryUrl = sourceControlClients.parseChangeRequestUrl(changeRequest.url)?.link
     .repositoryUrl;
-  if (repositoryUrl === undefined) return NO_AUTOLINK_PLUGINS;
+  if (repositoryUrl === undefined) return NO_PLUGINS;
   const key = `${changeRequest.provider}\u0000${repositoryUrl}`;
-  let plugins = autolinkPlugins.get(key);
+  let plugins = markdownPlugins.get(key);
   if (plugins === undefined) {
     const autolinks = changeRequestReferenceAutolinker(changeRequest);
     const resolveUrl = changeRequestLinkResolver(changeRequest);
-    const list: PluggableList = [];
-    if (autolinks) list.push([remarkPullRequestAutolinks, { autolinks }]);
-    if (resolveUrl) list.push([remarkPullRequestRelativeUrls, { resolveUrl }]);
-    plugins = list.length > 0 ? list : NO_AUTOLINK_PLUGINS;
-    autolinkPlugins.set(key, plugins);
+    // The host resolver first: it knows paths a forge writes relative to its repository.
+    plugins = resolveUrl ? [[remarkPullRequestRelativeUrls, { resolveUrl }]] : [];
+    plugins.push([remarkChangeRequestMediaUrls, { changeRequestUrl: repositoryUrl }]);
+    if (autolinks) plugins.push([remarkPullRequestAutolinks, { autolinks }]);
+    markdownPlugins.set(key, plugins);
   }
   return plugins;
 }
