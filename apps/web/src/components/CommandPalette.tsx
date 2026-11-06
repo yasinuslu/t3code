@@ -94,6 +94,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useBrainstormStore, useThreadShellsWithoutBrainstorms } from "../brainstormStore";
 import { toggleManager } from "../lib/goToManager";
 import { stepProfile } from "./ProfileShortcuts";
+import { useForkFeature } from "../forkFeatures";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -440,8 +441,12 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
-  const severalProfiles = useBrainstormStore((state) => (state.profiles?.length ?? 0) > 1);
-  const codeProfiles = useAtomValue(primaryServerSettingsAtom).codeProfiles;
+  const managerOn = useForkFeature("manager");
+  const codeProfilesOn = useForkFeature("codeProfiles");
+  const severalProfiles =
+    useBrainstormStore((state) => (state.profiles?.length ?? 0) > 1) && codeProfilesOn;
+  const serverCodeProfiles = useAtomValue(primaryServerSettingsAtom).codeProfiles;
+  const codeProfiles = codeProfilesOn ? serverCodeProfiles : {};
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -1620,15 +1625,16 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  actionItems.push({
-    kind: "action",
-    value: "action:manager",
-    searchTerms: ["manager", "chat", "overlay", "goals", "tasks", "status", "plan"],
-    title: "Show or hide the manager",
-    icon: <CompassIcon className={ITEM_ICON_CLASS} />,
-    shortcutCommand: "manager.toggle",
-    run: async () => toggleManager(),
-  });
+  if (managerOn)
+    actionItems.push({
+      kind: "action",
+      value: "action:manager",
+      searchTerms: ["manager", "chat", "overlay", "goals", "tasks", "status", "plan"],
+      title: "Show or hide the manager",
+      icon: <CompassIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "manager.toggle",
+      run: async () => toggleManager(),
+    });
 
   for (const [direction, command, title] of severalProfiles
     ? ([

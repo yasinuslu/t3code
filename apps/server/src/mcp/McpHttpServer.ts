@@ -71,19 +71,6 @@ import * as WorktreeMcpService from "./WorktreeMcpService.ts";
 import * as PullRequestsHandlers from "./toolkits/pullRequests/handlers.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import * as DeviceHandlers from "./toolkits/device/handlers.ts";
-import * as PeerEnvironments from "../peers/PeerEnvironments.ts";
-import * as BrainstormHandlers from "./toolkits/brainstorm/handlers.ts";
-import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
-import * as ElementsHandlers from "./toolkits/elements/handlers.ts";
-import { ElementsToolkit } from "./toolkits/elements/tools.ts";
-import * as PeersHandlers from "./toolkits/peers/handlers.ts";
-import { PeersToolkit } from "./toolkits/peers/tools.ts";
-import * as PresentationHandlers from "./toolkits/presentation/handlers.ts";
-import { PresentationToolkit } from "./toolkits/presentation/tools.ts";
-import * as PreviewEnvironmentHandlers from "./toolkits/previewEnvironment/handlers.ts";
-import { PreviewEnvironmentToolkit } from "./toolkits/previewEnvironment/tools.ts";
-import * as PreviewLinksHandlers from "./toolkits/previewLinks/handlers.ts";
-import { PreviewLinksToolkit } from "./toolkits/previewLinks/tools.ts";
 import {
   DeviceScreenshotTool,
   DeviceScreenshotToolkit,
@@ -1212,18 +1199,6 @@ export const layerDeviceToolkit = Layer.mergeAll(
   layerDeviceScreenshotRegistration,
 );
 
-// Fork toolkits: preview links, presentation, elements, preview environments, brainstorm, peers.
-const layerForkToolkits = Layer.mergeAll(
-  toolkitRegistration(PreviewLinksToolkit, PreviewLinksHandlers.layer),
-  toolkitRegistration(PresentationToolkit, PresentationHandlers.layer),
-  toolkitRegistration(ElementsToolkit, ElementsHandlers.layer),
-  toolkitRegistration(PreviewEnvironmentToolkit, PreviewEnvironmentHandlers.layer),
-  toolkitRegistration(BrainstormToolkit, BrainstormHandlers.layer),
-  toolkitRegistration(PeersToolkit, PeersHandlers.layer).pipe(
-    Layer.provide(PeerEnvironments.layer),
-  ),
-);
-
 /**
  * `McpServer` for in-process calls, which provide `McpInvocationContext`
  * around `callTool` as the auth middleware does for each /mcp request.
@@ -1268,4 +1243,4 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
 );
 
-export const layer = layerMcpTransport(Layer.mergeAll(layerTools, layerForkToolkits));
+export const layer = layerMcpTransport(layerTools);

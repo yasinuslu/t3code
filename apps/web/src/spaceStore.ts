@@ -1,23 +1,13 @@
 /**
- * Spaces: named, colored groups of projects the sidebar can switch between.
- *
- * There are two kinds. A profile space is seeded from a code profile (see
- * `filesystem.codeProfiles`) and holds exactly the projects whose workspace
- * sits in that profile; membership follows the path and cannot be changed.
- * A custom space (made with "+") is an overlay: the user adds projects to it,
- * and a project can be in any number of custom spaces while it stays in its
- * profile space. "All" shows every project; "Other" holds the projects no
- * profile space claims, and is path-based like a profile space.
- *
- * Each space remembers the last thread or draft it showed and its project
- * filter, so switching back restores it. Right-panel tabs and drafts are
- * already thread-scoped, so restoring the thread restores them too.
+ * Spaces: groups of projects the sidebar switches between. A profile space holds the projects in
+ * one code profile's folder; a custom space is an overlay the user fills. "All" shows everything,
+ * "Other" what no profile claims. Each space restores its last thread and project filter.
  */
 import type { ProjectIconColor, ProjectIconOverride } from "@t3tools/contracts";
-import { useMemo } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { useForkFeature } from "./forkFeatures";
 import { resolveStorage } from "./lib/storage";
 import { profileLockNow } from "./profileLock";
 import { deriveProjectIdentity } from "./projectIdentity";
@@ -120,12 +110,9 @@ type ResolveState = Pick<
 >;
 
 /**
- * The spaces of a project group (one logical project that can span several
- * checkouts and environments), given its `${environmentId}:${projectId}`
- * member keys. The home space comes from the first member whose code profile
- * has a space: members without a detected profile (an environment that cannot
- * report one, or a folder outside every profile) must not drag the whole group
- * into Other. Custom memberships of any member count for the group.
+ * The spaces of a project group, from its `${environmentId}:${projectId}` member keys. The home
+ * space is the first member's with a profile space, so members with no detected profile never
+ * drag the group into Other. Any member's custom memberships count for the group.
  */
 export function resolveProjectSpaces(
   state: ResolveState,
@@ -169,27 +156,28 @@ export function useProjectSpaceResolver(): (memberKeys: ReadonlyArray<string>) =
   const spaces = useSpaceStore((store) => store.spaces);
   const customSpaceIdsByProjectKey = useSpaceStore((store) => store.customSpaceIdsByProjectKey);
   const detectedProfileByProjectKey = useSpaceStore((store) => store.detectedProfileByProjectKey);
-  return useMemo(() => {
-    const state = { spaces, customSpaceIdsByProjectKey, detectedProfileByProjectKey };
-    return (memberKeys: ReadonlyArray<string>) => resolveProjectSpaces(state, memberKeys);
-  }, [customSpaceIdsByProjectKey, detectedProfileByProjectKey, spaces]);
+  const state = { spaces, customSpaceIdsByProjectKey, detectedProfileByProjectKey };
+  return (memberKeys: ReadonlyArray<string>) => resolveProjectSpaces(state, memberKeys);
+}
+
+/** The space in view; always All while spaces are off, so nothing stays filtered. */
+export function useActiveSpaceId(): string {
+  const spacesOn = useForkFeature("spaces");
+  const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
+  return spacesOn ? activeSpaceId : ALL_SPACE_ID;
 }
 
 /** Keeps only the projects of the active space; All keeps every project. */
 export function useActiveSpaceProjects<
   TProject extends { readonly environmentId: string; readonly id: string },
 >(projects: ReadonlyArray<TProject>): ReadonlyArray<TProject> {
-  const activeSpaceId = useSpaceStore((store) => store.activeSpaceId);
+  const activeSpaceId = useActiveSpaceId();
   const resolveSpaces = useProjectSpaceResolver();
-  return useMemo(
-    () =>
-      activeSpaceId === ALL_SPACE_ID
-        ? projects
-        : projects.filter((project) =>
-            isInSpace(resolveSpaces([`${project.environmentId}:${project.id}`]), activeSpaceId),
-          ),
-    [activeSpaceId, projects, resolveSpaces],
-  );
+  return activeSpaceId === ALL_SPACE_ID
+    ? projects
+    : projects.filter((project) =>
+        isInSpace(resolveSpaces([`${project.environmentId}:${project.id}`]), activeSpaceId),
+      );
 }
 
 function newSpaceId(): string {

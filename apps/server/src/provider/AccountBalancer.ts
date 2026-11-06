@@ -1,12 +1,6 @@
 /**
- * AccountBalancer - which provider account a thread runs on, for code profiles
- * that turn account balancing on (`settings.codeProfiles.<name>.accountBalancing`).
- *
- * It owns the limit state the choice needs: the reset time of every usage
- * limit a turn actually hit, per provider instance and model, kept across
- * restarts. The quota windows providers report are read from their snapshots.
- *
- * @module provider/AccountBalancer
+ * Which provider account a thread runs on, for code profiles with account balancing on. It keeps
+ * the reset time of every usage limit a turn hit, per instance and model, across restarts.
  */
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
@@ -14,6 +8,7 @@ import * as NodePath from "node:path";
 
 import {
   type CodeProfileAccountBalancing,
+  isForkFeatureOn,
   type ModelSelection,
   type ProjectId,
   type ProviderInstanceId,
@@ -184,6 +179,7 @@ const make = Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings.pipe(Effect.orElseSucceed(() => null));
       if (
         settings === null ||
+        !isForkFeatureOn(settings, "accountBalancing") ||
         !Object.values(settings.codeProfiles).some((profile) => profile.accountBalancing?.enabled)
       )
         return null;

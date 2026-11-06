@@ -4,7 +4,6 @@
  * profile; ordinary threads with a marker), and whose manager Home shows.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { useMemo } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -13,6 +12,9 @@ import { resolveStorage } from "./lib/storage";
 import { profileLockNow } from "./profileLock";
 import { useSpaceStore } from "./spaceStore";
 import { useQuietThreadShells, useVisibleThreadShells } from "./state/entities";
+import { useForkFeature } from "./forkFeatures";
+
+const EMPTY_KEYS: ReadonlySet<string> = new Set();
 
 /** What one manager-hosting environment reports. */
 export interface EnvironmentManagers {
@@ -179,14 +181,24 @@ export const useBrainstormStore = create<BrainstormStore>()(
 
 /** Every manager thread's `${environmentId}:${threadId}`. */
 export function useManagerThreadKeys(): ReadonlySet<string> {
+  const managerOn = useForkFeature("manager");
   const byProfile = useBrainstormStore((state) => state.managerThreadKeyBySlot);
-  return useMemo(() => new Set(Object.values(byProfile)), [byProfile]);
+  return managerOn ? new Set(Object.values(byProfile)) : EMPTY_KEYS;
 }
 
 export function useIsManagerThread(environmentId: string, threadId: string): boolean {
-  return useBrainstormStore((state) =>
+  const managerOn = useForkFeature("manager");
+  const isManager = useBrainstormStore((state) =>
     Object.values(state.managerThreadKeyBySlot).includes(`${environmentId}:${threadId}`),
   );
+  return managerOn && isManager;
+}
+
+/** Brainstorm chats kept out of the lists; none while the manager is off, so they show as threads. */
+function useHiddenBrainstormKeys(): ReadonlySet<string> {
+  const managerOn = useForkFeature("manager");
+  const hidden = useBrainstormStore((state) => state.hiddenThreadKeys);
+  return managerOn ? hidden : EMPTY_KEYS;
 }
 
 /** The active space's code profile, if it is a profile space. */
@@ -226,14 +238,10 @@ export function managerProfileNow(): string | null {
 /** Every thread shell except brainstorm chats, for the normal thread lists. */
 export function useThreadShellsWithoutBrainstorms(): ReadonlyArray<EnvironmentThreadShell> {
   const threads = useVisibleThreadShells();
-  const hidden = useBrainstormStore((state) => state.hiddenThreadKeys);
-  return useMemo(
-    () =>
-      hidden.size === 0
-        ? threads
-        : threads.filter((thread) => !hidden.has(`${thread.environmentId}:${thread.id}`)),
-    [hidden, threads],
-  );
+  const hidden = useHiddenBrainstormKeys();
+  return hidden.size === 0
+    ? threads
+    : threads.filter((thread) => !hidden.has(`${thread.environmentId}:${thread.id}`));
 }
 
 /**
@@ -243,28 +251,20 @@ export function useThreadShellsWithoutBrainstorms(): ReadonlyArray<EnvironmentTh
 export function useSidebarThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
   const threads = useThreadShellsWithoutBrainstorms();
   const managerKeys = useManagerThreadKeys();
-  return useMemo(
-    () =>
-      managerKeys.size === 0
-        ? threads
-        : threads.filter((thread) => !managerKeys.has(`${thread.environmentId}:${thread.id}`)),
-    [managerKeys, threads],
-  );
+  return managerKeys.size === 0
+    ? threads
+    : threads.filter((thread) => !managerKeys.has(`${thread.environmentId}:${thread.id}`));
 }
 
 /** The sidebar list's threads from the quiet shells it arranges rows by. */
 export function useSidebarQuietThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
   const threads = useQuietThreadShells();
-  const hidden = useBrainstormStore((state) => state.hiddenThreadKeys);
+  const hidden = useHiddenBrainstormKeys();
   const managerKeys = useManagerThreadKeys();
-  return useMemo(
-    () =>
-      hidden.size === 0 && managerKeys.size === 0
-        ? threads
-        : threads.filter((thread) => {
-            const key = `${thread.environmentId}:${thread.id}`;
-            return !hidden.has(key) && !managerKeys.has(key);
-          }),
-    [hidden, managerKeys, threads],
-  );
+  return hidden.size === 0 && managerKeys.size === 0
+    ? threads
+    : threads.filter((thread) => {
+        const key = `${thread.environmentId}:${thread.id}`;
+        return !hidden.has(key) && !managerKeys.has(key);
+      });
 }

@@ -1,12 +1,7 @@
 /**
- * Option-key space affordances on sidebar thread rows.
- *
- * Holding Option shows, on every thread row, the spaces its project is in.
- * Option-clicking a row opens a small popover next to it that lists the
- * custom spaces as toggles (the same overlay as the menu's "Add to space");
- * it stays open so several can be toggled. Esc, a click outside, or another
- * Option-click on the row closes it. Option-click never opens the thread,
- * and the plain drag (dnd-kit) ignores presses with Option held.
+ * Option-key space affordances on sidebar rows: holding Option shows each row's spaces, and
+ * Option-click opens a popover of custom-space toggles that stays open until Esc, a click
+ * outside, or another Option-click. Option-click never opens the thread or starts a drag.
  */
 import { CheckIcon } from "lucide-react";
 import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
@@ -14,6 +9,7 @@ import { createPortal } from "react-dom";
 import { create } from "zustand";
 
 import { cn } from "~/lib/utils";
+import { useForkFeature } from "../../forkFeatures";
 import { type ProjectSpaces, useSpaceStore } from "../../spaceStore";
 import { SpaceIcon } from "./SpaceSwitcher";
 import {
@@ -83,10 +79,11 @@ export const ThreadSpaceBadges = memo(function ThreadSpaceBadges({
 }: {
   readonly projectKey: string;
 }) {
+  const spacesOn = useForkFeature("spaces");
   const held = useOptionKeyStore((store) => store.held);
   const resolve = useContext(SpaceRowProjectContext);
   const spaces = useSpaceStore((store) => store.spaces);
-  if (!held || !resolve) return null;
+  if (!spacesOn || !held || !resolve) return null;
   const badges = threadSpaceBadges(spaces, resolve(projectKey).spaces);
   if (badges.length === 0) return null;
   return (

@@ -1,5 +1,6 @@
 import type { EnvironmentId, ServerProvider } from "@t3tools/contracts";
 
+import { useForkFeature } from "../forkFeatures";
 import { projectCodeProfile, serverHomeDirectory } from "../profileGuard.logic";
 import { useSpaceStore } from "../spaceStore";
 import { filesystemEnvironment } from "../state/filesystem";
@@ -17,19 +18,21 @@ export function useProjectCodeProfile(input: {
   readonly projectProfiles: Readonly<Record<string, string>> | undefined;
   readonly providers: ReadonlyArray<ServerProvider>;
 }): string | null {
+  const codeProfilesOn = useForkFeature("codeProfiles");
   const key =
     input.environmentId && input.projectId ? `${input.environmentId}:${input.projectId}` : null;
   const detectedProfile = useSpaceStore((store) =>
     key === null ? null : (store.detectedProfileByProjectKey[key] ?? null),
   );
   const query = useEnvironmentQuery(
-    input.environmentId && input.workspaceRoot
+    codeProfilesOn && input.environmentId && input.workspaceRoot
       ? filesystemEnvironment.codeProfiles({
           environmentId: input.environmentId,
           input: { paths: [input.workspaceRoot] },
         })
       : null,
   );
+  if (!codeProfilesOn) return null;
   const effective = query.data?.assignments[0]?.effectiveProfile;
   if (effective !== undefined) return effective;
   return projectCodeProfile({

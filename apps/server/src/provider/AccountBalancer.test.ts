@@ -62,9 +62,11 @@ function dependencies(
   usedPercent: { readonly first: number; readonly second: number },
   listed: ReadonlyArray<ProviderInstanceId> = [first, second],
   snListed?: ReadonlyArray<ProviderInstanceId>,
+  forkFeatures?: { readonly accountBalancing: boolean },
 ) {
   return Layer.mergeAll(
     ServerSettings.layerTest({
+      ...(forkFeatures === undefined ? {} : { forkFeatures }),
       codeProfiles: {
         yu: {
           root: "/code/yu",
@@ -135,6 +137,23 @@ it.effect("starts a thread on the account with more quota left only when asked t
     assert.deepEqual(yield* choose(profileProject, "pinned"), { modelSelection: selection });
     assert.deepEqual(yield* choose(otherProject, "auto"), { modelSelection: selection });
   }).pipe(Effect.provide(dependencies({ first: 80, second: 10 }))),
+);
+
+it.effect("leaves every launch on its named account while account balancing is off", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(NOW);
+    const choice = yield* withBalancer((balancer) =>
+      balancer.chooseForLaunch({ projectId: profileProject, selection, mode: "auto" }),
+    );
+
+    assert.deepEqual(choice, { modelSelection: selection });
+  }).pipe(
+    Effect.provide(
+      dependencies({ first: 80, second: 10 }, [first, second], undefined, {
+        accountBalancing: false,
+      }),
+    ),
+  ),
 );
 
 it.effect("replaces a limited account even when the launch names it", () =>
