@@ -3689,7 +3689,9 @@ export const layer = Layer.unwrap(
           ),
         );
         const profileLock = (yield* readForkFeature("codeProfiles"))
-          ? ProfileVisibility.parseProfileLock(url.value.searchParams.get(CLIENT_PROFILE_QUERY_PARAM))
+          ? ProfileVisibility.parseProfileLock(
+              url.value.searchParams.get(CLIENT_PROFILE_QUERY_PARAM),
+            )
           : null;
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* analytics.recordOwners(readClientOwners(request), "client");

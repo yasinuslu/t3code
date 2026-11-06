@@ -803,7 +803,9 @@ const layerMakeRoutes = Layer.mergeAll(
     ServerHttp.layerStaticAndDevRoute,
     Ws.layer,
   ),
-  McpHttpServer.layerMcpTransport(Layer.mergeAll(McpHttpServer.layerTools, ForkMcpToolkits.layer)).pipe(
+  McpHttpServer.layerMcpTransport(
+    Layer.mergeAll(McpHttpServer.layerTools, ForkMcpToolkits.layer),
+  ).pipe(
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
   ),
