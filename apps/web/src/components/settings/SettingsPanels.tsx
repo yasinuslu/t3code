@@ -1035,7 +1035,7 @@ export function GeneralSettingsPanel() {
         {codeProfilesOn ? (
           <SettingsRow
             {...searchableSetting("profile-lock")}
-            description="Show only this code profile's work in this app, plus the common projects. Every connected machine leaves the other profiles' projects, threads and managers out. Leave empty to see everything; the app reloads when it changes. In the desktop app, Window > <profile> Window (Alt+Shift+1, Alt+Shift+2, ..., Ctrl+Shift+N on a Mac) opens a window locked to one profile next to this one."
+            description="Show only this code profile's work, plus common projects, on every connected machine. Empty shows everything; the app reloads on change. Window > <profile> Window opens a locked window."
             control={<ProfileLockInput />}
           />
         ) : null}
