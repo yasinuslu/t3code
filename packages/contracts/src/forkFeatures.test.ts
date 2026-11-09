@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { FORK_FEATURES, isForkFeatureOn } from "./forkFeatures.ts";
 import { ServerSettings } from "./settings.ts";
