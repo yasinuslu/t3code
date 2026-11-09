@@ -2,7 +2,7 @@
  * The code profile a folder belongs to: the deepest `root` holding its physical
  * path, else its main checkout's. No match leaves the Claude dir to the instance.
  */
-import type { CodeProfile } from "@t3tools/contracts";
+import { type CodeProfile, isForkFeatureOn } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -47,6 +47,13 @@ export class CodeProfiles extends Context.Service<
       folder: string,
       environment?: NodeJS.ProcessEnv,
     ) => Effect.Effect<ResolvedCodeProfile | undefined>;
+    /**
+     * The profile `folder` belongs to, by path only: the deepest
+     * `settings.projectProfiles` folder holding it (which may name `common`),
+     * else the deepest profile root, else its main checkout's. Undefined
+     * outside every profile.
+     */
+    readonly profileOf: (folder: string) => Effect.Effect<string | undefined>;
     /** Every profile in settings order, with its default Claude config dir. */
     readonly list: Effect.Effect<ReadonlyArray<ListedCodeProfile>>;
     /** Every Claude config dir the profiles name, defaults first, without duplicates. */
@@ -82,8 +89,17 @@ const make = Effect.gen(function* () {
   });
 
   const profiles = serverSettings.getSettings.pipe(
-    Effect.map((settings) => Object.entries(settings.codeProfiles)),
+    Effect.map((settings) =>
+      isForkFeatureOn(settings, "codeProfiles") ? Object.entries(settings.codeProfiles) : [],
+    ),
     Effect.orElseSucceed((): ReadonlyArray<readonly [string, CodeProfile]> => []),
+  );
+
+  const overrides = serverSettings.getSettings.pipe(
+    Effect.map((settings) =>
+      isForkFeatureOn(settings, "codeProfiles") ? Object.entries(settings.projectProfiles) : [],
+    ),
+    Effect.orElseSucceed((): ReadonlyArray<readonly [string, string]> => []),
   );
 
   const isWithin = (folder: string, root: string) => {
@@ -141,6 +157,26 @@ const make = Effect.gen(function* () {
     return { name: found.name, claudeConfigDir } satisfies ResolvedCodeProfile;
   });
 
+  const profileOf = Effect.fn("CodeProfiles.profileOf")(function* (folder: string) {
+    const here = yield* physical(folder);
+    const mainCheckout = yield* Cache.get(mainCheckouts, here);
+    const candidates =
+      mainCheckout !== undefined && mainCheckout !== here ? [here, mainCheckout] : [here];
+    for (const candidate of candidates) {
+      let best: { readonly root: string; readonly profile: string } | undefined;
+      for (const [overrideFolder, profile] of yield* overrides) {
+        const root = yield* physical(overrideFolder);
+        if (isWithin(candidate, root) && (best === undefined || root.length > best.root.length)) {
+          best = { root, profile };
+        }
+      }
+      if (best !== undefined) return best.profile;
+      const found = yield* match(yield* profiles, candidate);
+      if (found !== undefined) return found.name;
+    }
+    return undefined;
+  });
+
   const claudeConfigDirs = profiles.pipe(
     Effect.map((entries) => {
       const seen = new Set<string>();
@@ -168,7 +204,7 @@ const make = Effect.gen(function* () {
     ),
   );
 
-  return CodeProfiles.of({ resolve, list, claudeConfigDirs });
+  return CodeProfiles.of({ resolve, profileOf, list, claudeConfigDirs });
 });
 
 export const layer = Layer.effect(CodeProfiles, make);
@@ -178,6 +214,9 @@ export const layerEmpty = Layer.succeed(
   CodeProfiles,
   CodeProfiles.of({
     resolve: Effect.fn("CodeProfiles.resolve")(function* () {
+      return undefined;
+    }),
+    profileOf: Effect.fn("CodeProfiles.profileOf")(function* () {
       return undefined;
     }),
     list: Effect.succeed([]),

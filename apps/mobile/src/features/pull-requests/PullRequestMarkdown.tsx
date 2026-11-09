@@ -1,4 +1,8 @@
-import { splitPullRequestBody } from "@t3tools/client-runtime/pull-request-markdown";
+import {
+  splitPullRequestBody,
+  type PullRequestBodySegment,
+} from "@t3tools/client-runtime/pull-request-markdown";
+import { markdownTaskMarkerOffset } from "@t3tools/shared/markdownTaskList";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 import { useProject } from "../../state/entities";
@@ -13,6 +17,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 import {
   changeRequestLinkResolver,
   changeRequestReferenceAutolinker,
+  resolveChangeRequestMediaUrl,
 } from "@t3tools/client-runtime/pull-request-markdown";
 import {
   sourceControlClients,
@@ -41,12 +46,14 @@ import type {
   MarkdownImageRenderer,
   MarkdownImageSourceResolver,
 } from "../../native/SelectableMarkdownText";
+import type { SelectableMarkdownTextProps } from "../../native/SelectableMarkdownText.types";
 
 const AutolinksContext = createContext<((text: string) => ReadonlyArray<ReferenceAutolink>) | null>(
   null,
 );
 const LinkResolverContext = createContext<((url: string) => string) | null>(null);
 const LineBreaksContext = createContext(false);
+const ChangeRequestUrlContext = createContext<string | null>(null);
 
 export function PullRequestMarkdownRepository(props: {
   /** The change request the markdown belongs to, whose host decides what its text links. */
@@ -68,14 +75,18 @@ export function PullRequestMarkdownRepository(props: {
     projectId: target.input.projectId,
   });
   const cwd = project?.workspaceRoot;
-  const media = cwd ? { environmentId: target.environmentId, cwd } : null;
+  const media = cwd
+    ? { environmentId: target.environmentId, cwd, repository: target.input.repository }
+    : null;
   return (
     <AutolinksContext value={autolinks}>
-      <LinkResolverContext value={resolveUrl}>
-        <LineBreaksContext value={lineBreaks}>
-          <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
-        </LineBreaksContext>
-      </LinkResolverContext>
+      <LineBreaksContext value={lineBreaks}>
+        <ChangeRequestUrlContext value={url ?? null}>
+          <LinkResolverContext value={resolveUrl}>
+            <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
+          </LinkResolverContext>
+        </ChangeRequestUrlContext>
+      </LineBreaksContext>
     </AutolinksContext>
   );
 }
@@ -115,6 +126,7 @@ function MarkdownImage(props: {
     <ThreadMarkdownImageView
       uri={media.uri}
       sourceKey={props.href}
+      cacheKey={media.cacheKey}
       unavailable={media.unavailable || !/^https?:\/\//i.test(props.href)}
       alt={props.alt}
       onPressPreview={(source) =>
@@ -134,51 +146,128 @@ export function PullRequestMarkdown(props: {
   readonly markdown: string;
   readonly imageGroupMarkdown?: string;
   readonly lineBreaks?: boolean;
+  /**
+   * `markerOffset` is into `markdown`. Returning false, or a tap that can't be traced back to
+   * the source, undoes the tick the renderer already drew.
+   */
+  readonly onTaskListChange?: (input: {
+    readonly markerOffset: number;
+    readonly checked: boolean;
+  }) => boolean;
 }) {
-  const segments = useMemo(() => splitPullRequestBody(props.markdown), [props.markdown]);
-  return (
-    <View style={{ gap: 12 }}>
-      {segments.map((segment) =>
-        segment.kind === "markdown" ? (
-          <PullRequestMarkdownContent
-            key={segment.id}
-            markdown={segment.text}
-            imageGroupMarkdown={props.imageGroupMarkdown ?? props.markdown}
-            lineBreaks={props.lineBreaks}
-          />
-        ) : (
-          <PullRequestMedia key={segment.id} url={segment.url} kind={segment.media} />
-        ),
-      )}
-    </View>
-  );
-}
-
-function PullRequestMarkdownContent(props: {
-  readonly markdown: string;
-  readonly imageGroupMarkdown?: string;
-  readonly lineBreaks: boolean | undefined;
-}) {
-  const hostLineBreaks = useContext(LineBreaksContext);
-  const autolinks = useContext(AutolinksContext);
-  const resolveUrl = useContext(LinkResolverContext);
   const mediaContext = useContext(PullRequestMediaContext);
-  const markdown = linkReferenceAutolinks(props.markdown, autolinks);
-  const openPullRequest = useOpenPullRequest();
-  const resolve = (href: string) => resolveUrl?.(href) ?? href;
-  const openLink = (href: string) => {
-    void openPullRequest(resolve(href));
-  };
+  const changeRequestUrl = useContext(ChangeRequestUrlContext);
+  const resolveUrl = useContext(LinkResolverContext);
+  const segments = useMemo(() => splitPullRequestBody(props.markdown), [props.markdown]);
+  const [undoneTicks, setUndoneTicks] = useState(0);
   const gallery: FilePreviewItem[] = markdownImageSources(
     props.imageGroupMarkdown ?? props.markdown,
   )
-    .map(resolve)
+    .map((href) => resolveUrl?.(href) ?? href)
+    .map((href) => (changeRequestUrl ? resolveChangeRequestMediaUrl(href, changeRequestUrl) : href))
     .filter(
       (uri) =>
         /^https?:\/\//i.test(uri) &&
         videoMimeType({ name: uri.split(/[?#]/)[0] ?? uri, mimeType: "" }) === null,
     )
     .map((uri) => pullRequestImageSource(uri, mediaContext));
+  const segmentProps = {
+    gallery,
+    lineBreaks: props.lineBreaks,
+    undoneTicks,
+    onTaskListChange: props.onTaskListChange,
+    onTaskListUndone: () => setUndoneTicks((count) => count + 1),
+  };
+  return (
+    <View style={{ gap: 12 }}>
+      {segments.map((segment) => (
+        <PullRequestBodySegmentView key={segment.id} segment={segment} {...segmentProps} />
+      ))}
+    </View>
+  );
+}
+
+function PullRequestBodySegmentView(props: {
+  readonly segment: PullRequestBodySegment;
+  readonly gallery: FilePreviewItem[];
+  readonly lineBreaks: boolean | undefined;
+  readonly undoneTicks: number;
+  readonly onTaskListChange:
+    | ((input: { readonly markerOffset: number; readonly checked: boolean }) => boolean)
+    | undefined;
+  readonly onTaskListUndone: () => void;
+}) {
+  const { segment, onTaskListChange } = props;
+  if (segment.kind === "markdown") {
+    return (
+      <PullRequestMarkdownContent
+        key={props.undoneTicks}
+        markdown={segment.text}
+        gallery={props.gallery}
+        lineBreaks={props.lineBreaks}
+        onTaskListItemPress={
+          onTaskListChange
+            ? (event) => {
+                const offset = markdownTaskMarkerOffset(
+                  segment.text,
+                  event.index,
+                  event.text,
+                  event.checked,
+                );
+                const kept =
+                  offset !== null &&
+                  onTaskListChange({
+                    markerOffset: segment.sourceOffset + offset,
+                    checked: event.checked,
+                  });
+                if (!kept) props.onTaskListUndone();
+              }
+            : undefined
+        }
+      />
+    );
+  }
+  if (segment.kind === "attachment") {
+    return <PullRequestMedia url={segment.url} kind={segment.media} />;
+  }
+  return (
+    <View style={{ gap: 12 }}>
+      {segment.rows.map((cells, rowIndex) => (
+        // oxlint-disable-next-line react/no-array-index-key -- rows have no identity besides position
+        <View key={rowIndex} style={{ flexDirection: "row", gap: 12 }}>
+          {cells.map((cell, cellIndex) => (
+            // oxlint-disable-next-line react/no-array-index-key -- cells have no identity besides position
+            <View key={cellIndex} style={{ flex: 1, minWidth: 0, gap: 12 }}>
+              {cell.segments.map((cellSegment) => (
+                <PullRequestBodySegmentView key={cellSegment.id} {...props} segment={cellSegment} />
+              ))}
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function PullRequestMarkdownContent(props: {
+  readonly markdown: string;
+  readonly gallery: FilePreviewItem[];
+  readonly lineBreaks: boolean | undefined;
+  readonly onTaskListItemPress?: SelectableMarkdownTextProps["onTaskListItemPress"];
+}) {
+  const hostLineBreaks = useContext(LineBreaksContext);
+  const autolinks = useContext(AutolinksContext);
+  const resolveUrl = useContext(LinkResolverContext);
+  const mediaContext = useContext(PullRequestMediaContext);
+  const changeRequestUrl = useContext(ChangeRequestUrlContext);
+  const resolveMediaUrl = (href: string) =>
+    changeRequestUrl ? resolveChangeRequestMediaUrl(href, changeRequestUrl) : href;
+  const markdown = linkReferenceAutolinks(props.markdown, autolinks);
+  const openPullRequest = useOpenPullRequest();
+  const resolve = (href: string) => resolveMediaUrl(resolveUrl?.(href) ?? href);
+  const openLink = (href: string) => {
+    void openPullRequest(resolve(href));
+  };
   const [preview, setPreview] = useState<FilePreviewSource | null>(null);
   const renderImage: MarkdownImageRenderer = (image) => (
     <MarkdownImage href={resolve(image.href)} alt={image.alt} onPreview={setPreview} />
@@ -186,7 +275,7 @@ function PullRequestMarkdownContent(props: {
   const resolveImageSource = usePullRequestImageSource(resolve);
   const styles = useMarkdownPreviewStyles();
   return (
-    <FilePreviewGallery value={gallery}>
+    <FilePreviewGallery value={props.gallery}>
       <SelectableMarkdownText
         markdown={markdown}
         preserveSoftBreaks={props.lineBreaks ?? hostLineBreaks}
@@ -195,6 +284,7 @@ function PullRequestMarkdownContent(props: {
         renderImage={renderImage}
         resolveImageSource={resolveImageSource}
         onImagePress={(href) => setPreview(pullRequestImageSource(resolve(href), mediaContext))}
+        onTaskListItemPress={props.onTaskListItemPress}
       />
       <FilePreviewModal source={preview} onRequestClose={() => setPreview(null)} />
     </FilePreviewGallery>

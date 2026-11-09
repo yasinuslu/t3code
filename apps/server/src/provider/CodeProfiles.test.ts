@@ -15,11 +15,12 @@ import * as CodeProfiles from "./CodeProfiles.ts";
 const withProfiles = <A, E>(
   codeProfiles: Record<string, CodeProfile>,
   use: (profiles: CodeProfiles.CodeProfiles["Service"]) => Effect.Effect<A, E>,
+  projectProfiles: Record<string, string> = {},
 ) =>
   CodeProfiles.CodeProfiles.use(use).pipe(
     Effect.provide(
       CodeProfiles.layer.pipe(
-        Layer.provide(ServerSettings.layerTest({ codeProfiles })),
+        Layer.provide(ServerSettings.layerTest({ codeProfiles, projectProfiles })),
         Layer.provide(NodeServices.layer),
       ),
     ),
@@ -48,6 +49,34 @@ it.layer(NodeServices.layer)("CodeProfiles", (it) => {
       Effect.gen(function* () {
         const { app } = yield* fixture;
         expect(yield* withProfiles({}, (profiles) => profiles.resolve(app))).toBe(undefined);
+      }).pipe(Effect.scoped),
+    );
+
+    it.effect("resolves no profile while code profiles are off", () =>
+      Effect.gen(function* () {
+        const { work, app, claude } = yield* fixture;
+        const resolved = yield* CodeProfiles.CodeProfiles.use((service) =>
+          Effect.all([service.resolve(app), service.list, service.profileOf(app)]),
+        ).pipe(
+          Effect.provide(
+            CodeProfiles.layer.pipe(
+              Layer.provide(
+                ServerSettings.layerTest({
+                  codeProfiles: {
+                    work: {
+                      root: work,
+                      claude: { configDir: claude("work"), extraConfigDirs: [] },
+                    },
+                  },
+                  projectProfiles: { [app]: "work" },
+                  forkFeatures: { codeProfiles: false },
+                }),
+              ),
+              Layer.provide(NodeServices.layer),
+            ),
+          ),
+        );
+        expect(resolved).toEqual([undefined, [], undefined]);
       }).pipe(Effect.scoped),
     );
 
@@ -157,4 +186,32 @@ it.layer(NodeServices.layer)("CodeProfiles", (it) => {
       ]);
     }).pipe(Effect.scoped),
   );
+  describe("profileOf", () => {
+    it.effect("names the profile of a folder, honouring projectProfiles", () =>
+      Effect.gen(function* () {
+        const { root, work, home, app, claude, path, fs } = yield* fixture;
+        const shared = path.join(home, "shared");
+        yield* fs.makeDirectory(shared, { recursive: true });
+        const profiles = {
+          work: { root: work, claude: { configDir: claude("work"), extraConfigDirs: [] } },
+          home: { root: home, claude: { configDir: claude("home"), extraConfigDirs: [] } },
+        } satisfies Record<string, CodeProfile>;
+        const [inApp, inHome, inShared, outside] = yield* withProfiles(
+          profiles,
+          (service) =>
+            Effect.all([
+              service.profileOf(app),
+              service.profileOf(path.join(home, "anything")),
+              service.profileOf(path.join(shared, "deeper")),
+              service.profileOf(path.join(root, "config")),
+            ]),
+          { [shared]: "common" },
+        );
+        expect(inApp).toBe("work");
+        expect(inHome).toBe("home");
+        expect(inShared).toBe("common");
+        expect(outside).toBe(undefined);
+      }).pipe(Effect.scoped),
+    );
+  });
 });

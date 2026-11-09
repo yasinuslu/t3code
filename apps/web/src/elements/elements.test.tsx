@@ -7,7 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { elementProps } from "@t3tools/shared/elementProps";
 
-import { elementPlainText, trimPartialElementTag } from "./elementProps";
+import { elementPlainText, localImageRefs, trimPartialElementTag } from "./elementProps";
 import { ELEMENT_SLOT_PROPERTIES, rehypeElements } from "./rehypeElements";
 
 const decision: ElementManifest = {
@@ -145,5 +145,24 @@ describe("markdown pipeline", () => {
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("alert(4)");
     expect(html).toContain('data-t3-element="t3-decision"');
+  });
+});
+
+describe("localImageRefs", () => {
+  it("finds image files on disk anywhere in the props, once each", () => {
+    expect(
+      localImageRefs({
+        title: "/not/an/image.txt",
+        images: [
+          { image: "/home/u/shots/a.png", caption: "/home/u/shots/b.png" },
+          { image: " ~/shots/c.JPG " },
+          { image: "/home/u/shots/a.png" },
+          { image: "https://example.com/d.png" },
+          { image: "//cdn.example.com/e.png" },
+          { image: "shots/relative.png" },
+          { image: "example:desktop" },
+        ],
+      }),
+    ).toEqual(["/home/u/shots/a.png", "/home/u/shots/b.png", "~/shots/c.JPG"]);
   });
 });

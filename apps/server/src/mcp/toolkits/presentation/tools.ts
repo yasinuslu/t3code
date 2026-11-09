@@ -10,7 +10,7 @@ import {
   THREAD_PRESENTATION_MAX_PAGES,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -91,7 +91,7 @@ const dependencies = [
   ServerConfig.ServerConfig,
   FileSystem.FileSystem,
   Path.Path,
-  Crypto.Crypto,
+  SecureRandom.SecureRandom,
 ];
 
 const OtherThread = Schema.optional(

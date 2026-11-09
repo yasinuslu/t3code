@@ -25,6 +25,7 @@ import { traceLocalHandlerWork } from "../cloud/traceRelayRequest.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import { forkFeatureOn } from "../forkFeatures.ts";
 import * as ProfileVisibility from "../workspace/ProfileVisibility.ts";
 import * as Option from "effect/Option";
 import {
@@ -40,6 +41,8 @@ import * as ProjectStore from "./ProjectStore.ts";
 import { loadSubscriberShellSnapshot } from "./ShellStream.ts";
 import { boundedSnapshotResponseFields } from "./ThreadStream.ts";
 import { projectThreadProjectionForWire } from "./WireProjection.ts";
+
+const isInvalidThreadHistoryCursorError = Schema.is(InvalidThreadHistoryCursorError);
 
 const isThreadTranscriptTooLargeError = Schema.is(
   ThreadManagementService.ThreadTranscriptTooLargeError,
@@ -65,21 +68,23 @@ export const layer = HttpApiBuilder.group(
     const projectEnrichment = yield* ProjectEnrichmentService.ProjectEnrichmentService;
     const projectService = yield* ProjectService.ProjectService;
     const profileVisibility = yield* ProfileVisibility.make;
+    const profileLockOf = (headers: { readonly [CLIENT_PROFILE_HEADER]?: string | undefined }) =>
+      forkFeatureOn("codeProfiles")
+        ? ProfileVisibility.parseProfileLock(headers[CLIENT_PROFILE_HEADER])
+        : null;
     const shellFilterFor = (headers: { readonly [CLIENT_PROFILE_HEADER]?: string | undefined }) =>
-      ProfileVisibility.makeShellItemFilter(
-        ProfileVisibility.parseProfileLock(headers[CLIENT_PROFILE_HEADER]),
-        (projectId) =>
-          projectService.getShell(ProjectId.make(projectId)).pipe(
-            Effect.map(Option.getOrNull),
-            Effect.orElseSucceed(() => null),
-          ),
+      ProfileVisibility.makeShellItemFilter(profileLockOf(headers), (projectId) =>
+        projectService.getShell(ProjectId.make(projectId)).pipe(
+          Effect.map(Option.getOrNull),
+          Effect.orElseSucceed(() => null),
+        ),
       ).pipe(Effect.provideService(ProfileVisibility.ProfileVisibility, profileVisibility));
     // A profile-locked client gets a 404 for a thread of another profile.
     const requireThreadVisible = Effect.fnUntraced(function* (
       headers: { readonly [CLIENT_PROFILE_HEADER]?: string | undefined },
       threadId: ThreadId,
     ) {
-      if (ProfileVisibility.parseProfileLock(headers[CLIENT_PROFILE_HEADER]) === null) return;
+      if (profileLockOf(headers) === null) return;
       const shell = yield* threadManagement
         .getThreadShell(threadId)
         .pipe(Effect.orElseSucceed(() => null));
@@ -284,12 +289,10 @@ export const layer = HttpApiBuilder.group(
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationReadScope);
           yield* requireThreadVisible(args.headers, args.params.threadId);
-          const decoded = yield* Effect.try(() =>
-            decodeThreadHistoryCursor(args.query.cursor),
-          ).pipe(Effect.result);
+          const decoded = Result.try(() => decodeThreadHistoryCursor(args.query.cursor));
           if (Result.isFailure(decoded)) {
-            const cause = decoded.failure.cause;
-            if (cause instanceof InvalidThreadHistoryCursorError)
+            const cause = decoded.failure;
+            if (isInvalidThreadHistoryCursorError(cause))
               return yield* failEnvironmentInvalidRequest("invalid_history_cursor");
             return yield* failEnvironmentInternal("orchestration_thread_history_failed", cause);
           }

@@ -6,13 +6,14 @@ import {
 } from "@t3tools/shared/threadPreviewLinks";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
+import { forkFeatureOn } from "../forkFeatures.ts";
 import * as PreviewLinkStatus from "../preview/PreviewLinkStatus.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -28,11 +29,9 @@ interface CompletedRun {
 }
 
 /**
- * Links the previews an agent hands over in its final message. When a run completes, the URLs
- * in that run's last assistant message are checked against the preview status protocol, and
- * each origin that answers with a state is linked to the thread as `source: "report"`. Hosts
- * that do not implement the protocol are ordinary links and stay unlinked, and so do previews
- * the host already removed.
+ * Links the previews an agent hands over in its final message: each URL whose origin answers the
+ * preview status protocol is linked as `source: "report"`. Other hosts, and previews the host
+ * already removed, stay unlinked.
  */
 export class PreviewLinkReportReactor extends Context.Service<
   PreviewLinkReportReactor,
@@ -46,12 +45,13 @@ const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const previews = yield* PreviewLinkStatus.PreviewLinkStatus;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const detect = Effect.fn("PreviewLinkReportReactor.detect")(function* ({
     threadId,
     runId,
   }: CompletedRun) {
+    if (!forkFeatureOn("previews")) return;
     const { messages } = yield* projections.getThreadRecords(threadId, ["messages"], {
       messageRoles: ["assistant"],
       messageRunIds: [runId],
@@ -77,7 +77,7 @@ const make = Effect.gen(function* () {
           Effect.flatMap((state) =>
             state === "unknown" || state === "gone"
               ? Effect.void
-              : crypto.randomUUIDv4().pipe(
+              : crypto.uuidV4().pipe(
                   Effect.flatMap((uuid) =>
                     engine.dispatch({
                       type: "thread.preview-link.link",

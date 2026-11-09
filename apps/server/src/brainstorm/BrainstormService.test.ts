@@ -20,7 +20,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -106,10 +106,9 @@ afterEach(() => {
 });
 
 let uuidCounter = 0;
-const testCrypto = Crypto.make({
-  randomBytes: (size) => new Uint8Array(size).map((_, index) => (index + uuidCounter++) % 256),
-  digest: (_algorithm, data) => Effect.succeed(data),
-});
+const testCrypto = SecureRandom.make((size) =>
+  new Uint8Array(size).map((_, index) => (index + uuidCounter++) % 256),
+);
 
 /** A service on in-memory projects and threads that records every launch and command. */
 const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: {
@@ -127,7 +126,7 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
   const deps = Layer.mergeAll(
     ServerConfig.layerTest(home, baseDir),
     ServerSettings.layerTest(),
-    Layer.succeed(Crypto.Crypto, testCrypto),
+    Layer.succeed(SecureRandom.SecureRandom, testCrypto),
     Layer.mock(ProjectService.ProjectService)({
       listShells: () => Ref.get(projects),
       create: (created) =>

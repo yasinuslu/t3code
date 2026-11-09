@@ -1,7 +1,7 @@
 import { OrchestratorMcpFailure, ThreadId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -24,7 +24,7 @@ const dependencies = [
   ThreadManagementService.ThreadManagementService,
   Orchestrator.OrchestratorV2,
   PreviewEnvironmentService.PreviewEnvironmentService,
-  Crypto.Crypto,
+  SecureRandom.SecureRandom,
 ];
 
 const PreviewEnvironmentUpTool = Tool.make("preview_environment_up", {

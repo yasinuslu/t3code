@@ -1,7 +1,9 @@
 import {
   CLIENT_PROFILE_QUERY_PARAM,
+  CLIENT_CAPABILITIES_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_VERSION,
+  SETTINGS_SECRET_REFERENCES_CAPABILITY,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
 
@@ -43,5 +45,6 @@ export function appendOrchestrationProtocol(socketUrl: string): string {
   if (profileLock !== null) {
     url.searchParams.set(CLIENT_PROFILE_QUERY_PARAM, profileLock);
   }
+  url.searchParams.set(CLIENT_CAPABILITIES_QUERY_PARAM, SETTINGS_SECRET_REFERENCES_CAPABILITY);
   return url.toString();
 }

@@ -29,7 +29,7 @@ import {
 } from "@t3tools/contracts";
 import { formatThreadMarkdownLink } from "../mcp/threadMarkdownLink.ts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -39,7 +39,6 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { RpcClient, RpcSerialization } from "effect/rpc";
-import * as Socket from "effect/socket/Socket";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { lastActivityOf, threadStatusOf } from "../mcp/toolkits/brainstorm/handlers.ts";
@@ -65,29 +64,29 @@ const encodePeers = Schema.encodeEffect(PeerEnvironmentsJson);
 
 export class PeerNotFoundError extends Schema.TaggedError<PeerNotFoundError>()(
   "PeerNotFoundError",
-  { name: Schema.String },
+  { peer: Schema.String },
 ) {
   override get message(): string {
-    return `No peer named "${this.name}". Configure one with \`t3 peer add\`.`;
+    return `No peer named "${this.peer}". Configure one with \`t3 peer add\`.`;
   }
 }
 
 export class PeerUnreachableError extends Schema.TaggedError<PeerUnreachableError>()(
   "PeerUnreachableError",
-  { name: Schema.String, url: Schema.String, cause: Schema.optional(Schema.Defect()) },
+  { peer: Schema.String, url: Schema.String, cause: Schema.optional(Schema.Defect()) },
 ) {
   override get message(): string {
-    return `${this.name} is offline or unreachable (${this.url}).`;
+    return `${this.peer} is offline or unreachable (${this.url}).`;
   }
 }
 
 export class PeerRequestError extends Schema.TaggedError<PeerRequestError>()("PeerRequestError", {
-  name: Schema.String,
+  peer: Schema.String,
   detail: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
-    return `${this.name}: ${this.detail}`;
+    return `${this.peer}: ${this.detail}`;
   }
 }
 
@@ -339,7 +338,7 @@ type PeerRpcClient = Effect.Success<typeof makeRpcClient>;
 const make = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const httpClient = yield* HttpClient.HttpClient;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const readPeers = Effect.suspend(() => secrets.get(PEER_ENVIRONMENTS_SECRET)).pipe(
     Effect.flatMap(
@@ -365,7 +364,7 @@ const make = Effect.gen(function* () {
     readPeers.pipe(
       Effect.flatMap((peers) => {
         const peer = peers.find((candidate) => candidate.name === name);
-        return peer ? Effect.succeed(peer) : Effect.fail(new PeerNotFoundError({ name }));
+        return peer ? Effect.succeed(peer) : Effect.fail(new PeerNotFoundError({ peer: name }));
       }),
     );
 
@@ -373,7 +372,7 @@ const make = Effect.gen(function* () {
     httpClient.execute(HttpClientRequest.get(`${peer.url}${DESCRIPTOR_PATH}`)).pipe(
       Effect.timeout(DESCRIPTOR_TIMEOUT),
       Effect.mapError(
-        (cause) => new PeerUnreachableError({ name: peer.name, url: peer.url, cause }),
+        (cause) => new PeerUnreachableError({ peer: peer.name, url: peer.url, cause }),
       ),
       Effect.flatMap((response) =>
         HttpClientResponse.filterStatusOk(response).pipe(
@@ -381,7 +380,7 @@ const make = Effect.gen(function* () {
           Effect.mapError(
             (cause) =>
               new PeerRequestError({
-                name: peer.name,
+                peer: peer.name,
                 detail: `${peer.url} did not answer as a T3 Code server.`,
                 cause,
               }),
@@ -396,16 +395,10 @@ const make = Effect.gen(function* () {
     use: (client: PeerRpcClient) => Effect.Effect<A, E>,
   ): Effect.Effect<A, E | PeerUnreachableError> => {
     const authorization = `Bearer ${peer.token}`;
-    const socketLayer = Socket.layerWebSocket(peerSocketUrl(peer.url), {
+    const socketLayer = NodeSocket.layerWebSocket(peerSocketUrl(peer.url), {
       openTimeout: SOCKET_OPEN_TIMEOUT,
-    }).pipe(
-      Layer.provide(
-        Layer.succeed(
-          Socket.WebSocketConstructor,
-          (url) => new NodeSocket.NodeWS.WebSocket(url, { headers: { authorization } }),
-        ),
-      ),
-    );
+      headers: { authorization },
+    });
     const protocolLayer = RpcClient.layerProtocolSocket({ retryTransientErrors: false }).pipe(
       Layer.provide(Layer.mergeAll(socketLayer, RpcSerialization.layerJson)),
     );
@@ -418,7 +411,7 @@ const make = Effect.gen(function* () {
     ).pipe(
       Effect.timeoutOrElse({
         duration: RPC_TIMEOUT,
-        orElse: () => Effect.fail(new PeerUnreachableError({ name: peer.name, url: peer.url })),
+        orElse: () => Effect.fail(new PeerUnreachableError({ peer: peer.name, url: peer.url })),
       }),
     );
   };
@@ -430,7 +423,7 @@ const make = Effect.gen(function* () {
       ? " The peer refused the connection; its token may be invalid or revoked. Run `t3 peer add` again with a fresh token."
       : "";
     return new PeerRequestError({
-      name: peer.name,
+      peer: peer.name,
       detail: `${operation} failed: ${reason}.${hint}`,
       cause,
     });
@@ -446,7 +439,7 @@ const make = Effect.gen(function* () {
           onNone: () =>
             Effect.fail(
               new PeerRequestError({
-                name: peer.name,
+                peer: peer.name,
                 detail: "The thread list stream ended early.",
               }),
             ),
@@ -459,7 +452,7 @@ const make = Effect.gen(function* () {
     snapshot.threads.find((thread) => thread.id === threadId) ??
     snapshot.archivedThreads.find((thread) => thread.id === threadId);
 
-  const newId = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const newId = crypto.uuidV4().pipe(Effect.orDie);
 
   const validated = (peer: PeerEnvironment) => {
     const url = normalizePeerUrl(peer.url);
@@ -559,7 +552,7 @@ const make = Effect.gen(function* () {
       const workspaceStrategy = launchWorkspaceStrategy(input);
       if (workspaceStrategy === null) {
         return yield* new PeerRequestError({
-          name,
+          peer: name,
           detail: "A worktree launch needs baseRef (for example main).",
         });
       }
@@ -571,7 +564,7 @@ const make = Effect.gen(function* () {
           const snapshot = yield* shellSnapshot(peer, client);
           if (!snapshot.projects.some((project) => project.id === input.projectId)) {
             return yield* new PeerRequestError({
-              name,
+              peer: name,
               detail: `No project ${input.projectId}; list them with t3_peer_project_list.`,
             });
           }
@@ -579,7 +572,7 @@ const make = Effect.gen(function* () {
             input.modelSelection ?? defaultLaunchModel(snapshot, input.projectId);
           if (modelSelection === null) {
             return yield* new PeerRequestError({
-              name,
+              peer: name,
               detail:
                 "The project has no default model and no threads to copy one from; pass modelSelection.",
             });

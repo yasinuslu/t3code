@@ -21,6 +21,7 @@ import {
   useState,
 } from "react";
 
+import { useAssetUrls } from "../assets/assetUrls";
 import { cn, newMessageId } from "../lib/utils";
 import { readThreadShell, useThreadProjection } from "../state/entities";
 import { threadEnvironment } from "../state/threads";
@@ -28,7 +29,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { toastManager } from "../components/ui/toast";
 import { elementProps, validateElementProps } from "@t3tools/shared/elementProps";
 
-import { elementPlainText, elementQuestion } from "./elementProps";
+import { elementPlainText, elementQuestion, localImageRefs } from "./elementProps";
 import { useElementsLibrary } from "./library";
 import { PortalHost } from "./PortalHost";
 import { type PortalRequest, parsePortalRequest } from "./portalLogic";
@@ -105,14 +106,41 @@ function ElementSlotInner(props: ElementSlotProps) {
   );
 }
 
-/** Mounts the real custom element and wires its events to the thread. */
-function LiveElement(props: {
+interface LiveElementProps {
   readonly tag: string;
   readonly props: Record<string, unknown>;
   readonly threadRef: ScopedThreadRef | undefined;
   readonly plainText: string;
   readonly interactive: boolean;
-}) {
+}
+
+/** Whether the slot sits in a thread decides once, so the hooks below never change order. */
+function LiveElement(props: LiveElementProps) {
+  return props.threadRef === undefined ? (
+    <LiveElementBody {...props} imageUrls="{}" />
+  ) : (
+    <ThreadImagesElement {...props} threadRef={props.threadRef} />
+  );
+}
+
+/**
+ * Components name screenshots by path; the browser may be on another machine, so each path
+ * becomes a signed asset URL from the thread's environment.
+ */
+function ThreadImagesElement(props: LiveElementProps & { readonly threadRef: ScopedThreadRef }) {
+  const { threadRef } = props;
+  const refs = localImageRefs(props.props);
+  const urls = useAssetUrls(
+    threadRef.environmentId,
+    refs.map((path) => ({ _tag: "media-file" as const, threadId: threadRef.threadId, path })),
+  );
+  // A JSON string, so the element re-renders when the URLs change and not on every render.
+  const imageUrls = JSON.stringify(Object.fromEntries(refs.map((ref, i) => [ref, urls[i] ?? ""])));
+  return <LiveElementBody {...props} imageUrls={imageUrls} />;
+}
+
+/** Mounts the real custom element and wires its events to the thread. */
+function LiveElementBody(props: LiveElementProps & { readonly imageUrls: string }) {
   const host = useRef<HTMLSpanElement>(null);
   const element = useRef<HTMLElement | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -210,11 +238,13 @@ function LiveElement(props: {
     const current = element.current as (HTMLElement & Record<string, unknown>) | null;
     if (current === null) return;
     try {
+      const byRef = JSON.parse(props.imageUrls) as Record<string, string>;
+      current.resolveImage = (ref: string) => byRef[ref] ?? "";
       current.props = props.props;
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
     }
-  }, [props.props]);
+  }, [props.props, props.imageUrls]);
 
   // An answered component stays on screen but takes no second answer.
   const answered = answer !== null;

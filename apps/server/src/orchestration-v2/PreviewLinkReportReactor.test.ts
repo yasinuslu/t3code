@@ -12,7 +12,7 @@ import {
   type ThreadPreviewLinkState,
 } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -31,10 +31,7 @@ const AT = DateTime.makeUnsafe("2026-10-10T12:00:00.000Z");
 
 type LinkCommand = Extract<OrchestrationV2Command, { readonly type: "thread.preview-link.link" }>;
 
-const testCrypto = Crypto.make({
-  randomBytes: (size) => new Uint8Array(size).fill(1),
-  digest: (_algorithm, data) => Effect.succeed(data),
-});
+const testCrypto = SecureRandom.make((size) => new Uint8Array(size).fill(1));
 
 function assistantMessage(text: string, streaming = false): OrchestrationV2ConversationMessage {
   return {
@@ -123,7 +120,7 @@ const makeHarness = Effect.fn("makePreviewLinkReportHarness")(function* (options
         return Effect.succeed(options.states[new URL(url).origin] ?? "unknown");
       },
     }),
-    Layer.succeed(Crypto.Crypto, testCrypto),
+    Layer.succeed(SecureRandom.SecureRandom, testCrypto),
   );
 
   return {
