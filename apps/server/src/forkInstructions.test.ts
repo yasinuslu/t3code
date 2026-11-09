@@ -1,5 +1,5 @@
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { setForkFeaturesForTest } from "./forkFeatures.ts";
 import "./forkInstructions.ts";

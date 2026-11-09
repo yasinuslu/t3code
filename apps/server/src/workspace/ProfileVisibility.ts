@@ -159,6 +159,7 @@ interface ShellSnapshotLike {
 
 type ShellItemLike =
   | { readonly kind: "synchronized" }
+  | { readonly kind: "snapshot-required" }
   | {
       readonly kind: "snapshot";
       readonly snapshot: ShellSnapshotLike;

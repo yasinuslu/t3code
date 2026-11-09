@@ -3,7 +3,7 @@ import {
   threadRuntimeIsActive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, ThreadContextRecord } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ThreadContextRecord } from "@t3tools/contracts";
 import { formatThreadDeepLink } from "@t3tools/shared/threadLinks";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
@@ -14,6 +14,8 @@ import { readLocalApi } from "~/localApi";
 import { useEnvironment, usePrimaryEnvironmentId } from "~/state/environments";
 import { useProject, useThreadShell } from "~/state/entities";
 import { cn } from "~/lib/utils";
+import { orchestrationEnvironment } from "~/state/orchestration";
+import { useEnvironmentQuery } from "~/state/query";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { toastManager } from "./ui/toast";
@@ -56,6 +58,7 @@ async function copyThreadLink(href: string) {
  */
 export function ThreadContextChip(props: {
   record: Pick<ThreadContextRecord, "environmentId" | "threadId" | "title">;
+  projectId?: ProjectId | null;
   copyMarkdown?: string;
   /** The environment the chip is shown in (default: the primary one). A thread anywhere else names its environment. */
   currentEnvironmentId?: EnvironmentId | null | undefined;
@@ -67,8 +70,18 @@ export function ThreadContextChip(props: {
   const environment = useEnvironment(environmentId);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const currentEnvironmentId = props.currentEnvironmentId ?? primaryEnvironmentId;
-  const project = useProject(shell ? scopeProjectRef(environmentId, shell.projectId) : null);
-  const title = shell?.title?.trim() || props.record.title;
+  const lookup = useEnvironmentQuery(
+    shell === null && props.projectId === undefined
+      ? orchestrationEnvironment.threadLinkMetadata({
+          environmentId,
+          input: { threadIds: [threadId] },
+        })
+      : null,
+  );
+  const metadata = lookup.data?.[threadId];
+  const projectId = shell?.projectId ?? props.projectId ?? metadata?.projectId;
+  const project = useProject(projectId ? scopeProjectRef(environmentId, projectId) : null);
+  const title = shell?.title?.trim() || metadata?.title.trim() || props.record.title;
   const status = shell ? THREAD_LINK_STATUS[resolveThreadLinkStatus(shell)] : null;
   const environmentLabel =
     currentEnvironmentId !== null && currentEnvironmentId !== environmentId
@@ -112,7 +125,7 @@ export function ThreadContextChip(props: {
             kind="thread"
             {...(props.unreadable
               ? { state: "invalid" as const }
-              : shell
+              : shell || metadata
                 ? {}
                 : { state: "unresolved" as const })}
             render={
@@ -125,7 +138,7 @@ export function ThreadContextChip(props: {
             }
             aria-label={`Thread, ${title}${status ? `, ${status.label}` : ""}`}
             data-markdown-copy={props.copyMarkdown}
-            className={cn("no-underline", !shell && "text-muted-foreground")}
+            className={cn("no-underline", !shell && !metadata && "text-muted-foreground")}
           >
             {project ? (
               <ProjectFavicon project={project} className="size-[1em] self-center" />
@@ -151,9 +164,11 @@ export function ThreadContextChip(props: {
           ? "On another machine, so this machine's agent can't read it. Remove it or switch back to send."
           : shell
             ? `Open thread · ${status?.label}`
-            : environment
-              ? "Thread not available"
-              : "Thread is on an environment that is not connected"}
+            : metadata
+              ? "Open thread"
+              : environment
+                ? "Thread not available"
+                : "Thread is on an environment that is not connected"}
       </TooltipPopup>
     </Tooltip>
   );
