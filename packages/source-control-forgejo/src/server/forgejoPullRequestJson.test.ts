@@ -3,13 +3,16 @@ import * as Schema from "effect/Schema";
 
 import {
   ForgejoComment,
+  ForgejoPullRequest,
   ForgejoReview,
   forgejoChecks,
+  forgejoChangeRequest,
   forgejoComment,
   forgejoReview,
 } from "./forgejoPullRequestJson.ts";
 
 const decodeForgejoComment = Schema.decodeSync(ForgejoComment);
+const decodeForgejoPullRequest = Schema.decodeSync(ForgejoPullRequest);
 const decodeForgejoReview = Schema.decodeSync(ForgejoReview);
 
 describe("forgejoComment", () => {
@@ -67,6 +70,46 @@ describe("forgejoChecks", () => {
         "https://ci.example.com/run/1",
       ],
     );
+  });
+});
+
+describe("forgejoChangeRequest", () => {
+  const headBranch = (
+    head: { ref: string; label?: string; repo: { full_name: string } | null },
+    flow?: number,
+  ) =>
+    forgejoChangeRequest(
+      decodeForgejoPullRequest({
+        number: 7,
+        title: "Merged feature",
+        body: null,
+        html_url: "https://forgejo.test/maria/project/pulls/7",
+        user: null,
+        state: "closed",
+        merged: true,
+        ...(flow === undefined ? {} : { flow }),
+        head: { ...head, sha: "head" },
+        base: { ref: "main", label: "main", sha: "base", repo: null },
+        created_at: "2026-10-10T19:52:40Z",
+        updated_at: "2026-10-12T00:00:00Z",
+        closed_at: "2026-10-12T00:00:00Z",
+        merged_at: "2026-10-12T00:00:00Z",
+        labels: null,
+      }),
+    ).headBranch;
+
+  it("reads a deleted head branch from its label", () => {
+    const head = { ref: "refs/pull/7/head", label: "feature" };
+    const repo = { full_name: "maria/project" };
+    assert.strictEqual(headBranch({ ...head, repo }, 0), "feature");
+    // A deleted fork leaves no repository to say whose `feature` that was.
+    assert.strictEqual(headBranch({ ...head, repo: null }), "refs/pull/7/head");
+    // An AGit label is a `user/topic` name, not a branch.
+    assert.strictEqual(headBranch({ ...head, label: "alice/topic", repo }, 1), "refs/pull/7/head");
+  });
+
+  it("keeps the ref when the server sends no label", () => {
+    assert.strictEqual(headBranch({ ref: "feature", repo: null }), "feature");
   });
 });
 
