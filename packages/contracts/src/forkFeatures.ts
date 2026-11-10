@@ -16,6 +16,7 @@ export const FORK_FEATURES = [
   "presentation",
   "keybindings",
   "peers",
+  "liveSteps",
 ] as const;
 export type ForkFeature = (typeof FORK_FEATURES)[number];
 
@@ -31,6 +32,7 @@ export const ForkFeatures = Schema.Struct({
   presentation: featureFlag,
   keybindings: featureFlag,
   peers: featureFlag,
+  liveSteps: featureFlag,
 });
 export type ForkFeatures = typeof ForkFeatures.Type;
 
@@ -46,6 +48,7 @@ export const ForkFeaturesPatch = Schema.Struct({
   presentation: Schema.optionalKey(Schema.Boolean),
   keybindings: Schema.optionalKey(Schema.Boolean),
   peers: Schema.optionalKey(Schema.Boolean),
+  liveSteps: Schema.optionalKey(Schema.Boolean),
 });
 export type ForkFeaturesPatch = typeof ForkFeaturesPatch.Type;
 

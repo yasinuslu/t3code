@@ -62,6 +62,12 @@ const FORK_FEATURE_ROWS: ReadonlyArray<{
     searchId: "fork-feature-peers",
     description: "Peer environment tools that let agents reach threads on your other machines.",
   },
+  {
+    feature: "liveSteps",
+    searchId: "fork-feature-live-steps",
+    description:
+      "The agent's step list pinned above the composer and inline in the timeline, and Claude's Task tools turned on.",
+  },
 ];
 
 /** One switch per fork feature; every switch off behaves like upstream T3 Code. */

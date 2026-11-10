@@ -322,6 +322,7 @@ import { useThreadLinkedPullRequest } from "./pullRequest/useThreadLinkedPullReq
 import { useProactivePanels } from "../hooks/useProactivePanels";
 import { useIncrementalTimelineEntries } from "../hooks/useIncrementalTimelineEntries";
 import { useRightPanelSurfaceClose } from "../hooks/useRightPanelSurfaceClose";
+import { useLiveStepsBannerItem } from "./chat/LiveStepsBanner";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { modelFallbackBannerItem } from "./chat/ComposerUsageLimits";
 import { ComposerSurface } from "./chat/ComposerSurface";
@@ -1529,6 +1530,7 @@ export default function ChatView(props: ChatViewProps) {
     blobPreviews: optimisticBlobPreviews,
     setOptimisticUserMessages: setHeldOptimisticUserMessages,
   });
+  const liveStepsOn = useForkFeature("liveSteps");
   const anchoredTimelineMessages = feedbackSubmissions.flatMap((submission) =>
     submission.status === "interrupted"
       ? []
@@ -1538,6 +1540,7 @@ export default function ChatView(props: ChatViewProps) {
         ],
   );
   const timelineEntriesInput = {
+    foldTaskToolRows: liveStepsOn,
     optimisticMessages: optimisticUserMessages,
     anchoredMessages: anchoredTimelineMessages,
     attachmentUrlById: timelineAttachmentUrlById,
@@ -2584,7 +2587,8 @@ export default function ChatView(props: ChatViewProps) {
           },
         })
       : null;
-  const composerBannerItems = (() => {
+  const liveStepsBannerItem = useLiveStepsBannerItem(serverProjection);
+  const baseComposerBannerItems = (() => {
     const fallbackSelection = draftFallback?.selection;
     const defaultSelection =
       draftDefaultModelSelection ??
@@ -2676,6 +2680,11 @@ export default function ChatView(props: ChatViewProps) {
       }),
     ];
   })() as ComposerBannerStackItem[];
+  // The step list sits nearest the composer, under the notices that need a decision.
+  const composerBannerItems =
+    liveStepsBannerItem === null
+      ? baseComposerBannerItems
+      : [...baseComposerBannerItems, liveStepsBannerItem];
 
   if (
     terminalUiLaunchContext !== null &&
