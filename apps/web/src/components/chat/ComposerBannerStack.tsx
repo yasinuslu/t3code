@@ -23,6 +23,8 @@ export interface ComposerBannerStackItem {
   readonly actions?: ReactNode;
   readonly dismissLabel?: string;
   readonly onDismiss?: () => void;
+  /** A click anywhere on the header row outside its buttons. Keyboard users use an action. */
+  readonly onRowClick?: () => void;
 }
 
 const GROUPS = ["environment", "attention"] as const;
@@ -178,7 +180,18 @@ function NoticeCard({
       density="comfortable"
       data-chat-composer-collapsed-controls="true"
     >
-      <ComposerBanner.Row layout="wrap-actions">
+      <ComposerBanner.Row
+        layout="wrap-actions"
+        className={item.onRowClick ? "cursor-pointer rounded-xl hover:bg-foreground/5" : undefined}
+        onClick={
+          item.onRowClick
+            ? (event) => {
+                if (event.target instanceof Element && event.target.closest("button, a")) return;
+                item.onRowClick?.();
+              }
+            : undefined
+        }
+      >
         <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
           {item.icon}
         </ComposerBanner.Icon>
