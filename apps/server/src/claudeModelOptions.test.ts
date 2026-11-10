@@ -34,6 +34,30 @@ describe("compileClaudeModelSelection", () => {
     });
   });
 
+  it("asks for 1M on every 5-series model, so older CLIs do not fall back to 200K", () => {
+    for (const model of [
+      "claude-fable-5-2",
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "claude-haiku-5-5",
+    ]) {
+      expect(compileClaudeModelSelection(selection(model, [])).apiModelId).toBe(`${model}[1m]`);
+    }
+    expect(compileClaudeModelSelection(selection("claude-haiku-4-5", [])).apiModelId).toBe(
+      "claude-haiku-4-5",
+    );
+  });
+
+  it("compiles a per-thread auto-compact window only where the model's window allows it", () => {
+    const window = (model: string, value: string) =>
+      compileClaudeModelSelection(selection(model, [{ id: "autoCompactWindow", value }])).settings
+        .autoCompactWindow;
+    expect(window("claude-fable-5-2", "600000")).toBe(600_000);
+    expect(window("claude-fable-5-2", "default")).toBeUndefined();
+    expect(window("claude-fable-5-2", "5000000")).toBeUndefined();
+    expect(window("claude-haiku-4-5", "600000")).toBeUndefined();
+  });
+
   it("runs Ultracode at the chosen effort and reads the old Ultracode effort as xhigh", () => {
     expect(
       compileClaudeModelSelection(

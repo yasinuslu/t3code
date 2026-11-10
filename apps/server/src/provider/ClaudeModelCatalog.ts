@@ -49,9 +49,16 @@ function tryResolveClaudeModelCatalog(
     const adapter = decodeClaudeModelAdapter(entry.adapter ?? {});
     if (Option.isNone(profile) || Option.isNone(adapter)) return null;
     const model = ModelCatalog.catalogServerModel(resolved, entry);
+    const runtime = profile.value.claudeCode ?? {};
     models.push({
-      model: { ...model, capabilities: withUltracodeToggle(model.capabilities) },
-      runtime: profile.value.claudeCode ?? {},
+      model: {
+        ...model,
+        capabilities: withAutoCompactWindowOption(
+          withUltracodeToggle(model.capabilities),
+          runtime.fixedContextWindowTokens,
+        ),
+      },
+      runtime,
       compatibility: adapter.value.claudeCode ?? {},
     });
   }
@@ -59,6 +66,58 @@ function tryResolveClaudeModelCatalog(
   return {
     models,
   };
+}
+
+const CLAUDE_AUTO_COMPACT_WINDOW_OPTION_ID = "autoCompactWindow";
+const CLAUDE_AUTO_COMPACT_WINDOW_PRESETS = [200_000, 400_000, 600_000, 800_000, 1_000_000];
+
+/** A per-thread auto-compact point for models whose window leaves room above Claude Code's 200K default. */
+function withAutoCompactWindowOption(
+  capabilities: ModelCapabilities | null,
+  windowTokens: number | undefined,
+): ModelCapabilities | null {
+  if (windowTokens === undefined || windowTokens <= 200_000) return capabilities;
+  const descriptors = capabilities?.optionDescriptors ?? [];
+  if (descriptors.some((descriptor) => descriptor.id === CLAUDE_AUTO_COMPACT_WINDOW_OPTION_ID)) {
+    return capabilities;
+  }
+  return {
+    ...capabilities,
+    optionDescriptors: [
+      ...descriptors,
+      {
+        id: CLAUDE_AUTO_COMPACT_WINDOW_OPTION_ID,
+        label: "Auto-compact at",
+        type: "select",
+        options: [
+          { id: "default", label: "Profile default", isDefault: true },
+          ...CLAUDE_AUTO_COMPACT_WINDOW_PRESETS.filter((tokens) => tokens <= windowTokens).map(
+            (tokens) => ({
+              id: String(tokens),
+              label: tokens >= 1_000_000 ? `${tokens / 1_000_000}M` : `${tokens / 1000}K`,
+            }),
+          ),
+        ],
+      },
+    ],
+  };
+}
+
+/** The thread's auto-compact window in tokens, or undefined for the profile's settings. */
+export function resolveClaudeCatalogAutoCompactWindow(
+  catalog: ClaudeModelCatalog,
+  modelSelection: ModelSelection | undefined,
+): number | undefined {
+  if (!modelSelection) return undefined;
+  const descriptor = getProviderOptionDescriptors({
+    caps:
+      resolveClaudeCatalogModel(catalog, modelSelection.model)?.model.capabilities ??
+      EMPTY_CAPABILITIES,
+    selections: modelSelection.options,
+  }).find((candidate) => candidate.id === CLAUDE_AUTO_COMPACT_WINDOW_OPTION_ID);
+  const value = descriptor ? getProviderOptionCurrentValue(descriptor) : undefined;
+  const tokens = typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isInteger(tokens) && tokens >= 100_000 ? tokens : undefined;
 }
 
 // The manifest keeps Ultracode as an effort level because released servers read it from main.
@@ -385,6 +444,11 @@ export function resolveClaudeCatalogApiModelId(
       descriptors.find((descriptor) => descriptor.id === optionId),
     );
     if (typeof value === "string" && suffixes[value]) return `${slug}${suffixes[value]}`;
+  }
+  // Claude Code sizes a model it does not know yet at 200K, so a newer model on an older CLI
+  // compacts there; the [1m] suffix makes every version run the fixed 1M window.
+  if ((entry?.runtime.fixedContextWindowTokens ?? 0) >= 1_000_000 && !/\[1m\]$/i.test(slug)) {
+    return `${slug}[1m]`;
   }
   return slug;
 }

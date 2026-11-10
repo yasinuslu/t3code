@@ -298,6 +298,29 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.isUndefined(options.extraArgs?.["dangerously-skip-permissions"]);
   });
 
+  it.each([
+    [undefined, 300_000],
+    ["default", 300_000],
+    ["800000", 800_000],
+  ])("launches with the thread's auto-compact window %s over the instance's", (value, expected) => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: {
+        ...CLAUDE_TEST_MODEL_SELECTION,
+        model: "claude-opus-5-5",
+        options: value === undefined ? [] : [{ id: "autoCompactWindow", value }],
+      },
+      nativeThreadId: "native-auto-compact",
+      resume: false,
+      cwd: "/workspace",
+      settings: AUTO_COMPACT_CLAUDE_SETTINGS,
+    });
+    assert.equal(options.model, "claude-opus-5-5[1m]");
+    assert.equal(
+      typeof options.settings === "object" ? options.settings.autoCompactWindow : undefined,
+      expected,
+    );
+  });
+
   it("passes every --add-dir launch directory to Claude", () => {
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
       modelSelection: CLAUDE_TEST_MODEL_SELECTION,
@@ -6027,7 +6050,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         assert.deepEqual(harness.liveSelectionChanges, [
           { model: "claude-sonnet-4-6" },
           { effortLevel: "high", fastMode: null, ultracode: null },
-          { model: "claude-opus-5-5" },
+          { model: "claude-opus-5-5[1m]" },
           { effortLevel: "medium", fastMode: false, ultracode: null },
         ]);
       }).pipe(
@@ -8357,6 +8380,20 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       threshold: 267_000,
     },
     {
+      autoCompactWindow: "300000",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      options: [{ id: "autoCompactWindow", value: "800000" }],
+      threshold: 767_000,
+    },
+    {
+      autoCompactWindow: "",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      options: [{ id: "autoCompactWindow", value: "default" }],
+      threshold: 467_000,
+    },
+    {
       autoCompactWindow: "",
       model: "claude-opus-5-5",
       userSettings: '{"autoCompactWindow":500000}',
@@ -8431,7 +8468,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     },
   ])(
     "ignores stale snapshots after compaction and reports threshold $autoCompactWindow for $model",
-    ({ autoCompactWindow, model, threshold, userSettings, projectSettings, launchArgs }) =>
+    ({ autoCompactWindow, model, threshold, userSettings, projectSettings, launchArgs, options }) =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -8463,7 +8500,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attemptId: RunAttemptId.make("attempt-snapshot-usage-compaction"),
             text: "Continue.",
             attachments: [],
-            modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model },
+            modelSelection: {
+              ...CLAUDE_TEST_MODEL_SELECTION,
+              model,
+              ...(options ? { options } : {}),
+            },
             runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
               ...CLAUDE_TEST_RUNTIME_POLICY,
               cwd: project,

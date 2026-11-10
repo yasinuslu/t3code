@@ -155,6 +155,16 @@ export function buildTraitsTriggerDisplay(input: {
         continue;
       }
     }
+    if (descriptor.id === "autoCompactWindow" && descriptor.type === "select") {
+      const value = getProviderOptionCurrentValue(
+        descriptor,
+        input.modelSelection,
+        input.reportedModelSelection,
+      );
+      const option = descriptor.options.find(({ id }) => id === value);
+      if (option && !option.isDefault) labels.push(`Compact ${option.label}`);
+      continue;
+    }
     const label =
       input.ultrathinkPromptControlled && descriptor.id === input.primarySelectDescriptorId
         ? "Ultrathink"

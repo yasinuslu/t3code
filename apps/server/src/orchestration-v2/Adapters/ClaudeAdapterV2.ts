@@ -1674,13 +1674,17 @@ export const layerQueryRunner: Layer.Layer<
 
 type ClaudeFlagSettings = Parameters<ClaudeQuery["applyFlagSettings"]>[0];
 
-/** Thinking requires a new process. Clearing effort also requires one to reload user settings instead of model defaults. */
+/**
+ * Thinking requires a new process. Clearing effort also requires one to reload user settings instead of model defaults.
+ * Claude Code reads autoCompactWindow at launch only; applyFlagSettings leaves the running window unchanged.
+ */
 function canApplyClaudeSelectionLive(
   live: CompiledClaudeModelSelection,
   next: CompiledClaudeModelSelection,
 ): boolean {
   return (
     live.settings.alwaysThinkingEnabled === next.settings.alwaysThinkingEnabled &&
+    live.settings.autoCompactWindow === next.settings.autoCompactWindow &&
     (next.effort !== undefined || live.effort === undefined)
   );
 }
@@ -1835,7 +1839,9 @@ export function makeClaudeQueryOptions(input: {
         ? ({ ...input.sdkSettings, ...selectionSettings } as ClaudeSdkSettings)
         : selectionSettings;
   const compactQuerySettings =
-    input.settings?.autoCompactWindow === undefined || input.settings.autoCompactWindow.length === 0
+    input.settings?.autoCompactWindow === undefined ||
+    input.settings.autoCompactWindow.length === 0 ||
+    compiledSelection.settings.autoCompactWindow !== undefined
       ? querySettings
       : ({
           ...(typeof querySettings === "object" && querySettings !== null ? querySettings : {}),
@@ -5125,13 +5131,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 
   const resolveAutoCompactWindow = Effect.fn("ClaudeAdapterV2.resolveAutoCompactWindow")(function* (
     cwd: string | null,
-    modelSelection: ModelSelection,
+    compiled: CompiledClaudeModelSelection,
     launchArgSettings: ClaudeSdkSettings | undefined,
     home: ClaudeSessionHome = instanceHome,
   ) {
+    if (compiled.settings.autoCompactWindow !== undefined)
+      return String(compiled.settings.autoCompactWindow);
     if (adapterOptions.settings.autoCompactWindow !== "")
       return adapterOptions.settings.autoCompactWindow;
-    const model = compileClaudeModelSelection(modelSelection).apiModelId.replace(/\[1m\]$/i, "");
+    const model = compiled.apiModelId.replace(/\[1m\]$/i, "");
     const windowFrom = (settings: unknown) => {
       if (typeof settings !== "object" || settings === null) return undefined;
       const models = Reflect.get(settings, "modelSettings");
@@ -11499,7 +11507,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const querySession = yield* openQuery(turnInput, nativeThreadId);
             const autoCompactWindow = yield* resolveAutoCompactWindow(
               querySession.settingsCwd,
-              turnInput.modelSelection,
+              // The live process may be reused for a wake turn after the thread changed its window.
+              querySession.selection,
               querySession.launchArgSettings,
               sessionHome,
             );
