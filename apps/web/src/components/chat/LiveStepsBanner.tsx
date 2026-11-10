@@ -39,6 +39,7 @@ export function useLiveStepsBannerItem(
     ...(current === undefined || (allDone && !live)
       ? {}
       : { description: live ? current.text : `Stopped at: ${current.text}` }),
+    onRowClick: toggle,
     actions: (
       <Button
         size="icon-xs"
