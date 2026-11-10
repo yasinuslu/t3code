@@ -260,22 +260,24 @@ export const ChatHeader = memo(function ChatHeader({
       setRenaming(null);
     }
   };
+  // Keep clear of the fixed panel toggles. They sit --workspace-controls-right from the edge,
+  // wider under native window controls; a server thread also shows the presentation toggle.
+  const toggleWidthRem = updateButtonVisible
+    ? isServerThread
+      ? 15.25
+      : 13.25
+    : isServerThread
+      ? 7.25
+      : 5.25;
+  const toggleClearance = `calc(var(--workspace-controls-right) + ${toggleWidthRem}rem)`;
   return (
     <div
       ref={breadcrumbContainerRef}
       className={cn(
         "@container flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        // Keep clear of the fixed panel toggles; a server thread also shows the presentation one.
-        rightPanelOpen
-          ? "pr-10"
-          : updateButtonVisible
-            ? isServerThread
-              ? "pr-64"
-              : "pr-56"
-            : isServerThread
-              ? "pr-32"
-              : "pr-24",
+        rightPanelOpen && "pr-10",
       )}
+      style={rightPanelOpen ? undefined : { paddingRight: toggleClearance }}
       onContextMenu={handleHeaderContextMenu}
     >
       {/* The spaces in the sidebar pick the profile; a manager that runs on more than one
