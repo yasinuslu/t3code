@@ -508,6 +508,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["fork feature flag upstream peers"],
   },
   {
+    id: "fork-feature-live-steps",
+    title: "Live steps",
+    to: "/settings/general",
+    scope: "environment",
+    searchTerms: ["fork feature flag upstream steps todo tasks checklist plan progress"],
+  },
+  {
     id: "host-manager",
     title: "Host the manager",
     to: "/settings/general",

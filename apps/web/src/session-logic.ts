@@ -492,6 +492,21 @@ export interface TimelineEntriesInput {
   readonly attempts?: ReadonlyArray<OrchestrationV2RunAttempt>;
   readonly nodes?: ReadonlyArray<OrchestrationV2ExecutionNode>;
   readonly plans?: ReadonlyArray<OrchestrationV2PlanArtifact>;
+  /** Fold Claude's task-writing tool calls into the step list they feed. */
+  readonly foldTaskToolRows?: boolean;
+}
+
+// Each call only rewrites the step list, which its own row already shows.
+const TASK_WRITE_TOOL_NAMES = new Set(["TaskCreate", "TaskUpdate", "TodoWrite"]);
+
+function isFoldedTaskToolRow(input: TimelineEntriesInput, item: OrchestrationV2TurnItem): boolean {
+  return (
+    input.foldTaskToolRows === true &&
+    item.type === "dynamic_tool" &&
+    item.status !== "failed" &&
+    item.toolName !== null &&
+    TASK_WRITE_TOOL_NAMES.has(item.toolName)
+  );
 }
 
 export interface TimelineEntriesProjection {
@@ -538,6 +553,7 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
     const { item } = row;
     if (turnItemIsWorkspacePreparation(item) && !item.deferredWork) continue;
     if (item.type === "checkpoint") continue;
+    if (isFoldedTaskToolRow(input, item)) continue;
     if (
       item.type === "user_message" &&
       item.inputIntent === "queued_turn" &&
@@ -868,7 +884,8 @@ function reuseTimelineEntries(
     !shallow(input.attachmentUrlById, before.attachmentUrlById) ||
     !shallow(input.attempts, before.attempts) ||
     !shallow(input.nodes, before.nodes) ||
-    !shallow(input.plans, before.plans)
+    !shallow(input.plans, before.plans) ||
+    input.foldTaskToolRows !== before.foldTaskToolRows
   ) {
     return null;
   }
@@ -906,6 +923,9 @@ function reuseTimelineEntries(
       continue;
     }
     if (!canRederiveInPlace(input, previousItem, item)) return null;
+    const folded = isFoldedTaskToolRow(input, item.item);
+    if (folded !== isFoldedTaskToolRow(input, previousItem.item)) return null;
+    if (folded) continue;
     changedItems.push(item);
   }
   // One batch keeps the attempt/node/plan lookups to a single build.

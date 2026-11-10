@@ -527,6 +527,30 @@ describe("V2 session presentation", () => {
       ["work", errorItem.id],
       ["work", threadCreatedItem.id],
     ]);
+    const taskToolItem = {
+      ...base("item-task-create", 8),
+      type: "dynamic_tool" as const,
+      toolName: "TaskCreate",
+      input: { subject: "Second" },
+    } satisfies OrchestrationV2TurnItem;
+    const withTaskTool = [
+      ...visibleTurnItems,
+      {
+        position: 8,
+        visibility: "local" as const,
+        sourceThreadId: threadId,
+        sourceItemId: taskToolItem.id,
+        item: taskToolItem,
+      },
+    ];
+    const ids = (foldTaskToolRows: boolean) =>
+      deriveTimelineEntriesFromVisibleTurnItems({
+        visibleTurnItems: withTaskTool,
+        optimisticMessages: [],
+        foldTaskToolRows,
+      }).map((entry) => entry.id);
+    expect(ids(false)).toContain(taskToolItem.id);
+    expect(ids(true)).not.toContain(taskToolItem.id);
     const commandEntry = entries[2];
     const userEntry = entries[0];
     expect(userEntry?.kind).toBe("message");

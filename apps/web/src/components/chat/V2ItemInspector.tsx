@@ -27,6 +27,8 @@ import { CommandOutputPanel, useCommandOutputStreaming } from "./CommandOutputPa
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ShellCommandBlock } from "./ShellCommandBlock";
+import { StepChecklist } from "./StepChecklist";
+import { useForkFeature } from "../../forkFeatures";
 import type { TurnItemSource } from "./timelineRowContext";
 
 interface V2ItemInspectorProps {
@@ -236,6 +238,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
     streamsOutput,
   );
   const item = fetched.item;
+  const liveStepsOn = useForkFeature("liveSteps");
   const outputState = fetched.output;
   return (
     <div className="space-y-2 text-xs" data-v2-item-inspector={item.type}>
@@ -396,7 +399,9 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       {item.type === "notification" ? <StructuredValue value={item.detail} /> : null}
       {item.type === "system_notice" ? <StructuredValue value={item.message} /> : null}
       {item.type === "error" ? <StructuredValue value={item.failure.message} /> : null}
-      {item.type === "todo_list" ? (
+      {item.type === "todo_list" && liveStepsOn ? (
+        <StepChecklist steps={item.steps} className="py-0.5" />
+      ) : item.type === "todo_list" ? (
         <StructuredValue
           value={item.steps
             .map(

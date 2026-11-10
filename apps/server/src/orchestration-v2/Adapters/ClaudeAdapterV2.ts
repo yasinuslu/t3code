@@ -238,6 +238,7 @@ import {
   backgroundWorkNotification,
 } from "@t3tools/provider-core/server/notification";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import { forkFeatureOn } from "../../forkFeatures.ts";
 import {
   makeSubagentChildThread,
   makeSubagentConversationArtifacts,
@@ -1693,22 +1694,27 @@ function claudeLiveSelectionFlagSettings(
   };
 }
 
-// A delegated child is its own SDK session, so Claude Code gives it the main-conversation cache
-// TTL. When the user sets Claude's subagentPromptCacheTtl, the child follows it like a native
-// subagent would. An explicit CLAUDE_CODE_PROMPT_CACHE_TTL on the instance still wins.
+// A delegated child gets Claude's subagentPromptCacheTtl, unless the instance sets
+// CLAUDE_CODE_PROMPT_CACHE_TTL. Headless Claude Code leaves out the Task tools that feed the live
+// step list, so they are on unless the instance env sets CLAUDE_CODE_ENABLE_TODO_TOOLS.
 export function claudeQueryEnvironment(
   environment: NodeJS.ProcessEnv,
   appThread: Pick<OrchestrationV2AppThread, "lineage">,
   subagentPromptCacheTtl: "5m" | "1h" | undefined,
+  todoTools = true,
 ): NodeJS.ProcessEnv {
+  const withTodoTools =
+    todoTools && environment.CLAUDE_CODE_ENABLE_TODO_TOOLS === undefined
+      ? { ...environment, CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" }
+      : environment;
   if (
     appThread.lineage.relationshipToParent !== "subagent" ||
     subagentPromptCacheTtl === undefined ||
     environment.CLAUDE_CODE_PROMPT_CACHE_TTL !== undefined
   ) {
-    return environment;
+    return withTodoTools;
   }
-  return { ...environment, CLAUDE_CODE_PROMPT_CACHE_TTL: subagentPromptCacheTtl };
+  return { ...withTodoTools, CLAUDE_CODE_PROMPT_CACHE_TTL: subagentPromptCacheTtl };
 }
 
 // Claude Code's auto tool search sends every MCP schema in full while they fit under a share of the
@@ -11141,6 +11147,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               turnInput.appThread.lineage.relationshipToParent === "subagent"
                 ? yield* resolveSubagentPromptCacheTtl(turnInput.runtimePolicy.cwd, sessionHome)
                 : undefined,
+              forkFeatureOn("liveSteps"),
             ),
             hooks: { UserPromptSubmit: [{ hooks: [onUserPromptSubmit] }] },
             tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
