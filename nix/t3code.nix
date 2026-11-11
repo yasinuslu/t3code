@@ -30,7 +30,7 @@
   # show it. The flake passes the short rev.
   versionSuffix ? "",
 
-  pnpmHash ? "sha256-PfnY73etAwDobn1FVVJcCYcGRYjF7f4/YjTdW86X/B4=",
+  pnpmHash ? "sha256-lZv88yvoDuGlcApHktsbR1OiTtffzQ92wu9qYbFxR8s=",
 }:
 let
   inherit (pkgs) lib;
