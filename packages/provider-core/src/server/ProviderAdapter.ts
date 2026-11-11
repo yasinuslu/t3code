@@ -1,4 +1,4 @@
-import type { OrchestrationV2HistoricalMessage } from "@t3tools/contracts";
+import type { ContextBreakdown, OrchestrationV2HistoricalMessage } from "@t3tools/contracts";
 import {
   ChatAttachment,
   CheckpointId,
@@ -719,6 +719,10 @@ export interface ProviderAdapterV2SessionRuntime {
   }) => Effect.Effect<{ readonly feedbackId: string }, ProviderAdapterV2Error>;
   /** Absent means non-interactive apps with plain tool rows. */
   readonly mcpApps?: ProviderAdapterV2McpApps;
+  /** Absent means the provider reports only a used/max context total. May call the provider's token-count API. */
+  readonly readContextBreakdown?: (input: {
+    readonly providerThread: OrchestrationV2ProviderThread;
+  }) => Effect.Effect<ContextBreakdown, ProviderAdapterV2Error>;
   readonly rollbackThread: (
     input: ProviderAdapterV2RollbackThreadInput,
   ) => Effect.Effect<ProviderAdapterV2ThreadSnapshot, ProviderAdapterV2Error>;

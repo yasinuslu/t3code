@@ -6,6 +6,7 @@ import {
 } from "@t3tools/shared/toolOutput";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import { claudeTaskOutputRoot, tailClaudeTaskOutput } from "./ClaudeTaskOutputTail.ts";
+import { claudeContextBreakdown } from "./ClaudeContextBreakdown.ts";
 import {
   dynamicToolTitle,
   formatReadToolLabel,
@@ -62,6 +63,7 @@ import {
   type SDKAPIRetryMessage,
   type SDKMessage,
   type SDKRateLimitInfo,
+  type SDKControlGetContextUsageResponse,
   type SDKResultMessage,
   type SDKUserMessage,
   type SlashCommand as ClaudeSlashCommand,
@@ -591,6 +593,11 @@ export interface ClaudeAgentSdkQuerySession {
   }) => Effect.Effect<unknown, ClaudeAgentSdkQueryRunnerError>;
   readonly listPermissionRules: Effect.Effect<
     ReadonlyArray<ClaudePermissionRule>,
+    ClaudeAgentSdkQueryRunnerError
+  >;
+  /** `full` counts every category with the token-count API, so callers fetch it on demand. */
+  readonly getContextUsage: Effect.Effect<
+    SDKControlGetContextUsageResponse,
     ClaudeAgentSdkQueryRunnerError
   >;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
@@ -1529,6 +1536,10 @@ export const layerQueryRunner: Layer.Layer<
               Effect.map(({ state }) => state.rules),
               Effect.mapError((cause) => queryRunnerError(cause, "listPermissionRules")),
             ),
+            getContextUsage: Effect.tryPromise({
+              try: () => queryRuntime.getContextUsage({ detail: "full" }),
+              catch: (cause) => queryRunnerError(cause, "getContextUsage"),
+            }),
             interrupt: Effect.tryPromise({
               try: () => queryRuntime.interrupt(),
               catch: (cause) => queryRunnerError(cause, "interrupt"),
@@ -12327,6 +12338,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 );
             }),
           },
+          // Reads only the live process; starting one just to measure it would spend a turn.
+          readContextBreakdown: Effect.fn("ClaudeAdapterV2.readContextBreakdown")(function* ({
+            providerThread,
+          }) {
+            const liveQuery = yield* Ref.get(queryContext);
+            if (
+              liveQuery === null ||
+              liveQuery.stopping ||
+              liveQuery.nativeThreadId !== providerThread.nativeThreadRef?.nativeId
+            ) {
+              return yield* new ProviderAdapter.ProviderAdapterSessionStoppedError({
+                driver: CLAUDE_PROVIDER,
+              });
+            }
+            const usage = yield* liveQuery.query.getContextUsage.pipe(
+              Effect.catch((cause) =>
+                Effect.gen(function* () {
+                  // A process that exited mid-request is a stopped session, not a failed count.
+                  const current = yield* Ref.get(queryContext);
+                  return yield* current !== liveQuery || current.stopping
+                    ? new ProviderAdapter.ProviderAdapterSessionStoppedError({
+                        driver: CLAUDE_PROVIDER,
+                      })
+                    : new ProviderAdapter.ProviderAdapterProtocolError({
+                        driver: CLAUDE_PROVIDER,
+                        detail: "Claude could not report its context usage.",
+                        cause,
+                      });
+                }),
+              ),
+            );
+            return claudeContextBreakdown(usage, DateTime.formatIso(yield* DateTime.now));
+          }),
           stopTask: Effect.fn("ClaudeAdapterV2.stopTask")(function* ({ providerThread, taskId }) {
             const liveQuery = yield* Ref.get(queryContext);
             const task = (yield* Ref.get(sessionSubagentsByTaskId)).get(taskId);
