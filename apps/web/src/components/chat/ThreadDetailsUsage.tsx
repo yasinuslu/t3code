@@ -1,7 +1,9 @@
 import type {
+  EnvironmentId,
   ProviderInstanceId,
   ServerProvider,
   ServerProviderUsageWindow,
+  ThreadId,
   UsageLimitSourceSnapshots,
 } from "@t3tools/contracts";
 import {
@@ -22,6 +24,7 @@ import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatContextWindowCompactionMessage } from "./compaction.logic";
+import { ThreadContextBreakdown } from "./ThreadContextBreakdown";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 
 const PACE_LABEL: Record<LimitPace, string> = {
@@ -83,7 +86,14 @@ export function ThreadDetailsUsage({
 }
 
 /** The thread's context window. The bar fills as context is used; the tick marks auto-compaction. */
-export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowSnapshot }) {
+export function ThreadDetailsContext({
+  usage,
+  breakdownTarget,
+}: {
+  readonly usage: ContextWindowSnapshot;
+  /** A server thread whose provider session can be measured; drafts have none. */
+  readonly breakdownTarget?: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
+}) {
   const maxTokens = usage.maxTokens != null && usage.maxTokens > 0 ? usage.maxTokens : null;
   const used =
     maxTokens !== null && usage.usedPercentage !== null
@@ -134,6 +144,10 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
           }
         />
       </div>
+      {breakdownTarget ? (
+        // Keyed so switching threads collapses it instead of counting the new thread unasked.
+        <ThreadContextBreakdown key={breakdownTarget.threadId} {...breakdownTarget} />
+      ) : null}
     </ThreadDetailsSection>
   );
 }

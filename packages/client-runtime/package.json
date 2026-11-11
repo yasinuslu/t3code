@@ -531,6 +531,10 @@
       "types": "./src/state/mcpApps.ts",
       "default": "./src/state/mcpApps.ts"
     },
+    "./state/context-breakdown": {
+      "types": "./src/state/contextBreakdown.ts",
+      "default": "./src/state/contextBreakdown.ts"
+    },
     "./source-control-clients": {
       "types": "./src/sourceControlClients.ts",
       "default": "./src/sourceControlClients.ts"
