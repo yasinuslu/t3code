@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   adjacentSpaceId,
   ALL_SPACE_ID,
-  createSpaceSwipeTracker,
   initialSpaceState,
   isCustomSpace,
   isDeletableSpace,
@@ -267,19 +266,6 @@ describe("migrateSpaceStateFromV1", () => {
     expect(shownIn(migrated, ["env:b"])).toEqual([profileSpace(migrated, "me").id]);
     // env:a stays in work and keeps Music.
     expect(shownIn(migrated, ["env:a"])).toEqual(["p-work", "music"]);
-  });
-});
-
-describe("createSpaceSwipeTracker", () => {
-  it("steps once per horizontal gesture and ignores vertical scrolling", () => {
-    const track = createSpaceSwipeTracker();
-    expect(track({ deltaX: 0, deltaY: 40, timeStamp: 0 })).toBeNull();
-    expect(track({ deltaX: 50, deltaY: 2, timeStamp: 16 })).toBeNull();
-    expect(track({ deltaX: 50, deltaY: 2, timeStamp: 32 })).toBe(1);
-    // Momentum from the same gesture does not step again.
-    expect(track({ deltaX: 200, deltaY: 0, timeStamp: 48 })).toBeNull();
-    // A new gesture after a pause steps the other way.
-    expect(track({ deltaX: -120, deltaY: 0, timeStamp: 1_000 })).toBe(-1);
   });
 });
 

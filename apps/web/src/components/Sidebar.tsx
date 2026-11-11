@@ -253,7 +253,6 @@ import {
   CodeProfileProbes,
   SpaceSwitcher,
   useSpaceMouseButtons,
-  useSpaceSwipe,
 } from "./sidebar/SpaceSwitcher";
 import { useSidebarSpaces } from "./sidebar/useSidebarSpaces";
 import { ALL_SPACE_ID, isCustomSpace } from "../spaceStore";
@@ -1104,7 +1103,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     setProjectScopeKeys,
   });
   const activeSpace = spaces.find((space) => space.id === activeSpaceId) ?? null;
-  const handleSpaceSwipe = useSpaceSwipe(switchSpace);
   useSpaceMouseButtons(switchSpace);
   const projectGroupsRef = useRef(projectGroups);
   const spaceProjectKeys = new Set(projectGroups.map((group) => group.projectKey));
@@ -3042,7 +3040,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       <SidebarContent
         ref={sidebarContentRef}
         className="min-h-full"
-        onWheel={handleSpaceSwipe}
         fixedHeader={
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader

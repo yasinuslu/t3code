@@ -2,7 +2,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ProjectIconOverride } from "@t3tools/contracts";
 import { FolderIcon, PlusIcon } from "lucide-react";
 import type { IconName } from "lucide-react/dynamic";
-import { lazy, memo, Suspense, useEffect, useMemo, useState, type WheelEvent } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from "react";
 
 import { useMouseThumbButtons } from "~/lib/mouseThumbButtons";
 import { cn } from "~/lib/utils";
@@ -11,7 +11,6 @@ import { PROJECT_ICON_COLORS, projectIconColorClassName } from "../../projectIco
 import {
   adjacentSpaceId,
   ALL_SPACE_ID,
-  createSpaceSwipeTracker,
   isDeletableSpace,
   type Space,
   spaceColor,
@@ -266,15 +265,6 @@ function switchSpaceBy(direction: 1 | -1, onSwitch: (spaceId: string) => void) {
   if (next) onSwitch(next);
 }
 
-/** Wheel handler that switches spaces on a horizontal two-finger swipe. */
-export function useSpaceSwipe(onSwitch: (spaceId: string) => void) {
-  const [tracker] = useState(createSpaceSwipeTracker);
-  return (event: WheelEvent) => {
-    const direction = tracker(event);
-    if (direction !== null) switchSpaceBy(direction, onSwitch);
-  };
-}
-
 /** Mouse thumb buttons switch spaces while the pointer is over the sidebar. */
 export function useSpaceMouseButtons(onSwitch: (spaceId: string) => void) {
   useMouseThumbButtons("[data-app-sidebar]", (direction) => switchSpaceBy(direction, onSwitch));
@@ -303,7 +293,6 @@ const UnlockedSpaceSwitcher = memo(function UnlockedSpaceSwitcher({
   const deleteSpace = useSpaceStore((store) => store.deleteSpace);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
   const editingSpace = spaces.find((space) => space.id === editingSpaceId) ?? null;
-  const handleSwipe = useSpaceSwipe(onSwitch);
 
   const handleDelete = async (space: Space) => {
     const api = readLocalApi();
@@ -347,7 +336,6 @@ const UnlockedSpaceSwitcher = memo(function UnlockedSpaceSwitcher({
       role="tablist"
       aria-label="Spaces"
       className="flex min-w-0 items-center justify-center gap-0.5 overflow-x-auto px-1 [scrollbar-width:none]"
-      onWheel={handleSwipe}
     >
       {spaces.map((space) => {
         const active = space.id === activeSpaceId;
