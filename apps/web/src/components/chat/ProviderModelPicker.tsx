@@ -22,6 +22,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
+import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
 import { ChatGptSharingControl } from "./ChatGptSharingControl";
 import type { AccountBalancePicker, AccountSelection } from "./accountBalance.logic";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -90,6 +91,7 @@ export const DockedPickerContext = createContext<{ modelLabel: string }>({ model
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   environmentId: EnvironmentId | null;
+  workspaceCwd?: string | null;
   activeInstanceId: ProviderInstanceId;
   model: string;
   selectedModels?: ReadonlyArray<{ instanceId: ProviderInstanceId; model: string }>;
@@ -173,6 +175,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       model: props.model,
       options: selectedInstanceOptions,
     }) ??
+    retainedModelWhileProviderLocked(activeEntry, props.model) ??
     (activeEntry?.driverKind === "opencode" || activeEntry?.driverKind === "antigravity"
       ? undefined
       : selectedInstanceOptions[0]);
@@ -314,6 +317,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     <ModelPickerContent
       searchInputRef={searchInputRef}
       environmentId={props.environmentId}
+      workspaceCwd={props.workspaceCwd ?? null}
       activeInstanceId={activeInstanceId}
       model={props.model}
       {...(props.selectedModels !== undefined ? { selectedModels: props.selectedModels } : {})}
