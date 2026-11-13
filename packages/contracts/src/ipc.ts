@@ -1079,7 +1079,6 @@ export interface DesktopBridge {
       shift: boolean;
     }>,
   ) => Promise<void>;
-  onTrackpadScrollBegin: (listener: () => void) => () => void;
   onTrackpadScrollEnd: (listener: () => void) => () => void;
   /**
    * Tells the desktop which code profile this window is locked to (null when

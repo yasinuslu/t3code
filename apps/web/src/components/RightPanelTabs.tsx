@@ -1330,8 +1330,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     if (!viewport) return;
 
     const update = () => updateTabScrollState(viewport);
-    // Only a vertical mouse wheel is translated. Horizontal input scrolls natively, since
-    // consuming it keeps Chromium from starting the gesture scroll that swipe navigation tracks.
+    // Only a vertical mouse wheel is translated; horizontal input scrolls natively.
     const handleWheel = (event: WheelEvent) => {
       if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
       let delta = event.deltaY;
