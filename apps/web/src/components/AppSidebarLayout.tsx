@@ -39,7 +39,6 @@ import {
 } from "../panelAnimations";
 import { ForkAppShell } from "./ForkAppShell";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
-import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
 import ThreadSidebar from "./Sidebar";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
@@ -494,7 +493,6 @@ export function AppSidebarLayout({
         <BackgroundThreadAnnouncer />
         <SidebarControl showSidebar={showSidebar} />
         <ForkAppShell />
-        {isElectron ? <HistorySwipeNavigation /> : null}
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );
