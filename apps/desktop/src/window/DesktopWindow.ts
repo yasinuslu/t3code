@@ -914,12 +914,12 @@ export const make = Effect.gen(function* () {
       runFork(zoomWindow(window, direction));
     });
 
-    // The renderer titles the window after the open thread; only a blank title
-    // falls back to the app name.
+    // The renderer titles the window after the open thread; a blank title falls back to the
+    // app name, and a profile window keeps its profile in the title (snapshots find it by title).
     window.on("page-title-updated", (event, pageTitle) => {
-      if (pageTitle.trim() !== "") return;
+      if (pageTitle.trim() !== "" && profile === null) return;
       event.preventDefault();
-      window.setTitle(title);
+      window.setTitle(pageTitle.trim() === "" ? title : `${pageTitle} · ${profile}`);
     });
     window.on("resize", scheduleBoundsPersist);
     window.on("move", scheduleBoundsPersist);
