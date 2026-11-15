@@ -27,6 +27,10 @@ export function assertClaudeBackgroundMonitorWakeOutput(
   const projection = projectionFor(result, transcript.scenario);
   assertSemanticProjectionIntegrity(projection);
   assertUserMessagesInclude(projection, [CLAUDE_BACKGROUND_MONITOR_WAKE_PROMPT]);
+  const monitorItem = projection.turnItems.find(
+    (item) => item.nativeItemRef?.nativeId === "toolu_019b4EUbhEcYP4TS7vZn27N1",
+  );
+  assert.isDefined(monitorItem);
 
   const rosterTasks = result.domainEvents
     .flatMap((event) =>
@@ -41,13 +45,16 @@ export function assertClaudeBackgroundMonitorWakeOutput(
       description: "Background monitor test",
       kind: "monitor",
       nativeItemId: "toolu_019b4EUbhEcYP4TS7vZn27N1",
+      command: "sleep 8 && echo MONITOR_DONE",
+      itemId: monitorItem?.id,
+      sourceThreadId: monitorItem?.threadId,
     });
   }
   assert.deepEqual(projection.providerThreads[0]?.pendingBackgroundTasks ?? [], []);
-  const monitorItem = projection.turnItems.find(
+  const monitorTool = projection.turnItems.find(
     (item) => item.type === "dynamic_tool" && item.backgroundTaskId === MONITOR_TASK_ID,
   );
-  assert.equal(monitorItem?.type === "dynamic_tool" ? monitorItem.toolName : null, "Monitor");
+  assert.equal(monitorTool?.type === "dynamic_tool" ? monitorTool.toolName : null, "Monitor");
 
   assert.deepEqual(backgroundNotifications(projection), [
     {
