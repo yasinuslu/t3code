@@ -486,6 +486,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const handleSelectInstance = (instanceId: ModelPickerRailSelection) => {
     setSelectedInstanceId(instanceId);
     if (instanceId === "auto") accountBalance?.onAuto();
+    // Focusing the search on touch raises the on-screen keyboard on every provider tap.
+    if (window.matchMedia("(pointer: coarse)").matches) return;
     window.requestAnimationFrame(() => {
       focusSearchInput();
     });
