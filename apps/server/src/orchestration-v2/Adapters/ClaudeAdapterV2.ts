@@ -7835,12 +7835,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         ) {
           const cwd = context.input.runtimePolicy.cwd;
           if (cwd === null) return undefined;
-          const configured = adapterOptions.environment.CLAUDE_CONFIG_DIR?.trim();
-          const configDir = configured ? path.resolve(cwd, configured) : undefined;
-          const projectsDir = path.join(
-            configDir ?? path.join(yield* HostProcess.HomeDirectory, ".claude"),
-            "projects",
-          );
+          // The session's config dir, so a code-profile project scans its profile's transcripts.
+          const projectsDir = path.join(sessionConfigDir, "projects");
           // Claude names the project folder after the resolved, possibly hashed, cwd; find the session instead.
           let found: string | undefined;
           for (const project of yield* fileSystem
@@ -7866,7 +7862,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 transcriptDir,
                 agentId: taskId,
                 cursor,
-                ...(configDir === undefined ? {} : { configDir }),
+                configDir: sessionConfigDir,
               }).pipe(Effect.option);
               if (Option.isNone(next)) return false;
               metadata = mergeWorkflowAgentMetadata(next.value.lines, metadata);
@@ -11847,7 +11843,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     (yield* readClaudeSettingsEnv(
                       adapterOptions.settings,
                       context.input.runtimePolicy.cwd ?? undefined,
-                      adapterOptions.environment,
+                      sessionEnvironment,
                     ).pipe(
                       Effect.provideService(FileSystem.FileSystem, fileSystem),
                       Effect.provideService(Path.Path, path),
