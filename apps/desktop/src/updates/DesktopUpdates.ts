@@ -1075,7 +1075,11 @@ export const make = Effect.gen(function* () {
             yield* Ref.set(lastLoggedDownloadMilestoneRef, -1);
             return;
           }
-          if (isOffered(state) && state.availableVersion === info.version) return;
+          if (
+            (isOffered(state) || state.status === "downloading") &&
+            state.availableVersion === info.version
+          )
+            return;
 
           const checkedAt = yield* currentIsoTimestamp;
           const { releaseNotes, omittedReleaseCount } = normalizeDesktopUpdateReleaseNotes(

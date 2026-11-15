@@ -51,10 +51,10 @@ export function assertClaudeBackgroundMonitorWakeOutput(
     });
   }
   assert.deepEqual(projection.providerThreads[0]?.pendingBackgroundTasks ?? [], []);
-  const monitorItem = projection.turnItems.find(
+  const monitorTool = projection.turnItems.find(
     (item) => item.type === "dynamic_tool" && item.backgroundTaskId === MONITOR_TASK_ID,
   );
-  assert.equal(monitorItem?.type === "dynamic_tool" ? monitorItem.toolName : null, "Monitor");
+  assert.equal(monitorTool?.type === "dynamic_tool" ? monitorTool.toolName : null, "Monitor");
 
   assert.deepEqual(backgroundNotifications(projection), [
     {

@@ -2298,7 +2298,6 @@ export function makeClaudeQueryOptions(input: {
       ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
       : {}),
     ...(input.environment === undefined ? {} : { env: input.environment }),
-    ...(input.hooks === undefined ? {} : { hooks: input.hooks }),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
     systemPrompt: {
       type: "preset" as const,
@@ -2316,9 +2315,10 @@ export function makeClaudeQueryOptions(input: {
         ...launchAppendSystemPrompt,
       ].join("\n\n"),
     },
-    ...(deviceInstructions || input.onStop !== undefined
+    ...(deviceInstructions || input.onStop !== undefined || input.hooks !== undefined
       ? {
           hooks: {
+            ...input.hooks,
             ...(deviceInstructions
               ? { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] }
               : {}),

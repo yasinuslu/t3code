@@ -1023,6 +1023,7 @@ export const checkClaudeCodeProfiles = Effect.fn("checkClaudeCodeProfiles")(func
           claudeAuthMetadata({
             subscriptionType: capabilities.subscriptionType,
             authMethod: capabilities.tokenSource,
+            apiKeySource: capabilities.apiKeySource,
           }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
         return {
           ...base,

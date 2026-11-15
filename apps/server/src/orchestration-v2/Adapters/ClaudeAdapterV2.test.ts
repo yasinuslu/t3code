@@ -6879,7 +6879,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           modelSelection: haiku,
         });
         yield* harness.runtime.startTurn(input);
-        assert.equal(harness.getOpenedOptions()?.model, "haiku");
+        // The fork runs a 1M-window model at 1M, routed alias included.
+        assert.equal(harness.getOpenedOptions()?.model, "haiku[1m]");
 
         yield* harness.runtime.steerTurn({
           threadId: harness.threadId,

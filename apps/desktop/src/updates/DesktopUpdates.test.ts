@@ -189,9 +189,11 @@ describe("DesktopUpdates", () => {
           releaseNotes: "## What's changed\n- fix: queued update",
         });
         yield* flushCallbacks;
-        const offeredStates = harness.sentStates.length;
-
         yield* updates.check("poll");
+        yield* flushCallbacks;
+        // The fork downloads an offered update on its own once a check sees it.
+        assert.equal((yield* updates.getState).status, "downloading");
+        const offeredStates = harness.sentStates.length;
         harness.emit("update-available", { version: "1.2.4" });
         yield* flushCallbacks;
         assert.equal(harness.sentStates.length, offeredStates);

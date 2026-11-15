@@ -109,7 +109,6 @@ import {
   composerFileNeedsReattach,
   composerDraftHasUserContent,
   composerTargetKey,
-  composerProviderPick,
   useComposerDraftStore,
   useComposerThreadDraft,
 } from "../../composerDraftStore";
