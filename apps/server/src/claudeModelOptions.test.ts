@@ -34,6 +34,30 @@ describe("compileClaudeModelSelection", () => {
     });
   });
 
+  it("asks for 1M on every 5-series model, so older CLIs do not fall back to 200K", () => {
+    for (const model of [
+      "claude-fable-5-2",
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "claude-haiku-5-5",
+    ]) {
+      expect(compileClaudeModelSelection(selection(model, [])).apiModelId).toBe(`${model}[1m]`);
+    }
+    expect(compileClaudeModelSelection(selection("claude-haiku-4-5", [])).apiModelId).toBe(
+      "claude-haiku-4-5",
+    );
+  });
+
+  it("compiles a per-thread auto-compact window only where the model's window allows it", () => {
+    const window = (model: string, value: string) =>
+      compileClaudeModelSelection(selection(model, [{ id: "autoCompactWindow", value }])).settings
+        .autoCompactWindow;
+    expect(window("claude-fable-5-2", "600000")).toBe(600_000);
+    expect(window("claude-fable-5-2", "default")).toBeUndefined();
+    expect(window("claude-fable-5-2", "5000000")).toBeUndefined();
+    expect(window("claude-haiku-4-5", "600000")).toBeUndefined();
+  });
+
   it("runs Ultracode at the chosen effort and reads the old Ultracode effort as xhigh", () => {
     expect(
       compileClaudeModelSelection(
@@ -105,14 +129,33 @@ describe("compileClaudeModelSelection", () => {
     ).toMatchObject({ effort: "high", promptEffort: "ultrathink" });
   });
 
-  it("keeps explicit effort for models missing from the local catalog", () => {
+  it("ignores thinking for catalog models without a thinking option", () => {
     expect(
-      compileClaudeModelSelection(
-        selection("claude-pool-model-not-in-catalog", [{ id: "effort", value: "max" }]),
-      ).effort,
-    ).toBe("max");
-    expect(
-      compileClaudeModelSelection(selection("claude-pool-model-not-in-catalog", [])).effort,
-    ).toBeUndefined();
+      compileClaudeModelSelection(selection("claude-opus-5-5", [{ id: "thinking", value: false }]))
+        .settings,
+    ).not.toHaveProperty("alwaysThinkingEnabled");
   });
+
+  it.each(["gateway-route", "gateway-route[1m]"])(
+    "keeps explicit effort and thinking for %s outside the local catalog",
+    (model) => {
+      for (const thinking of [true, false]) {
+        expect(
+          compileClaudeModelSelection(
+            selection(model, [
+              { id: "effort", value: "max" },
+              { id: "thinking", value: thinking },
+            ]),
+          ),
+        ).toMatchObject({
+          apiModelId: model,
+          effort: "max",
+          settings: { alwaysThinkingEnabled: thinking },
+        });
+      }
+      const unconfigured = compileClaudeModelSelection(selection(model, []));
+      expect(unconfigured.effort).toBeUndefined();
+      expect(unconfigured.settings).toEqual({});
+    },
+  );
 });

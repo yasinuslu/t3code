@@ -272,32 +272,6 @@ export function adjacentSpaceId(
   return spaces[(index + direction + spaces.length) % spaces.length]?.id ?? null;
 }
 
-const SWIPE_THRESHOLD_PX = 90;
-const SWIPE_GESTURE_GAP_MS = 180;
-
-/**
- * Turns trackpad wheel events into at most one space step per gesture. A
- * gesture ends after a short pause in events, so momentum scrolling that
- * follows the step cannot trigger a second one.
- */
-export function createSpaceSwipeTracker() {
-  let accumulatedX = 0;
-  let lastEventAt = Number.NEGATIVE_INFINITY;
-  let fired = false;
-  return (event: { deltaX: number; deltaY: number; timeStamp: number }): 1 | -1 | null => {
-    if (event.timeStamp - lastEventAt > SWIPE_GESTURE_GAP_MS) {
-      accumulatedX = 0;
-      fired = false;
-    }
-    lastEventAt = event.timeStamp;
-    if (fired || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return null;
-    accumulatedX += event.deltaX;
-    if (Math.abs(accumulatedX) < SWIPE_THRESHOLD_PX) return null;
-    fired = true;
-    return accumulatedX > 0 ? 1 : -1;
-  };
-}
-
 function isColor(value: unknown): value is ProjectIconColor {
   return PROJECT_ICON_COLORS.some((color) => color.value === value);
 }

@@ -7,6 +7,7 @@ import { unified } from "unified";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  pullRequestCommentPreview,
   remarkPullRequestAutolinks,
   remarkPullRequestRelativeUrls,
 } from "./pullRequestMarkdown.logic";
@@ -111,5 +112,33 @@ describe("remarkPullRequestRelativeUrls", () => {
     for (const markdown of [`\\[shot\\](${upload})`, `&lt;img src="${upload}"&gt;`]) {
       expect(rendered(markdown), markdown).toEqual({ urls: [], html: [], code: [] });
     }
+  });
+});
+
+describe("pullRequestCommentPreview", () => {
+  it.each([
+    ["<!-- hidden -->\n> [!WARNING]\n**Guard** [this](https://example.com).", "Guard this."],
+    [
+      '<a href="https://example.com"><img src="badge.svg" /></a>\n<strong>Tasks keep the wrong computer</strong>',
+      "Tasks keep the wrong computer",
+    ],
+    [
+      "<details><summary>Review &amp; fixes</summary><p>First<br>Second</p></details>",
+      "Review & fixes First Second",
+    ],
+    ['<p title="value > limit">Keep <strong>this</strong> readable.</p>', "Keep this readable."],
+    [
+      "Use `<div>` and `Promise<void>`.\n\n```html\n<span>example</span>\n```",
+      "Use <div> and Promise<void>. <span>example</span>",
+    ],
+    ["![badge](https://example.com/badge.svg) **Review**", "badge Review"],
+    ["```md\n[!TIP]\n> [!WARNING]\n```\n\n    [!NOTE]", "[!TIP] > [!WARNING] [!NOTE]"],
+    [
+      "Review :codex-file-citation{purpose='output'} safely.",
+      "Review :codex-file-citation{purpose='output'} safely.",
+    ],
+    [":codex-followup[Prepare **print** version]", ":codex-followup[Prepare **print** version]"],
+  ])("extracts readable text from %s", (body, expected) => {
+    expect(pullRequestCommentPreview(body)).toBe(expected);
   });
 });
