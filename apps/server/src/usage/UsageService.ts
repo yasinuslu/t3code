@@ -91,6 +91,12 @@ const scanReaders = BUILT_IN_USAGE_DRIVERS.flatMap((driver) =>
   driver.usage?.kind === "scan" ? [{ driver, reader: driver.usage }] : [],
 );
 
+const providerRateModels = new Map(
+  BUILT_IN_USAGE_DRIVERS.flatMap(({ usage }) =>
+    usage?.rateModel === undefined ? [] : [[usage.provider, usage.rateModel] as const],
+  ),
+);
+
 const transcriptFormats = new Map(
   transcriptReaders.map(({ reader }) => [reader.provider, reader.format] as const),
 );
@@ -362,9 +368,8 @@ export const make = Effect.gen(function* () {
     > = Object.entries(settings.providerInstances)
       .filter(([, instance]) => instance.driver === driver.driverKind)
       .map(([id, instance]) => [ProviderInstanceId.make(id), instance, true] as const);
-    if (!Object.hasOwn(settings.providerInstances, driver.driverKind)) {
-      entries.push([ProviderInstanceId.make(driver.driverKind), {}, false]);
-    }
+    // History in the driver's default home stays counted after every instance moves elsewhere; readers dedupe shared directories.
+    entries.push([ProviderInstanceId.make(driver.driverKind), {}, false]);
     // Each code profile's Claude dirs hold history like an explicit home. A profile has no
     // instance id of its own (`claudeAgent:yu` fails the slug check), so it borrows the driver's.
     if (driver.driverKind === "claudeAgent" && codeProfiles !== undefined) {
@@ -1011,6 +1016,7 @@ export const make = Effect.gen(function* () {
       rates,
       priceOverrides,
       modelAliases,
+      rateModel: (provider, model) => providerRateModels.get(provider)?.(model),
       ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
     });
 

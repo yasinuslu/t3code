@@ -4,7 +4,7 @@ import {
   OrchestratorMcpThreadLink,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as BrainstormService from "../../../brainstorm/BrainstormService.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
@@ -103,14 +103,16 @@ const readonlyTool = <T extends Tool.Any>(tool: T): T =>
     .annotate(Tool.Readonly, true)
     .annotate(Tool.Destructive, false)
     .annotate(Tool.Idempotent, true)
-    .annotate(Tool.OpenWorld, false) as T;
+    .annotate(Tool.OpenWorld, false)
+    .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients) as T;
 
 const writeTool = <T extends Tool.Any>(tool: T, destructive = false): T =>
   tool
     .annotate(Tool.Readonly, false)
     .annotate(Tool.Destructive, destructive)
     .annotate(Tool.Idempotent, false)
-    .annotate(Tool.OpenWorld, false) as T;
+    .annotate(Tool.OpenWorld, false)
+    .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients) as T;
 
 const ManagerOverviewTool = readonlyTool(
   Tool.make("manager_overview", {
