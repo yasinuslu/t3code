@@ -14,11 +14,11 @@
 name: Nix desktop build (linux)
 
 # dev is the integration branch: feature PRs target it and self-merge after review, with no forge CI
-# (2026-10-27). The dev instance follows origin/dev on nika (nep t3 dev, nepjua flake). Only a yu-v2
+# (2026-10-27). The dev instance follows origin/dev on nika (nep t3 dev, nepjua flake). Only a main
 # push builds, pins and ships.
 on:
   push:
-    branches: [yu-v2]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -66,7 +66,7 @@ jobs:
           xargs nix run nixpkgs#attic-client -- push "$ATTIC_CACHE" < "$RUNNER_TEMP/out-paths.txt"
           rm -rf "$XDG_CONFIG_HOME"
 
-  # SHIP. A green build of a yu-v2 push is what "ship" means: this job pins the commit in
+  # SHIP. A green build of a main push is what "ship" means: this job pins the commit in
   # platform-gitops (releases/t3code.json), the single source of truth for what T3 Code runs on
   # nika and joyboy. The machines watch that file (`nep t3 autoship`, nepjua flake), build the
   # pinned sha in their own free slot, wait for an idle server, restart it behind a health gate
@@ -74,7 +74,7 @@ jobs:
   # is reverting the pin commit there. Write access is a deploy key limited to that one repo.
   ship:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/yu-v2'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: nix
     timeout-minutes: 15
     steps:
@@ -108,7 +108,7 @@ jobs:
               *) echo "cannot tell how $sha relates to the pin $pinned ($rel); not pinning"; exit 1 ;;
             esac
             jq -n --arg sha "$sha" --arg subject "$subject" --arg at "$(date -u +%FT%TZ)" --arg run "$RUN_URL" \
-              '{repo: "yasinuslu/t3code", branch: "yu-v2", sha: $sha, subject: $subject, shippedAt: $at, run: $run}' \
+              '{repo: "yasinuslu/t3code", branch: "main", sha: $sha, subject: $subject, shippedAt: $at, run: $run}' \
               > releases/t3code.json
             git add releases/t3code.json
             git commit -q -m "ship: t3code ${sha:0:7} $subject"
