@@ -108,7 +108,8 @@ it.each<{ focus: string; control: ReactNode; toggles: boolean }>([
     await expect.element(screen.getByText("Incremental")).toBeVisible();
     screen.getByLabelText("Focused").element().focus();
 
-    await userEvent.keyboard("1");
+    // The fork answers on Alt+digit; bare digits stay with inline components.
+    await userEvent.keyboard("{Alt>}1{/Alt}");
 
     expect(onToggleOption.mock.calls).toEqual(toggles ? [["question", "Incremental"]] : []);
   },
