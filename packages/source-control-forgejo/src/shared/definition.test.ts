@@ -2,7 +2,7 @@ import type { ChangeRequestProjectIdentity } from "@t3tools/source-control-core/
 import { recognizeRemoteWith } from "@t3tools/source-control-core/shared/definition";
 import { describe, expect, it } from "vite-plus/test";
 
-import { definition } from "./definition.ts";
+import { addSignedInForgejoHosts, definition } from "./definition.ts";
 
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url))!;
 
@@ -133,6 +133,16 @@ describe("Forgejo remotes", () => {
       recognizeRemoteWith(definition, "ssh://git@forgejo.example.test:2222/team/repo.git")?.baseUrl,
     ).toBe("https://forgejo.example.test");
     expect(recognizeRemoteWith(definition, "https://git.example.test/team/repo")).toBeNull();
+  });
+
+  it("recognises a self-hosted server under any name once a login names it", () => {
+    expect(recognizeRemoteWith(definition, "git@git.signed-in.test:team/repo.git")).toBeNull();
+    addSignedInForgejoHosts(["Git.Signed-In.test"]);
+    expect(recognizeRemoteWith(definition, "git@git.signed-in.test:team/repo.git")).toEqual({
+      kind: "forgejo",
+      name: "Forgejo",
+      baseUrl: "https://git.signed-in.test",
+    });
   });
 });
 
