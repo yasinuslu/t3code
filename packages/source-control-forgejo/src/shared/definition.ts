@@ -30,10 +30,18 @@ const REPOSITORY_PAGE_PATH = /^\/([^/]+(?:\/[^/]+)+?)\/src\/(?:branch|tag|commit
 
 const KIND = SourceControlProviderKind.make("forgejo");
 
+// A self-hosted server can have any name; the server adds the ones an fj or tea login names.
+const signedInHosts = new Set<string>();
+
+export function addSignedInForgejoHosts(hostnames: Iterable<string | undefined>): void {
+  for (const hostname of hostnames) if (hostname) signedInHosts.add(hostname.toLowerCase());
+}
+
 function isForgejoHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
     host === "codeberg.org" ||
+    signedInHosts.has(host) ||
     host.split(".").includes("forgejo") ||
     host.split(".").includes("gitea")
   );
