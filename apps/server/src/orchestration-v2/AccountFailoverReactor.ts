@@ -12,7 +12,7 @@ import {
   latestExecutedRun,
   latestRootProviderFailure,
 } from "@t3tools/shared/orchestrationV2ThreadError";
-import { formatDuration } from "@t3tools/shared/usageLimits";
+import { formatDuration } from "./limitDuration.ts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";

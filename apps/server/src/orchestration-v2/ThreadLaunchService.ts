@@ -41,7 +41,7 @@ import {
   formatGeneratedBranchName,
   isTemporaryWorktreeBranch,
 } from "@t3tools/shared/git";
-import { formatDuration } from "@t3tools/shared/usageLimits";
+import { formatDuration } from "./limitDuration.ts";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";

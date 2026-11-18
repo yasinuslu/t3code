@@ -568,7 +568,9 @@ describe("DesktopUpdates", () => {
       Effect.gen(function* () {
         const updates = yield* DesktopUpdates.DesktopUpdates;
         yield* updates.configure;
-        yield* updates.check("poll");
+        // A check would download at once here; this is the offer a failed or skipped download left.
+        lastChecked = published;
+        harness.emit("update-available", { version: published });
         yield* flushCallbacks;
         assert.equal((yield* updates.getState).availableVersion, "1.2.4");
 
@@ -625,7 +627,7 @@ describe("DesktopUpdates", () => {
     const harness = makeHarness({
       checkForUpdates: Effect.suspend(() => {
         checks += 1;
-        if (checks > 1) {
+        if (checks > 0) {
           return Effect.fail(
             new ElectronUpdater.ElectronUpdaterCheckForUpdatesError({
               channel: null,
@@ -645,7 +647,8 @@ describe("DesktopUpdates", () => {
       Effect.gen(function* () {
         const updates = yield* DesktopUpdates.DesktopUpdates;
         yield* updates.configure;
-        yield* updates.check("poll");
+        // A check would download at once here; this is the offer a failed or skipped download left.
+        harness.emit("update-available", { version: "1.2.4" });
         yield* flushCallbacks;
 
         const result = yield* updates.download;
