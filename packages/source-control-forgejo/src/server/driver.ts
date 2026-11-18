@@ -20,13 +20,23 @@ const recognizeSignedInHosts = Effect.fn("ForgejoDriver.recognizeSignedInHosts")
   const { listLogins } = yield* ForgejoCli.ForgejoCli;
   if (listLogins === undefined) return;
   const cwd = yield* HostProcess.HomeDirectory;
-  const logins = yield* Effect.forEach(["fj", "tea"] as const, (command) =>
-    listLogins({ cwd, command }).pipe(Effect.orElseSucceed(() => [])),
+  // Server startup waits on this, so a hung CLI must not hold it.
+  const logins = yield* Effect.forEach(
+    ["fj", "tea"] as const,
+    (command) =>
+      listLogins({ cwd, command }).pipe(
+        Effect.timeout("5 seconds"),
+        Effect.orElseSucceed(() => []),
+      ),
+    { concurrency: "unbounded" },
   );
   addSignedInForgejoHosts(
     logins
       .flat()
-      .flatMap((login) => [ForgejoCli.parseForgejoRemote(login.url)?.hostname, login.ssh_host]),
+      .flatMap((login) => [
+        ForgejoCli.parseForgejoRemote(login.url)?.hostname,
+        login.ssh_host?.replace(/^[^@]*@/u, "").replace(/:\d+$/u, ""),
+      ]),
   );
 });
 
