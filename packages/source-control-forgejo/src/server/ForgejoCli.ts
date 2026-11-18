@@ -18,6 +18,9 @@ import * as SourceControlHost from "@t3tools/source-control-core/server/SourceCo
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 import type { SourceControlProviderContext } from "@t3tools/source-control-core/server/SourceControlProvider";
 
+// A Gitea list page can hold 50 pull request bodies; tea's output is otherwise capped at 1 MB.
+const API_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+
 const encodeApiBody = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 export class ForgejoCliError extends Schema.TaggedError<ForgejoCliError>()("ForgejoCliError", {
@@ -733,6 +736,7 @@ export const make = Effect.gen(function* () {
         `${repository.baseUrl}/api/v1/${path}`,
       ],
       ...(stdin === undefined ? {} : { stdin }),
+      maxOutputBytes: API_MAX_OUTPUT_BYTES,
     });
     // tea reports HTTP failures with exit code zero; use its response status.
     const status = Number(/^HTTP\/\S+ (\d{3})/m.exec(result.stderr)?.[1]);
@@ -765,6 +769,13 @@ export const make = Effect.gen(function* () {
                     : `Forgejo API request failed (HTTP ${status}).`,
       });
     }
+    if (result.stdoutTruncated)
+      return yield* new ForgejoCliError({
+        command: "tea",
+        cwd: input.cwd,
+        reason: "invalid-response",
+        detail: "Forgejo API response exceeded the output size limit.",
+      });
     return result;
   });
   const mediaToken = Effect.fn("ForgejoCli.mediaToken")(

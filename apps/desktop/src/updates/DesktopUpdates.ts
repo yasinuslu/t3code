@@ -632,7 +632,7 @@ export const make = Effect.gen(function* () {
     );
     // Updates download in the background; the user only decides when to restart.
     if ((yield* Ref.get(updateStateRef)).status === "available") {
-      yield* downloadAvailableUpdate.pipe(Effect.forkDetach);
+      yield* downloadAvailableUpdate(false).pipe(Effect.forkDetach);
     }
     return checked;
   });

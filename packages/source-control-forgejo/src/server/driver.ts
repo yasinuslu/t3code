@@ -8,6 +8,7 @@ import { definition } from "../shared/definition.ts";
 
 import * as ForgejoCli from "./ForgejoCli.ts";
 import * as ForgejoMediaFetch from "./forgejoMediaFetch.ts";
+import * as ForgejoIssueTracker from "./ForgejoIssueTracker.ts";
 import * as ForgejoPullRequestProvider from "./ForgejoPullRequestProvider.ts";
 import * as ForgejoSourceControlProvider from "./ForgejoSourceControlProvider.ts";
 
@@ -18,6 +19,7 @@ const makeInstance = Effect.all({
   discovery: ForgejoSourceControlProvider.makeDiscovery,
   pullRequests: ForgejoPullRequestProvider.make,
   fetchMedia: ForgejoMediaFetch.make,
+  issues: ForgejoIssueTracker.make,
 });
 
 export const driver = defineSourceControlDriver({

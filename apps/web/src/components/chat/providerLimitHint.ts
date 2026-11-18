@@ -1,5 +1,6 @@
 import type { ServerProvider } from "@t3tools/contracts";
-import { exhaustedLimitWindow, formatResetsIn } from "@t3tools/shared/usageLimits";
+import { exhaustedLimitWindow } from "@t3tools/shared/usageLimits";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 
 /**
  * "Limit reached · resets in 3h 5m" when the provider's account is out of
@@ -12,5 +13,7 @@ export function providerLimitHint(
   now: number = Date.now(),
 ): string | null {
   const window = exhaustedLimitWindow(provider.usageLimits, model, now);
-  return window ? `Limit reached · ${formatResetsIn(window, now)}` : null;
+  if (!window) return null;
+  const resets = formatResetsIn(window, now);
+  return resets === null ? "Limit reached" : `Limit reached · ${resets}`;
 }
