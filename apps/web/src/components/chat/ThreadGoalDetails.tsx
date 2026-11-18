@@ -1,6 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { presentProviderGoal } from "@t3tools/client-runtime/state/thread-execution";
 import type { EnvironmentId, OrchestrationV2ProviderGoal, ThreadId } from "@t3tools/contracts";
+import { useMessages } from "gt-react";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -75,6 +76,7 @@ export function ThreadGoalDetails(props: {
 }) {
   const [open, setOpen] = useState(false);
   // Thread shells leave out the check log; the thread projection keeps it.
+  const messages = useMessages();
   const projection = useQuietThreadProjection(
     open ? scopeThreadRef(props.environmentId, props.threadId) : null,
   )?.projection;
@@ -82,7 +84,7 @@ export function ThreadGoalDetails(props: {
     projection?.providerThreads.find(
       (thread) => thread.id === projection.thread.activeProviderThreadId,
     )?.goal ?? props.goal;
-  const presentation = presentProviderGoal(goal, props.isWorking);
+  const presentation = presentProviderGoal(goal, props.isWorking, messages);
   const checkLog = goal.checkLog ?? (goal.lastCheck === undefined ? [] : [goal.lastCheck]);
   const lineTitle =
     presentation.usage === null

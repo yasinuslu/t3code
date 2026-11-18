@@ -631,8 +631,9 @@ export const make = Effect.gen(function* () {
       Effect.ensuring(finishUpdateAction("check")),
     );
     // Updates download in the background; the user only decides when to restart.
-    if ((yield* Ref.get(updateStateRef)).status === "available") {
-      yield* downloadAvailableUpdate.pipe(Effect.forkDetach);
+    // An install check downloads what it found itself, so a second download would race it.
+    if (reason !== "install" && (yield* Ref.get(updateStateRef)).status === "available") {
+      yield* downloadAvailableUpdate(false).pipe(Effect.forkDetach);
     }
     return checked;
   });

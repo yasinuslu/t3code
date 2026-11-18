@@ -16,7 +16,7 @@ import {
   type BackgroundCommandTarget,
   useBackgroundCommandDialogStore,
 } from "../../backgroundCommandDialogStore";
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { namedClipboardTarget, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useTheme } from "../../hooks/useTheme";
 import { cn } from "~/lib/utils";
 import { tickTextContent } from "~/lib/tickTextContent";
@@ -51,7 +51,9 @@ function formatBytes(bytes: number): string {
 }
 
 function CopyButton(props: { readonly value: string | null; readonly label: string }) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: props.label });
+  const { copyToClipboard, isCopied } = useCopyToClipboard({
+    target: namedClipboardTarget(props.label),
+  });
   if (!props.value) return null;
   return (
     <Button

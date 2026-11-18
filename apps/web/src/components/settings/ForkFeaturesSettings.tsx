@@ -2,7 +2,7 @@ import { type ForkFeature, isForkFeatureOn } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { type SettingsSearchItemId, searchableSetting } from "./settingsSearch";
+import { type SettingsSearchItemId, useSearchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
 const FORK_FEATURE_ROWS: ReadonlyArray<{
@@ -74,6 +74,7 @@ const FORK_FEATURE_ROWS: ReadonlyArray<{
 export function ForkFeaturesSection() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const setting = useSearchableSetting();
   return (
     <SettingsSection id="fork-features" title="Fork features">
       <p className="px-4 py-3 text-muted-foreground text-xs">
@@ -84,7 +85,7 @@ export function ForkFeaturesSection() {
         <SettingsRow
           key={row.feature}
           serverScoped
-          {...searchableSetting(row.searchId)}
+          {...setting(row.searchId)}
           settingKeys={["forkFeatures"]}
           description={row.description}
           control={
@@ -94,7 +95,7 @@ export function ForkFeaturesSection() {
               onCheckedChange={(checked) =>
                 updateSettings({ forkFeatures: { [row.feature]: Boolean(checked) } })
               }
-              aria-label={searchableSetting(row.searchId).title}
+              aria-label={setting(row.searchId).title}
             />
           }
         />

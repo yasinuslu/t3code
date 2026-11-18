@@ -8,6 +8,7 @@ import { formatThreadDeepLink } from "@t3tools/shared/threadLinks";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { msg, useGT } from "gt-react";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "~/localApi";
@@ -43,7 +44,11 @@ function resolveThreadLinkStatus(
 
 async function copyThreadLink(href: string) {
   try {
-    await writeTextToClipboard(href, "link");
+    await writeTextToClipboard(href, {
+      target: "link",
+      unavailableMessage: msg("Clipboard API is unavailable while copying link."),
+      failureMessage: msg("Failed to copy link to the clipboard."),
+    });
     toastManager.add({ type: "success", title: "Thread link copied" });
   } catch {
     toastManager.add({ type: "error", title: "Could not copy the link" });
@@ -64,6 +69,7 @@ export function ThreadContextChip(props: {
   currentEnvironmentId?: EnvironmentId | null | undefined;
   unreadable?: boolean;
 }) {
+  const gt = useGT();
   const { environmentId, threadId } = props.record;
   const navigate = useNavigate();
   const shell = useThreadShell({ environmentId, threadId });
@@ -137,7 +143,11 @@ export function ThreadContextChip(props: {
                 onContextMenu={onContextMenu}
               />
             }
-            aria-label={`Thread, ${title}${status ? `, ${status.label}` : ""}`}
+            aria-label={
+              status
+                ? gt("Thread, {title}, {status}", { title, status: status.label })
+                : gt("Thread, {title}", { title })
+            }
             data-markdown-copy={props.copyMarkdown}
             className={cn("no-underline", !shell && !metadata && "text-muted-foreground")}
           >
@@ -162,14 +172,16 @@ export function ThreadContextChip(props: {
       />
       <TooltipPopup side="top">
         {props.unreadable
-          ? "On another machine, so this machine's agent can't read it. Remove it or switch back to send."
+          ? gt(
+              "On another machine, so this machine's agent can't read it. Remove it or switch back to send.",
+            )
           : shell
-            ? `Open thread · ${status?.label}`
+            ? gt("Open thread · {status}", { status: status?.label ?? "" })
             : metadata
-              ? "Open thread"
+              ? gt("Open thread")
               : environment
-                ? "Thread not available"
-                : "Thread is on an environment that is not connected"}
+                ? gt("Thread not available")
+                : gt("Thread is on an environment that is not connected")}
       </TooltipPopup>
     </Tooltip>
   );

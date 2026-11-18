@@ -6,6 +6,9 @@ Reset one binding, or use **Reset all keybindings** to return to the defaults. T
 the command IDs and defaults available in your version, and your changes are saved to
 the [configuration file](#edit-the-configuration-file), which you can edit by hand too.
 
+To free a default shortcut for another command, choose **Unassign** from its row's
+actions menu. **Reset to default** brings it back.
+
 ## Composer controls
 
 `mod+shift+d` starts dictation in the focused editor, or the composer, and finishes it on the next press;
