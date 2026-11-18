@@ -1,5 +1,5 @@
-# Nix packaging for Yasin's T3 Code fork. Lives on the `yu-v2` branch only; `main` stays
-# a clean mirror of pingdotgg/t3code so upstream can always be fast-forwarded.
+# Nix packaging for Yasin's T3 Code fork. `main` is the delivery branch (it was `yu-v2` until
+# 2026-11-18): upstream is merged into `dev` by a daily sync and `dev` is promoted to `main`.
 #
 # This flake exists so that the ~/code/nepjua machine config can install THIS tree with a
 # single `nix flake update t3code`, and so that .github/workflows/nix-desktop.yml can build

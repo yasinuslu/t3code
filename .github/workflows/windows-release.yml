@@ -1,4 +1,4 @@
-# Builds the Windows (x64 NSIS) desktop app for every push to yu-v2 and publishes it as a
+# Builds the Windows (x64 NSIS) desktop app for every push to main and publishes it as a
 # GitHub prerelease on yasinuslu/t3code, next to the Nix builds nix-desktop.yml makes for the
 # Mac and Linux machines. Allowed on GitHub Actions because no self-hosted runner can build
 # Windows yet: listed in the nepjua flake's scripts/watch/forge-guard.ts allowlist.
@@ -13,7 +13,7 @@ name: Windows release
 
 on:
   push:
-    branches: [yu-v2]
+    branches: [main]
   workflow_dispatch:
 
 # Only the tip is ever installed.
@@ -121,7 +121,7 @@ jobs:
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "T3 Code (yu) Windows $VERSION" \
-            --notes "Windows x64 build of yu-v2 at ${GITHUB_SHA:0:12}. Unsigned: on first install pick \"More info\" then \"Run anyway\". Installed apps update themselves from here."
+            --notes "Windows x64 build of main at ${GITHUB_SHA:0:12}. Unsigned: on first install pick \"More info\" then \"Run anyway\". Installed apps update themselves from here."
 
       # The updater only ever needs the newest release; keep a few for rollback.
       - name: Prune old Windows releases
