@@ -47,7 +47,7 @@ vi.mock(import("../state/server"), async (original) => {
   const { Atom } = await import("effect/reactivity");
   const noConfig = Atom.make(null);
   const modelsConfig = Atom.make({
-    environment: { platform: { os: "darwin" } },
+    environment: { platform: { os: "darwin" }, capabilities: {} },
     availableEditors: [],
     settings: { providerInstances: {} },
     providers: [
@@ -899,12 +899,12 @@ describe("ChatMarkdown app thread links", () => {
       ].join("\n\n"),
       { environmentId: EnvironmentId.make("env-1") },
     );
-    const chips = [...screen.container.querySelectorAll("[data-thread-chip]")];
-    expect(chips.map((chip) => JSON.parse(chip.textContent ?? ""))).toEqual([
-      { environmentId: "env-2", threadId: "mcp:c1097b24", title: "Fix parser" },
-      { environmentId: "env-2", threadId: "t-2", title: "Thread" },
+    // env-2 is not a connected environment, so both links render as unavailable thread chips.
+    const chips = [...screen.container.querySelectorAll("[data-context-unresolved]")];
+    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual([
+      "Unavailable context, Fix parser",
+      "Unavailable context, Thread on another machine",
     ]);
-    expect(chips[0]!.getAttribute("data-environment")).toBe("env-1");
     expect([...screen.container.querySelectorAll("code")].map((code) => code.textContent)).toEqual([
       "t3://thread/env-2/t-3",
     ]);
