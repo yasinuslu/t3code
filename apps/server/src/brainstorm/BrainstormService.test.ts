@@ -6,17 +6,20 @@ import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
 import {
+  type ModelSelection,
   type OrchestrationProjectShell,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
   MessageId,
   NodeId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
   ProviderTurnId,
   RunAttemptId,
   RunId,
+  type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -33,6 +36,7 @@ import * as ManagerRole from "./ManagerRole.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ManagerScope from "../mcp/ManagerScope.ts";
 import {
@@ -117,15 +121,21 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
   /** Assistant answers by run ordinal, oldest first; one thread is enough here. */
   readonly answersByRun?: ReadonlyArray<ReadonlyArray<{ text: string; streaming?: boolean }>>;
   readonly statusReport?: { readonly text: string; readonly updatedAt: string };
+  readonly providers?: ReadonlyArray<ServerProvider>;
+  readonly settings?: Parameters<typeof ServerSettings.layerTest>[0];
 }) {
   const projects = yield* Ref.make(input.projects);
   const threads = yield* Ref.make(input.threads);
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationV2ServerCommand>>([]);
+  const launched = yield* Ref.make<ReadonlyArray<ModelSelection>>([]);
   const baseDir = NodeFS.mkdtempSync(NodePath.join(home, "t3-"));
 
   const deps = Layer.mergeAll(
     ServerConfig.layerTest(home, baseDir),
-    ServerSettings.layerTest(),
+    ServerSettings.layerTest(input.settings),
+    Layer.mock(ProviderRegistry.ProviderRegistry)({
+      getProviders: Effect.succeed(input.providers ?? []),
+    }),
     Layer.succeed(SecureRandom.SecureRandom, testCrypto),
     Layer.mock(ProjectService.ProjectService)({
       listShells: () => Ref.get(projects),
@@ -143,10 +153,17 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
     }),
     Layer.mock(ThreadLaunchService.ThreadLaunchService)({
       launch: (launch) =>
-        Ref.update(threads, (current) => [
-          ...current,
-          thread(launch.threadId ?? "launched", launch.projectId, { title: launch.title ?? "" }),
-        ]).pipe(Effect.as({} as never)),
+        Ref.update(launched, (current) => [...current, launch.modelSelection]).pipe(
+          Effect.andThen(
+            Ref.update(threads, (current) => [
+              ...current,
+              thread(launch.threadId ?? "launched", launch.projectId, {
+                title: launch.title ?? "",
+              }),
+            ]),
+          ),
+          Effect.as({} as never),
+        ),
     }),
     Layer.mock(OrchestratorV2)({
       getShellSnapshot: () =>
@@ -207,7 +224,7 @@ const makeHarness = Effect.fn("makeBrainstormServiceHarness")(function* (input: 
       current.flatMap((command) => (command.type === "thread.pin" ? [command.threadId] : [])),
     ),
   );
-  return { brainstorm, threads, pins, baseDir, managerScope };
+  return { brainstorm, threads, pins, baseDir, managerScope, launched };
 });
 
 describe("BrainstormService managers", () => {
@@ -262,19 +279,70 @@ describe("BrainstormService managers", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("a deleted manager is not reported, and opening starts a new one", () =>
+  it.effect("a deleted or archived manager is not reported, and opening starts a new one", () =>
     Effect.gen(function* () {
       const { projects } = twoProfiles();
       const harness = yield* makeHarness({ projects, threads: [] });
       const gone = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      const archived = yield* harness.brainstorm.open({ spaceId: "all", profile: "work" });
       yield* Ref.update(harness.threads, (current) =>
-        current.filter((candidate) => candidate.id !== gone.threadId),
+        current
+          .filter((candidate) => candidate.id !== gone.threadId)
+          .map((candidate) =>
+            candidate.id === archived.threadId
+              ? { ...candidate, archivedAt: at("2026-10-09T09:05:15.354Z") }
+              : candidate,
+          ),
       );
 
       const state = Option.getOrThrow(yield* Stream.runHead(harness.brainstorm.stateChanges));
       expect(state.managerThreadIdsByProfile).toEqual({});
       const fresh = yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
       expect(fresh.threadId).not.toBe(gone.threadId);
+      const reopened = yield* harness.brainstorm.open({ spaceId: "all", profile: "work" });
+      expect(reopened.threadId).not.toBe(archived.threadId);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a manager starts on an account of its own profile, not the default one", () =>
+    Effect.gen(function* () {
+      const { projects } = twoProfiles();
+      const account = (instanceId: string, profile: string): ServerProvider => ({
+        instanceId: ProviderInstanceId.make(instanceId),
+        driver: ProviderDriverKind.make("claudeAgent"),
+        configDir: {
+          path: NodePath.join(home, "code", profile, "claude"),
+          displayPath: "~",
+          profile,
+        },
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "2026-10-13T11:00:00.000Z",
+        models: [],
+        slashCommands: [],
+        skills: [],
+      });
+      const harness = yield* makeHarness({
+        projects,
+        threads: [],
+        providers: [account("claude_home", "home"), account("claude_work", "work")],
+        settings: {
+          defaultModelSelection: {
+            instanceId: ProviderInstanceId.make("claude_home"),
+            model: "claude-opus-5-5",
+          },
+        },
+      });
+
+      yield* harness.brainstorm.open({ spaceId: "all", profile: "home" });
+      yield* harness.brainstorm.open({ spaceId: "all", profile: "work" });
+      expect(yield* Ref.get(harness.launched)).toEqual([
+        { instanceId: "claude_home", model: "claude-opus-5-5" },
+        { instanceId: "claude_work", model: "claude-opus-5-5" },
+      ]);
     }).pipe(Effect.scoped),
   );
 
