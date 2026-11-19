@@ -47,6 +47,7 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
+import { selectionForProfile } from "@t3tools/shared/accountBalancing";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -64,6 +65,7 @@ import * as ServerConfig from "../config.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveCodeProfiles, resolveDefaultCodeProfile } from "../workspace/CodeProfiles.ts";
 import { resolveProjectProfiles } from "../workspace/ProfileVisibility.ts";
@@ -300,6 +302,7 @@ export const make = Effect.gen(function* () {
   const projectService = yield* ProjectService.ProjectService;
   const launches = yield* ThreadLaunchService.ThreadLaunchService;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const crypto = yield* SecureRandom.SecureRandom;
   const statePath = NodePath.join(config.stateDir, "brainstorm.json");
 
@@ -642,6 +645,7 @@ export const make = Effect.gen(function* () {
   const modelSelectionFor = Effect.fn("BrainstormService.modelSelectionFor")(function* (
     project: OrchestrationProjectShell,
     threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+    profile: string | null,
   ) {
     const settings = yield* serverSettings.getSettings.pipe(
       Effect.mapError(failWith("Could not read the server settings.")),
@@ -659,7 +663,15 @@ export const make = Effect.gen(function* () {
         instanceId: ProviderInstanceId.make("codex"),
         model: DEFAULT_MODEL,
       };
-    return modelSelection;
+    // A chat in a profile brain must run on that profile's account, or the
+    // profile guard refuses every turn; manager chats are never rebalanced.
+    return selectionForProfile({
+      selection: modelSelection,
+      providers: yield* providerRegistry.getProviders,
+      profile,
+      accounts:
+        profile === null ? undefined : settings.codeProfiles[profile]?.accountBalancing?.accounts,
+    });
   });
 
   const realPath = (path: string) => Effect.promise(() => NodeFSP.realpath(path).catch(() => path));
@@ -748,6 +760,7 @@ export const make = Effect.gen(function* () {
   const launchChat = Effect.fn("BrainstormService.launchChat")(function* (
     project: OrchestrationProjectShell,
     title: string,
+    profile: string | null,
   ) {
     const threadId = ThreadId.make(yield* uuid);
     const settings = yield* serverSettings.getSettings.pipe(
@@ -762,7 +775,7 @@ export const make = Effect.gen(function* () {
         threadId,
         projectId: project.id,
         title,
-        modelSelection: yield* modelSelectionFor(project, snapshot.threads),
+        modelSelection: yield* modelSelectionFor(project, snapshot.threads, profile),
         // The user picks the account a manager chat runs on.
         accountBalance: "off",
         runtimeMode: resolveProjectSettings(settings, project.id).settings.defaultRuntimeMode,
@@ -806,7 +819,8 @@ export const make = Effect.gen(function* () {
       state.managerThreadIdsByProfile?.[profile.name],
       legacyId,
     ]);
-    const threadId = existing?.id ?? (yield* launchChat(project, `Manager · ${profile.name}`));
+    const threadId =
+      existing?.id ?? (yield* launchChat(project, `Manager · ${profile.name}`, profile.name));
     if (state.managerThreadIdsByProfile?.[profile.name] !== threadId) {
       yield* Ref.update(stateRef, (current) => {
         const next = {
@@ -901,6 +915,7 @@ export const make = Effect.gen(function* () {
           (yield* launchChat(
             project,
             space.kind === "all" ? "Manager" : `Brainstorm · ${space.name}`,
+            space.kind === "profile" ? (space.profile ?? null) : null,
           ));
         if (
           state.threadIdsBySpaceId[space.id] !== threadId ||
@@ -992,13 +1007,13 @@ export const make = Effect.gen(function* () {
       ...Object.values(state.managerThreadIdsByProfile ?? {}),
       state.threadIdsBySpaceId[ALL_SPACE_ID],
     ]);
-    // A deleted manager is left out so the client opens (and the server recreates) it.
+    // A deleted or archived manager is left out so the client opens (and the server recreates) it.
     const managerThreadIdsByProfile: Record<string, ThreadId> = {};
     for (const [profile, id] of Object.entries(state.managerThreadIdsByProfile ?? {})) {
       const thread = yield* orchestrator
         .getThreadShell(ThreadId.make(id))
         .pipe(Effect.orElseSucceed(() => null));
-      if (thread !== null && thread.deletedAt === null)
+      if (thread !== null && thread.deletedAt === null && thread.archivedAt === null)
         managerThreadIdsByProfile[profile] = thread.id;
     }
     return {

@@ -13,6 +13,7 @@ import {
   balancedAccountGroup,
   observedLimitKey,
   rankBalancedAccounts,
+  selectionForProfile,
 } from "./accountBalancing.ts";
 
 const now = Date.parse("2026-10-13T12:00:00.000Z");
@@ -277,5 +278,52 @@ describe("pace-aware ranking", () => {
     ]);
     expect(ranked.map((account) => account.instance.instanceId)).toEqual([claude2]);
     expect(skipped[0]?.reason).toBe("limited");
+  });
+});
+
+describe("selectionForProfile", () => {
+  const pinned = (
+    instanceId: ProviderInstanceId,
+    profile: string,
+    overrides: Partial<ServerProvider> = {},
+  ) =>
+    provider(instanceId, "claudeAgent", {
+      configDir: { path: `/home/u/code/${profile}/claude`, displayPath: "~", profile },
+      ...overrides,
+    });
+  const sn = ProviderInstanceId.make("claude_sn");
+  const snYu = ProviderInstanceId.make("claude_sn_yu");
+
+  it("moves a selection off another profile's instance, the profile's heaviest account first", () => {
+    const providers = [pinned(claude, "yu"), pinned(sn, "sn"), pinned(snYu, "sn")];
+    expect(selectionForProfile({ selection, providers, profile: "sn" })).toEqual({
+      ...selection,
+      instanceId: sn,
+    });
+    expect(
+      selectionForProfile({
+        selection,
+        providers,
+        profile: "sn",
+        accounts: [
+          { instanceId: sn, weight: 20 },
+          { instanceId: snYu, weight: 100 },
+        ],
+      }),
+    ).toEqual({ ...selection, instanceId: snYu });
+  });
+
+  it("keeps a selection that may run the profile, or when nothing of the profile can", () => {
+    const providers = [pinned(claude, "yu"), pinned(sn, "sn", { enabled: false })];
+    expect(selectionForProfile({ selection, providers, profile: "yu" })).toBe(selection);
+    expect(selectionForProfile({ selection, providers, profile: null })).toBe(selection);
+    expect(selectionForProfile({ selection, providers, profile: "sn" })).toBe(selection);
+    expect(
+      selectionForProfile({
+        selection,
+        providers: [pinned(claude, "yu", { configDirInherited: true }), pinned(sn, "sn")],
+        profile: "sn",
+      }),
+    ).toBe(selection);
   });
 });

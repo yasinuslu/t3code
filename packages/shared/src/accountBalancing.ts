@@ -10,6 +10,7 @@ import {
   type ServerProviderUsageWindow,
 } from "@t3tools/contracts";
 
+import { profileMismatch } from "./profileGuard.ts";
 import { exhaustedLimitWindow, windowAppliesToModel } from "./usageLimits.ts";
 
 const DEFAULT_ACCOUNT_WEIGHT = 50;
@@ -264,4 +265,55 @@ export function balancedAccountGroup(
     }
   }
   return null;
+}
+
+/**
+ * `selection`, or when its instance is pinned to another code profile, the
+ * first usable instance pinned to `profile`: its balanced accounts by weight,
+ * then its own provider. Unchanged when none is usable.
+ */
+export function selectionForProfile(input: {
+  readonly selection: ModelSelection;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly profile: string | null | undefined;
+  readonly accounts?: ReadonlyArray<CodeProfileBalancedAccount> | undefined;
+}): ModelSelection {
+  const { selection, providers, profile } = input;
+  if (!profile) return selection;
+  const current = providers.find((provider) => provider.instanceId === selection.instanceId);
+  if (
+    current === undefined ||
+    current.configDirInherited === true ||
+    profileMismatch(current.configDir?.profile, profile) === undefined
+  ) {
+    return selection;
+  }
+  const preference = [...(input.accounts ?? [])]
+    .filter((account) => (account.weight ?? DEFAULT_ACCOUNT_WEIGHT) > 0)
+    .sort(
+      (left, right) =>
+        (right.weight ?? DEFAULT_ACCOUNT_WEIGHT) - (left.weight ?? DEFAULT_ACCOUNT_WEIGHT),
+    )
+    .map((account) => account.instanceId);
+  const rank = (provider: ServerProvider) => {
+    const listed = preference.indexOf(provider.instanceId);
+    return listed === -1
+      ? preference.length + (provider.driver === current.driver ? 0 : 1)
+      : listed;
+  };
+  const best = [...providers]
+    .filter(
+      (provider) =>
+        provider.enabled &&
+        provider.installed &&
+        isProviderAvailable(provider) &&
+        provider.auth.status !== "unauthenticated" &&
+        provider.configDirInherited !== true &&
+        provider.configDir?.profile === profile,
+    )
+    .sort((left, right) => rank(left) - rank(right))[0];
+  if (best === undefined) return selection;
+  if (best.driver === current.driver) return { ...selection, instanceId: best.instanceId };
+  const model = defaultModel(best);
+  return model === undefined ? selection : { instanceId: best.instanceId, model };
 }
