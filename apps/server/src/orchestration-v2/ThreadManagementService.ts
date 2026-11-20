@@ -75,6 +75,7 @@ import {
   readBackgroundTaskOutputTail,
   resolveBackgroundTaskOutputPath,
 } from "./backgroundTaskOutput.ts";
+import { cancelledBeforeStart } from "./RestartBackgroundNote.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
@@ -1245,9 +1246,13 @@ const make = Effect.gen(function* () {
           )
         )
           return false;
+        // A wake cancelled before it started (its result was already read in-turn) did nothing.
         if (
           following.some(
-            (candidate) => candidate.status !== "queued" && candidate.status !== "completed",
+            (candidate) =>
+              candidate.status !== "queued" &&
+              candidate.status !== "completed" &&
+              !cancelledBeforeStart(candidate),
           )
         )
           return true;
