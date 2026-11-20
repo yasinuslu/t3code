@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   pullRequestCommentPreview,
+  pullRequestMarkdownPlugins,
   remarkPullRequestAutolinks,
   remarkPullRequestRelativeUrls,
 } from "./pullRequestMarkdown.logic";
@@ -115,6 +116,24 @@ describe("remarkPullRequestRelativeUrls", () => {
   });
 });
 
+describe("pullRequestMarkdownPlugins", () => {
+  it("renders GitHub emoji shortcodes in prose and leaves code literal", () => {
+    const processor = unified()
+      .use(remarkParse)
+      .use(
+        pullRequestMarkdownPlugins({
+          provider: "github",
+          url: "https://github.com/team/repo/pull/8",
+        }),
+      );
+    const tree = processor.runSync(processor.parse("Ship it :tada: :+1: `:tada:`")) as Node;
+    const text = (node: Node): string =>
+      (node.type === "inlineCode" ? `\`${node.value}\`` : (node.value ?? "")) +
+      (node.children ?? []).map(text).join("");
+    expect(text(tree)).toBe("Ship it 🎉 👍 `:tada:`");
+  });
+});
+
 describe("pullRequestCommentPreview", () => {
   it.each([
     ["<!-- hidden -->\n> [!WARNING]\n**Guard** [this](https://example.com).", "Guard this."],
@@ -138,7 +157,9 @@ describe("pullRequestCommentPreview", () => {
       "Review :codex-file-citation{purpose='output'} safely.",
     ],
     [":codex-followup[Prepare **print** version]", ":codex-followup[Prepare **print** version]"],
-  ])("extracts readable text from %s", (body, expected) => {
-    expect(pullRequestCommentPreview(body)).toBe(expected);
+    ["Approved :thumbsup: `:warning:`", "Approved 👍 :warning:"],
+    ["Approved :thumbsup:", "Approved :thumbsup:", "gitlab"],
+  ])("extracts readable text from %s", (body, expected, provider = "github") => {
+    expect(pullRequestCommentPreview(body, provider)).toBe(expected);
   });
 });

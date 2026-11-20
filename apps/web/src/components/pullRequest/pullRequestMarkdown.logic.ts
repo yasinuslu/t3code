@@ -1,6 +1,7 @@
 import {
   changeRequestLinkResolver,
   changeRequestReferenceAutolinker,
+  expandGithubEmojiAliases,
   resolveChangeRequestMediaUrl,
 } from "@t3tools/client-runtime/pull-request-markdown";
 import {
@@ -103,6 +104,16 @@ function remarkChangeRequestMediaUrls(options: { readonly changeRequestUrl: stri
   return (tree: MarkdownNode) => visit(tree);
 }
 
+/** GitHub renders `:alias:` emoji in prose; code keeps them, being `inlineCode`/`code`, not `text`. */
+function remarkGithubEmoji() {
+  const visit = (node: MarkdownNode): void => {
+    if (node.type === "text" && node.value !== undefined)
+      node.value = expandGithubEmojiAliases(node.value);
+    node.children?.forEach(visit);
+  };
+  return (tree: MarkdownNode) => visit(tree);
+}
+
 const NO_PLUGINS: PluggableList = [];
 const markdownPlugins = new Map<string, PluggableList>();
 
@@ -125,18 +136,23 @@ export function pullRequestMarkdownPlugins(
     // The host resolver first: it knows paths a forge writes relative to its repository.
     plugins = resolveUrl ? [[remarkPullRequestRelativeUrls, { resolveUrl }]] : [];
     plugins.push([remarkChangeRequestMediaUrls, { changeRequestUrl: repositoryUrl }]);
+    if (changeRequest.provider === "github") plugins.push(remarkGithubEmoji);
     if (autolinks) plugins.push([remarkPullRequestAutolinks, { autolinks }]);
     markdownPlugins.set(key, plugins);
   }
   return plugins;
 }
 
-const commentPreviewProcessor = unified()
-  .use(remarkParse)
-  .use(CHAT_MARKDOWN_REMARK_PLUGINS)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(CHAT_MARKDOWN_REHYPE_PLUGINS)
-  .freeze();
+const commentPreviewProcessor = (plugins: PluggableList) =>
+  unified()
+    .use(remarkParse)
+    .use(CHAT_MARKDOWN_REMARK_PLUGINS)
+    .use(plugins)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(CHAT_MARKDOWN_REHYPE_PLUGINS)
+    .freeze();
+const commentPreview = commentPreviewProcessor(NO_PLUGINS);
+const githubCommentPreview = commentPreviewProcessor([remarkGithubEmoji]);
 
 const PREVIEW_BLOCK_TAGS = new Set([
   "blockquote",
@@ -175,7 +191,8 @@ function commentPreviewText(node: Nodes): string {
   return node.type === "element" && PREVIEW_BLOCK_TAGS.has(node.tagName) ? ` ${text} ` : text;
 }
 
-export function pullRequestCommentPreview(body: string): string {
-  const tree = commentPreviewProcessor.runSync(commentPreviewProcessor.parse(body), body);
+export function pullRequestCommentPreview(body: string, provider: string): string {
+  const processor = provider === "github" ? githubCommentPreview : commentPreview;
+  const tree = processor.runSync(processor.parse(body), body);
   return commentPreviewText(tree).replace(/\s+/gu, " ").trim();
 }

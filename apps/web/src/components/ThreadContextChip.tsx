@@ -13,6 +13,8 @@ import { msg, useGT } from "gt-react";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "~/localApi";
 import { useEnvironment, usePrimaryEnvironmentId } from "~/state/environments";
+import { resolveThreadOpenRoute } from "~/lib/sideChatPane";
+import { buildThreadRouteParams } from "~/threadRoutes";
 import { useProject, useThreadShell } from "~/state/entities";
 import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
@@ -95,13 +97,23 @@ export function ThreadContextChip(props: {
       : null;
   const href = formatThreadDeepLink({ environmentId, threadId });
   const openThread = () =>
-    void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(resolveThreadOpenRoute({ environmentId, threadId }, shell)),
+    });
 
   const onClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    if (!event.metaKey && !event.ctrlKey) return;
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      void copyThreadLink(href);
+      return;
+    }
+    if (shell?.lineage.sideChat !== true || event.button !== 0) return;
+    if (event.shiftKey || event.altKey) return;
+    // A side chat opens as a tab beside its parent, not as its own page.
     event.preventDefault();
-    event.stopPropagation();
-    void copyThreadLink(href);
+    openThread();
   };
   const onContextMenu = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     const api = readLocalApi();
