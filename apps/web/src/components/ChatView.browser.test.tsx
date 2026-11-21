@@ -276,7 +276,7 @@ it("a machine chip stashed in one thread restores with its machine in another", 
   const editor = page.getByTestId("composer-editor");
   const pressStashShortcut = async () => {
     await userEvent.click(editor);
-    await userEvent.keyboard("{ControlOrMeta>}s{/ControlOrMeta}");
+    await userEvent.keyboard("{ControlOrMeta>}{Alt>}s{/Alt}{/ControlOrMeta}");
   };
   await vi.waitFor(() => expect(editor.element().textContent).toContain("Deploy on"));
   // A draft can't stash until the shell snapshot lists its project.
@@ -552,9 +552,9 @@ it("a stashed prompt ending in a file chip restores with the chip", async () => 
 
   const editor = page.getByTestId("composer-editor");
   await userEvent.click(editor);
-  await userEvent.keyboard("{ControlOrMeta>}s{/ControlOrMeta}");
+  await userEvent.keyboard("{ControlOrMeta>}{Alt>}s{/Alt}{/ControlOrMeta}");
   await expect.element(chip).not.toBeInTheDocument();
-  await userEvent.keyboard("{ControlOrMeta>}s{/ControlOrMeta}");
+  await userEvent.keyboard("{ControlOrMeta>}{Alt>}s{/Alt}{/ControlOrMeta}");
 
   await vi.waitFor(() => expect(editor.element().textContent).toContain("Check"));
   expect(editor.element().textContent).not.toContain("[package.json](package.json)");
