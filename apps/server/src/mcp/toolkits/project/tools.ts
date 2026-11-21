@@ -130,7 +130,7 @@ const ProjectCloneTool = Tool.make("t3_project_clone", {
 const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   ...shared,
   description:
-    "Create one new top-level thread, bound to its workspace before the agent starts. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. After an error or lost reply, retry with the same `clientRequestId`. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`. An omitted model lets the project's account balancing pick the account.",
+    "Create a top-level thread in its workspace before starting. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. On error or lost reply, reuse `clientRequestId`. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`. An omitted model lets the project's account balancing pick the account.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     projectId: Schema.optional(ProjectId),
@@ -141,6 +141,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
       }),
     ),
     title: TrimmedNonEmptyString,
+    generateTitle: Schema.optional(Schema.Boolean),
     modelSelection: Schema.optional(ModelSelection),
     accountBalance: Schema.optional(
       Schema.Literals(["auto", "off"]).annotate({
