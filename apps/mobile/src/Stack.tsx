@@ -89,6 +89,7 @@ import { AddProjectSourceRoute } from "./features/projects/AddProjectSourceRoute
 import {
   NewTaskBranchPickerRouteScreen,
   NewTaskEnvironmentPickerRouteScreen,
+  NewTaskRepositoriesPickerRouteScreen,
 } from "./features/threads/NewTaskContextPickerScreens";
 import {
   ExistingThreadSettingsRouteScreen,
@@ -207,6 +208,7 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   NewTaskProject: msg("Choose project"),
   NewTaskEnvironment: msg("Environment"),
   NewTaskBranch: msg("Branch"),
+  NewTaskRepositories: msg("Repositories"),
   AddProject: msg("Add project"),
   ThreadFiles: msg("Files"),
   SettingsLegal: msg("Legal"),
@@ -668,6 +670,11 @@ const RootStackConfig = createWorkspaceStackNavigator({
     NewTaskBranch: createNativeStackScreen({
       linking: "new/draft/branch",
       screen: NewTaskBranchPickerRouteScreen,
+      options: pageRoute(),
+    }),
+    NewTaskRepositories: createNativeStackScreen({
+      linking: "new/draft/repositories",
+      screen: NewTaskRepositoriesPickerRouteScreen,
       options: pageRoute(),
     }),
     AddProject: createNativeStackScreen({

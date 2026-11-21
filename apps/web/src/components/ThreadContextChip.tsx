@@ -21,8 +21,10 @@ import { orchestrationEnvironment } from "~/state/orchestration";
 import { useEnvironmentQuery } from "~/state/query";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import { ProjectFavicon } from "./ProjectFavicon";
+import { ThreadChipHoverCard } from "./ThreadChipHoverCard";
+import { ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { toastManager } from "./ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { Tooltip, TooltipTrigger } from "./ui/tooltip";
 
 type ThreadLinkStatus = "needs-input" | "working" | "ready" | "settled";
 
@@ -182,19 +184,14 @@ export function ThreadContextChip(props: {
           </ContextChip>
         }
       />
-      <TooltipPopup side="top">
-        {props.unreadable
-          ? gt(
-              "On another machine, so this machine's agent can't read it. Remove it or switch back to send.",
-            )
-          : shell
-            ? gt("Open thread · {status}", { status: status?.label ?? "" })
-            : metadata
-              ? gt("Open thread")
-              : environment
-                ? gt("Thread not available")
-                : gt("Thread is on an environment that is not connected")}
-      </TooltipPopup>
+      <ThreadHoverCardPopup side="top">
+        <ThreadChipHoverCard
+          title={title}
+          project={project}
+          shell={shell}
+          unreadable={props.unreadable === true}
+        />
+      </ThreadHoverCardPopup>
     </Tooltip>
   );
 }
