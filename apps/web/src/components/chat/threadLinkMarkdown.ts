@@ -1,23 +1,17 @@
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 
-import { findAndReplaceText, type MarkdownNode } from "~/vendor/mdast-find-and-replace";
-
 // A bare link stops at whitespace, brackets and trailing sentence punctuation.
 const BARE_THREAD_LINK_PATTERN =
   /(?:t3code:\/\/threads|t3:\/\/thread)\/[^\s/()<>[\]]+\/[^\s/()<>[\]]*[^\s/()<>[\].,;:!?'"]/giu;
-const IGNORED_TYPES = new Set(["link", "linkReference"]);
 
-/** Turns bare thread links in prose into links so they render as thread chips. */
-export function remarkThreadLinks() {
-  return (tree: MarkdownNode) => {
-    findAndReplaceText(
-      tree,
-      BARE_THREAD_LINK_PATTERN,
-      (matched) =>
-        parseThreadLinkHref(matched) === null
-          ? false
-          : { type: "link", url: matched, children: [{ type: "text", value: matched }] },
-      IGNORED_TYPES,
-    );
-  };
+/** Bare thread links in prose, which the chat links so they render as thread chips. */
+export function bareThreadLinkMatches(
+  text: string,
+): Array<{ readonly index: number; readonly href: string }> {
+  if (!text.includes("t3")) return [];
+  const found: Array<{ index: number; href: string }> = [];
+  for (const match of text.matchAll(BARE_THREAD_LINK_PATTERN)) {
+    if (parseThreadLinkHref(match[0]) !== null) found.push({ index: match.index, href: match[0] });
+  }
+  return found;
 }
