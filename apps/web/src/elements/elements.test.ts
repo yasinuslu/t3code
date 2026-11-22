@@ -1,14 +1,11 @@
 import type { ElementManifest } from "@t3tools/contracts";
-import { renderToStaticMarkup } from "react-dom/server";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import { toHtml } from "hast-util-to-html";
 import { describe, expect, it } from "vite-plus/test";
 
 import { elementProps } from "@t3tools/shared/elementProps";
 
 import { elementPlainText, localImageRefs, trimPartialElementTag } from "./elementProps";
-import { ELEMENT_SLOT_PROPERTIES, rehypeElements } from "./rehypeElements";
+import { wordsHast } from "../markdown/wordsHast";
 
 const decision: ElementManifest = {
   tag: "t3-decision",
@@ -36,20 +33,17 @@ const callout: ElementManifest = {
   },
 };
 
-const schema = {
-  ...defaultSchema,
-  attributes: {
-    ...defaultSchema.attributes,
-    span: [...(defaultSchema.attributes?.span ?? []), ...ELEMENT_SLOT_PROPERTIES],
-  },
-};
-
 /** What the chat's markdown pipeline makes of a message, with slots shown as their data. */
 function render(markdown: string): string {
-  return renderToStaticMarkup(
-    <ReactMarkdown rehypePlugins={[rehypeRaw, rehypeElements, [rehypeSanitize, schema]]}>
-      {markdown}
-    </ReactMarkdown>,
+  return toHtml(
+    wordsHast(markdown, {
+      math: false,
+      breaks: false,
+      escapeHtml: false,
+      insights: false,
+      elements: true,
+      extensions: {},
+    }),
   );
 }
 
@@ -117,7 +111,7 @@ describe("markdown pipeline", () => {
       'Pick one:\n\n<t3-decision>\n{"question":"Which?"}\n</t3-decision>\n\nThanks.',
     );
     expect(html).toContain('data-t3-element="t3-decision"');
-    expect(html).toContain("&quot;question&quot;");
+    expect(html).toContain("&#x22;question&#x22;");
     expect(html).toContain("Pick one:");
     expect(html).toContain("Thanks.");
   });
@@ -125,7 +119,7 @@ describe("markdown pipeline", () => {
   it("keeps an inline text-body tag inside its paragraph", () => {
     const html = render('<t3-callout tone="warning" title="Heads up">Body text</t3-callout>');
     expect(html).toContain('data-t3-element="t3-callout"');
-    expect(html).toContain("&quot;tone&quot;:&quot;warning&quot;");
+    expect(html).toContain("&#x22;tone&#x22;:&#x22;warning&#x22;");
     expect(html).toContain('data-t3-body="Body text"');
   });
 
