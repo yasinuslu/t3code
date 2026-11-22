@@ -438,6 +438,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           projectId,
           title: input.title,
           ...(input.generateTitle === undefined ? {} : { generateTitle: input.generateTitle }),
+          ...(input.generateTitle === true ? {} : { titleRenamed: true }),
           modelSelection,
           // An inherited model names the caller's account only by accident, so it
           // balances unless told not to; a named model is pinned unless asked.
