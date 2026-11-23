@@ -114,6 +114,7 @@ import {
   WS_METHODS,
   WsRpcGroup,
   ProviderMcpSignInError,
+  AgentFeedbackRequestError,
 } from "@t3tools/contracts";
 import {
   HttpRouter,
@@ -2607,7 +2608,11 @@ export const layerWsRpc = (
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(secretRequests.answer(input)),
           ),
-        [WS_METHODS.agentFeedbackAnswerRequest]: (input) => feedbackStore.answer(input),
+        [WS_METHODS.agentFeedbackAnswerRequest]: (input) =>
+          requireThreadVisible(input.threadId).pipe(
+            Effect.mapError(() => new AgentFeedbackRequestError({ reason: "not_found" })),
+            Effect.andThen(feedbackStore.answer(input)),
+          ),
         [WS_METHODS.scheduledTasksListWebhookDeliveries]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
             Effect.andThen(scheduledTasks.listWebhookDeliveries(input)),
