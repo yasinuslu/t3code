@@ -40,7 +40,12 @@ import type {
   TranscriptUsageFormat,
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
-import { canonicalModelFilter, resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
+import {
+  canonicalModelFilter,
+  resolveModelAliases,
+  usageTimestampFilter,
+  UsageAggregator,
+} from "./usageAggregation.ts";
 import {
   createOverrideRateTable,
   isUnlistedModel,
@@ -78,7 +83,6 @@ const RATES_REFRESH_FLOOR_MS = 60 * 1000;
 const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
 const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-const CACHE_RETENTION_DAYS = 92;
 const STALE_TEMP_DIRECTORY_MS = 60 * 60 * 1000;
 
 const TRANSCRIPT_READ_CONCURRENCY = 4;
@@ -89,6 +93,12 @@ const transcriptReaders = BUILT_IN_USAGE_DRIVERS.flatMap((driver) =>
 
 const scanReaders = BUILT_IN_USAGE_DRIVERS.flatMap((driver) =>
   driver.usage?.kind === "scan" ? [{ driver, reader: driver.usage }] : [],
+);
+
+const providerRateModels = new Map(
+  BUILT_IN_USAGE_DRIVERS.flatMap(({ usage }) =>
+    usage?.rateModel === undefined ? [] : [[usage.provider, usage.rateModel] as const],
+  ),
 );
 
 const transcriptFormats = new Map(
@@ -362,9 +372,8 @@ export const make = Effect.gen(function* () {
     > = Object.entries(settings.providerInstances)
       .filter(([, instance]) => instance.driver === driver.driverKind)
       .map(([id, instance]) => [ProviderInstanceId.make(id), instance, true] as const);
-    if (!Object.hasOwn(settings.providerInstances, driver.driverKind)) {
-      entries.push([ProviderInstanceId.make(driver.driverKind), {}, false]);
-    }
+    // History in the driver's default home stays counted after every instance moves elsewhere; readers dedupe shared directories.
+    entries.push([ProviderInstanceId.make(driver.driverKind), {}, false]);
     // Each code profile's Claude dirs hold history like an explicit home. A profile has no
     // instance id of its own (`claudeAgent:yu` fails the slug check), so it borrows the driver's.
     if (driver.driverKind === "claudeAgent" && codeProfiles !== undefined) {
@@ -428,7 +437,8 @@ export const make = Effect.gen(function* () {
             ([filePath, entry]) =>
               entry.provider === provider &&
               entry.mtimeMs >= retentionCutoffMs &&
-              (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
+              (entry.records.length + entry.tailRecords.length > 0 ||
+                entry.malformedRecords.length > 0) &&
               isWithinDirectory(filePath, dir),
           );
         const volumeId =
@@ -573,7 +583,7 @@ export const make = Effect.gen(function* () {
     format: TranscriptUsageFormat<unknown>,
   ): Effect.fn.Return<{
     readonly records: readonly UsageRecord[];
-    readonly malformedRecords: number;
+    readonly malformedRecords: readonly number[];
     readonly failed?: true;
     readonly update?: { readonly entry: CachedFile; readonly replaces: CachedFile | undefined };
   }> {
@@ -608,7 +618,7 @@ export const make = Effect.gen(function* () {
     if (parsed === null)
       return {
         records: cached?.provider === provider ? [...cached.records, ...cached.tailRecords] : [],
-        malformedRecords: cached?.provider === provider ? cached.malformedRecords : 0,
+        malformedRecords: cached?.provider === provider ? cached.malformedRecords : [],
         failed: true,
       };
 
@@ -696,7 +706,7 @@ export const make = Effect.gen(function* () {
       | readonly {
           readonly path: string;
           readonly records: readonly UsageRecord[];
-          readonly malformedRecords: number;
+          readonly malformedRecords: readonly number[];
         }[]
       | null;
     /** Every transcript path the walk listed, in walk order, whatever its mtime. */
@@ -809,7 +819,7 @@ export const make = Effect.gen(function* () {
                   : Effect.succeed<[string, string | undefined]>([volumeId, undefined]),
                 ([resolved, sourceId]): ScannedDir => ({
                   ...source,
-                  files: source.files?.map((file) => ({ ...file, malformedRecords: 0 })) ?? null,
+                  files: source.files?.map((file) => ({ ...file, malformedRecords: [] })) ?? null,
                   provider: reader.provider,
                   volumeId: resolved,
                   ...(sourceId === undefined ? {} : { physicalSourceId: sourceId }),
@@ -880,7 +890,15 @@ export const make = Effect.gen(function* () {
     const windowStartMs =
       (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
 
-    const retentionCutoffMs = startedAtMs - CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const retentionCutoffMs =
+      settings.usageHistoryRetentionDays === "unlimited"
+        ? 0
+        : Math.max(0, startedAtMs - settings.usageHistoryRetentionDays * 24 * 60 * 60 * 1000);
+
+    const inWindow = usageTimestampFilter({ ...input, ...hourlyWindow });
+    const windowEndMs =
+      hourlyWindow?.untilTimeMs ??
+      Date.parse(`${input.untilDay}T00:00:00Z`) + 86400000 + MTIME_SLACK_MS;
 
     const awaitRefresh = input.awaitRefresh === true;
     const collect = Effect.gen(function* () {
@@ -957,7 +975,16 @@ export const make = Effect.gen(function* () {
           malformedRecords: entry.malformedRecords,
         });
       }
-      return retainedFiles;
+      return retainedFiles.flatMap((file) => {
+        // A keyed copy outside the window still claims its key, so a later copy is not counted.
+        const records = file.records.filter(
+          (record) => record.dedupeKey !== null || inWindow(record.timestampMs),
+        );
+        const malformedRecords = file.malformedRecords.filter(inWindow);
+        return records.length === 0 && malformedRecords.length === 0
+          ? []
+          : [{ ...file, records, malformedRecords }];
+      });
     });
     // Usage two transcripts share counts in the first one, so saved files take the order an exact
     // scan reads them in: walked files in walk order, then the directory's deleted files.
@@ -1011,12 +1038,10 @@ export const make = Effect.gen(function* () {
       rates,
       priceOverrides,
       modelAliases,
+      rateModel: (provider, model) => providerRateModels.get(provider)?.(model),
       ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
     });
 
-    const windowEndMs =
-      hourlyWindow?.untilTimeMs ??
-      Date.parse(`${input.untilDay}T00:00:00Z`) + 86400000 + MTIME_SLACK_MS;
     let resolvedAny = false;
     for (const { reader } of transcriptReaders) {
       if (reader.resolveServiceTiers === undefined || fromMemory) continue;
@@ -1082,7 +1107,7 @@ export const make = Effect.gen(function* () {
       let counted = false;
 
       for (const file of filesByDir[index] ?? []) {
-        malformedRecords += file.malformedRecords;
+        malformedRecords += file.malformedRecords.length;
         if (file.records.length === 0) {
           skippedFiles += 1;
           continue;
@@ -1151,14 +1176,26 @@ export const make = Effect.gen(function* () {
       });
     }
 
-    const pruned = pruneScanCache(fileCache, retentionCutoffMs);
-    if (pruned > 0) {
-      cacheDirty = true;
-      // Pruned files are no longer saved, so nothing before the cutoff stays covered.
-      for (const [key, since] of coveredSince) {
-        if (since < retentionCutoffMs) coveredSince.set(key, retentionCutoffMs);
-      }
-    }
+    yield* settingsService
+      .withSettingsSnapshot((currentSettings) =>
+        Effect.sync(() => {
+          if (settings.usageHistoryRetentionDays === currentSettings.usageHistoryRetentionDays) {
+            const pruned = pruneScanCache(fileCache, retentionCutoffMs);
+            if (pruned > 0) {
+              cacheDirty = true;
+              // Pruned files are no longer saved, so nothing before the cutoff stays covered.
+              for (const [key, since] of coveredSince) {
+                if (since < retentionCutoffMs) coveredSince.set(key, retentionCutoffMs);
+              }
+            }
+          }
+        }),
+      )
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("failed to read settings before pruning the usage cache", { cause }),
+        ),
+      );
 
     const aggregated = aggregator.finish();
     const readAt = yield* DateTime.now;

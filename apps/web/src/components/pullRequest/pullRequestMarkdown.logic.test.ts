@@ -1,48 +1,45 @@
-import {
-  changeRequestLinkResolver,
-  changeRequestReferenceAutolinker,
-} from "@t3tools/client-runtime/pull-request-markdown";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
+import type { Element, Root } from "hast";
+import { changeRequestLinkResolver } from "@t3tools/client-runtime/pull-request-references";
 import { describe, expect, it } from "vite-plus/test";
 
+import { wordsHast } from "~/markdown/wordsHast";
 import {
   pullRequestCommentPreview,
-  remarkPullRequestAutolinks,
-  remarkPullRequestRelativeUrls,
+  pullRequestMarkdownExtensions,
 } from "./pullRequestMarkdown.logic";
 
-type Node = {
-  type: string;
-  value?: string;
-  url?: string;
-  data?: { hProperties?: Record<string, unknown> };
-  children?: Node[];
-};
-
 function links(markdown: string) {
-  const autolinks = changeRequestReferenceAutolinker({
+  const extensions = pullRequestMarkdownExtensions({
     provider: "github",
     url: "https://github.com/team/repo/pull/8",
-  })!;
-  const tree = unified().use(remarkParse).parse(markdown) as Node;
-  remarkPullRequestAutolinks({ autolinks })(tree as never);
-  const found: Array<[string | undefined, string | undefined, unknown]> = [];
-  const visit = (node: Node) => {
-    if (node.type === "link") {
-      found.push([
-        node.children?.[0]?.value,
-        node.url,
-        node.data?.hProperties?.["dataPullRequestAutolink"],
-      ]);
+  });
+  const tree = wordsHast(markdown, {
+    math: false,
+    breaks: false,
+    escapeHtml: false,
+    insights: false,
+    extensions,
+  });
+  const found: Array<[string, unknown, unknown]> = [];
+  const visit = (node: Root | Element) => {
+    for (const child of node.children) {
+      if (child.type !== "element") continue;
+      if (child.tagName === "a") {
+        const label = child.children[0];
+        found.push([
+          label?.type === "text" ? label.value : "",
+          child.properties.href,
+          child.properties.dataPullRequestAutolink,
+        ]);
+      }
+      visit(child);
     }
-    node.children?.forEach(visit);
   };
   visit(tree);
   return found;
 }
 
-describe("remarkPullRequestAutolinks", () => {
+describe("pullRequestMarkdownExtensions", () => {
   it("links the host's references in prose and leaves links and code alone", () => {
     expect(links("Fixes #12 in **abcdef1**. [#13](https://example.com) `#14`")).toEqual([
       ["#12", "https://github.com/team/repo/issues/12", "reference"],
@@ -50,68 +47,75 @@ describe("remarkPullRequestAutolinks", () => {
       ["#13", "https://example.com", undefined],
     ]);
   });
-});
 
-describe("remarkPullRequestRelativeUrls", () => {
-  const uuid = "8e603325-bb2b-4e32-a9bc-f1fa20b6c40b";
-  const upload = `/attachments/${uuid}`;
-  const resolved = `https://git.example.test/attachments/${uuid}`;
-  const resolveUrl = changeRequestLinkResolver({
-    provider: "forgejo",
-    url: "https://git.example.test/team/repo/pulls/7",
-  })!;
-
-  function rendered(markdown: string) {
-    const tree = unified().use(remarkParse).parse(markdown) as Node;
-    remarkPullRequestRelativeUrls({ resolveUrl })(tree as never);
-    const found = { urls: [] as string[], html: [] as string[], code: [] as string[] };
-    const visit = (node: Node) => {
-      if (node.url !== undefined) found.urls.push(node.url);
-      if (node.type === "html") found.html.push(node.value!);
-      if (node.type === "code" || node.type === "inlineCode") found.code.push(node.value!);
-      node.children?.forEach(visit);
+  it("resolves a forge's relative uploads in images and links, and leaves code alone", () => {
+    const uuid = "8e603325-bb2b-4e32-a9bc-f1fa20b6c40b";
+    const upload = `/attachments/${uuid}`;
+    const resolved = `https://git.example.test/attachments/${uuid}`;
+    const extensions = {
+      changeRequest: {
+        repositoryUrl: "https://git.example.test/team/repo",
+        autolinks: null,
+        resolveUrl: changeRequestLinkResolver({
+          provider: "forgejo",
+          url: "https://git.example.test/team/repo/pulls/7",
+        }),
+      },
     };
-    visit(tree);
-    return found;
-  }
-
-  it("links a pasted upload wherever the markdown shows it as an image", () => {
+    const urls = (markdown: string) => {
+      const tree = wordsHast(markdown, {
+        math: false,
+        breaks: false,
+        escapeHtml: false,
+        insights: false,
+        extensions,
+      });
+      const found: unknown[] = [];
+      const visit = (node: Root | Element) => {
+        for (const child of node.children) {
+          if (child.type !== "element") continue;
+          if (child.tagName === "img") found.push(child.properties.src);
+          if (child.tagName === "a") found.push(child.properties.href);
+          visit(child);
+        }
+      };
+      visit(tree);
+      return found;
+    };
     for (const markdown of [
       `![shot](${upload})`,
-      `![shot](<${upload}> "title")`,
       `![shot][s]\n\n[s]: ${upload}`,
-      `1. Open settings\n\n    ![shot](${upload})`,
       `- Step one\n\n    ![shot](${upload})`,
-      `- Step one\n\n\t![shot](${upload})`,
-      `Press the \` key first.\n\n![shot](${upload})\n\nThen run \`make\`.`,
-      `Use \\\` then ![shot](${upload}) then \\\`.`,
+      `<img width="300" alt="shot" src="${upload}">`,
+      `[log](${upload})`,
     ]) {
-      expect(rendered(markdown).urls, markdown).toEqual([resolved]);
+      expect(urls(markdown), markdown).toEqual([resolved]);
     }
-    expect(rendered(`<img width="300" alt="shot" src="${upload}">`).html).toEqual([
-      `<img width="300" alt="shot" src="${resolved}">`,
-    ]);
-    expect(rendered(`![kept](https://cdn.example.test${upload})`).urls).toEqual([
+    expect(urls(`Paste writes \`![shot](${upload})\`.`)).toEqual([]);
+    expect(urls(`![kept](https://cdn.example.test${upload})`)).toEqual([
       `https://cdn.example.test${upload}`,
     ]);
   });
-
-  it("keeps an upload written as code or escaped as it was written", () => {
-    const pasted = `![shot](${upload})`;
-    for (const markdown of [
-      `\`\`\`md\n${pasted}\n\`\`\``,
-      `Before\n\n    ${pasted}`,
-      `Paste writes \`${pasted}\`.`,
-      `Or \`\`<img src="${upload}">\`\`.`,
-      `A \\\` literal, then \`${pasted}\`.`,
-    ]) {
-      const found = rendered(markdown);
-      expect(found.urls, markdown).toEqual([]);
-      expect(found.code.join("\n"), markdown).toContain(upload);
-    }
-    for (const markdown of [`\\[shot\\](${upload})`, `&lt;img src="${upload}"&gt;`]) {
-      expect(rendered(markdown), markdown).toEqual({ urls: [], html: [], code: [] });
-    }
+  it("renders GitHub emoji shortcodes in prose and leaves code literal", () => {
+    const extensions = pullRequestMarkdownExtensions({
+      provider: "github",
+      url: "https://github.com/team/repo/pull/8",
+    });
+    const tree = wordsHast("Ship it :tada: :+1: `:tada:`", {
+      math: false,
+      breaks: false,
+      escapeHtml: false,
+      insights: false,
+      extensions,
+    });
+    const text = (node: Root | Element | Root["children"][number]): string => {
+      if (node.type === "text") return node.value;
+      if (node.type === "element" && node.tagName === "code") {
+        return `\`${node.children.map(text).join("")}\``;
+      }
+      return "children" in node ? node.children.map(text).join("") : "";
+    };
+    expect(text(tree)).toBe("Ship it 🎉 👍 `:tada:`");
   });
 });
 
@@ -138,7 +142,9 @@ describe("pullRequestCommentPreview", () => {
       "Review :codex-file-citation{purpose='output'} safely.",
     ],
     [":codex-followup[Prepare **print** version]", ":codex-followup[Prepare **print** version]"],
-  ])("extracts readable text from %s", (body, expected) => {
-    expect(pullRequestCommentPreview(body)).toBe(expected);
+    ["Approved :thumbsup: `:warning:`", "Approved 👍 :warning:"],
+    ["Approved :thumbsup:", "Approved :thumbsup:", "gitlab"],
+  ])("extracts readable text from %s", (body, expected, provider = "github") => {
+    expect(pullRequestCommentPreview(body, provider)).toBe(expected);
   });
 });

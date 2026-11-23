@@ -1,142 +1,68 @@
 import {
   changeRequestLinkResolver,
   changeRequestReferenceAutolinker,
-  resolveChangeRequestMediaUrl,
-} from "@t3tools/client-runtime/pull-request-markdown";
-import {
-  sourceControlClients,
-  type ReferenceAutolink,
-} from "@t3tools/client-runtime/source-control-clients";
-import {
-  CHAT_MARKDOWN_REHYPE_PLUGINS,
-  CHAT_MARKDOWN_REMARK_PLUGINS,
-} from "@t3tools/shared/markdownPipeline";
+} from "@t3tools/client-runtime/pull-request-references";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { Nodes } from "hast";
-import remarkParse from "remark-parse";
-import remarkRehype from "remark-rehype";
-import { unified, type PluggableList } from "unified";
 
-export {
-  splitPullRequestBody,
+import {
+  splitPullRequestBody as splitBody,
   type PullRequestBodySegment,
 } from "@t3tools/client-runtime/pull-request-markdown";
+import {
+  markdownReferenceDefinitions,
+  wordsHast,
+  type MarkdownExtensions,
+} from "~/markdown/wordsHast";
 
-type MarkdownNode = {
-  type: string;
-  value?: string;
-  children?: MarkdownNode[];
-  url?: string;
-  data?: unknown;
-};
+export type { PullRequestBodySegment };
 
-const AUTOLINK_IGNORED_TYPES = new Set(["link", "linkReference"]);
-
-export function remarkPullRequestAutolinks(options: {
-  readonly autolinks: (text: string) => ReadonlyArray<ReferenceAutolink>;
-}) {
-  const visit = (node: MarkdownNode): void => {
-    const children = node.children;
-    if (children === undefined) return;
-    for (let index = 0; index < children.length; index += 1) {
-      const child = children[index]!;
-      if (AUTOLINK_IGNORED_TYPES.has(child.type)) continue;
-      if (child.type !== "text" || child.value === undefined) {
-        visit(child);
-        continue;
-      }
-      const value = child.value;
-      const links = options.autolinks(value);
-      if (links.length === 0) continue;
-      const replacements: MarkdownNode[] = [];
-      let start = 0;
-      for (const link of links) {
-        if (start < link.index) {
-          replacements.push({ type: "text", value: value.slice(start, link.index) });
-        }
-        replacements.push({
-          type: "link",
-          url: link.url,
-          data: { hProperties: { dataPullRequestAutolink: link.kind } },
-          children: [{ type: "text", value: link.label }],
-        });
-        start = link.index + link.text.length;
-      }
-      if (start < value.length) replacements.push({ type: "text", value: value.slice(start) });
-      children.splice(index, 1, ...replacements);
-      index += replacements.length - 1;
-    }
-  };
-  return (tree: MarkdownNode) => visit(tree);
+export function splitPullRequestBody(body: string): ReadonlyArray<PullRequestBodySegment> {
+  return splitBody(body, markdownReferenceDefinitions);
 }
 
-const LINKED_TYPES = new Set(["image", "link", "definition"]);
-const HTML_SOURCE = /(<[a-z][^<>]*?\bsrc\s*=\s*["'])([^"'<>]*)/giu;
+const NO_EXTENSIONS: MarkdownExtensions = {};
+const markdownExtensions = new Map<string, MarkdownExtensions>();
 
 /**
- * Resolves the link destinations the host writes relative to its server. It runs on the parsed
- * tree because code is never a link, so a destination written inside code keeps its text.
- */
-export function remarkPullRequestRelativeUrls(options: {
-  readonly resolveUrl: (url: string) => string;
-}) {
-  const visit = (node: MarkdownNode): void => {
-    if (LINKED_TYPES.has(node.type) && node.url !== undefined) {
-      node.url = options.resolveUrl(node.url);
-    } else if (node.type === "html" && node.value !== undefined) {
-      node.value = node.value.replace(
-        HTML_SOURCE,
-        (_tag, prefix: string, url: string) => `${prefix}${options.resolveUrl(url)}`,
-      );
-    }
-    node.children?.forEach(visit);
-  };
-  return (tree: MarkdownNode) => visit(tree);
-}
-
-function remarkChangeRequestMediaUrls(options: { readonly changeRequestUrl: string }) {
-  const visit = (node: MarkdownNode): void => {
-    if ((node.type === "image" || node.type === "definition") && node.url !== undefined) {
-      node.url = resolveChangeRequestMediaUrl(node.url, options.changeRequestUrl);
-    }
-    node.children?.forEach(visit);
-  };
-  return (tree: MarkdownNode) => visit(tree);
-}
-
-const NO_PLUGINS: PluggableList = [];
-const markdownPlugins = new Map<string, PluggableList>();
-
-/**
- * One plugin list per repository, so every comment of a pull request shares one markdown
+ * One extension object per repository, so every comment of a pull request shares one markdown
  * renderer and its parse cache instead of parsing again on each render.
  */
-export function pullRequestMarkdownPlugins(
+export function pullRequestMarkdownExtensions(
   changeRequest: { readonly provider: string; readonly url: string } | null,
-): PluggableList {
-  if (changeRequest === null) return NO_PLUGINS;
+): MarkdownExtensions {
+  if (changeRequest === null) return NO_EXTENSIONS;
   const repositoryUrl = sourceControlClients.parseChangeRequestUrl(changeRequest.url)?.link
     .repositoryUrl;
-  if (repositoryUrl === undefined) return NO_PLUGINS;
+  if (repositoryUrl === undefined) return NO_EXTENSIONS;
   const key = `${changeRequest.provider}\u0000${repositoryUrl}`;
-  let plugins = markdownPlugins.get(key);
-  if (plugins === undefined) {
-    const autolinks = changeRequestReferenceAutolinker(changeRequest);
-    const resolveUrl = changeRequestLinkResolver(changeRequest);
-    // The host resolver first: it knows paths a forge writes relative to its repository.
-    plugins = resolveUrl ? [[remarkPullRequestRelativeUrls, { resolveUrl }]] : [];
-    plugins.push([remarkChangeRequestMediaUrls, { changeRequestUrl: repositoryUrl }]);
-    if (autolinks) plugins.push([remarkPullRequestAutolinks, { autolinks }]);
-    markdownPlugins.set(key, plugins);
+  let extensions = markdownExtensions.get(key);
+  if (extensions === undefined) {
+    extensions = {
+      changeRequest: {
+        repositoryUrl,
+        autolinks: changeRequestReferenceAutolinker(changeRequest),
+        // The host resolver: it knows paths a forge writes relative to its repository.
+        resolveUrl: changeRequestLinkResolver(changeRequest),
+      },
+      githubEmoji: changeRequest.provider === "github",
+    };
+    markdownExtensions.set(key, extensions);
   }
-  return plugins;
+  return extensions;
 }
 
-const commentPreviewProcessor = unified()
-  .use(remarkParse)
-  .use(CHAT_MARKDOWN_REMARK_PLUGINS)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(CHAT_MARKDOWN_REHYPE_PLUGINS)
-  .freeze();
+const PREVIEW_MARKDOWN = {
+  math: false,
+  breaks: false,
+  escapeHtml: false,
+  insights: false,
+  extensions: NO_EXTENSIONS,
+};
+const GITHUB_PREVIEW_MARKDOWN = {
+  ...PREVIEW_MARKDOWN,
+  extensions: { githubEmoji: true },
+};
 
 const PREVIEW_BLOCK_TAGS = new Set([
   "blockquote",
@@ -175,7 +101,7 @@ function commentPreviewText(node: Nodes): string {
   return node.type === "element" && PREVIEW_BLOCK_TAGS.has(node.tagName) ? ` ${text} ` : text;
 }
 
-export function pullRequestCommentPreview(body: string): string {
-  const tree = commentPreviewProcessor.runSync(commentPreviewProcessor.parse(body), body);
-  return commentPreviewText(tree).replace(/\s+/gu, " ").trim();
+export function pullRequestCommentPreview(body: string, provider: string): string {
+  const options = provider === "github" ? GITHUB_PREVIEW_MARKDOWN : PREVIEW_MARKDOWN;
+  return commentPreviewText(wordsHast(body, options)).replace(/\s+/gu, " ").trim();
 }

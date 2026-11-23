@@ -2,7 +2,7 @@ import type { ChangeRequestProjectIdentity } from "@t3tools/source-control-core/
 import { recognizeRemoteWith } from "@t3tools/source-control-core/shared/definition";
 import { describe, expect, it } from "vite-plus/test";
 
-import { definition } from "./definition.ts";
+import { addSignedInForgejoHosts, definition } from "./definition.ts";
 
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url))!;
 
@@ -134,6 +134,16 @@ describe("Forgejo remotes", () => {
     ).toBe("https://forgejo.example.test");
     expect(recognizeRemoteWith(definition, "https://git.example.test/team/repo")).toBeNull();
   });
+
+  it("recognises a self-hosted server under any name once a login names it", () => {
+    expect(recognizeRemoteWith(definition, "git@git.signed-in.test:team/repo.git")).toBeNull();
+    addSignedInForgejoHosts(["Git.Signed-In.test"]);
+    expect(recognizeRemoteWith(definition, "git@git.signed-in.test:team/repo.git")).toEqual({
+      kind: "forgejo",
+      name: "Forgejo",
+      baseUrl: "https://git.signed-in.test",
+    });
+  });
 });
 
 describe("Forgejo CLI commands", () => {
@@ -169,6 +179,13 @@ describe("Forgejo change request host", () => {
     expect(
       definition.changeRequestHost?.(identity("ssh://git@forge.example:2222/git/team/repo.git")),
     ).toBe("forge.example");
+    expect(
+      definition.changeRequestHost?.(
+        identity("ssh://git@ssh.forge.example:2222/git/team/repo.git", {
+          webUrl: "http://forge.example:3000/git/team/repo",
+        }),
+      ),
+    ).toBe("forge.example:3000");
   });
 });
 

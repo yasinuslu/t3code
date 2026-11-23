@@ -9,16 +9,18 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import * as Electron from "electron";
+import { msg } from "gt-i18n";
 
 import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
+import * as DesktopClerk from "../app/DesktopClerk.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopPrimaryPaste from "../app/DesktopPrimaryPaste.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
-import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
+import { getDesktopOrigin, getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -38,6 +40,7 @@ import * as PreviewPasskeys from "../preview/Passkeys.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
+import { m } from "../i18n/messages.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import {
   TOGGLE_MANAGER_ACTION,
@@ -48,6 +51,7 @@ import {
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
 import { copyContextMenuImage } from "./ContextMenuImage.ts";
 import { profileWindowShortcutIndex } from "./ShellChords.ts";
+import { installMainWindowRemoteRequestHeaderPolicy } from "./RemoteRequestHeaders.ts";
 
 const TITLEBAR_HEIGHT = 40;
 
@@ -464,6 +468,7 @@ export const make = Effect.gen(function* () {
   const revealMain = Effect.fn("desktop.window.revealMain")((window: Electron.BrowserWindow) =>
     Effect.suspend(() => pendingMainReveals.get(window) ?? electronWindow.reveal(window)),
   );
+  let remoteRequestHeaderOwner: Electron.BrowserWindow | null = null;
 
   const dismissConnectingSplash = Effect.gen(function* () {
     const splash = yield* Ref.getAndSet(splashWindowRef, Option.none());
@@ -727,6 +732,7 @@ export const make = Effect.gen(function* () {
     const installContextMenu = (
       ownerWindow: Electron.BrowserWindow,
       contents: Electron.WebContents,
+      isBrowserContents = false,
     ): void => {
       if (contextMenuContents.has(contents)) return;
       contextMenuContents.add(contents);
@@ -738,6 +744,18 @@ export const make = Effect.gen(function* () {
 
         const menuTemplate: Electron.MenuItemConstructorOptions[] = [];
 
+        if (isBrowserContents) {
+          menuTemplate.push(
+            {
+              label: m(msg("Reload")),
+              click: () => {
+                if (!contents.isDestroyed()) contents.reload();
+              },
+            },
+            { type: "separator" },
+          );
+        }
+
         if (params.misspelledWord) {
           for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
             menuTemplate.push({
@@ -748,7 +766,7 @@ export const make = Effect.gen(function* () {
             });
           }
           if (params.dictionarySuggestions.length === 0) {
-            menuTemplate.push({ label: "No suggestions", enabled: false });
+            menuTemplate.push({ label: m(msg("No suggestions")), enabled: false });
           }
           menuTemplate.push({ type: "separator" });
         }
@@ -756,7 +774,7 @@ export const make = Effect.gen(function* () {
         if (Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))) {
           menuTemplate.push(
             {
-              label: "Copy Link",
+              label: m(msg("Copy Link")),
               click: () => {
                 void runPromise(electronShell.copyText(params.linkURL));
               },
@@ -769,7 +787,7 @@ export const make = Effect.gen(function* () {
         if (Option.isSome(mailtoAddress)) {
           menuTemplate.push(
             {
-              label: "Copy Email Address",
+              label: m(msg("Copy Email Address")),
               click: () => {
                 void runPromise(electronShell.copyText(mailtoAddress.value));
               },
@@ -780,7 +798,7 @@ export const make = Effect.gen(function* () {
 
         if (params.mediaType === "image") {
           menuTemplate.push({
-            label: "Copy Image",
+            label: m(msg("Copy Image")),
             click: () => {
               void runPromise(
                 Effect.tryPromise({
@@ -794,10 +812,26 @@ export const make = Effect.gen(function* () {
         }
 
         menuTemplate.push(
-          { role: "cut", enabled: params.editFlags.canCut },
-          { role: "copy", enabled: params.editFlags.canCopy },
-          { role: "paste", enabled: params.editFlags.canPaste },
-          { role: "selectAll", enabled: params.editFlags.canSelectAll },
+          {
+            role: "cut",
+            label: m(msg("Cut", { $context: "Edit menu item" })),
+            enabled: params.editFlags.canCut,
+          },
+          {
+            role: "copy",
+            label: m(msg("Copy", { $context: "Edit menu item" })),
+            enabled: params.editFlags.canCopy,
+          },
+          {
+            role: "paste",
+            label: m(msg("Paste", { $context: "Edit menu item" })),
+            enabled: params.editFlags.canPaste,
+          },
+          {
+            role: "selectAll",
+            label: m(msg("Select All", { $context: "Edit menu item" })),
+            enabled: params.editFlags.canSelectAll,
+          },
         );
 
         void runPromise(
@@ -809,12 +843,12 @@ export const make = Effect.gen(function* () {
         );
       });
       contents.on("did-create-window", (popup) => {
-        installContextMenu(popup, popup.webContents);
+        installContextMenu(popup, popup.webContents, isBrowserContents);
       });
     };
     installContextMenu(window, window.webContents);
     window.webContents.on("did-attach-webview", (_event, contents) => {
-      installContextMenu(window, contents);
+      installContextMenu(window, contents, true);
       void runPromise(previewManager.prepareWebview(contents));
     });
 
@@ -1043,20 +1077,33 @@ export const make = Effect.gen(function* () {
           rendererRecoveryTimestamps = rendererRecoveryTimestamps.filter(
             (timestamp) => now - timestamp < RENDERER_RECOVERY_WINDOW_MS,
           );
-          const shouldRecover =
-            recoverable &&
-            !window.isDestroyed() &&
-            rendererRecoveryTimestamps.length < RENDERER_RECOVERY_MAX_ATTEMPTS;
+          const shouldRecover = recoverable && !window.isDestroyed();
+          // Past the budget, wait for the oldest attempt to leave the window instead of
+          // giving up, so a crash loop backs off but never leaves the window blank.
+          const oldestAttempt =
+            rendererRecoveryTimestamps.length >= RENDERER_RECOVERY_MAX_ATTEMPTS
+              ? rendererRecoveryTimestamps[
+                  rendererRecoveryTimestamps.length - RENDERER_RECOVERY_MAX_ATTEMPTS
+                ]
+              : undefined;
+          const reloadInMs =
+            oldestAttempt === undefined
+              ? RENDERER_RECOVERY_RELOAD_DELAY_MS
+              : Math.max(
+                  RENDERER_RECOVERY_RELOAD_DELAY_MS,
+                  oldestAttempt + RENDERER_RECOVERY_WINDOW_MS - now,
+                );
           yield* logWindowWarning("main window render process gone", {
             reason: details.reason,
             exitCode: details.exitCode,
             recovering: shouldRecover,
+            ...(shouldRecover ? { reloadInMs } : {}),
           });
           if (!shouldRecover) {
             return;
           }
-          rendererRecoveryTimestamps.push(now);
-          yield* Effect.sleep(RENDERER_RECOVERY_RELOAD_DELAY_MS);
+          rendererRecoveryTimestamps.push(now + reloadInMs);
+          yield* Effect.sleep(reloadInMs);
           if (!window.isDestroyed()) {
             loadApplication();
           }
@@ -1093,6 +1140,20 @@ export const make = Effect.gen(function* () {
 
     // Desktop IPC only answers the main window, so register it before its renderer can call in.
     yield* electronWindow.setMain(window);
+    // Profile windows share the default session, which holds one header listener: main keeps it.
+    const detachRemoteRequestHeaders =
+      profile === null
+        ? installMainWindowRemoteRequestHeaderPolicy(window.webContents.session, {
+            desktopOrigin: getDesktopOrigin(environment.isDevelopment),
+            mainWebContentsId: window.webContents.id,
+            clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
+            devServerOrigin: Option.getOrUndefined(
+              Option.map(environment.devServerUrl, (url) => url.origin),
+            ),
+            isDevelopment: environment.isDevelopment,
+          })
+        : () => {};
+    if (profile === null) remoteRequestHeaderOwner = window;
     loadApplication();
     if (environment.isDevelopment) {
       window.webContents.openDevTools({ mode: "detach" });
@@ -1105,6 +1166,10 @@ export const make = Effect.gen(function* () {
       boundsFlushers.delete(flushBoundsPersist);
       windowProfiles.delete(window);
       profileWindows.delete(window);
+      if (remoteRequestHeaderOwner === window) {
+        remoteRequestHeaderOwner = null;
+        detachRemoteRequestHeaders();
+      }
       if (profile === null) {
         void runPromise(electronWindow.clearMain(Option.some(window)));
         return;

@@ -1,3 +1,4 @@
+import { msg } from "gt-react";
 import type { ContextMenuItem } from "@t3tools/contracts";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
@@ -38,7 +39,12 @@ export async function showThreadPreviewLinkContextMenu({
   else if (action === "remove") onRemove();
   else if (action === "copy-link" || action === "open-external") {
     try {
-      if (action === "copy-link") await writeTextToClipboard(url, "link");
+      if (action === "copy-link")
+        await writeTextToClipboard(url, {
+          target: "link",
+          unavailableMessage: msg("Clipboard API is unavailable while copying link."),
+          failureMessage: msg("Failed to copy link to the clipboard."),
+        });
       else await api.shell.openExternal(url);
     } catch {
       toastManager.add({

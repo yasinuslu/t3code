@@ -8,7 +8,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import ChatView from "./ChatView";
-import { BackgroundThreadContext } from "./chat/backgroundThread";
+import { BackgroundThreadContext, HiddenThreadContext } from "./chat/backgroundThread";
 import { SidebarInset } from "./ui/sidebar";
 import { toastManager } from "./ui/toast";
 import { useComposerDraftStore } from "../composerDraftStore";
@@ -35,7 +35,7 @@ const UNKNOWN_ENVIRONMENT_GRACE_MS = 15_000;
  * Keeps the family of an open thread the shell leaves out (an older settled thread) in the shell
  * rows until the route leaves it, so every reader of its shell row finds it.
  */
-function useOpenThreadFamily(threadRef: ScopedThreadRef | null, missing: boolean) {
+export function useOpenThreadFamily(threadRef: ScopedThreadRef | null, missing: boolean) {
   const key = threadRef === null ? null : scopedThreadKey(threadRef);
   // Sticks to the route thread, so the row the family brings in does not release it.
   const [mountedKey, setMountedKey] = useState<string | null>(null);
@@ -259,7 +259,9 @@ export function ThreadRouteView({
       className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
       inert={background}
     >
-      <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>
+      <BackgroundThreadContext value={background}>
+        <HiddenThreadContext value={background}>{view}</HiddenThreadContext>
+      </BackgroundThreadContext>
       {background ? null : redirect}
     </SidebarInset>
   );

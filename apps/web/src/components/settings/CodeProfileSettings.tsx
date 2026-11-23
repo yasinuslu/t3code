@@ -1,3 +1,4 @@
+import { useMessages } from "gt-react";
 import {
   ProviderDriverKind,
   type CodeProfile,
@@ -232,9 +233,11 @@ function AccountPreferenceSelect({
   readonly label: string;
   readonly onChange: (weight: number) => void;
 }) {
+  const m = useMessages();
+  const items = loadPreferences.map((entry) => ({ ...entry, label: m(entry.label) }));
   return (
     <Select
-      items={loadPreferences}
+      items={items}
       value={loadPreferenceForWeight(account.weight)}
       onValueChange={(value) => {
         if (value !== null) onChange(value);
@@ -244,7 +247,7 @@ function AccountPreferenceSelect({
         <SelectValue />
       </SelectTrigger>
       <SelectPopup align="end" alignItemWithTrigger={false}>
-        {loadPreferences.map(({ value, label: optionLabel }) => (
+        {items.map(({ value, label: optionLabel }) => (
           <SelectItem key={value} value={value}>
             {optionLabel}
           </SelectItem>

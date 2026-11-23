@@ -4,12 +4,12 @@ import {
   buildCommitUrl,
   changeRequestUrlBelow,
   type ChangeRequestHostIdentity,
-  type ChangeRequestProjectIdentity,
   defineSourceControl,
   isChangeRequestAuthorityOfProject,
   isChangeRequestInProjectRepository,
   isChangeRequestOnProjectHost,
   parseChangeRequestPath,
+  parseIssuePath,
   parseCommitPath,
   repositoryUrlFromPagePath,
   projectChangeRequestHost,
@@ -25,9 +25,27 @@ const CHANGE_REQUEST_REFERENCE =
 // Forgejo and Gitea run on any hostname, possibly mounted below a path.
 const CHANGE_REQUEST_PATH = /^\/([^/]+(?:\/[^/]+)+)\/pulls\/(\d+)(?:\/|$)/u;
 const COMMIT_PATH = /^\/([^/]+(?:\/[^/]+)+)\/commit\/([0-9a-f]+)\/?$/iu;
+const ISSUE_PATH = /^\/([^/]+(?:\/[^/]+)+)\/issues\/(\d+)(?:\/|$)/u;
 const REPOSITORY_PAGE_PATH = /^\/([^/]+(?:\/[^/]+)+?)\/src\/(?:branch|tag|commit)\/[^/]/u;
 
 const KIND = SourceControlProviderKind.make("forgejo");
+
+// A self-hosted server can have any name; the server adds the ones an fj or tea login names.
+const signedInHosts = new Set<string>();
+
+export function addSignedInForgejoHosts(hostnames: Iterable<string | undefined>): void {
+  for (const hostname of hostnames) if (hostname) signedInHosts.add(hostname.toLowerCase());
+}
+
+function isForgejoHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "codeberg.org" ||
+    signedInHosts.has(host) ||
+    host.split(".").includes("forgejo") ||
+    host.split(".").includes("gitea")
+  );
+}
 
 const changeRequestHeadRef = (number: number) => `refs/pull/${number}/head`;
 
@@ -35,8 +53,8 @@ const changeRequestHeadRef = (number: number) => `refs/pull/${number}/head`;
  * The repository's browser URL the server resolved from the signed-in account, which is the
  * only place a Forgejo mounted below a path says so.
  */
-function resolvedWebUrl(identity: ChangeRequestProjectIdentity): URL | null {
-  if (!identity.webUrl) return null;
+function resolvedWebUrl(identity: ChangeRequestHostIdentity): URL | null {
+  if (!identity?.webUrl) return null;
   try {
     const url = new URL(identity.webUrl);
     return url.protocol === "http:" || url.protocol === "https:" ? url : null;
@@ -45,8 +63,10 @@ function resolvedWebUrl(identity: ChangeRequestProjectIdentity): URL | null {
   }
 }
 
-/** A server's identity includes its port, which only an HTTP remote names. */
+/** A server's identity includes its port, which only its web URL or an HTTP remote names. */
 function changeRequestHost(identity: ChangeRequestHostIdentity): string {
+  const web = resolvedWebUrl(identity);
+  if (web) return web.host.toLowerCase();
   try {
     const remote = new URL(identity?.locator?.remoteUrl ?? "");
     if (remote.protocol === "http:" || remote.protocol === "https:") {
@@ -88,6 +108,10 @@ export const definition = defineSourceControl({
     const link = parseChangeRequestPath(url, CHANGE_REQUEST_PATH);
     return link === null ? null : { ...link, authority: url.host.toLowerCase() };
   },
+  // `/issues/` is too generic a path to believe from a host not named after Forgejo or Gitea,
+  // unless a Forgejo project on that host vouches for it.
+  parseIssueUrl: (url, known) =>
+    known || isForgejoHost(url.hostname) ? parseIssuePath(url, ISSUE_PATH) : null,
   changeRequestUrlFromReferenceAutolink: () => null,
   commitUrl: (input) => buildCommitUrl(input, "commit"),
   parseCommitUrl: (url) => parseCommitPath(url, COMMIT_PATH),
@@ -115,9 +139,7 @@ export const definition = defineSourceControl({
   checkoutChangeRequestHost: () => null,
   changeRequestHeadRef,
   recognizeRemote: ({ remoteUrl, host, hostname }) =>
-    hostname === "codeberg.org" ||
-    hostname.split(".").includes("forgejo") ||
-    hostname.split(".").includes("gitea")
+    isForgejoHost(hostname)
       ? {
           kind: KIND,
           name: "Forgejo",

@@ -19,7 +19,7 @@ name: Nix desktop build
 
 on:
   push:
-    branches: [yu-v2]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

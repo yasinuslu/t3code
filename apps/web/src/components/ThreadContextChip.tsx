@@ -8,18 +8,23 @@ import { formatThreadDeepLink } from "@t3tools/shared/threadLinks";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { msg, useGT } from "gt-react";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "~/localApi";
 import { useEnvironment, usePrimaryEnvironmentId } from "~/state/environments";
+import { resolveThreadOpenRoute } from "~/lib/sideChatPane";
+import { buildThreadRouteParams } from "~/threadRoutes";
 import { useProject, useThreadShell } from "~/state/entities";
 import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { useEnvironmentQuery } from "~/state/query";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import { ProjectFavicon } from "./ProjectFavicon";
+import { ThreadChipHoverCard } from "./ThreadChipHoverCard";
+import { ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { toastManager } from "./ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { Tooltip, TooltipTrigger } from "./ui/tooltip";
 
 type ThreadLinkStatus = "needs-input" | "working" | "ready" | "settled";
 
@@ -43,7 +48,11 @@ function resolveThreadLinkStatus(
 
 async function copyThreadLink(href: string) {
   try {
-    await writeTextToClipboard(href, "link");
+    await writeTextToClipboard(href, {
+      target: "link",
+      unavailableMessage: msg("Clipboard API is unavailable while copying link."),
+      failureMessage: msg("Failed to copy link to the clipboard."),
+    });
     toastManager.add({ type: "success", title: "Thread link copied" });
   } catch {
     toastManager.add({ type: "error", title: "Could not copy the link" });
@@ -64,6 +73,7 @@ export function ThreadContextChip(props: {
   currentEnvironmentId?: EnvironmentId | null | undefined;
   unreadable?: boolean;
 }) {
+  const gt = useGT();
   const { environmentId, threadId } = props.record;
   const navigate = useNavigate();
   const shell = useThreadShell({ environmentId, threadId });
@@ -89,13 +99,23 @@ export function ThreadContextChip(props: {
       : null;
   const href = formatThreadDeepLink({ environmentId, threadId });
   const openThread = () =>
-    void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(resolveThreadOpenRoute({ environmentId, threadId }, shell)),
+    });
 
   const onClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    if (!event.metaKey && !event.ctrlKey) return;
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      void copyThreadLink(href);
+      return;
+    }
+    if (shell?.lineage.sideChat !== true || event.button !== 0) return;
+    if (event.shiftKey || event.altKey) return;
+    // A side chat opens as a tab beside its parent, not as its own page.
     event.preventDefault();
-    event.stopPropagation();
-    void copyThreadLink(href);
+    openThread();
   };
   const onContextMenu = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     const api = readLocalApi();
@@ -137,7 +157,11 @@ export function ThreadContextChip(props: {
                 onContextMenu={onContextMenu}
               />
             }
-            aria-label={`Thread, ${title}${status ? `, ${status.label}` : ""}`}
+            aria-label={
+              status
+                ? gt("Thread, {title}, {status}", { title, status: status.label })
+                : gt("Thread, {title}", { title })
+            }
             data-markdown-copy={props.copyMarkdown}
             className={cn("no-underline", !shell && !metadata && "text-muted-foreground")}
           >
@@ -160,17 +184,14 @@ export function ThreadContextChip(props: {
           </ContextChip>
         }
       />
-      <TooltipPopup side="top">
-        {props.unreadable
-          ? "On another machine, so this machine's agent can't read it. Remove it or switch back to send."
-          : shell
-            ? `Open thread · ${status?.label}`
-            : metadata
-              ? "Open thread"
-              : environment
-                ? "Thread not available"
-                : "Thread is on an environment that is not connected"}
-      </TooltipPopup>
+      <ThreadHoverCardPopup side="top">
+        <ThreadChipHoverCard
+          title={title}
+          project={project}
+          shell={shell}
+          unreadable={props.unreadable === true}
+        />
+      </ThreadHoverCardPopup>
     </Tooltip>
   );
 }

@@ -1,5 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { UnifiedSettings } from "@t3tools/contracts";
+import { useMessages } from "gt-react";
 import type { Dispatch } from "react";
 import type { ComposerThreadTarget, DraftSessionState } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -23,7 +24,13 @@ import {
   resolveNewDraftStartFromOrigin,
   threadHasStarted,
 } from "../../lib/chatThreadActions";
-import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
+import {
+  composerTargetKey,
+  type DraftThreadEnvMode,
+  isSameModel,
+  useComposerDraftStore,
+} from "../../composerDraftStore";
+import { cancelHeldComposerSend } from "./preparingComposerImages";
 import {
   getStartedThreadModelChangeBlockReason,
   deriveLockedProvider,
@@ -81,6 +88,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     setPendingServerThreadStartFromOriginByThreadId,
     scheduleComposerFocus,
   } = input;
+  const messages = useMessages();
   const navigate = useNavigate();
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
@@ -92,6 +100,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
 
   const handleRuntimeModeChange = (mode: RuntimeMode) => {
     if (mode === runtimeMode) return;
+    cancelHeldComposerSend(composerTargetKey(composerDraftTarget));
     setComposerDraftRuntimeMode(composerDraftTarget, mode);
     if (isLocalDraftThread) {
       setDraftThreadContext(composerDraftTarget, { runtimeMode: mode });
@@ -122,6 +131,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
           currentProviderInstanceId: runtimeProviderInstanceId,
         }
       : null,
+    messages,
   );
 
   const onProviderModelSelect = (
@@ -130,6 +140,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     options?: { focusComposer?: boolean },
   ) => {
     if (!activeThread) return;
+    cancelHeldComposerSend(composerTargetKey(composerDraftTarget));
     const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
     const resolvedDriverKind = entry?.driver ?? null;
     if (
@@ -190,9 +201,23 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     }
     const rememberedOptions =
       useComposerDraftStore.getState().stickyOptionsByModelByProvider[instanceId]?.[resolvedModel];
-    const nextModelSelection: ModelSelection =
+    const threadSelection = activeThread.modelSelection;
+    // This pick replaces the stored options, so the thread's own model carries them over.
+    const pickOptions =
       rememberedOptions !== undefined && rememberedOptions.length > 0
-        ? { instanceId, model: resolvedModel, options: [...rememberedOptions] }
+        ? rememberedOptions
+        : threadSelection.instanceId === instanceId &&
+            entry !== undefined &&
+            isSameModel(
+              { providers: providerStatuses, selectedProvider: entry.driver, settings },
+              threadSelection,
+              { instanceId, model: resolvedModel },
+            )
+          ? threadSelection.options
+          : undefined;
+    const nextModelSelection: ModelSelection =
+      pickOptions !== undefined && pickOptions.length > 0
+        ? { instanceId, model: resolvedModel, options: [...pickOptions] }
         : { instanceId, model: resolvedModel };
     const modelChangeBlockReason = getStartedThreadModelChangeBlockReason({
       hasStartedSession: activeRuntime !== null,
@@ -223,6 +248,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const onProviderModelSelectStable = useStableCallback(onProviderModelSelect);
   const onEnvModeChange = (mode: DraftThreadEnvMode) => {
     if (multipleModelSelections !== null) return;
+    cancelHeldComposerSend(composerTargetKey(composerDraftTarget));
     if (canOverrideServerThreadEnvMode) {
       if (activeThread) setPendingServerThreadEnvModeEntry({ threadId: activeThread.id, mode });
       scheduleComposerFocus();
@@ -246,6 +272,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   // re-renders the branch toolbar and thread details panel with it.
   const activeThreadId = activeThread?.id;
   const onStartFromOriginChange = (nextStartFromOrigin: boolean) => {
+    cancelHeldComposerSend(composerTargetKey(composerDraftTarget));
     if (canOverrideServerThreadEnvMode && activeThreadId !== undefined) {
       setPendingServerThreadStartFromOriginByThreadId((current) =>
         current[activeThreadId] === nextStartFromOrigin

@@ -5,7 +5,9 @@ import {
   type PreviewLinkStatusResult,
   type ThreadPreviewLinkState,
 } from "@t3tools/contracts";
-import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { createEnvironmentRpcCommand } from "./runtime.ts";
@@ -205,7 +207,9 @@ export function createPreviewLinkStates<R, E>(
     tag: WS_METHODS.previewLinksStatus,
   });
   return createPreviewLinkStatesWith(async (registry, environmentId, urls) => {
-    const result = await status.run(registry, { environmentId, input: { urls } });
-    return AsyncResult.isSuccess(result) ? result.value.statuses : null;
+    const exit = await Effect.runPromiseExit(
+      status.run(registry, { environmentId, input: { urls } }),
+    );
+    return Exit.isSuccess(exit) ? exit.value.statuses : null;
   });
 }

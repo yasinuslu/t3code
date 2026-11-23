@@ -6,7 +6,7 @@ import {
   RuntimeMode,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as PeerEnvironments from "../../../peers/PeerEnvironments.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -44,7 +44,8 @@ const readonlyTool = <T extends Tool.Any>(tool: T): T =>
     .annotate(Tool.Readonly, true)
     .annotate(Tool.Destructive, false)
     .annotate(Tool.Idempotent, true)
-    .annotate(Tool.OpenWorld, true) as T;
+    .annotate(Tool.OpenWorld, true)
+    .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients) as T;
 
 const PeerListTool = readonlyTool(
   Tool.make("t3_peer_list", {
@@ -143,7 +144,8 @@ const PeerThreadLaunchTool = Tool.make("t3_peer_thread_launch", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
-  .annotate(Tool.OpenWorld, true);
+  .annotate(Tool.OpenWorld, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const PeerThreadSendTool = Tool.make("t3_peer_thread_send", {
   ...shared,
@@ -159,7 +161,8 @@ const PeerThreadSendTool = Tool.make("t3_peer_thread_send", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, false)
-  .annotate(Tool.OpenWorld, true);
+  .annotate(Tool.OpenWorld, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const PeersToolkit = Toolkit.make(
   PeerListTool,

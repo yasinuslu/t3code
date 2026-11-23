@@ -21,6 +21,9 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as McpToolAccessTestkit from "./McpToolAccess.testkit.ts";
+import { BrainstormToolkit } from "./toolkits/brainstorm/tools.ts";
+import { PeersToolkit } from "./toolkits/peers/tools.ts";
+import { PreviewLinksToolkit } from "./toolkits/previewLinks/tools.ts";
 
 const ProbeToolkit = Toolkit.make(
   Tool.make("probe_read", {
@@ -148,3 +151,16 @@ it.effect("lists and runs a gated toolkit only while its fork feature is on", ()
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );
+
+// McpToolAccess.toLayer dies at startup on a caller-bound tool without this exact guard.
+it("hides every caller-bound fork tool from outside clients", () => {
+  const unguarded = [BrainstormToolkit, PeersToolkit, PreviewLinksToolkit]
+    .flatMap((toolkit) => Object.values(toolkit.tools))
+    .filter(
+      (tool: Tool.Any) =>
+        Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen) !==
+        McpInvocationContext.hiddenFromOutsideClients,
+    )
+    .map((tool) => tool.name);
+  expect(unguarded).toEqual([]);
+});
