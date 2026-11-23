@@ -1128,7 +1128,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const projectGroupsRef = useRef(projectGroups);
   const spaceProjectKeys = new Set(projectGroups.map((group) => group.projectKey));
   const spaceProjectScopeItems = lookupProjectScopeItems.filter(
-    (item) => item.value === "all" || spaceProjectKeys.has(item.value),
+    (item) =>
+      item.value === "all" ||
+      item.value === ADD_PROJECT_SCOPE_ITEM_VALUE ||
+      spaceProjectKeys.has(item.value),
   );
   // A scope whose project is gone reads as all projects once every snapshot has
   // loaded. The stored keys are left alone, so the scope returns with its project.
