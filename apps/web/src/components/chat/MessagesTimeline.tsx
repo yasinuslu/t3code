@@ -260,6 +260,7 @@ interface MessagesTimelineProps {
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestRun: TimelineLatestRun | null;
+  usageLimitRunId?: RunId | null;
   /** The run the screen reader announcer follows; see announcedRun. */
   announcedRun?: { readonly runId: RunId; readonly status: TimelineLatestRun["status"] } | null;
   /** See isDetailBehindShell. */
@@ -290,6 +291,8 @@ interface MessagesTimelineProps {
     readonly sideChat?: boolean;
     /** Where it runs, when that is another environment. */
     readonly environmentLabel?: string;
+    /** What this thread is to it, when not its subagent or side chat: `Step of`, say. */
+    readonly relation?: { readonly label: string; readonly actionLabel: string };
     readonly open?: () => void;
   } | null;
   workflowOpening?: WorkflowOpening | null;
@@ -384,6 +387,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   activeFindMatch = null,
   findNavigationId = 0,
   latestRun,
+  usageLimitRunId = null,
   announcedRun = null,
   detailBehindShell = false,
   runningRunId = null,
@@ -751,6 +755,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     timelineEntries,
     pendingApprovalRequestIds,
     latestRun,
+    usageLimitRunId,
     runningRunId,
     expandedRunIds: visibleExpandedRunIds,
     expandedAttemptIds: visibleExpandedAttemptIds,
@@ -1235,13 +1240,14 @@ const ConversationTimeline = memo(function ConversationTimeline({
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
             label={
-              parentThreadLink.sideChat
+              parentThreadLink.relation?.label ??
+              (parentThreadLink.sideChat
                 ? gt("Context from", {
                     $context: "divider label; the parent thread title follows as a link",
                   })
                 : gt("Subagent of", {
                     $context: "divider label; the parent thread title follows as a link",
-                  })
+                  }))
             }
             detail={
               parentThreadLink.environmentLabel === undefined
@@ -1254,7 +1260,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
             icon={parentThreadLink.sideChat ? MessagesSquareIcon : BotIcon}
             {...(parentThreadLink.open === undefined
               ? {}
-              : { actionLabel: gt("Open parent thread"), onAction: parentThreadLink.open })}
+              : {
+                  actionLabel: parentThreadLink.relation?.actionLabel ?? gt("Open parent thread"),
+                  onAction: parentThreadLink.open,
+                })}
           />
         </div>
       </div>
