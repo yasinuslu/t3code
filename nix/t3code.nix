@@ -16,8 +16,8 @@
 # THE ONE HASH MANAGED BY HAND is `pnpmHash`. It covers the pnpm store for this tree's
 # pnpm-lock.yaml, so it only moves when a DEPENDENCY moves -- an ordinary source commit
 # leaves it alone. When it is wrong the build fails with a "got: sha256-..." line; paste
-# that in. cargoHash for the resource-monitor comes from nixpkgs and only needs attention
-# if native/resource-monitor/Cargo.lock changes.
+# that in. `cargoHash` (the Rust resource-monitor sidecar) is the second one: it moves only
+# when native/resource-monitor/Cargo.lock changes, and fails the same way.
 {
   pkgs,
 
@@ -31,6 +31,8 @@
   versionSuffix ? "",
 
   pnpmHash ? "sha256-8MrqLkOu5wjprmkhZieZT+ZV/3D/azIPiJoFccoVFWQ=",
+
+  cargoHash ? "sha256-deTy3FFcOwhxZnEbWDXFGVFFoKUex434ADJQtchVzbs=",
 }:
 let
   inherit (pkgs) lib;
@@ -140,11 +142,24 @@ let
       hash = pnpmHash;
     };
   });
+
+  # nixpkgs pins the sidecar's cargoHash to its own release; our tree's Cargo.lock moves
+  # with upstream, so the sidecar is built here with our hash (same shape as nixpkgs').
+  resourceMonitor = pkgs.rustPlatform.buildRustPackage {
+    pname = "t3code-resource-monitor";
+    inherit version;
+    src = namedSrc;
+    sourceRoot = "${namedSrc.name}/native/resource-monitor";
+    inherit cargoHash;
+    meta.mainProgram = "t3-resource-monitor";
+  };
 in
-# The wrapper derivation reads t3code-unwrapped for both the app and the resource-monitor
-# sidecar (its default argument threads the same value through), so overriding that one
-# input moves the whole package.
-(pkgs.t3code.override { t3code-unwrapped = unwrapped; }).overrideAttrs (old: {
+# The wrapper derivation reads t3code-unwrapped for the app and takes the resource-monitor
+# sidecar as its own input, so both are overridden here.
+(pkgs.t3code.override {
+  t3code-unwrapped = unwrapped;
+  t3code-resource-monitor = resourceMonitor;
+}).overrideAttrs (old: {
   # symlinkJoin takes its name from pname/version, which the override does not carry over.
   inherit version;
 
