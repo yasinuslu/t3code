@@ -3,6 +3,7 @@ import { translatableDetail } from "../errors/translatable.ts";
 import {
   CLIENT_PROFILE_QUERY_PARAM,
   CLIENT_CAPABILITIES_QUERY_PARAM,
+  HTTP_USAGE_LIMIT_SOURCES_CAPABILITY,
   ORCHESTRATION_PROTOCOL_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_VERSION,
   SETTINGS_SECRET_REFERENCES_CAPABILITY,
@@ -56,6 +57,9 @@ export function appendOrchestrationProtocol(socketUrl: string): string {
   if (profileLock !== null) {
     url.searchParams.set(CLIENT_PROFILE_QUERY_PARAM, profileLock);
   }
-  url.searchParams.set(CLIENT_CAPABILITIES_QUERY_PARAM, SETTINGS_SECRET_REFERENCES_CAPABILITY);
+  url.searchParams.set(
+    CLIENT_CAPABILITIES_QUERY_PARAM,
+    [SETTINGS_SECRET_REFERENCES_CAPABILITY, HTTP_USAGE_LIMIT_SOURCES_CAPABILITY].join(","),
+  );
   return url.toString();
 }
