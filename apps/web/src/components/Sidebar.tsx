@@ -270,7 +270,7 @@ import {
   SpaceRowProjectContext,
   useOptionKeyTracking,
 } from "./sidebar/SpaceMembership";
-import { TooltipProvider } from "./ui/tooltip";
+import { TooltipProvider, TooltipScrollDismissArea } from "./ui/tooltip";
 import {
   composerDraftHasUserContent,
   DraftId,
@@ -3258,6 +3258,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       collisionAvoidance={{ side: "flip", align: "shift" }}
                       className="w-[min(18rem,var(--available-width))] overflow-hidden"
                       finalFocus={(closeType) => closeType === "keyboard"}
+                      render={<TooltipScrollDismissArea holdPositionOnExit />}
                     >
                       <ComboboxSearchInput
                         aria-label={gt("Search projects")}
