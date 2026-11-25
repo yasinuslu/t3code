@@ -3011,7 +3011,14 @@ const make = Effect.gen(function* () {
         input.interactionMode,
       );
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
-      if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
+      if (
+        input.isolation === "worktree" &&
+        !isRetryOfAcceptedDelegation &&
+        (yield* threadLaunch.isNonGitProject(parent.thread.projectId))
+      ) {
+        // A plain project folder has no commit of its own; `HEAD` leaves each repository on its default branch.
+        workspaceStrategy = { type: "worktree", baseRef: "HEAD" };
+      } else if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
         const base = yield* gitDriver
           .resolveCommit({
@@ -3038,7 +3045,22 @@ const make = Effect.gen(function* () {
               ),
             );
         }
-        workspaceStrategy = { type: "worktree", baseRef: base.commitSha, startFromOrigin: false };
+        // Other repositories in the project can only match a branch name, so name the
+        // parent's branch when it still points at the parent's commit.
+        const branch = parent.thread.branch;
+        const branchAtBase =
+          branch !== null &&
+          (yield* gitDriver
+            .resolveCommit({ cwd: project.workspaceRoot, revision: `refs/heads/${branch}` })
+            .pipe(
+              Effect.map((resolved) => resolved.commitSha === base.commitSha),
+              Effect.orElseSucceed(() => false),
+            ));
+        workspaceStrategy = {
+          type: "worktree",
+          baseRef: branchAtBase ? branch : base.commitSha,
+          startFromOrigin: false,
+        };
       }
       const parentNodeId = parentRun.rootNodeId;
       // The command commits the child's preparing run, which only this call
