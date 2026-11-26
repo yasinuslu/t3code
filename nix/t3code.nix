@@ -32,7 +32,7 @@
 
   pnpmHash ? "sha256-8MrqLkOu5wjprmkhZieZT+ZV/3D/azIPiJoFccoVFWQ=",
 
-  cargoHash ? "sha256-deTy3FFcOwhxZnEbWDXFGVFFoKUex434ADJQtchVzbs=",
+  cargoHash ? "sha256-QartZALjE2BxgfKcV3CJjtG6oSNE/Vcbz2ESx1UrRbk=",
 }:
 let
   inherit (pkgs) lib;

@@ -318,6 +318,7 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
       layerThreadManagementProvided,
       layerCommandReceiptStoreProvided,
       layerEventSink,
+      ProjectionStore.layer,
       IdAllocator.layer,
     ).pipe(Layer.provideMerge(layerProjectService)),
   ),
