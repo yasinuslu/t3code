@@ -15,14 +15,14 @@ import * as ForgejoSourceControlProvider from "./ForgejoSourceControlProvider.ts
 
 const services = ForgejoCli.layer;
 
-/** Teaches remote recognition the self-hosted servers an fj or tea login names. */
+/** Teaches remote recognition the self-hosted servers an fj or gt login names. */
 const recognizeSignedInHosts = Effect.fn("ForgejoDriver.recognizeSignedInHosts")(function* () {
   const { listLogins } = yield* ForgejoCli.ForgejoCli;
   if (listLogins === undefined) return;
   const cwd = yield* HostProcess.HomeDirectory;
   // Server startup waits on this, so a hung CLI must not hold it.
   const logins = yield* Effect.forEach(
-    ["fj", "tea"] as const,
+    ["fj", "gt"] as const,
     (command) =>
       listLogins({ cwd, command }).pipe(
         Effect.timeout("5 seconds"),
