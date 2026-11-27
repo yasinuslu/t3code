@@ -26,6 +26,22 @@ const prompt: PendingUserInput = {
   ],
 };
 
+function panel(onToggleOption: (questionId: string, optionValue: string) => void) {
+  return (
+    <ComposerPendingUserInputPanel
+      pendingUserInputs={[prompt]}
+      cwd={undefined}
+      threadRef={threadRef}
+      respondingRequestIds={[]}
+      answers={{}}
+      questionIndex={0}
+      onToggleOption={onToggleOption}
+      onAdvance={vi.fn()}
+      onDismiss={vi.fn()}
+    />
+  );
+}
+
 it.each<{ focus: string; control: ReactNode; toggles: boolean }>([
   { focus: "a page button", control: <button type="button" aria-label="Focused" />, toggles: true },
   {
@@ -92,17 +108,7 @@ it.each<{ focus: string; control: ReactNode; toggles: boolean }>([
     await using screen = await render(
       <>
         {control}
-        <ComposerPendingUserInputPanel
-          pendingUserInputs={[prompt]}
-          cwd={undefined}
-          threadRef={threadRef}
-          respondingRequestIds={[]}
-          answers={{}}
-          questionIndex={0}
-          onToggleOption={onToggleOption}
-          onAdvance={vi.fn()}
-          onDismiss={vi.fn()}
-        />
+        {panel(onToggleOption)}
       </>,
     );
     await expect.element(screen.getByText("Incremental")).toBeVisible();
@@ -112,5 +118,40 @@ it.each<{ focus: string; control: ReactNode; toggles: boolean }>([
     await userEvent.keyboard("{Alt>}1{/Alt}");
 
     expect(onToggleOption.mock.calls).toEqual(toggles ? [["question", "Incremental"]] : []);
+  },
+);
+
+it.each<{ focus: string; html: string; nested?: boolean; typed: string; toggles: boolean }>([
+  {
+    focus: "a file editor",
+    html: '<div data-focus contenteditable="true"></div>',
+    typed: "",
+    toggles: false,
+  },
+  { focus: "a find bar", html: "<input data-focus />", nested: true, typed: "", toggles: false },
+  { focus: "a button", html: "<button data-focus></button>", typed: "", toggles: true },
+])(
+  "digit shortcut with focus in $focus inside a shadow root toggles an option: $toggles",
+  async ({ html, nested, typed, toggles }) => {
+    const onToggleOption = vi.fn();
+    await using screen = await render(
+      <>
+        <div data-testid="shadow-host" />
+        {panel(onToggleOption)}
+      </>,
+    );
+    await expect.element(screen.getByText("Incremental")).toBeVisible();
+    let root = screen.getByTestId("shadow-host").element().attachShadow({ mode: "open" });
+    if (nested)
+      root = root.appendChild(document.createElement("div")).attachShadow({ mode: "open" });
+    root.innerHTML = html;
+    const focused = root.querySelector<HTMLElement>("[data-focus]")!;
+    focused.focus();
+
+    // Alt+digit (the fork shortcut) types nothing into editors.
+    await userEvent.keyboard("{Alt>}1{/Alt}");
+
+    expect(onToggleOption.mock.calls).toEqual(toggles ? [["question", "Incremental"]] : []);
+    expect("value" in focused ? focused.value : focused.textContent).toBe(typed);
   },
 );
