@@ -168,6 +168,8 @@ Select any file chip in a draft or sent message to preview it (syntax-highlighte
 
 Spreadsheets (`.xlsx`, `.xls`, `.csv`, `.tsv`) open as a grid with sheet tabs; choose **Edit cells** on a workspace file to edit, add or delete rows and save back (CSV/TSV save as you type, `.xlsx` keeps formulas, formats and merged cells, `.xls` saves as a new `.xlsx`). The header sorts and filters each column, the search box matches across columns, columns resize and the first one can be frozen, and the status bar shows count and sum for a selection. Sorting and filtering change only the view until you choose **Apply to file**. Attached spreadsheets are view-only; workbooks over 12 MB do not open.
 
+When a preview asks for a file password, enter it and select **Unlock**. T3 Code uses the password on your device. Web and desktop can unlock supported PDF, ZIP, Office, and OpenDocument files. The mobile app can unlock ZIP attachments, and Android can unlock PDFs. Ebooks protected by DRM need a compatible reader.
+
 ## Images and videos in messages
 
 Select an image or video attachment or link to preview it.
