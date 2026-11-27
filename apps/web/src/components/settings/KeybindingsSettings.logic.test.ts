@@ -76,9 +76,12 @@ describe("KeybindingsSettings.logic", () => {
 
   it("gives every built-in command a translatable label", () => {
     const translated = (() => "translated") as unknown as MessageResolver;
+    // Fork-only commands keep plain English labels.
+    const forkOnly =
+      /^(shortcuts\.toggle|settings\.open|zoom\.|window\.profile\.|rightPanel\.toggle(Terminal|Files|Presentation|PullRequest)$|manager\.toggle|profile\.(next|previous)|pane\.)/;
     expect(
       STATIC_KEYBINDING_COMMANDS.filter(
-        (command) => commandLabel(command, translated) !== "translated",
+        (command) => !forkOnly.test(command) && commandLabel(command, translated) !== "translated",
       ),
     ).toEqual([]);
   });

@@ -125,10 +125,10 @@ it.each<{ focus: string; html: string; nested?: boolean; typed: string; toggles:
   {
     focus: "a file editor",
     html: '<div data-focus contenteditable="true"></div>',
-    typed: "1",
+    typed: "",
     toggles: false,
   },
-  { focus: "a find bar", html: "<input data-focus />", nested: true, typed: "1", toggles: false },
+  { focus: "a find bar", html: "<input data-focus />", nested: true, typed: "", toggles: false },
   { focus: "a button", html: "<button data-focus></button>", typed: "", toggles: true },
 ])(
   "digit shortcut with focus in $focus inside a shadow root toggles an option: $toggles",
@@ -148,7 +148,8 @@ it.each<{ focus: string; html: string; nested?: boolean; typed: string; toggles:
     const focused = root.querySelector<HTMLElement>("[data-focus]")!;
     focused.focus();
 
-    await userEvent.keyboard("1");
+    // Alt+digit (the fork shortcut) types nothing into editors.
+    await userEvent.keyboard("{Alt>}1{/Alt}");
 
     expect(onToggleOption.mock.calls).toEqual(toggles ? [["question", "Incremental"]] : []);
     expect("value" in focused ? focused.value : focused.textContent).toBe(typed);
