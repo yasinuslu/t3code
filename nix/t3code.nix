@@ -30,7 +30,7 @@
   # show it. The flake passes the short rev.
   versionSuffix ? "",
 
-  pnpmHash ? "sha256-8MrqLkOu5wjprmkhZieZT+ZV/3D/azIPiJoFccoVFWQ=",
+  pnpmHash ? "sha256-oPxhMaf+W4xtBok7+rbmIIKI0/fjshgtJt4Ecn1pp/8=",
 
   cargoHash ? "sha256-QartZALjE2BxgfKcV3CJjtG6oSNE/Vcbz2ESx1UrRbk=",
 }:
