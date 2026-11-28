@@ -68,7 +68,11 @@ export function ThreadPresentationPanel(props: { readonly threadRef: ScopedThrea
       },
     }).then((result) => {
       if (result._tag !== "Failure") return;
-      setAnswers(({ [requestId]: _failed, ...rest }) => rest);
+      setAnswers((current) => {
+        const rest = { ...current };
+        delete rest[requestId];
+        return rest;
+      });
       toastManager.add({ type: "error", title: "Could not send the answer" });
     });
   };

@@ -44,6 +44,8 @@ vi.mock(import("../../state/environments"), () => ({
   // The click rule reads the client setting, whose module asks for these.
   useEnvironments: (() => []) as never,
   usePrimaryEnvironment: (() => null) as never,
+  useEnvironment: (() => null) as never,
+  usePrimaryEnvironmentId: (() => null) as never,
   useEnvironmentIdentities: () => [
     { environmentId: EnvironmentId.make("environment"), label: "Here" },
     { environmentId: EnvironmentId.make("remote"), label: "Remote" },
@@ -163,7 +165,7 @@ it.each([
     }
     await act(() => registry.set(reply, AsyncResult.success({})));
     if (legacy) {
-      const remote = screen.getByRole("link", { name: "Thread, Remote thread" });
+      const remote = screen.getByRole("link", { name: /^Thread, Remote thread/ });
       await expect.element(remote).toBeVisible();
       await remote.click();
       await vi.waitFor(() =>
