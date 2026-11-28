@@ -7198,7 +7198,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             yield* emitProviderEvent({
               type: "provider_session.updated",
               driver: CLAUDE_PROVIDER,
-              providerSession: sessionState.current,
+              // Keep a startup step that is showing; this update is only about the dir.
+              providerSession:
+                reportedStartupPhase === undefined
+                  ? sessionState.current
+                  : { ...sessionState.current, startupPhase: reportedStartupPhase },
             });
           },
         );
